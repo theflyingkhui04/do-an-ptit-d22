@@ -1,0 +1,62 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ===== Môi trường ảo =====
+.venv/
+venv/
+env/
+ENV/
+
+# ===== Jupyter =====
+.ipynb_checkpoints/
+
+# ===== Biến môi trường / bí mật =====
+.env
+.env.*
+!.env.example
+*.key
+secrets/
+
+# ===== Trọng số mô hình & dữ liệu lớn (KHÔNG commit) =====
+*.safetensors
+*.bin
+*.gguf
+*.pt
+*.pth
+*.onnx
+models/
+checkpoints/
+weights/
+data/
+datasets/
+
+# ===== Kết quả / log / cache =====
+outputs/
+results/
+logs/
+*.log
+runs/
+wandb/
+.langfuse/
+.cache/
+.hf_cache/
+hf_cache/
+# Ghi chú: kết quả nhỏ (bảng số, biểu đồ) muốn commit thì đặt trong docs/ hoặc
+# thêm ngoại lệ, ví dụ:  !experiments/results-summary.csv
+
+# ===== Editor / IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== Hệ điều hành =====
+.DS_Store
+Thumbs.db

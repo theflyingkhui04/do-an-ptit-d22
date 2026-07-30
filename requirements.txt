@@ -1,0 +1,34 @@
+# Yêu cầu — BẢN KHỞI TẠO (chưa pin phiên bản; sẽ chốt khi cố định môi trường)
+# Cài: python3.11 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+
+# ----- Suy luận & mô hình -----
+torch
+transformers
+accelerate
+
+# ----- Serving tối ưu (làn "optimized") -----
+# vLLM hỗ trợ speculative decoding (EAGLE/Medusa/ngram) + endpoint tương thích OpenAI.
+# Cân nhắc bản dựng phù hợp CUDA của máy; hoặc dùng repo tham chiếu EAGLE trực tiếp.
+vllm
+
+# ----- Endpoint / API -----
+fastapi
+uvicorn
+openai          # client để kiểm thử endpoint tương thích OpenAI
+
+# ----- Orchestration (đánh giá end-to-end) -----
+langgraph
+langchain
+langchain-openai
+
+# ----- Quan trắc (observability) -----
+langfuse
+
+# ----- Đọc phần cứng / profiling (cho hardware-aware) -----
+psutil
+nvidia-ml-py    # pynvml — đọc thông tin & đo GPU
+
+# ----- Tiện ích & trực quan hoá -----
+numpy
+pandas
+matplotlib
