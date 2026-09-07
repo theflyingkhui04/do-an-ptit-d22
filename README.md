@@ -1,60 +1,104 @@
-# Tăng tốc suy luận LLM tự-host cho tự động hoá quy trình
+# Hardware-Aware Speculative Decoding for Self-Hosted LLM Inference
 
-> **Accelerating Self-Hosted LLM Inference for Workflow Automation: Hardware-Aware Speculative Decoding on Consumer GPUs**
->
-> Đồ án tốt nghiệp — Học viện Công nghệ Bưu chính Viễn thông (PTIT), khoá D22.
+> **VN:** *Giải mã suy đoán thích ứng phần cứng nhằm tăng tốc luồng trích xuất & phân tích dữ liệu hóa đơn tiếng Việt.*
+> Graduation thesis — Posts and Telecommunications Institute of Technology (PTIT), cohort D22.
 
-Tăng tốc **độ trễ sinh (decode latency)** của mô hình ngôn ngữ lớn (LLM) mã nguồn mở **tự host trên GPU phổ thông**, bằng **giải mã suy đoán thích ứng phần cứng** (hardware-aware speculative decoding) trên nền EAGLE-2 — phục vụ nhu cầu tự động hoá quy trình (Dify / LangGraph) của người dùng hạn chế tài nguyên, **giữ nguyên đầu ra (lossless)**.
+**Speed up self-hosted open-source LLMs on consumer GPUs — losslessly.** A custom **Adaptive Proposer** plugged into **vLLM** dynamically resizes the EAGLE-2 draft tree at runtime from real-time acceptance rate, hardware profiling and free VRAM — killing the *negative-acceleration* and *out-of-memory* failure modes that make static speculative decoding unusable on 8–12 GB GPUs.
 
-## Vì sao đề tài này?
+`🟡 Status: design locked, implementation in progress · defense Dec 2026`
 
-- Nhu cầu tự động hoá tác vụ lặp lại bằng LLM (qua Dify/LangGraph) tăng nhanh, nhưng **API trả phí đắt** và nhiều tình huống yêu cầu **riêng tư / offline** → buộc **tự host mô hình mã nguồn mở trên phần cứng khiêm tốn**.
-- "Model đóng đã mạnh, sao còn tối ưu?" → Chính các hệ phục vụ LLM lớn cũng chạy nhờ các kỹ thuật này; và khi tự host, *chi phí mỗi token* chuyển hoá thành **GPU-giây + VRAM + độ trễ** — thứ ta phải tối ưu.
-- **Độ trễ sinh** là nút thắt của trải nghiệm tương tác và của **workflow agent nhiều lượt gọi** (độ trễ cộng dồn) — đây là trục đề tài tấn công.
+---
 
-Chi tiết đầy đủ: xem [docs/01-gioi-thieu.md](docs/01-gioi-thieu.md).
+## TL;DR
 
-## Mục tiêu
+- **Problem:** Multi-step LLM workflows (agents, data pipelines) are bottlenecked by **decode latency**, which *compounds* across sequential calls. Static speculative decoding (even vLLM's default) uses a **fixed draft tree** → it *slows down* on hard/high-entropy steps, *under-uses* the GPU on easy steps, and can **OOM** under concurrency on consumer GPUs.
+- **Contribution:** A **hardware-aware, adaptive draft-tree controller** integrated into vLLM via its `custom_class` proposer backend — lossless, training-free at serve time, and tuned to the *actual* GPU it runs on.
+- **Demonstrated on** a real end-to-end **Vietnamese receipt-analytics pipeline** (MC-OCR dataset) and benchmarked with vLLM `benchmark_serving` + Langfuse.
 
-1. Tái lập **EAGLE-2** làm baseline.
-2. Xây thành phần **nháp thích ứng phần cứng** (điều chỉnh chiến lược cây nháp theo đặc tính GPU đích).
-3. Đóng gói thành **endpoint tương thích OpenAI** — cắm thẳng vào Dify / LangGraph.
-4. **Đánh giá end-to-end** trên nhiều workflow tương phản (Langfuse + instrument riêng) và dựng **bản đồ use-case**: khi nào tối ưu tốc độ thực sự đáng bật.
+## The core idea — Adaptive Proposer
 
-## Cấu trúc thư mục
+```
+        ┌───────────────────────────────────────────────┐
+        │  Startup: WARM-UP PROFILING                   │
+        │  measure t_draft, t_verify, VRAM_free on GPU  │
+        └───────────────────────┬───────────────────────┘
+                                ▼
+        ┌───────────────────────────────────────────────┐
+        │  Serving: REAL-TIME TELEMETRY                 │
+        │  track rolling acceptance α, live VRAM        │
+        └───────────────────────┬───────────────────────┘
+                                ▼
+        ┌───────────────────────────────────────────────┐
+        │  Decision: DYNAMIC TREE BUDGETING             │
+        │  tree = f(α, t_draft, t_verify, VRAM_free)    │
+        └───────────────────────────────────────────────┘
+```
+
+- **α > 0.8** (easy, low-entropy e.g. JSON extraction) → grow the tree (depth 4, width 8) for max speedup (~3–4×).
+- **0.4 ≤ α ≤ 0.8** → balanced tree (depth 3, width 4).
+- **α < 0.3 or VRAM tight** (hard, high-entropy e.g. free-form analysis) → shrink to a short chain or **disable SD** → removes negative acceleration and prevents OOM.
+
+## Why it's real work (novelty vs. vLLM built-in)
+
+| | vLLM default (built-in speculative) | This thesis (Adaptive Custom Proposer) |
+|---|---|---|
+| Draft tree | **Static** for the whole server run | **Dynamic** per step, by data difficulty |
+| Hardware awareness | ❌ manual static params | ✅ auto profiler tunes to the running GPU |
+| Memory safety | ❌ OOM-prone under load | ✅ prunes the tree when VRAM runs low |
+| Effort | CLI flags only | Custom controller algorithm + a custom EAGLE-2 draft head trained on Vietnamese receipt data + vLLM integration |
+
+## Demo pipeline — Vietnamese receipt analytics (MC-OCR)
+
+```
+[Raw VN receipt text — MC-OCR]
+        │
+        ▼  NODE 1 · EXTRACTOR      → structured JSON (store, items, prices, tax) → SQLite
+        ▼  NODE 2 · TEXT-TO-SQL    → Vietnamese question → SQL over the receipts DB
+        ▼  NODE 3 · SQL-TO-BI      → analytic report (HTML/Markdown) → Streamlit dashboard
+```
+
+E2E latency = Lat(Node1) + Lat(Node2) + Lat(Node3) — a workload where compounding decode latency, and the adaptive controller's per-step tuning, both show up clearly.
+
+## Benchmarking
+
+Measured with vLLM `benchmark_serving` + **Langfuse**, across a concurrency sweep (batch 1 → 32):
+
+- **Acceptance rate (α)** — draft-head quality
+- **TTFT** (time to first token) — kept within budget
+- **TPOT / ITL** (inter-token latency) — the main optimization target
+- **E2E latency** — full 3-stage pipeline
+- **VRAM** — proving the memory safety of the Adaptive Proposer
+
+Three lanes are compared on the same hardware: **vanilla autoregressive** · **stock EAGLE-2** · **adaptive**, to build a **use-case map** (when speed optimization is worth enabling — and when it isn't, e.g. large-batch throughput or long-input/short-output).
+
+## Tech stack
+
+Python · **vLLM** (`custom_class` proposer backend) · **EAGLE-2** speculative decoding · PyTorch · Qwen2.5-7B-Instruct (target, FP16 / 4-bit) · SQLite · Streamlit · **Langfuse** · OpenAI-compatible `/v1/chat/completions` endpoint (plugs into Dify / LangGraph)
+
+## Repository layout
 
 ```
 do-an-ptit-d22/
-├── README.md              # tài liệu này
-├── .gitignore
-├── requirements.txt       # phụ thuộc (bản khởi tạo)
+├── README.md
+├── requirements.txt
 ├── docs/
-│   ├── 01-gioi-thieu.md           # Giới thiệu · Sản phẩm · Đóng góp
-│   ├── 02-tong-quan-tai-lieu.md   # Khảo sát 3 hướng + lý do chọn
-│   ├── 03-quyet-dinh-thiet-ke.md  # Nhật ký quyết định (vì sao đi hướng này)
-│   └── references.md              # Danh mục paper (kèm arXiv ID)
-├── src/                   # mã nguồn engine + endpoint (giai đoạn thiết kế)
-└── experiments/           # workflow đánh giá + pipeline đo + phân tích
+│   ├── 01-gioi-thieu.md           # Introduction · outputs · contributions
+│   ├── 02-tong-quan-tai-lieu.md   # Literature survey (3 directions) + rationale
+│   ├── 03-quyet-dinh-thiet-ke.md  # Design decision log
+│   └── references.md              # Papers (with arXiv IDs)
+├── src/                           # inference engine + adaptive proposer + endpoint
+└── experiments/                   # eval workflows + measurement pipeline + analysis
 ```
 
-## Cài đặt
+## Team
 
-> Giai đoạn thiết kế — môi trường sẽ được chốt (và pin phiên bản) khi bắt đầu hiện thực.
-
-```bash
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Nhóm thực hiện
-
-| Vai trò | Họ tên |
+| Role | Name |
 |---|---|
-| Thành viên | Cấn Đức Khôi |
-| Thành viên | *(điền)* |
-| Thành viên | *(điền)* |
-| Giảng viên hướng dẫn | *(điền)* |
+| Member | Cấn Đức Khôi ([GitHub](https://github.com/theflyingkhui04) · [LinkedIn](https://linkedin.com/in/duckhoi04)) |
+| Member | *(add)* |
+| Member | *(add)* |
+| Advisor | *(add)* |
 
-## Trạng thái
+## Status
 
-🟡 **Giai đoạn thiết kế / đề cương.** Hướng kỹ thuật đã khoá; đang hoàn thiện tài liệu trước khi hiện thực.
+🟡 **Design locked; implementation in progress** (thesis defense Dec 2026). Minimal-viable fallback if draft-head training is delayed: demonstrate the adaptive tree on a published EAGLE-2 checkpoint + full benchmark suite — still a complete, measurable contribution.
