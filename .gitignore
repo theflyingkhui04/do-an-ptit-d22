@@ -48,8 +48,11 @@ wandb/
 .cache/
 .hf_cache/
 hf_cache/
-# Ghi chú: kết quả nhỏ (bảng số, biểu đồ) muốn commit thì đặt trong docs/ hoặc
-# thêm ngoại lệ, ví dụ:  !experiments/results-summary.csv
+# NGOẠI LỆ — bảng số & biểu đồ của đồ án PHẢI được commit (nguồn sự thật cho quyển).
+# Xem docs/06-ke-hoach-thuc-nghiem.md §5.
+!experiments/results/
+!experiments/results/**
+experiments/runs/
 
 # ===== Editor / IDE =====
 .vscode/

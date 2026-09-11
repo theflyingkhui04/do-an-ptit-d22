@@ -42,10 +42,13 @@
 
 | | vLLM default (built-in speculative) | This thesis (Adaptive Custom Proposer) |
 |---|---|---|
-| Draft tree | **Static** for the whole server run | **Dynamic** per step, by data difficulty |
+| Draft tree | **Static** for the whole server run | **Dynamic** per step, by measured cost |
 | Hardware awareness | ❌ manual static params | ✅ auto profiler tunes to the running GPU |
 | Memory safety | ❌ OOM-prone under load | ✅ prunes the tree when VRAM runs low |
-| Effort | CLI flags only | Custom controller algorithm + a custom EAGLE-2 draft head trained on Vietnamese receipt data + vLLM integration |
+| Negative acceleration | ❌ can drop below 1.0× | ✅ falls back to plain decoding — never slower |
+| Effort | CLI flags only | Custom controller algorithm + startup hardware profiler + vLLM integration |
+
+> Draft-head training is explicitly **out of scope** — published EAGLE-2 checkpoints are used instead. The contribution is the *controller*, not the draft head ([QĐ-10](docs/03-quyet-dinh-thiet-ke.md)).
 
 ## Demo pipeline — Vietnamese receipt analytics (MC-OCR)
 
@@ -73,7 +76,7 @@ Three lanes are compared on the same hardware: **vanilla autoregressive** · **s
 
 ## Tech stack
 
-Python · **vLLM** (`custom_class` proposer backend) · **EAGLE-2** speculative decoding · PyTorch · Qwen2.5-7B-Instruct (target, FP16 / 4-bit) · SQLite · Streamlit · **Langfuse** · OpenAI-compatible `/v1/chat/completions` endpoint (plugs into Dify / LangGraph)
+Python · **vLLM** (`custom_class` proposer backend) · **EAGLE-2** speculative decoding · PyTorch · **Qwen2.5-7B-Instruct 4-bit (AWQ/GPTQ)** as target on a T4 16GB ([QĐ-09](docs/03-quyet-dinh-thiet-ke.md)) · SQLite · **Langfuse** · OpenAI-compatible `/v1/chat/completions` endpoint (plugs into Dify / LangGraph)
 
 ## Repository layout
 
@@ -82,15 +85,22 @@ do-an-ptit-d22/
 ├── README.md
 ├── requirements.txt
 ├── docs/
-│   ├── 01-gioi-thieu.md           # Introduction · outputs · contributions
-│   ├── 02-tong-quan-tai-lieu.md   # Literature survey (3 directions) + rationale
-│   ├── 03-quyet-dinh-thiet-ke.md  # Design decision log
-│   ├── 04-quy-trinh-va-ke-hoach.md # Process choice + milestone plan + risk register
-│   ├── paper_summary/             # Deep summaries of the 6 foundational papers
-│   └── references.md              # Papers (with arXiv IDs)
-├── src/                           # inference engine + adaptive proposer + endpoint
-└── experiments/                   # eval workflows + measurement pipeline + analysis
+│   ├── README.md                   # ← DOC MAP: what every file is for. Start here.
+│   ├── 01-gioi-thieu.md            # Introduction · research questions · scope
+│   ├── 02-tong-quan-tai-lieu.md    # Literature survey (3 directions) + rationale
+│   ├── 03-quyet-dinh-thiet-ke.md   # Decision log (ADR) + open questions
+│   ├── 04-quy-trinh-va-ke-hoach.md # Process + milestone plan + risk register
+│   ├── 05-thiet-ke-he-thong.md     # Architecture + the two frozen interfaces
+│   ├── 06-ke-hoach-thuc-nghiem.md  # Measurement protocol + result matrix
+│   ├── 07-thuat-ngu.md             # Glossary & notation
+│   ├── 08-outline-quyen.md         # Thesis outline + defense Q&A prep
+│   ├── paper_summary/              # Deep summaries of the 6 foundational papers
+│   └── references.md               # Papers (with arXiv IDs)
+├── src/                            # inference engine + adaptive proposer + endpoint
+└── experiments/                    # eval workflows + measurement pipeline + analysis
 ```
+
+**New here?** Read [docs/README.md](docs/README.md) — it maps every document and tells you which ones to read for your role.
 
 ## Team
 
