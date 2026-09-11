@@ -11,7 +11,12 @@
 - **Lookahead Decoding** — *Break the Sequential Dependency of LLM Inference.* Fu et al., ICML 2024. `arXiv:2402.02057` — hướng training-free.
 - **LayerSkip** — self-speculative decoding. Elhoushi et al., ACL 2024. `arXiv:2404.16710`.
 - **Speculative Decoding (gốc)** — Leviathan et al., ICML 2023. `arXiv:2211.17192`.
+- **PEARL** — *Parallel Speculative Decoding with Adaptive Draft Length.* Liu et al., ICLR 2025. `arXiv:2408.11850` — trục **lịch chạy** (chồng lấn nháp/xác thực); đòi nhiều GPU, không tái lập được với phần cứng nhóm.
+- **Talon** — *Confidence-Aware Speculative Decoding with Adaptive Token Trees.* Liu et al., 2026. `arXiv:2601.07353` — ⚠️ preprint, chưa peer-review; cây nháp theo **ngân sách token** thay vì fixed depth/width.
+- **D-cut** — *Adaptive Verification Depth Pruning for Batched Speculative Decoding.* Liu et al. (Tencent Hunyuan), 2026. `arXiv:2607.14647` — ⚠️ preprint; **cost-model đo runtime** chọn mức cắt theo phần cứng → tham chiếu gần nhất với twist *hardware-aware* của đồ án.
 - **Spec-Bench** — benchmark trung lập cho speculative decoding. `github.com/hemingkx/Spec-Bench`.
+
+> Tóm tắt chi tiết 6 paper nền: [paper_summary/](paper_summary/).
 
 ## Nén KV-cache (hướng dự phòng — A)
 

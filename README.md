@@ -85,6 +85,8 @@ do-an-ptit-d22/
 │   ├── 01-gioi-thieu.md           # Introduction · outputs · contributions
 │   ├── 02-tong-quan-tai-lieu.md   # Literature survey (3 directions) + rationale
 │   ├── 03-quyet-dinh-thiet-ke.md  # Design decision log
+│   ├── 04-quy-trinh-va-ke-hoach.md # Process choice + milestone plan + risk register
+│   ├── paper_summary/             # Deep summaries of the 6 foundational papers
 │   └── references.md              # Papers (with arXiv IDs)
 ├── src/                           # inference engine + adaptive proposer + endpoint
 └── experiments/                   # eval workflows + measurement pipeline + analysis
