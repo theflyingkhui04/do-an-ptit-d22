@@ -109,6 +109,9 @@ do-an-ptit-d22/
 | Member | Cấn Đức Khôi ([GitHub](https://github.com/theflyingkhui04) · [LinkedIn](https://linkedin.com/in/duckhoi04)) |
 | Member | *(add)* |
 | Member | *(add)* |
+| AI Systems & PM (Dev + PM) | Cấn Đức Khôi ([GitHub](https://github.com/theflyingkhui04) · [LinkedIn](https://linkedin.com/in/duckhoi04)) |
+| MLOps & Performance (Dev + IT) | Dương |
+| AI Application & BA (Dev + BA) | Đại |
 | Advisor | *(add)* |
 
 ## Status

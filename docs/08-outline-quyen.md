@@ -12,6 +12,7 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 | Chương | Mục | Nguồn | Người | Viết được từ |
 |:--:|---|---|:--:|---|
 | **1** | **Mở đầu** | | TV3 | **Tuần 1** |
+| **1** | **Mở đầu** | | Dương (Dev + BA) | **Tuần 1** |
 | | 1.1 Bối cảnh & động lực | [01 §1.2](01-gioi-thieu.md) | | |
 | | 1.2 Phát biểu bài toán | [01 §1.3](01-gioi-thieu.md) | | |
 | | 1.3 Câu hỏi nghiên cứu (RQ1–3) | [01 §1.3](01-gioi-thieu.md) | | |
@@ -19,6 +20,7 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 | | 1.5 Đóng góp | [01 §3](01-gioi-thieu.md) | | |
 | | 1.6 Bố cục quyển | — | | |
 | **2** | **Cơ sở lý thuyết & tổng quan** | | Khôi | **Tuần 1–3** |
+| **2** | **Cơ sở lý thuyết & tổng quan** | | Khôi (Dev + PM) | **Tuần 1–3** |
 | | 2.1 Nút thắt suy luận LLM (bandwidth vs compute bound) | [paper_summary/01](paper_summary/01-speculative-decoding-leviathan2023.md) | | |
 | | 2.2 Giải mã suy đoán & chứng minh lossless | [paper_summary/01](paper_summary/01-speculative-decoding-leviathan2023.md) | | |
 | | 2.3 Nháp ở mức đặc trưng: EAGLE | [paper_summary/02](paper_summary/02-eagle-li2024.md) | | |
@@ -27,6 +29,7 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 | | 2.6 Các hướng đã cân nhắc và loại | [02-tong-quan](02-tong-quan-tai-lieu.md) | | |
 | | 2.7 **Khoảng trống nghiên cứu** | [paper_summary/README](paper_summary/) §"Ba điều rút ra" | | |
 | **3** | **Thiết kế hệ thống** | | Khôi | **sau M2 (18/10)** |
+| **3** | **Thiết kế hệ thống** | | Khôi (Dev + PM) | **sau M2 (18/10)** |
 | | 3.1 Kiến trúc tổng thể | [05 §1](05-thiet-ke-he-thong.md) | | |
 | | 3.2 Đo hồ sơ phần cứng | [05 §2.1](05-thiet-ke-he-thong.md) | | |
 | | 3.3 Bộ điều khiển ngân sách cây | [05 §2.2](05-thiet-ke-he-thong.md) | | |
@@ -34,12 +37,15 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 | | 3.5 Tích hợp vLLM & endpoint | [05 §3–4](05-thiet-ke-he-thong.md) | | |
 | | 3.6 **Các quyết định thiết kế và lý do** | [03](03-quyet-dinh-thiet-ke.md) — chuyển thể QĐ-01→11 | | |
 | **4** | **Thực nghiệm** | | TV2 | **sau M1 (04/10)** |
+| **4** | **Thực nghiệm** | | Đại (Dev + IT) | **sau M1 (04/10)** |
 | | 4.1 Thiết lập: phần cứng, mô hình, phần mềm | [05](05-thiet-ke-he-thong.md), [QĐ-09](03-quyet-dinh-thiet-ke.md) | | |
 | | 4.2 Workload & tập dữ liệu | [01 §1.6](01-gioi-thieu.md) | | |
 | | 4.3 Chỉ số & giao thức đo | [06 §3](06-ke-hoach-thuc-nghiem.md), [07](07-thuat-ngu.md) | | |
 | | 4.4 Xác minh lossless | [06 §4](06-ke-hoach-thuc-nghiem.md) | | |
 | **5** | **Kết quả & bàn luận** | | TV2 + Khôi | **sau M4 (15/11)** |
 | | 5.1 Đường cơ sở: vanilla vs static | F1 | | |
+| **5** | **Kết quả & bàn luận** | | Đại + Khôi | **sau M4 (15/11)** |
+| | 5.1 Chuẩn đối chứng (Baseline): vanilla vs static | F1 | | |
 | | 5.2 RQ1 — adaptive vs static | F1, F2 | | |
 | | 5.3 RQ2 — **tăng tốc âm & an toàn bộ nhớ** | F2, F4 | | |
 | | 5.4 Bằng chứng thích ứng (ngân sách cây theo thời gian) | F3 | | |
@@ -51,6 +57,8 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 | | 6.3 Hướng phát triển | | | |
 | | **Tài liệu tham khảo** | [references.md](references.md) | TV3 | liên tục |
 | | **Phụ lục** — bảng kết quả đầy đủ, hướng dẫn tái lập | `experiments/results/summary.csv` | TV2 | sau M4 |
+| | **Tài liệu tham khảo** | [references.md](references.md) | Dương | liên tục |
+| | **Phụ lục** — bảng kết quả đầy đủ, hướng dẫn tái lập | `experiments/results/summary.csv` | Đại | sau M4 |
 
 ## Lịch viết
 

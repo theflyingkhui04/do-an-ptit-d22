@@ -23,6 +23,7 @@ Target M_p :                 [xác thực]                    [xác thực]
 ```
 
 Nguyên nhân là ràng buộc dữ liệu hai chiều:
+
 1. Muốn nháp thì phải có **tiền tố đã được xác thực**.
 2. Muốn xác thực thì phải có **bản nháp đã sinh xong**.
 
@@ -43,6 +44,7 @@ PEARL cho **cả hai mô hình chạy đồng thời**, bằng cách nhét thêm
 **Làm gì:** ngay khi bắt đầu pha nháp, cho `M_p` chạy song song trên **chính tiền tố hiện tại `x`** để lấy logits tại vị trí 1. Việc này **không cần chờ bản nháp** — chỉ cần tiền tố, thứ đã có sẵn.
 
 Khi bộ nháp trả về `x_1, ..., x_γ`, ta đã có sẵn `p_1` để duyệt ngay token đầu theo tiêu chí chuẩn:
+
 ```
 α_i  =  1                    nếu  p_i[x_i]  ≥  q_i[x_i]
         p_i[x_i] / q_i[x_i]  nếu ngược lại
@@ -73,6 +75,7 @@ Target M_p : [pre-verify x ][xác thực 1..γ][xác thực ...  ]
 ### 2.3. Độ dài nháp thích ứng "tự mọc ra" (Adaptive Draft Length)
 
 Điểm đẹp về mặt thiết kế: PEARL **không có thuật toán nào dự đoán độ dài nháp cả**. Tính thích ứng là **hệ quả** của hai thủ thuật trên:
+
 * Nháp sai sớm → pre-verify cắt ngay → độ dài hiệu dụng ngắn.
 * Nháp đúng liên tục → post-verify nối chuỗi → độ dài hiệu dụng dài.
 
@@ -83,19 +86,25 @@ Không cần bộ dự đoán, không cần ngưỡng, không cần huấn luy�
 ## 3. Phân tích lý thuyết
 
 **Định lý 1 (kích thước cửa sổ tối ưu):** kích thước cửa sổ tối ưu `γ*` bằng đúng tỷ số thời gian chạy hai mô hình:
+
 ```
 γ*  =  c  =  T(M_p) / T(M_q)
 ```
+
 Ý nghĩa thực dụng: `γ` không còn là siêu tham số phải dò tay — nó **đo được** bằng cách bấm giờ hai mô hình một lần. Đây là điểm khác biệt lớn so với SD gốc (Paper 1), nơi `K` phải tune thủ công cho từng cặp model và từng tác vụ.
 
 **Định lý 2 (kỳ vọng số token chấp nhận):** với tỷ lệ chấp nhận `α` i.i.d.:
+
 ```
 E[ số token chấp nhận ]  =  1 / (1 - α)  +  1
 ```
+
 So với SD thuần:
+
 ```
 E_vanilla  =  ( 1 - α^(γ+1) ) / (1 - α)
 ```
+
 Vì `1/(1-α)` là giới hạn của `E_vanilla` khi `γ → ∞`, PEARL **luôn ≥ SD thuần với mọi `γ` hữu hạn**. Trực giác: SD thuần bị chặn trên bởi `γ` (không bao giờ ăn quá `γ+1` token một lượt), còn PEARL nhờ post-verify nối chuỗi nên **không có trần**.
 
 ---
@@ -107,13 +116,13 @@ Vì `1/(1-α)` là giới hạn của `E_vanilla` khi `γ → ∞`, PEARL **luô
 * **Bộ dữ liệu:** HumanEval (164 bài), GSM8K (100 bài), MT-bench (80 bài).
 * **Đối thủ:** tự hồi quy, SD thuần, Ouroboros, Lookahead Decoding, DistillSpec.
 
-| Cặp mô hình | Tăng tốc của PEARL |
-|---|:--:|
-| Codellama 7B & 70B | **3.79×** |
-| Deepseek 1.3B & 33B | 3.48× |
-| Llama-2 7B & 70B | 3.01× |
-| Deepseek 7B & 33B | 2.75× |
-| Codellama 7B & 34B | 2.35× |
+| Cặp mô hình      | Tăng tốc của PEARL |
+| ------------------- | :-------------------: |
+| Codellama 7B & 70B  |   **3.79×**   |
+| Deepseek 1.3B & 33B |        3.48×        |
+| Llama-2 7B & 70B    |        3.01×        |
+| Deepseek 7B & 33B   |        2.75×        |
+| Codellama 7B & 34B  |        2.35×        |
 
 * Cao nhất **4.43×** so với tự hồi quy, và **1.50×** so với SD thuần.
 * Trên GSM8K: 2.87× (SD thuần chỉ 1.99×). Trên MT-bench: 2.48× (SD thuần 1.63×).
@@ -124,12 +133,12 @@ Vì `1/(1-α)` là giới hạn của `E_vanilla` khi `γ → ∞`, PEARL **luô
 
 ## 5. Hạn chế — và đây là phần quan trọng nhất với đồ án
 
-| Hạn chế | Chi tiết |
-|---|---|
-| **Đòi tài nguyên GPU gấp đôi (về mặt logic)** | Muốn hai mô hình chạy *thật sự* đồng thời thì phải có hai luồng tính toán không tranh nhau — thực tế trong bài là **2–3 GPU H800**. Bài báo tự thừa nhận: *"vẫn là thách thức để lập lịch tài nguyên GPU sao cho tránh tranh chấp."* |
-| **Trên 1 GPU, lợi ích co lại đáng kể** | Nếu nhồi cả hai mô hình vào một GPU, chúng tranh SM và băng thông → "song song" biến thành chia sẻ thời gian, và phần lớn lợi ích bốc hơi. |
-| **Chi phí bộ nhớ phụ** | Phải cache logits từ pha xác thực trước, tỷ lệ với độ dài nháp tối đa. |
-| **Nháp phí khi đoán sai** | Post-verify sinh `γ` token có thể bị vứt. Vô hại khi GPU rảnh, nhưng **tốn thật** nếu tài nguyên đang căng (tức là chế độ batched). |
-| **Là mô hình nháp rời (không phải feature-level)** | PEARL đặt trên kiến trúc SD cổ điển hai mô hình, **trực giao** với dòng EAGLE. Trên nguyên tắc có thể ghép PEARL với EAGLE, nhưng bài báo không làm. |
+| Hạn chế                                                       | Chi tiết                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Đòi tài nguyên GPU gấp đôi (về mặt logic)**    | Muốn hai mô hình chạy*thật sự* đồng thời thì phải có hai luồng tính toán không tranh nhau — thực tế trong bài là **2–3 GPU H800**. Bài báo tự thừa nhận: *"vẫn là thách thức để lập lịch tài nguyên GPU sao cho tránh tranh chấp."* |
+| **Trên 1 GPU, lợi ích co lại đáng kể**             | Nếu nhồi cả hai mô hình vào một GPU, chúng tranh SM và băng thông → "song song" biến thành chia sẻ thời gian, và phần lớn lợi ích bốc hơi.                                                                                                                    |
+| **Chi phí bộ nhớ phụ**                                | Phải cache logits từ pha xác thực trước, tỷ lệ với độ dài nháp tối đa.                                                                                                                                                                                                |
+| **Nháp phí khi đoán sai**                             | Post-verify sinh`γ` token có thể bị vứt. Vô hại khi GPU rảnh, nhưng **tốn thật** nếu tài nguyên đang căng (tức là chế độ batched).                                                                                                                      |
+| **Là mô hình nháp rời (không phải feature-level)** | PEARL đặt trên kiến trúc SD cổ điển hai mô hình,**trực giao** với dòng EAGLE. Trên nguyên tắc có thể ghép PEARL với EAGLE, nhưng bài báo không làm.                                                                                                   |
 
 > **Liên hệ đồ án — cảnh báo phần cứng:** ràng buộc của nhóm là **T4 16GB + mượn A100 một lần** (xem [02-tong-quan-tai-lieu.md](../02-tong-quan-tai-lieu.md)). PEARL giả định nhiều GPU H800 chạy song song. **Tái lập PEARL đúng nghĩa là không khả thi với phần cứng của nhóm.** Giá trị của paper này với đồ án là **ý tưởng** (trục lịch chạy còn bỏ ngỏ, và tính thích ứng có thể là *hệ quả* của thiết kế chứ không cần bộ dự đoán), chứ không phải là thứ để chạy lại.

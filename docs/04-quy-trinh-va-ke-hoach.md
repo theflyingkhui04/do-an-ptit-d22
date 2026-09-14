@@ -1,239 +1,185 @@
-# Quy trình & Kế hoạch dự án
+# Quy trình Làm việc & Kế hoạch Dự án
 
-> Lập ngày **11/09/2026**. Vai trò: quản lý dự án.
-> Ràng buộc đầu vào: **3 thành viên, trình độ ngang nhau, ~10–15h/người/tuần, không gặp mặt được, ngày bảo vệ chưa chốt (dự kiến 12/2026)**.
+> **Cập nhật:** 14/09/2026.  
+> **Bối cảnh thực tế:** Nhóm gồm 3 thành viên, làm việc từ xa (lệch giờ, trao đổi online là chính), thời gian dành cho đồ án ~10–15h/người/tuần. Hạn bảo vệ dự kiến: giữa tháng 12/2026.
 
 ---
 
-## 0. Giả định đang dùng (phải xác nhận lại khi khoa ra thông báo)
+## 0. Các mốc thời gian cốt lõi
 
-| Giả định | Giá trị đang dùng | Ảnh hưởng nếu sai |
+Kế hoạch được lập theo kịch bản an toàn nhất (phòng trường hợp lịch thi/bảo vệ diễn ra sớm):
+
+| Mốc thời gian | Thời điểm dự kiến | Ý nghĩa & Hành động |
 |---|---|---|
-| Ngày bảo vệ | giữa 12/2026 | — |
-| Hạn nộp quyển | trước bảo vệ 2–3 tuần → **~30/11** | dịch toàn bộ lịch |
-| **Code & kết quả freeze** | **15/11/2026** (kịch bản xấu nhất) | mốc quan trọng nhất; nếu deadline thật muộn hơn thì phần dư là *buffer*, **không** phải chỗ để nhét thêm scope |
-| Năng lực nhóm | ~35 giờ-người/tuần → **~455 giờ-người** tổng | cắt scope sâu hơn nếu thấp hơn |
-
-**Nguyên tắc số 1:** deadline chưa chốt thì lập kế hoạch theo ngày sớm nhất có thể xảy ra. Biết deadline muộn hơn là tin vui; biết muộn thì là thảm hoạ.
+| **Ngày bảo vệ** | Giữa tháng 12/2026 | Lịch chính thức theo thông báo của Học viện. |
+| **Hạn nộp quyển** | **~30/11/2026** | Nộp trước bảo vệ 2 tuần để thầy cô phản biện đọc quyển. |
+| **Đóng băng Code & Số liệu (Freeze)** | **15/11/2026** | **Mốc quan trọng nhất:** Sau ngày này, tuyệt đối không sửa code hay chạy lại benchmark; 2 tuần cuối dành trọn thời gian để chỉnh sửa câu chữ báo cáo và chuẩn bị slide. |
+| **Quỹ thời gian cả nhóm** | ~35 giờ/tuần | Tổng cộng ~450 giờ làm việc cho cả 3 thành viên trong suốt kỳ đồ án. |
 
 ---
 
-## 1. Chọn quy trình: **không Scrum, không Waterfall**
+## 1. Mô hình làm việc: Vì sao chọn Lean / Kanban?
 
-### Kết luận
-> **Kanban theo dòng chảy liên tục + các mốc timebox cố định ngày, thả scope**, đặt trên một **xương sống ưu tiên-rủi-ro (risk-first)**.
-> Đây là quy trình dạng **Lean/Kanban**, không phải Scrum — dù nhiều người quen gọi gộp cả hai là "Agile".
+### 1.1. Không dùng Waterfall (Thác nước)
+Mô hình Waterfall yêu cầu phải chốt cứng mọi thứ từ đầu rồi làm tuần tự từng giai đoạn. Với một đề tài nghiên cứu hệ thống, ta **chưa thể biết trước 100% kết quả** (ví dụ: *Liệu thuật toán thích ứng có thực sự chạy nhanh hơn EAGLE-2 trên GPU T4 không?*). Nếu làm theo Waterfall và đợi đến tuần thứ 10 mới chạy thử benchmark, khi gặp sự cố sẽ không còn đường lùi.
 
-### Vì sao **không Waterfall**
+### 1.2. Không áp dụng Scrum một cách máy móc
+Scrum chuẩn chỉ phù hợp với các đội dự án ngồi cùng nhau và làm sản phẩm theo yêu cầu khách hàng:
+* **Họp Daily hằng ngày:** Nhóm 3 người làm việc lệch giờ, nếu ép họp mỗi ngày sẽ rất mệt mỏi và sớm bị bỏ cuộc sau 1–2 tuần.
+* **Họp Planning, Review, Retro quá nhiều:** Tốn tới 4–5 tiếng họp mỗi tuần, chiếm gần 15% tổng thời gian làm việc của cả nhóm.
+* **Ước lượng điểm số (Story Points/Velocity):** Công việc nghiên cứu và gỡ lỗi hệ thống (như cấu hình CUDA, vLLM trên T4) rất khó đoán trước thời gian chính xác, việc cam kết khối lượng cứng theo sprint chỉ gây áp lực ảo.
 
-Waterfall đòi biết trước đầu ra trước khi bắt tay làm. Đồ án này **không thoả điều kiện đó**, vì câu hỏi trung tâm là một câu hỏi nghiên cứu chưa ai trả lời:
-
-> *Liệu adaptive proposer có thật sự thắng EAGLE-2 tĩnh trên T4 không?*
-
-Chưa đo thì chưa biết. Và **có thể câu trả lời là không** — đó vẫn là một kết quả hợp lệ để bảo vệ, nhưng chỉ khi phát hiện sớm. Waterfall sẽ đẩy phát hiện đó về tận tuần 10, lúc không còn đường xoay. Với dự án có rủi ro kỹ thuật là rủi ro lớn nhất, Waterfall **giấu rủi ro về cuối** — đúng chỗ nguy hiểm nhất.
-
-### Vì sao **không Scrum**
-
-Scrum hợp lý ở chỗ nó chia nhỏ theo sprint, nhưng bộ máy của nó đổ vỡ với đội hình này:
-
-| Thành phần Scrum | Vì sao không hợp ở đây |
-|---|---|
-| Daily standup (đồng bộ, hằng ngày) | **Không gặp mặt được.** Ép họp hằng ngày → bỏ trong 2 tuần → mất luôn cả kỷ luật. |
-| Sprint Planning + Review + Retro | ~4h ceremonies/sprint. Trên tổng 35h/tuần đó là **hơn 5% ngân sách** cho họp hành trong một dự án 3 người. |
-| Vai trò PO / SM / Dev tách bạch | 3 người thì ai cũng là Dev. Vai trò rỗng. |
-| Sprint commitment (cam kết khối lượng sprint) | Việc nghiên cứu **không ước lượng được**. "Làm cho draft head chạy trên T4" có thể mất 2h hoặc 2 tuần. Cam kết sprint chỉ tạo ra nợ và cảm giác thất bại. |
-| Velocity | Vô nghĩa khi phần lớn task là one-off, không lặp lại. |
-
-**Scrum được thiết kế cho đội 5–9 người, ngồi cùng chỗ, làm sản phẩm có yêu cầu thay đổi từ bên ngoài.** Đây là đội 3 người, phân tán, yêu cầu do chính nhóm đặt ra, và biến động đến từ *kết quả đo* chứ không từ khách hàng. Sai công cụ.
-
-### Cái thực sự cần
-
-| Nhu cầu thật | Cơ chế |
-|---|---|
-| Phát hiện rủi ro sớm | **Risk-first**: mỗi mốc giết một điều-chưa-biết-lớn-nhất, không phải hoàn thiện một tầng kiến trúc |
-| Làm việc lệch giờ nhau | **Kanban**: kéo việc khi rảnh, không chờ nhịp sprint; trạng thái nằm trên bảng chứ không trong đầu ai |
-| Không ai bị chặn | **Sở hữu module + giao diện mỏng**: 3 người ngang trình → chia theo *ranh giới code*, không theo kỹ năng |
-| Deadline không co giãn | **Timebox cố định ngày, thả scope**: đến hạn thì giao thứ đang có, không dời hạn |
-| Ít họp mà vẫn không lạc nhau | **1 buổi đồng bộ 45 phút/tuần + phần còn lại viết ra văn bản** |
+### 1.3. Giải pháp lựa chọn: Lean / Kanban định hướng giải quyết rủi ro sớm (Risk-First)
+* **Quản lý trực quan bằng Kanban:** Công việc được đưa lên bảng (Trello/Notion). Ai rảnh lúc nào vào kéo việc làm lúc đó, trạng thái công việc luôn minh bạch.
+* **Tập trung vào 1 việc (WIP = 1):** Mỗi người tại một thời điểm chỉ nhận đúng **1 task duy nhất**, làm xong mới nhận việc mới để tránh dở dang.
+* **Giải quyết rủi ro trước (Risk-First):** Các việc khó nhất, dễ gây "tắc đường" nhất (như kiểm tra xem mô hình có chạy được trên GPU T4 không) phải làm ngay trong 1–2 tuần đầu tiên.
+* **Cố định thời hạn, linh hoạt phạm vi (Fixed Date, Variable Scope):** Hạn nộp quyển của trường là cố định; nếu thiếu thời gian, ta sẽ chủ động cắt giảm các tính năng phụ (như làm web giao diện) để bảo vệ các mục tiêu cốt lõi.
 
 ---
 
-## 2. Nhịp làm việc (cadence)
+## 2. Nhịp phối hợp & Giao tiếp nhóm
 
-Đội async **không phải là đội zero-sync**. Cần đúng một điểm đồng bộ — nhiều hơn thì lãng phí, ít hơn thì trôi.
+Làm việc online không có nghĩa là không nói chuyện, mà là **giao tiếp ngắn gọn, đúng trọng tâm và đúng lịch**:
 
-### 2.1. Một cuộc gọi 45 phút mỗi tuần — thứ Bảy
+### 2.1. Cuộc gọi 45 phút tối thứ Bảy (Cố định lúc 20h30)
+Cuộc gọi diễn ra nhanh gọn qua Google Meet/Discord với đúng 3 nội dung:
+1. **Demo sản phẩm chạy được (15 phút):** Từng người chia sẻ màn hình những gì mình đã làm chạy được trong tuần (không nói suông, không dùng slide).
+2. **Tháo gỡ điểm nghẽn (20 phút):** Tập trung giải quyết các lỗi khó, các vấn đề kỹ thuật đang khiến ai đó bị kẹt lại.
+3. **Chốt việc tuần mới (10 phút):** Mỗi người kéo task từ danh sách việc cần làm vào phần việc của mình.
 
-Chỉ 3 mục, theo đúng thứ tự, có người bấm giờ:
-1. **Bảng demo (15')** — mỗi người *chiếu màn hình* thứ mình chạy được. Không slide, không "em đang làm dở". Chạy được hoặc chưa.
-2. **Gỡ chặn (20')** — chỉ nêu vấn đề đang chặn. Ai không bị chặn thì ngồi im.
-3. **Chốt việc tuần tới (10')** — mỗi người kéo việc từ cột Ready.
-
-Ghi biên bản vào file, 10 dòng. Ai vắng thì đọc biên bản, **không tổ chức họp bù**.
-
-### 2.2. Standup viết, thứ Hai và thứ Năm
-
-Nhắn vào nhóm chat, đúng 3 dòng:
+### 2.2. Cập nhật nhanh qua tin nhắn (Thứ Hai & Thứ Năm)
+Khoảng 21h tối thứ 2 và thứ 5, mỗi thành viên nhắn đúng 3 dòng vào nhóm chat chung:
+```text
+- Đã xong: [Mã task hoặc tính năng đã merge/chạy được]
+- Đang làm: [Đúng 1 task đang tập trung]
+- Điểm nghẽn: [Gặp lỗi gì cần giúp? Nếu không có thì ghi "Không"]
 ```
-Xong:    <việc đã merge / số đã đo được>
-Đang:    <đúng 1 việc>
-Chặn:    <ai/cái gì đang chặn — hoặc "không">
-```
-Dòng "Chặn" là dòng quan trọng nhất. Quy ước cứng: **bị chặn quá 24h mà không nhắn là lỗi quy trình, không phải lỗi kỹ thuật.**
-
-### 2.3. Điểm lại 2 tuần một lần (gộp vào cuộc gọi tuần chẵn, +15')
-
-Ba câu: *Cái gì đang chậm hơn tưởng? Giả định nào vừa bị kết quả đo bác bỏ? Có cần cắt scope không?*
+> ⚠️ **Quy tắc phối hợp:** Gặp lỗi hoặc bị tắc công việc quá **24 giờ** mà không nhắn lên nhóm để hỏi thì coi như vi phạm quy trình làm việc.
 
 ---
 
-## 3. Phân vai & sở hữu module
+## 3. Phân công nhiệm vụ & Ranh giới Module
 
-3 người ngang trình → **nút thắt không phải kỹ năng, mà là va chạm code và chờ nhau**. Vì vậy chia theo ranh giới file, mỗi người là người duyệt PR cuối cùng cho vùng của mình.
+Để tránh xung đột mã nguồn (merge conflict) và người này phải chờ người kia, dự án chia thành 3 phần độc lập tương ứng với 3 thành viên:
 
-| Luồng | Sở hữu | Vùng code | Giao diện với luồng khác |
+| Kỹ sư đảm nhiệm | Vai trò | Trách nhiệm chính | Vùng mã nguồn | Giao diện phối hợp với bạn khác |
+|---|---|---|---|---|
+| **Khôi** | **Dev + PM** *(AI Systems & Quản lý dự án)* | Nghiên cứu thuật toán điều khiển cây nháp, tích hợp vào vLLM, xây dựng API server. Duyệt và merge code vào nhánh `main`. Viết Chương 2 & 3. | `src/proposer/`, `src/server/` | Cung cấp endpoint chuẩn OpenAI (`/v1/chat/completions`) và dữ liệu đo đạc (telemetry JSON). |
+| **Dương** | **Dev + IT** *(MLOps, Benchmark & Hạ tầng)* | Xây dựng harness benchmark tự động, quản trị môi trường máy chủ GPU T4, chạy sweep concurrency, thu thập log và vẽ biểu đồ F1→F6. Viết Chương 4 & 5. | `experiments/` | Gọi API server của Khôi và đọc dữ liệu telemetry để xuất ra file CSV/biểu đồ. |
+| **Đại** | **Dev + BA** *(AI Application & Trưởng nhóm Tài liệu)* | Phân tích nghiệp vụ hóa đơn VAT, thiết kế schema dữ liệu, xây dựng pipeline 3 node (Trích xuất JSON $\rightarrow$ SQL $\rightarrow$ Báo cáo). Định dạng quyển báo cáo chuẩn PTIT và thiết kế slide. Viết Chương 1 & 6. | `src/pipeline/`, `docs/` | Gửi dữ liệu hóa đơn qua API server của Khôi dưới dạng các request thông thường. |
+
+### Hai giao diện đóng băng (Frozen Interfaces)
+Hai giao diện này được chốt cứng ngay từ Tuần 1 để 3 bạn làm việc song song mà không cần chờ nhau:
+1. **Giao diện A (Engine ↔ Đo lường):** Khôi cung cấp log JSON telemetry chứa các thông số: `acceptance_rate`, `tree_budgets`, `tpot_ms`, `vram_peak_mb`. Dương chỉ việc đọc cấu trúc JSON này để phân tích.
+2. **Giao diện B (Engine ↔ Pipeline ứng dụng):** Pipeline của Đại giao tiếp với server của Khôi thuần túy qua giao thức HTTP chuẩn OpenAI (`POST /v1/chat/completions`).
+
+---
+
+## 4. Quản lý công việc trên Bảng Kanban
+
+Nhóm theo dõi tiến độ trên bảng Trello với luồng chuyển trạng thái thẻ:
+```text
+Backlog  →  To-Do (Tuần)  →  In Progress (Tối đa 1 việc/người)  →  Blocked  →  Done
+```
+
+### Tiêu chí Hoàn thành (Definition of Done)
+Một công việc chỉ được kéo sang cột **Done** khi đáp ứng đủ 3 điều kiện:
+1. ✅ **Mã nguồn chạy được:** Đã merge vào nhánh `main` và chạy thử không phát sinh lỗi.
+2. ✅ **Có số liệu đo lường:** Đã lưu lại log hoặc kết quả chạy vào thư mục `experiments/` (đối với các task về hiệu năng).
+3. ✅ **Có nội dung viết vào quyển:** Đã viết tối thiểu 1–2 đoạn văn giải thích kết quả hoặc thiết kế đó vào bản thảo quyển báo cáo.
+
+> 📌 **Nguyên tắc:** *"Việc gì làm xong mà chưa viết vào bản thảo quyển báo cáo thì coi như chưa xong."* Làm đến đâu viết tài liệu đến đó để tránh áp lực viết dồn vào cuối kỳ.
+
+---
+
+## 5. Phân tầng phạm vi công việc (Nguyên tắc MoSCoW)
+
+Chủ động phân loại ngay từ đầu để biết cái gì bắt buộc phải có, cái gì có thể cắt giảm nếu thiếu thời gian:
+
+### MUST — Bắt buộc phải có để đủ điều kiện bảo vệ (Chiếm ~55% công sức)
+* Mô hình đích (Qwen2.5-7B 4-bit) chạy ổn định trên GPU T4 kèm cơ chế EAGLE-2 mặc định của vLLM để làm chuẩn so sánh (baseline).
+* Bộ công cụ đo tự động (Benchmark Harness) thu thập đầy đủ: Acceptance rate $\alpha$, TPOT, TTFT, VRAM trên thang tải concurrency ($1 \rightarrow 32$).
+* Bộ điều khiển cây nháp thích ứng (Adaptive Proposer): Tự động điều chỉnh cây nháp theo $\alpha$ và bộ nhớ VRAM còn trống.
+* Thử nghiệm xác minh không giảm chất lượng (Lossless Verification): So khớp 100% từng ký tự với cách sinh truyền thống ở `temperature = 0`.
+* Bảng so sánh 3 làn trên cùng phần cứng: `Vanilla` · `Static EAGLE-2` · `Adaptive`.
+* Quyển báo cáo đầy đủ 6 chương theo chuẩn PTIT và slide thuyết trình.
+
+### SHOULD — Giúp đồ án đạt điểm giỏi và có đóng góp rõ ràng (~30% công sức)
+* Module đo phần cứng lúc khởi động (Hardware Profiler) để nạp bảng chi phí thực tế vào thuật toán chọn cây.
+* Bản đồ trường hợp sử dụng (Use-case Map): Chỉ rõ những tình huống nào nên bật tối ưu và tình huống nào nên tắt để tránh giảm tốc độ.
+* Pipeline xử lý hóa đơn tiếng Việt (MC-OCR) tối thiểu 2 node (Trích xuất JSON và Text-to-SQL) để kiểm thử luồng thực tế.
+
+### COULD — Chỉ làm nếu hoàn thành MUST và SHOULD trước ngày 01/11 (~15% công sức)
+* Mở rộng thêm Node 3 (Tự động sinh báo cáo phân tích tài chính) kèm giao diện web demo trực quan (Streamlit/Gradio).
+* Tích hợp thử nghiệm với nền tảng Dify hoặc LangGraph.
+* Mượn thêm GPU cao cấp (như A100) chạy thử nghiệm đối chứng để chứng minh khả năng tự thích ứng trên nhiều loại phần cứng khác nhau.
+
+### WON'T — Dứt khoát không làm (Tránh mất thời gian và lạc hướng)
+* ❌ **Không tự huấn luyện (train/fine-tune) lại mô hình nháp EAGLE:** Tận dụng checkpoint công bố sẵn. Đóng góp cốt lõi của đề tài nằm ở **bộ điều khiển thuật toán**, không nằm ở việc train mô hình.
+* ❌ **Không tự viết ứng dụng quản lý mô hình (Launcher/Web UI phức tạp):** Tận dụng các công cụ có sẵn.
+
+---
+
+## 6. Lộ trình 6 Mốc phát triển (Milestones)
+
+Mỗi mốc thời gian tập trung kiểm chứng và giải quyết dứt điểm một câu hỏi kỹ thuật quan trọng nhất:
+
+| Mốc | Thời hạn | Mục tiêu kỹ thuật cốt lõi | Đầu ra tối thiểu cần đạt |
 |---|---|---|---|
-| **A · Engine** | Khôi (kiêm tích hợp) | `src/proposer/`, tích hợp vLLM | Phơi ra một class proposer + một dict telemetry |
-| **B · Đo lường** | TV2 | `experiments/`, harness benchmark, phân tích | Chỉ gọi endpoint HTTP + đọc dict telemetry |
-| **C · Pipeline & Quyển** | TV3 | `src/pipeline/`, dữ liệu MC-OCR, `docs/` | Chỉ gọi endpoint `/v1/chat/completions` |
+| **M0 · PoC Nền tảng** | **20/09** (Tuần 1) | *Đề tài có thực sự chạy được trên GPU T4 16GB không?* | vLLM và Qwen chạy được trên T4; chạy thử được EAGLE-2 mặc định; in ra tốc độ tok/s; chốt xong 2 giao diện đóng băng. |
+| **M1 · Baseline Benchmark** | **04/10** (Tuần 3) | *Hệ thống đo lường có đáng tin cậy không? Chuẩn so sánh ban đầu thế nào?* | Bộ đo tự động hoàn thành; có bảng số liệu đo 2 làn (vanilla & static) trên các mức tải concurrency 1 $\rightarrow$ 32. |
+| **M2 · Adaptive v0** | **18/10** (Tuần 5) | *Việc can thiệp điều khiển cây nháp lúc đang chạy có thực hiện được không?* | Bộ điều khiển co/giãn cây theo tỉ lệ đoán trúng $\alpha$; script test chứng minh lossless khớp 100% từng ký tự. |
+| **M3 · Hardware-Aware v1** | **01/11** (Tuần 7) | *Đưa bảng chi phí đo từ phần cứng vào thuật toán có giúp cải thiện tốc độ không?* | Hoàn thành module profiler phần cứng lúc bật máy; chạy đối chứng hiệu năng; thực hiện đánh giá tại Cổng kiểm soát 01/11. |
+| **M4 · Đóng băng Số liệu** | **15/11** (Tuần 9) | *Dữ liệu thực nghiệm đã đủ độ dày dặn và tin cậy để bảo vệ chưa?* | **Đóng băng toàn bộ code và số liệu**; xuất xong toàn bộ các biểu đồ so sánh; quay video chạy thử pipeline hóa đơn. |
+| **M5 · Quyển & Bảo vệ** | **30/11** (Tuần 11) | *Sản phẩm báo cáo và slide đã chỉn chu chưa?* | Hoàn thiện quyển báo cáo nộp trường; hoàn thành slide thuyết trình; tổng duyệt thử trả lời câu hỏi phản biện. |
 
-**Hai giao diện này phải được chốt và viết ra trong Tuần 1**, trước khi có ai viết dòng code thứ hai. Chốt xong thì ba luồng chạy song song **mà không cần chờ nhau** — đây chính là thứ cứu một đội không gặp mặt được.
-
-**Khôi giữ vai tích hợp** (người duy nhất được merge vào `main`), vì đang nắm nhật ký thiết kế. Không luân phiên vai này — luân phiên vai tích hợp trong dự án 13 tuần chỉ tạo ra đứt gãy ngữ cảnh.
-
-### Luật hợp tác
-- **WIP tối đa 1 việc/người.** Muốn nhận việc mới thì phải đẩy việc cũ sang Done.
-- **Branch sống tối đa 3 ngày.** Lâu hơn thì chẻ nhỏ task ra. (Đội async + branch dài = địa ngục merge.)
-- **PR không quá ~300 dòng thay đổi.** Duyệt trong 24h, không chờ tới buổi gọi tuần.
-- **Mọi quyết định lớn ghi vào [03-quyet-dinh-thiet-ke.md](03-quyet-dinh-thiet-ke.md)** dưới dạng QĐ-xx. Đội async quên mất *vì sao* nhanh hơn đội ngồi cùng phòng rất nhiều.
-
----
-
-## 4. Bảng Kanban
-
-```
-Backlog  →  Ready  →  Doing (WIP≤1)  →  Review  →  Done
-```
-- **Ready** = đã đủ rõ để bắt tay ngay: biết đầu ra là gì, biết thế nào là xong.
-- **Done** phải thoả **cả ba** điều kiện dưới.
-
-### Definition of Done
-
-Một task chỉ xong khi:
-1. ✅ Code đã merge vào `main`, chạy được từ đầu bằng một lệnh.
-2. ✅ **Có con số đo được ghi vào `experiments/`** (nếu là task có ảnh hưởng hiệu năng).
-3. ✅ **Có ít nhất một đoạn văn viết vào bản nháp quyển.**
-
-Điều 3 không phải thủ tục. Quy tắc vận hành của dự án này là:
-
-> **Kết quả nào chưa được viết ra thì coi như chưa tồn tại.**
-
-Đây là biện pháp phòng vệ trực tiếp cho cái bẫy kinh điển của đồ án: tuần 12 mới bắt đầu viết quyển, rồi phát hiện không nhớ nổi cấu hình nào đã sinh ra biểu đồ nào.
-
----
-
-## 5. Phân tầng scope (MoSCoW) — cắt ngay bây giờ
-
-Ngân sách ~455 giờ-người. Scope trong README hiện vượt xa con số đó. Cắt ngay từ đầu, chứ không cắt trong hoảng loạn ở tuần 11.
-
-### MUST — không có thì không có đồ án (~55% ngân sách)
-- vLLM chạy được target model trên T4, có EAGLE-2 stock làm chuẩn so sánh.
-- Harness benchmark đo được: acceptance α, TPOT/ITL, TTFT, VRAM, theo **thang concurrency**.
-- **Adaptive Proposer**: điều chỉnh cây nháp lúc chạy theo α + VRAM còn trống.
-- **Xác minh lossless**: cùng seed, cùng prompt → đầu ra khớp từng ký tự với làn vanilla.
-- Ba làn so sánh trên cùng phần cứng: vanilla · EAGLE-2 tĩnh · adaptive.
-- Quyển + slide bảo vệ.
-
-### SHOULD — thứ biến bài này từ "chạy được" thành "có đóng góp" (~30%)
-- **Profiler phần cứng lúc khởi động** (đo `t_draft`, `t_verify`, băng thông) nạp vào cost-model → **đây mới là phần "hardware-aware"**, tức là novelty thật (QĐ-04).
-- Bản đồ use-case: chỉ rõ regime nào **nên tắt** tối ưu (D-cut đã chứng minh regime đó tồn tại — xem [paper_summary/06](paper_summary/06-dcut-liu2026.md)).
-- Pipeline hoá đơn MC-OCR, tối thiểu 2 node, để đo end-to-end.
-
-### COULD — chỉ làm nếu MUST + SHOULD xong trước 01/11 (~15%)
-- Node 3 (SQL-to-BI), dashboard Streamlit.
-- Tích hợp Dify/LangGraph.
-- Chạy đối chứng trên GPU thứ hai (A100) để chứng minh cost-model thích ứng được — *điểm cộng mạnh nếu kịp*.
-
-### WON'T — cắt ngay hôm nay, ghi rõ lý do trong quyển
-- ❌ **Tự huấn luyện EAGLE draft head trên dữ liệu hoá đơn tiếng Việt.**
-  Dùng checkpoint EAGLE-2 đã công bố. Lý do: đây là hạng mục *rủi ro cao, tốn thời gian không đoán trước được, và **không** thuộc đóng góp của đồ án*. Đóng góp nằm ở **bộ điều khiển cây nháp**, không ở chất lượng draft head. README đã liệt kê đây là phương án dự phòng — quyết định của PM là **đẩy nó thành phương án chính ngay từ đầu**, không chờ.
-- ❌ App quản lý model (đã loại ở QĐ-05).
-- ❌ Bất kỳ hạng mục nào cần training kéo dài.
-
----
-
-## 6. Lộ trình theo mốc — **cố định ngày, thả scope**
-
-Mỗi mốc giết một điều-chưa-biết. Đến ngày thì giao thứ đang có; **không dời ngày**.
-
-| Mốc | Hạn | Câu hỏi rủi ro được trả lời | Đầu ra tối thiểu |
-|---|---|---|---|
-| **M0 · Xương sống** | **20/09** (T1) | *Toàn bộ đề tài có khả thi trên T4 không?* | vLLM + Qwen chạy trên T4; EAGLE-2 stock chạy được; in ra **một** con số tok/s; đã chốt 2 giao diện |
-| **M1 · Đường cơ sở** | **04/10** (T3) | *Đo có đáng tin không?* | Harness tự động; **kết quả 2 làn trên thang concurrency 1→32**, có variance qua nhiều lần chạy |
-| **M2 · Adaptive v0** | **18/10** (T5) | *Điều khiển cây lúc chạy có làm được không?* | Proposer đổi cây theo α; **lossless đã chứng minh**; có/không nhanh hơn stock — đều được ghi nhận |
-| **M3 · Hardware-aware v1** | **01/11** (T7) | *Đưa đặc tính GPU vào có ăn thua không?* | Profiler + cost-model; đo trên ≥2 cấu hình phần cứng nếu mượn được A100 |
-| **M4 · Đóng băng** | **15/11** (T9) | *Câu chuyện đã đủ để bảo vệ chưa?* | **Toàn bộ số liệu freeze**; biểu đồ xuất xong; demo pipeline quay video |
-| **M5 · Quyển & bảo vệ** | **30/11** (T11) | — | Quyển nộp; slide; đã tổng duyệt thử 1 lần |
-
-### Lịch tuần
-
-```
-T1  14–20/09   M0 Xương sống  ·  chốt giao diện  ·  bắt đầu viết Chương 1–2
-T2  21–27/09   Harness benchmark  ·  làn vanilla
-T3  28/09–04/10  ▲ M1 Đường cơ sở  ·  làn EAGLE-2 stock  ·  sweep concurrency
-T4  05–11/10   Proposer khung sườn  ·  telemetry α  ·  dữ liệu MC-OCR
-T5  12–18/10   ▲ M2 Adaptive v0  ·  xác minh lossless
-T6  19–25/10   Profiler phần cứng  ·  cost-model  ·  pipeline node 1–2
-T7  26/10–01/11  ▲ M3 Hardware-aware v1  ·  (cửa sổ mượn A100)
-T8  02–08/11   Quét kết quả đầy đủ  ·  bản đồ use-case  ·  chốt COULD
-T9  09–15/11   ▲ M4 ĐÓNG BĂNG  ·  biểu đồ  ·  quay demo
-T10 16–22/11   Viết quyển toàn thời gian (3 người)
-T11 23–29/11   ▲ M5 Nộp  ·  slide
-T12 30/11–06/12  Luyện bảo vệ  ·  dựng câu hỏi phản biện
-T13 07–13/12   Đệm / Bảo vệ
+### Kế hoạch theo từng tuần
+```text
+Tuần 1  (14–20/09):   ▲ M0: PoC Nền tảng · Chốt 2 giao diện · Viết nháp Chương 1
+Tuần 2  (21–27/09):   Xây dựng harness benchmark tự động · Đo thử làn vanilla
+Tuần 3  (28/09–04/10): ▲ M1: Baseline Benchmark · Đo làn EAGLE-2 tĩnh · Quét concurrency
+Tuần 4  (05–11/10):   Viết khung bộ điều khiển Proposer · Đọc telemetry · Lọc dữ liệu MC-OCR
+Tuần 5  (12–18/10):   ▲ M2: Adaptive v0 · Chạy kiểm thử Lossless
+Tuần 6  (19–25/10):   Viết Profiler đo phần cứng · Xây dựng pipeline hóa đơn Node 1–2
+Tuần 7  (26/10–01/11): ▲ M3: Hardware-Aware v1 · Đánh giá cổng kiểm soát 01/11
+Tuần 8  (02–08/11):   Chạy toàn bộ ma trận 60 ô thí nghiệm · Lập bản đồ use-case
+Tuần 9  (09–15/11):   ▲ M4: ĐÓNG BĂNG TOÀN BỘ CODE & SỐ LIỆU · Xuất biểu đồ · Quay video demo
+Tuần 10 (16–22/11):   Cả 3 người tập trung ráp và hoàn thiện quyển báo cáo
+Tuần 11 (23–29/11):   ▲ M5: Nộp quyển chính thức · Thiết kế slide bảo vệ
+Tuần 12 (30/11–06/12): Tập dượt thuyết trình · Chuẩn bị câu hỏi phản biện
+Tuần 13 (07–13/12):   Tuần đệm dự phòng / Chờ ngày bảo vệ chính thức
 ```
 
-**Luồng C (quyển) chạy song song từ Tuần 1**, không đợi tới T10. T10 là để *ráp và gọt*, không phải để *viết từ đầu*.
-
-### Ba cổng kiểm soát (quyết định cắt scope, không thương lượng)
-
-| Ngày | Nếu điều này chưa đúng | Thì làm |
-|---|---|---|
-| **04/10** | Chưa có đường cơ sở 2 làn chạy được | Cắt toàn bộ COULD; pipeline rút còn 1 node |
-| **01/11** | Adaptive chưa nhanh hơn stock ở *bất kỳ* regime nào | **Xoay góc kể chuyện**: đề tài trở thành *nghiên cứu thực nghiệm về giới hạn của speculative decoding trên GPU phổ thông*. Vẫn đủ bảo vệ — D-cut cho thấy "SD chạy chậm hơn" là phát hiện có giá trị thật. Dừng tối ưu, dồn vào đo và phân tích. |
-| **15/11** | Bất cứ thứ gì chưa xong | Vẫn đóng băng. Viết nó vào mục Hạn chế & Hướng phát triển. |
-
-Cổng 01/11 là cổng quan trọng nhất, nên nói rõ trước với GVHD ngay từ đầu: **kết quả âm tính có được chấp nhận không?** Hỏi câu này ở tuần 1 thì rẻ; hỏi ở tuần 10 thì đã muộn.
+### Ba cổng đánh giá & Điều chỉnh phạm vi (Checkpoints)
+1. **Ngày 04/10:** Nếu chưa có kết quả đo ổn định của 2 làn cơ sở $\rightarrow$ Cắt bỏ toàn bộ các mục ở tầng COULD, thu nhỏ pipeline hóa đơn về 1 node duy nhất.
+2. **Ngày 01/11 (Quan trọng nhất):** Nếu phương pháp Adaptive không giúp tăng tốc hơn so với cấu hình tĩnh $\rightarrow$ **Chủ động chuyển hướng góc kể chuyện của đồ án**: Đề tài trở thành *"Nghiên cứu thực nghiệm chuyên sâu về các ranh giới suy hao và giới hạn vật lý của giải mã suy đoán trên GPU phổ thông"*. Đây vẫn là một kết quả khoa học giá trị và hoàn toàn đủ điều kiện bảo vệ điểm cao.
+3. **Ngày 15/11:** Bất kể tính năng nào chưa xong đều phải dừng lại để đóng băng mã nguồn; các tính năng dở dang sẽ được đưa vào phần "Hạn chế & Hướng phát triển trong tương lai".
 
 ---
 
-## 7. Sổ rủi ro
+## 7. Bảng Quản trị Rủi ro & Phương án Dự phòng
 
-| # | Rủi ro | Khả năng | Tác động | Dấu hiệu nhận biết | Đối sách |
-|---|---|:--:|:--:|---|---|
-| R1 | vLLM `custom_class` không cho đổi cây **theo từng bước** | Trung bình | **Chí mạng** | M0 trượt | Kiểm chứng **ngay Tuần 1**. Nếu bí → fork vLLM hoặc lùi về script suy luận tự viết (chậm hơn nhưng kiểm soát được) |
-| R2 | T4 16GB không đủ cho target + draft + KV cache | Trung bình | Cao | OOM lúc M0 | Target 4-bit hoặc model 1–3B. **Đo capacity thật trước** ([02-tong-quan](02-tong-quan-tai-lieu.md) đã cảnh báo) |
-| R3 | Wall-clock trên Colab/Kaggle nhiễu, số vô nghĩa | **Cao** | Cao | Lệch >10% giữa các lần chạy | Warm-up + ≥5 lần lặp + báo cáo trung vị & phương sai. Đóng gói thành quy tắc trong harness từ M1 |
-| R4 | Adaptive không thắng stock EAGLE-2 | Trung bình | Cao | M3 | Cổng 01/11 → xoay thành nghiên cứu thực nghiệm |
-| R5 | Một thành viên biến mất (thi cử, việc riêng) | **Cao** | Trung bình | Vắng 2 standup liên tiếp | Giao diện mỏng giúp cô lập thiệt hại; luồng C có thể bị hấp thụ bởi 2 người còn lại |
-| R6 | Va chạm merge do 3 người ngang trình cùng đụng engine | Trung bình | Trung bình | PR conflict lặp lại | Sở hữu module + branch ≤3 ngày + PR ≤300 dòng |
-| R7 | Khoa chốt deadline **sớm hơn** dự kiến | Trung bình | Cao | Thông báo của khoa | Đã plan theo kịch bản xấu nhất; M4 = 15/11 chính là lớp đệm |
-| R8 | Không mượn được A100 | Trung bình | Thấp | T7 | Phần đối chứng đa-phần-cứng nằm ở tầng COULD, mất không ảnh hưởng MUST |
-
----
-
-## 8. Chỉ số theo dõi (cập nhật mỗi tuần, 5 phút)
-
-Đội nghiên cứu **không đo bằng story points**. Đo bằng ba thứ:
-
-1. **Rủi ro đã bị giết / còn lại** — thước đo tiến độ thật của dự án nghiên cứu.
-2. **Số ô đã có số liệu** trên bảng kết quả (3 làn × N tác vụ × 5 mức concurrency). Đây là bảng cuối cùng sẽ nằm trong quyển; điền dần được bao nhiêu ô là biết đang ở đâu.
-3. **Số trang nháp quyển.** Nếu tới 01/11 mà dưới 20 trang thì đang trễ, bất kể code chạy tốt cỡ nào.
-
-Không theo dõi: velocity, giờ công, số commit.
+| Mã | Rủi ro tiềm ẩn | Khả năng | Mức ảnh hưởng | Phương án xử lý |
+|---|---|:--:|:--:|---|
+| **R1** | vLLM không hỗ trợ đổi kích thước cây nháp theo từng bước sinh | Trung bình | Rất cao | Kiểm tra ngay trong Tuần 1 (M0). Nếu không hỗ trợ trực tiếp, nhóm sẽ fork nhẹ vLLM hoặc chuyển sang vòng lặp suy luận độc lập. |
+| **R2** | GPU T4 16GB bị tràn bộ nhớ (OOM) khi chạy tải lớn | Trung bình | Cao | Dùng mô hình lượng tử hóa 4-bit (AWQ/GPTQ) để giải phóng VRAM cho KV cache. Hạ trần concurrency nếu cần và nêu rõ giới hạn phần cứng trong báo cáo. |
+| **R3** | Môi trường máy chủ (Colab/Kaggle) bị nhiễu thời gian đo | Cao | Cao | Bỏ qua 3 request đầu (warm-up), lặp lại ít nhất 5 lần mỗi cấu hình và lấy giá trị trung vị (median). Đan xen các lần chạy giữa các làn để triệt tiêu độ trôi phần cứng. |
+| **R4** | Thuật toán Adaptive không chạy nhanh hơn bản mặc định | Trung bình | Cao | Sử dụng phương án tại Cổng kiểm soát 01/11: Chuyển hướng thành đề tài nghiên cứu thực nghiệm đánh giá ranh giới hiệu quả. |
+| **R5** | Một thành viên bận việc riêng hoặc thi cử trong 1–2 tuần | Cao | Trung bình | Nhờ 2 giao diện đóng băng độc lập, công việc của bạn đó không làm nghẽn 2 bạn còn lại. Hai bạn còn lại có thể hỗ trợ chạy tiếp các phần cốt lõi. |
+| **R6** | Xung đột mã nguồn khi làm việc chung | Trung bình | Trung bình | Mỗi người sở hữu một thư mục riêng; chỉ làm việc trên branch riêng; chỉ có Khôi mới có quyền duyệt merge vào nhánh `main`. |
+| **R7** | Nhà trường thông báo lịch bảo vệ sớm hơn dự kiến | Trung bình | Cao | Toàn bộ kế hoạch đã được thiết kế để đóng băng vào 15/11, tạo sẵn 2–3 tuần đệm an toàn trước ngày bảo vệ. |
 
 ---
 
-## 9. Tóm tắt một dòng
+## 8. Thước đo Tiến độ Thực tế
 
-> **Kanban + mốc cố định ngày, xương sống ưu tiên-rủi-ro, một cuộc gọi 45 phút/tuần, phần còn lại viết ra văn bản; cắt scope trước chứ không cắt lúc hoảng; code đóng băng 15/11 bất chấp.**
+Nhóm không dùng các chỉ số lý thuyết như điểm story points hay số lượng commit. Tiến độ được đánh giá bằng **3 con số cụ thể**:
+1. **Số rủi ro kỹ thuật đã được gỡ bỏ:** Đã kiểm chứng xong bao nhiêu câu hỏi chặn (M-01, M-02, M-03...).
+2. **Số ô dữ liệu đã đo được:** Tiến độ điền đầy ma trận kết quả thí nghiệm (60 ô kết hợp giữa 3 làn, 4 bài test và 5 mức tải).
+3. **Số trang bản thảo quyển báo cáo:** Đến ngày **01/11**, nếu bản thảo quyển chưa đạt tối thiểu **20 trang** thì nhóm phải dừng việc phát triển tính năng mới để tập trung viết báo cáo.
+
+---
+
+## 9. Tóm tắt cốt lõi trong một câu
+
+> **Quản lý theo bảng việc trực quan Kanban, ưu tiên xử lý rủi ro kỹ thuật sớm, họp ngắn gọn 45 phút tối thứ Bảy, làm đến đâu viết báo cáo đến đó, và dứt khoát đóng băng toàn bộ mã nguồn vào ngày 15/11.**

@@ -1,140 +1,156 @@
-# Thiết kế hệ thống
+# Thiết kế Hệ thống (System Architecture)
 
-> 🟡 **Khung sườn — phải chốt trong Tuần 1 (hạn 20/09).**
-> Hai giao diện ở §3 là thứ cho phép ba luồng chạy song song mà không chờ nhau ([04 §3](04-quy-trinh-va-ke-hoach.md)). **Đóng băng chúng trước khi viết dòng code thứ hai.**
-> Ký hiệu: [07-thuat-ngu.md](07-thuat-ngu.md).
+> **Cập nhật:** 14/09/2026.  
+> **Lưu ý quan trọng:** Hai giao diện đóng băng ở **Mục 3** là bản hợp đồng kỹ thuật giúp 3 luồng công việc chạy song song mà không dẫm chân lên nhau ([xem docs/04](04-quy-trinh-va-ke-hoach.md)). Bắt buộc phải giữ nguyên vẹn 2 giao diện này khi lập trình.
 
-## 1. Kiến trúc tổng thể
+---
 
-```
+## 1. Kiến trúc Tổng thể
+
+Hệ thống được thiết kế theo mô hình kiến trúc phân lớp, tách biệt rõ ràng giữa tầng phục vụ suy luận (Serving Engine), bộ điều khiển thích ứng (Adaptive Proposer) và các ứng dụng tiêu thụ (Client Applications):
+
+```text
 ┌──────────────────────────────────────────────────────────────────┐
-│  KHÁCH (Dify / LangGraph / script benchmark / pipeline hoá đơn)  │
+│  CLIENT ỨNG DỤNG (Dify / LangGraph / Script Benchmark / Pipeline) │
 └───────────────────────────┬──────────────────────────────────────┘
-                            │  HTTP  ·  /v1/chat/completions
+                            │  Giao thức HTTP chuẩn OpenAI
+                            │  POST /v1/chat/completions
                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  MÁY PHỤC VỤ vLLM  (OpenAI-compatible)                           │
+│  MÁY PHỤC VỤ vLLM (OpenAI-compatible Serving Engine)              │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │  Vòng lặp giải mã                                          │  │
-│  │     ├─ Mô hình đích: Qwen2.5-7B-Instruct 4-bit             │  │
-│  │     └─ Bộ đề xuất nháp  ◄── điểm cắm của đồ án             │  │
+│  │  Vòng lặp giải mã (Decoding Loop)                          │  │
+│  │     ├─ Mô hình đích (Target Model): Qwen2.5-7B 4-bit       │  │
+│  │     └─ Bộ đề xuất nháp (Proposer) ◄── Điểm tích hợp module │  │
 │  └────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
                             ▲
         ┌───────────────────┴────────────────────┐
         │  ADAPTIVE PROPOSER   (src/proposer/)   │
         │                                        │
-        │  ┌─ HardwareProfiler ──────────────┐   │  chạy 1 lần lúc khởi động
-        │  │  đo t_draft(N), t_verify(N)     │   │
-        │  │  → bảng chi phí C(N, batch)     │   │
+        │  ┌─ HardwareProfiler ──────────────┐   │  Chạy 1 lần duy nhất lúc khởi động
+        │  │  Đo t_draft(N), t_verify(N)     │   │
+        │  │  → Bảng chi phí C(N, batch)     │   │
         │  └─────────────────────────────────┘   │
-        │  ┌─ Telemetry ─────────────────────┐   │  cập nhật mỗi bước
-        │  │  α trượt · VRAM trống · batch   │   │
+        │  ┌─ TelemetryCollector ────────────┐   │  Thu thập liên tục mỗi bước sinh
+        │  │  Rolling α · VRAM trống · Batch │   │
         │  └─────────────────────────────────┘   │
-        │  ┌─ BudgetController ──────────────┐   │  quyết định mỗi bước
+        │  ┌─ BudgetController ──────────────┐   │  Ra quyết định ngân sách mỗi bước
         │  │  N* = argmax  E[τ(N)] / C(N,B)  │   │
         │  │  N* = 0  ⇒  TẮT suy đoán        │   │
         │  └─────────────────────────────────┘   │
         └────────────────────────────────────────┘
 ```
 
-**Ba làn phục vụ** dùng chung một máy chủ, chọn bằng cấu hình lúc khởi động: `vanilla` · `static` · `adaptive`.
+**Ba chế độ phục vụ (Serving Lanes):** Cùng chạy trên một máy chủ duy nhất, được lựa chọn qua cờ cấu hình lúc khởi động:
+* `vanilla`: Giải mã tuần tự truyền thống (mô hình gốc tự sinh từng token).
+* `static`: Giải mã suy đoán với cấu hình cây EAGLE-2 cố định.
+* `adaptive`: Giải mã suy đoán với bộ điều khiển thích ứng phần cứng của nhóm.
 
-## 2. Thuật toán bộ điều khiển (bản nháp — chờ M2/M3 hiệu chỉnh)
+---
 
-### 2.1. Lúc khởi động — đo hồ sơ
+## 2. Thuật toán Bộ điều khiển Thích ứng (Adaptive Controller)
 
-Với mỗi ngân sách cây `N ∈ {0, 8, 16, 32, 60}` và mỗi mức batch `B ∈ {1, 2, 4, 8, 16, 32}`, đo độ trễ một bước giải mã đầy đủ:
+### 2.1. Giai đoạn khởi động — Đo lường năng lực phần cứng (Hardware Profiling)
+Trước khi mở cổng phục vụ, hệ thống chạy một lượt đo thực tế để lập bảng chi phí trên đúng chiếc GPU đang chạy.  
+Với mỗi ngân sách cây $N \in \{0, 8, 16, 32, 60\}$ và mỗi mức batch $B \in \{1, 2, 4, 8, 16, 32\}$, hệ thống đo độ trễ trung vị của một bước giải mã:
+$$C(N, B) = \text{Thời gian thực thi trung vị một bước (ms)}$$
+
+* **Đặc điểm then chốt:** $N = 0$ tương ứng với việc **tắt hoàn toàn suy đoán** (quay về vanilla). Đây chính là **cơ chế sàn an toàn (safety fallback)** đảm bảo hệ thống không bao giờ chạy chậm hơn chế độ mặc định.
+* **Rời rạc hóa ngân sách:** Tập giá trị của $N$ được cố định thành các mốc rời rạc để tensor kích thước ổn định, tránh việc biên dịch lại CUDA Graph liên tục làm giảm hiệu năng.
+
+### 2.2. Giai đoạn phục vụ — Ra quyết định ngân sách theo thời gian thực
+Tại mỗi bước sinh token của request:
+```python
+# 1. Thu thập thông số thời gian thực
+alpha_hat = get_rolling_acceptance_rate(window=W)  # Tỉ lệ chấp nhận trượt
+B = get_current_running_requests()                 # Số request đồng thời
+free_vram = get_available_vram()                   # VRAM còn trống (MB)
+
+# 2. Xác định trần ngân sách an toàn theo VRAM
+N_max = calculate_max_safe_budget(free_vram)
+
+# 3. Tối ưu hóa tỉ số lợi ích / chi phí đo thực
+N_star = argmax(
+    N <= N_max,
+    expected_gain(N, alpha_hat) / C(N, B)
+)
+
+# 4. Fallback an toàn nếu không có lợi
+if N_star == 0:
+    skip_speculative_for_this_step()
 ```
-C(N, B)  =  thời gian trung vị của một bước  (ms)
-```
-`N = 0` nghĩa là **tắt suy đoán** — đây chính là **đường sàn an toàn**, và là điều kiện đủ để đảm bảo RQ2 (không bao giờ chậm hơn vanilla).
 
-Tập `N` được **rời rạc hoá có chủ ý** để giữ kích thước tensor ổn định và không phá CUDA graph — bài học lấy từ [D-cut §3.3](paper_summary/06-dcut-liu2026.md).
+* **Tử số:** Lợi ích kỳ vọng (số token dự kiến được chấp nhận $\mathbb{E}[\tau]$) tính theo tỉ lệ trúng $\hat{\alpha}$.
+* **Mẫu số:** Chi phí thời gian $C(N, B)$ lấy trực tiếp từ bảng đo thực nghiệm phần cứng, không dùng hằng số lý thuyết.
 
-### 2.2. Lúc chạy — chọn ngân sách
+---
 
-```
-mỗi bước giải mã:
-    α̂    ← trung bình trượt tỉ lệ chấp nhận (cửa sổ W bước gần nhất)
-    B    ← số request đang chạy
-    free ← VRAM còn trống
+## 3. Hai Giao diện Đóng băng (Frozen Interfaces)
 
-    N_max ← ngân sách lớn nhất còn vừa VRAM (có biên an toàn)
+> Đây là hợp đồng kỹ thuật bất biến giữa 3 luồng công việc. Bất kỳ thay đổi nào về cấu trúc dữ liệu đều phải được cả nhóm thông qua.
 
-    N* = argmax [ N ≤ N_max ]   E[τ(N, α̂)] / C(N, B)
-
-    nếu  N* = 0  →  bỏ qua suy đoán ở bước này
-```
-
-- **Tử số** = lợi ích kỳ vọng, ước lượng từ `α̂` đo được.
-- **Mẫu số** = chi phí **đã đo trên đúng GPU này**, không phải hằng số lý thuyết.
-
-Ba điểm cần quyết trong Tuần 1 (đánh dấu ❓ vì chưa chốt):
-- ❓ Dạng hàm `E[τ(N, α̂)]` — dùng công thức giải tích cho chuỗi tuyến tính rồi hiệu chỉnh, hay dựng bảng tra từ đo thực?
-- ❓ Cửa sổ trượt `W` — ngắn thì nhiễu, dài thì phản ứng chậm khi chuyển node trong pipeline.
-- ❓ Chống dao động: có cần độ trễ trễ (hysteresis) để tránh `N*` nhảy qua lại mỗi bước không?
-
-## 3. Hai giao diện đóng băng
-
-> Đây là **hợp đồng** giữa ba luồng làm việc. Đổi thì phải báo cả nhóm và ghi vào [03](03-quyet-dinh-thiet-ke.md).
-
-### Giao diện A — Luồng Engine ↔ Luồng Đo lường
-
-Máy chủ phơi telemetry của mỗi request. Luồng Đo lường **chỉ đọc cấu trúc này**, không đọc nội tại của engine.
+### 3.1. Giao diện A — Giữa Luồng Engine (Khôi) và Luồng Đo lường (TV2)
+Máy chủ phơi dữ liệu telemetry của từng request qua endpoint `/metrics/request/{request_id}` hoặc đính kèm trong response payload:
 
 ```jsonc
-// GET /metrics/request/{request_id}   hoặc trường phụ trong response
 {
-  "request_id":      "abc123",
-  "lane":            "adaptive",        // vanilla | static | adaptive
-  "ttft_ms":         142.5,
-  "tpot_ms":         18.3,
-  "itl_ms":          [19.1, 17.8, ...], // chuỗi đầy đủ, để tính phân vị
+  "request_id":      "req_abc123",
+  "lane":            "adaptive",        // "vanilla" | "static" | "adaptive"
+  "ttft_ms":         142.5,             // Thời gian tới token đầu tiên
+  "tpot_ms":         18.3,              // Thời gian trung bình mỗi output token
+  "itl_ms":          [19.1, 17.8, ...], // Mảng độ trễ giữa từng token (để tính p50/p95)
   "output_tokens":   256,
-  "acceptance_rate": 0.71,              // α
-  "mean_accept_len": 3.42,              // τ
-  "tree_budgets":    [60, 60, 32, 0],   // N* theo từng bước — bằng chứng thích ứng
-  "vram_peak_mb":    13820,
+  "acceptance_rate": 0.71,              // Tỉ lệ chấp nhận α
+  "mean_accept_len": 3.42,              // Chiều dài chấp nhận trung bình τ
+  "tree_budgets":    [60, 60, 32, 0],   // Ngân sách N* qua từng bước (bằng chứng thích ứng)
+  "vram_peak_mb":    13820,             // Đỉnh VRAM sử dụng
   "batch_size_avg":  8.0
 }
 ```
+* **Ý nghĩa:** TV2 chỉ cần đọc cấu trúc JSON này để phân tích và vẽ biểu đồ, hoàn toàn không cần can thiệp vào mã nguồn nội bộ của vLLM.
 
-Trường `tree_budgets` là **bằng chứng trực quan** rằng bộ điều khiển thực sự thích ứng — nó sẽ thành một biểu đồ trong quyển.
+### 3.2. Giao diện B — Giữa Luồng Engine (Khôi) và Luồng Pipeline (TV3)
+Pipeline hóa đơn giao tiếp với máy chủ thuần túy qua giao thức HTTP chuẩn OpenAI:
 
-### Giao diện B — Luồng Engine ↔ Luồng Pipeline
-
-Pipeline hoá đơn **chỉ nói chuyện qua HTTP chuẩn OpenAI**, không import gì từ `src/proposer/`:
-
-```
+```http
 POST /v1/chat/completions
-{ "model": "...", "messages": [...], "temperature": 0, "max_tokens": ... }
+Content-Type: application/json
+
+{
+  "model": "qwen2.5-7b-instruct",
+  "messages": [
+    {"role": "system", "content": "..."},
+    {"role": "user", "content": "..."}
+  ],
+  "temperature": 0,
+  "max_tokens": 1024
+}
 ```
+* **Ý nghĩa:** Chế độ phục vụ (`vanilla`, `static`, `adaptive`) được cấu hình ở cấp độ khởi động server, không nằm trong body request. Nhờ đó, code pipeline của TV3 giữ nguyên vẹn 100% khi chạy thử nghiệm trên cả 3 chế độ.
 
-Chọn làn bằng **cờ khởi động máy chủ**, không bằng tham số request → pipeline chạy y hệt nhau ở cả ba làn, loại bỏ một nguồn sai lệch khi so sánh.
+---
 
-**Hệ quả:** luồng Pipeline có thể phát triển **từ Tuần 1** dựa trên bất kỳ máy chủ OpenAI-compat nào (kể cả Ollama), không phải chờ Adaptive Proposer.
+## 4. Cấu trúc Module Mã nguồn dự kiến
 
-## 4. Bản đồ module (dự kiến)
-
-```
+```text
 src/
-├── server/          # dựng vLLM, chọn làn, phơi /metrics   [Giao diện A]
-├── proposer/
-│   ├── profiler.py       # HardwareProfiler → bảng C(N,B)
-│   ├── telemetry.py      # α trượt, VRAM, batch
-│   ├── controller.py     # BudgetController — thuật toán §2.2
-│   └── adapter.py        # lớp nối vào custom_class của vLLM
-└── pipeline/        # 3 node hoá đơn MC-OCR                [Giao diện B]
+├── server/               # Khởi tạo vLLM, quản lý chế độ phục vụ, phơi API & /metrics
+├── proposer/             # Module điều khiển cây nháp thích ứng (Adaptive Proposer)
+│   ├── profiler.py       # HardwareProfiler: Đo phần cứng lúc bật máy → Bảng C(N, B)
+│   ├── telemetry.py      # TelemetryCollector: Theo dõi α trượt, VRAM, batch
+│   ├── controller.py     # BudgetController: Giải thuật chọn ngân sách N*
+│   └── adapter.py        # Lớp adapter tích hợp vào custom_class của vLLM
+└── pipeline/             # Pipeline xử lý hóa đơn tiếng Việt MC-OCR (3 nodes)
 ```
 
-## 5. Câu hỏi kỹ thuật chặn (phải trả lời ở M0)
+---
 
-| # | Câu hỏi | Nếu câu trả lời là "không" thì sao |
+## 5. Các Câu hỏi Kỹ thuật Chặn (Phải giải quyết dứt điểm ở mốc M0)
+
+| Mã | Câu hỏi kỹ thuật cần kiểm chứng | Phương án dự phòng nếu không khả thi |
 |---|---|---|
-| **M-03** | vLLM `custom_class` proposer có cho đổi cấu hình cây **theo từng bước** không, hay chỉ đặt được lúc khởi động? | Fork vLLM, hoặc lùi về vòng lặp suy luận tự viết (chậm hơn nhưng kiểm soát được) |
-| **M-02** | Có checkpoint EAGLE-2 cho Qwen2.5-7B, chạy được với bản 4-bit không? | Đổi mô hình đích cho khớp checkpoint — **không** chuyển sang tự train ([QĐ-10](03-quyet-dinh-thiet-ke.md)) |
-| **HW-1** | vLLM + AWQ/GPTQ + EAGLE có chạy trên **T4 (sm_75)** không? T4 không có bf16, không chạy được FlashAttention-2, một số nhân lượng tử hoá đòi sm_80+ | Đổi sang GPU khác (Colab L4/A100), hoặc mô hình nhỏ hơn ở FP16 |
-| **HW-2** | Capacity thật: model 4-bit + KV cache + cây nháp ở batch 32 có vừa 16GB không? | Hạ trần concurrency và ghi rõ trong phạm vi |
-
-Bốn câu này là **toàn bộ nội dung của mốc M0**. Chưa trả lời xong thì không được viết code điều khiển.
+| **M-03** | Cơ chế `custom_class` của vLLM có cho phép thay đổi kích thước cây nháp $N$ linh hoạt theo từng bước sinh không? | Fork nhẹ vLLM để mở API chỉnh cây, hoặc chuyển về vòng lặp suy luận độc lập (chậm hơn nhưng kiểm soát hoàn toàn). |
+| **M-02** | Checkpoint EAGLE-2 công bố sẵn cho Qwen2.5-7B có tải và chạy tương thích với bản lượng tử hóa 4-bit (AWQ/GPTQ) không? | Đổi mô hình đích sang phiên bản có checkpoint sẵn — kiên quyết **không tự train lại** ([QĐ-10](03-quyet-dinh-thiet-ke.md)). |
+| **HW-1** | Tổ hợp vLLM + AWQ + EAGLE có chạy trơn tru trên GPU kiến trúc Turing T4 (sm_75) không (khi thiếu bf16 và FlashAttention-2)? | Chuyển sang backend attention tương thích (XFormers) hoặc đổi sang môi trường GPU L4 trên Colab. |
+| **HW-2** | Dung lượng 16GB của T4 có đủ chứa đồng thời mô hình 4-bit + KV Cache + Cây nháp ở mức concurrency 32 không? | Đo đạc dung lượng thực tế, chủ động hạ trần concurrency tối đa nếu VRAM không cho phép. |

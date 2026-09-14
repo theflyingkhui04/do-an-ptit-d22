@@ -44,18 +44,21 @@ RQ2 đáng chú ý ở chỗ nó **có thể trả lời được kể cả khi 
 ## 1.4. Mục tiêu và phạm vi
 
 **Mục tiêu:**
-- **G1.** Tái lập EAGLE-2 trên vLLM làm đường cơ sở chạy được trên GPU phổ thông.
+
+- **G1.** Tái lập EAGLE-2 trên vLLM làm chuẩn đối chứng (baseline) chạy được trên GPU phổ thông.
 - **G2.** Xây **Adaptive Proposer** — bộ điều khiển chỉnh ngân sách cây nháp lúc chạy từ hồ sơ phần cứng đo thực + telemetry (α, VRAM).
 - **G3.** Đóng gói thành **endpoint tương thích OpenAI** (`/v1/chat/completions`), cắm thẳng vào Dify/LangGraph mà không sửa ứng dụng.
 - **G4.** **Đánh giá end-to-end** trên pipeline phân tích hoá đơn tiếng Việt, so ba làn trên **thang concurrency**, và rút ra **bản đồ use-case**.
 
 **Phạm vi:**
+
 - Suy luận **đơn GPU**, trọng tâm là chế độ phục vụ độ trễ thấp; có quét thang concurrency (1 → 32) để **xác định ranh giới nơi tối ưu hết tác dụng**, chứ không nhằm tối ưu cho throughput lớn.
 - Mô hình đích: **Qwen2.5-7B-Instruct lượng tử hoá 4-bit (AWQ/GPTQ)** trên T4 16GB ([QĐ-09](03-quyet-dinh-thiet-ke.md)).
 - **Dùng checkpoint EAGLE-2 công bố sẵn — không tự huấn luyện đầu nháp** ([QĐ-10](03-quyet-dinh-thiet-ke.md)).
 - Giữ nguyên **tiêu chí chấp nhận** của speculative decoding → tính lossless được bảo toàn theo thiết kế, không phải theo thực nghiệm.
 
 **Ngoài phạm vi (nói rõ để tránh hiểu nhầm khi bảo vệ):**
+
 - ❌ **Không** cải thiện chất lượng đầu ra. Đề tài lossless → đầu ra **theo định nghĩa là giống hệt** làn thường. Không có đánh giá chất lượng sinh; chỉ có **một phép xác minh** rằng đầu ra khớp từng ký tự ([06 §4](06-ke-hoach-thuc-nghiem.md)).
 - ❌ **Không** huấn luyện hay tinh chỉnh mô hình đích.
 - ❌ **Không** nhằm đánh bại EAGLE-2 trên mọi cấu hình — chỉ cần **thắng hoặc ngang trong chế độ GPU phổ thông**, kèm đặc tả regime ([QĐ-04](03-quyet-dinh-thiet-ke.md)).
@@ -97,11 +100,11 @@ RQ2 đáng chú ý ở chỗ nó **có thể trả lời được kể cả khi 
 
 Đây **không phải** việc gắn đề tài vào một domain ứng dụng (điều đã bị loại ở [QĐ-01](03-quyet-dinh-thiet-ke.md)). Pipeline này đóng vai **dụng cụ đo**, được chọn vì nó cho **ba chế độ entropy tương phản trong cùng một quy trình** — thứ mà một prompt đơn lẻ không cho được:
 
-| Node | Đặc tính sinh | α kỳ vọng | Vai trò trong thí nghiệm |
-|---|---|:--:|---|
-| 1 · Extractor | JSON lặp khuôn, entropy **thấp** | cao | Chế độ *tốt nhất* của suy đoán — cây nên mọc sâu |
-| 2 · Text-to-SQL | cú pháp ràng buộc, **trung bình** | vừa | Chế độ cân bằng |
-| 3 · SQL-to-BI | văn xuôi tự do, entropy **cao** | thấp | Chế độ *xấu nhất* — nơi tăng tốc âm xuất hiện, và nơi bộ điều khiển phải biết **tắt** |
+| Node             | Đặc tính sinh                            | α kỳ vọng | Vai trò trong thí nghiệm                                                                                       |
+| ---------------- | ------------------------------------------- | :----------: | ----------------------------------------------------------------------------------------------------------------- |
+| 1 · Extractor   | JSON lặp khuôn, entropy**thấp**    |     cao     | Chế độ*tốt nhất* của suy đoán — cây nên mọc sâu                                                    |
+| 2 · Text-to-SQL | cú pháp ràng buộc,**trung bình** |     vừa     | Chế độ cân bằng                                                                                              |
+| 3 · SQL-to-BI   | văn xuôi tự do, entropy**cao**     |    thấp    | Chế độ*xấu nhất* — nơi tăng tốc âm xuất hiện, và nơi bộ điều khiển phải biết **tắt** |
 
 Ngoài ra, độ trễ end-to-end `= Lat(N1) + Lat(N2) + Lat(N3)` minh hoạ trực tiếp luận điểm **độ trễ cộng dồn** ở §1.2. Đây là lý do chọn pipeline nhiều node thay vì một lời gọi đơn.
 
@@ -109,16 +112,16 @@ Ngoài ra, độ trễ end-to-end `= Lat(N1) + Lat(N2) + Lat(N3)` minh hoạ tr�
 
 # 2. Sản phẩm đầu ra
 
-| # | Đầu ra | Tầng |
-|---|---|---|
-| 1 | **Máy phục vụ tương thích OpenAI** với hai làn *vanilla* / *optimized* | MUST |
-| 2 | **Adaptive Proposer** — bộ điều khiển cây nháp theo hồ sơ phần cứng, tích hợp vLLM | MUST |
-| 3 | **Bộ đo (benchmark harness)** — tự động, quét thang concurrency, ghi α/TPOT/TTFT/VRAM | MUST |
-| 4 | **Xác minh lossless** — chứng minh đầu ra khớp từng ký tự với làn vanilla | MUST |
-| 5 | **Bản đồ use-case & khung quyết định** — khi nào nên/không nên bật, có số liệu | SHOULD |
-| 6 | **Pipeline hoá đơn MC-OCR** dùng làm workload đo | SHOULD |
-| 7 | **Mã nguồn mở + quyển báo cáo** tái lập được | MUST |
-| 8 | Dashboard trực quan, tích hợp Dify | COULD |
+| # | Đầu ra                                                                                              | Tầng  |
+| - | ----------------------------------------------------------------------------------------------------- | ------ |
+| 1 | **Máy phục vụ tương thích OpenAI** với hai làn *vanilla* / *optimized*              | MUST   |
+| 2 | **Adaptive Proposer** — bộ điều khiển cây nháp theo hồ sơ phần cứng, tích hợp vLLM | MUST   |
+| 3 | **Bộ đo (benchmark harness)** — tự động, quét thang concurrency, ghi α/TPOT/TTFT/VRAM   | MUST   |
+| 4 | **Xác minh lossless** — chứng minh đầu ra khớp từng ký tự với làn vanilla            | MUST   |
+| 5 | **Bản đồ use-case & khung quyết định** — khi nào nên/không nên bật, có số liệu   | SHOULD |
+| 6 | **Pipeline hoá đơn MC-OCR** dùng làm workload đo                                          | SHOULD |
+| 7 | **Mã nguồn mở + quyển báo cáo** tái lập được                                         | MUST   |
+| 8 | Dashboard trực quan, tích hợp Dify                                                                 | COULD  |
 
 Phân tầng đầy đủ: [04 §5](04-quy-trinh-va-ke-hoach.md).
 
