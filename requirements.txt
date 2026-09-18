@@ -15,6 +15,7 @@ vllm
 fastapi
 uvicorn
 openai          # client để kiểm thử endpoint tương thích OpenAI
+aiohttp
 
 # ----- Orchestration (đánh giá end-to-end) -----
 langgraph
