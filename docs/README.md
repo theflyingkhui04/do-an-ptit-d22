@@ -36,6 +36,7 @@ Danh sách **đầy đủ** các tài liệu đồ án cần có, vai trò của
 | `../experiments/results/` | **Số liệu thô + bảng tổng hợp** (nguồn sự thật duy nhất cho mọi biểu đồ) | ⬜ tạo ở M1 |
 | [../requirements.txt](../requirements.txt) | Phụ thuộc — **phải pin phiên bản trước M1** | 🟡 chưa pin |
 | [../.env.example](../.env.example) | Mẫu biến môi trường (`.env` thật bị gitignore) | ✅ |
+| [../logs/M0-01/README.md](../logs/M0-01/README.md) | Worklog kỹ thuật & đo đạc thực nghiệm PoC T4 (M0-01) | ✅ |
 
 ## Chưa có — và cố tình chưa có
 

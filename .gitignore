@@ -40,7 +40,6 @@ datasets/
 # ===== Kết quả / log / cache =====
 outputs/
 results/
-logs/
 *.log
 runs/
 wandb/
@@ -48,6 +47,10 @@ wandb/
 .cache/
 .hf_cache/
 hf_cache/
+# Cho phép lưu trữ worklogs / notebooks nhiệm vụ trong logs/
+!logs/
+!logs/**
+logs/**/*.log
 # NGOẠI LỆ — bảng số & biểu đồ của đồ án PHẢI được commit (nguồn sự thật cho quyển).
 # Xem docs/06-ke-hoach-thuc-nghiem.md §5.
 !experiments/results/
