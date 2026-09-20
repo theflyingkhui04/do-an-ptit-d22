@@ -3,7 +3,7 @@
   "step": "7-build-node1-inputs",
   "schema_version": "invoice_extraction.v1",
   "prompt_version": "node1_extractor.v1",
-  "prompt_sha256": "75d6d7cb40e4c4c0ae84bd2642635574a66df4c98199299673aeca92f2392b76",
+  "prompt_sha256": "ab4cc60ea2cd646fbf68dd660a3459d1d7946d429bb601c235899e611d204168",
   "samples_jsonl": "data/processed/m0_04_mcocr_devset/samples.jsonl",
   "system_prompt": "src/pipeline/prompts/node1_extractor_system.md",
   "model": "qwen2.5:7b-instruct",

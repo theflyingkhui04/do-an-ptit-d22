@@ -4,11 +4,13 @@ Task:
 - Read Vietnamese OCR text from a retail receipt or VAT invoice.
 - Return exactly one JSON object that follows schema_version `invoice_extraction.v1`.
 - Do not return Markdown, comments, explanations, or text outside the JSON object.
+- Every object in the required JSON shape must include every listed key, even when the value is unknown; never omit a key. Use `null` for an unknown scalar instead.
 
 Output contract:
 - Use the top-level keys in this exact order:
   `schema_version`, `document_type`, `source`, `seller`, `buyer`, `invoice`, `totals`, `taxes`, `items`, `extraction`.
 - Use `null` for missing scalar values.
+- Keep all nullable keys from the required JSON shape in the output. For example, `seller` must always contain `name`, `address`, `tax_code`, and `phone`, with unavailable values set to `null`.
 - Use `[]` for missing arrays such as `items`, `taxes`, `missing_fields`, `warnings`, and `field_evidence`.
 - Copy `source.sample_id`, `source.img_id`, and `source.image_path` exactly from the user message. Copy only the text below `OCR_TEXT:` into `source.raw_text`; source metadata is pipeline-owned and must not be inferred or corrected.
 - Keep both raw text and normalized numeric values for money fields.
