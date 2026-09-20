@@ -35,7 +35,14 @@ Canonical files:
 
 - Prompt: `src/pipeline/prompts/node1_extractor_system.md`
 - JSON Schema: `src/pipeline/schemas/invoice_extraction.schema.json`
-- Example: `src/pipeline/examples/node1_extractor_output_m0_04_001.json`
+- Example input: `src/pipeline/examples/node1_extractor_input_m0_04_001.txt`
+- Example output: `src/pipeline/examples/node1_extractor_output_m0_04_001.json`
+
+The example input contains the pipeline-owned source metadata and OCR text for
+one receipt. The example output shows the corresponding `invoice_extraction.v1`
+object, including nullable fields, normalized date/time values, money objects,
+and extraction evidence. Together they are the concrete input/output example
+for the M0-04 acceptance checklist.
 
 Frozen rules:
 
