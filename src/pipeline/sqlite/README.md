@@ -26,6 +26,9 @@ Design notes:
   to the records produced by that run, preserving provenance boundaries.
 - The DDL sets SQLite `PRAGMA user_version = 1`. Pre-final unversioned local
   databases are intentionally not migrated; create a new database path.
+- The initial Node 2 business-question catalog is maintained in
+  `src/pipeline/README.md` and covers totals, item quantities, seller
+  aggregation, VAT presence, date grouping, and tax analysis.
 
 Initialize an empty database:
 

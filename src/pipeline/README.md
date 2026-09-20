@@ -89,6 +89,28 @@ Direct table access is reserved for pipeline loading and audit. Node 2 must
 generate read-only `SELECT` statements and must not query `raw_json` unless an
 explicit audit task requires it.
 
+## Business question catalog for Node 2
+
+The following Vietnamese questions are the initial business contract for the
+text-to-SQL workload. The generated SQL must be a read-only `SELECT` over the
+listed view; the examples identify the intended grain and aggregation, not a
+requirement to copy one fixed SQL string.
+
+| ID | Câu hỏi nghiệp vụ | View ưu tiên | Phép tính/kết quả mong đợi |
+|---|---|---|---|
+| Q1 | Tổng chi tiêu trong tháng 08/2020 là bao nhiêu? | `v_invoice_facts` | `SUM(total_amount_value)` lọc theo khoảng `issued_date`. |
+| Q2 | Mặt hàng nào được mua nhiều nhất? | `v_item_facts` | `SUM(quantity_value)` theo `description`, sắp xếp giảm dần. |
+| Q3 | Cửa hàng nào có tổng giá trị hóa đơn cao nhất? | `v_invoice_facts` | `SUM(total_amount_value)` theo `seller_name`. |
+| Q4 | Có bao nhiêu hóa đơn có phát sinh VAT? | `v_invoice_facts` hoặc `v_tax_facts` | Đếm hóa đơn có `vat_amount_value` hoặc dòng thuế tương ứng. |
+| Q5 | Tổng tiền theo từng ngày lập hóa đơn là bao nhiêu? | `v_invoice_facts` | `SUM(total_amount_value)` theo `issued_date`, sắp xếp tăng dần. |
+| Q6 | Mức thuế suất và tổng tiền thuế theo từng loại thuế là bao nhiêu? | `v_tax_facts` | `SUM(tax_amount_value)` theo `tax_name`, `tax_rate`. |
+
+Node 2 must reject non-`SELECT` statements and should return the generated SQL,
+the selected view, and a short explanation so the result can be audited. These
+questions cover invoice totals, item quantities, seller aggregation, VAT
+presence, date grouping, and tax analysis without exposing `raw_json` to the
+normal business-query path.
+
 ## Versioning Boundary
 
 Compatible v1 changes may clarify descriptions, add examples, or add indexes.
