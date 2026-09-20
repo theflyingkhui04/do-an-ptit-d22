@@ -1,0 +1,25 @@
+{
+  "task": "M0-04",
+  "source_csv": "data/raw/mc_ocr_2021/mcocr_train_df.csv",
+  "processed_root": "data/processed/m0_04_mcocr_devset",
+  "sample_count": 30,
+  "quality_threshold": 0.85,
+  "required_labels": [
+    "SELLER",
+    "ADDRESS",
+    "TIMESTAMPS"
+  ],
+  "preferred_labels": [
+    "TOTAL_COST"
+  ],
+  "copied_images": true,
+  "tracked_manifest": "experiments/results/m0_04_mcocr_devset_manifest.csv",
+  "processed_manifest": "data/processed/m0_04_mcocr_devset/manifest.csv",
+  "processed_jsonl": "data/processed/m0_04_mcocr_devset/samples.jsonl",
+  "label_counts_in_selected_samples": {
+    "ADDRESS": 30,
+    "SELLER": 30,
+    "TIMESTAMPS": 30,
+    "TOTAL_COST": 30
+  }
+}

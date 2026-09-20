@@ -33,3 +33,5 @@ nvidia-ml-py    # pynvml — đọc thông tin & đo GPU
 numpy
 pandas
 matplotlib
+kagglehub
+jsonschema
