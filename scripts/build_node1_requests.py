@@ -13,7 +13,7 @@ DEFAULT_SAMPLES_JSONL = Path("data/processed/m0_04_mcocr_devset/samples.jsonl")
 DEFAULT_OUTPUT_DIR = Path("data/processed/m0_04_mcocr_devset/node1")
 DEFAULT_REPORT_DIR = Path("experiments/results")
 DEFAULT_SYSTEM_PROMPT = Path("src/pipeline/prompts/node1_extractor_system.md")
-DEFAULT_MODEL = "qwen2.5-7b-instruct"
+DEFAULT_MODEL = "qwen2.5:7b-instruct"
 SCHEMA_VERSION = "invoice_extraction.v1"
 PROMPT_VERSION = "node1_extractor.v1"
 

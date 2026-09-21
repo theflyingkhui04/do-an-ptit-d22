@@ -11,16 +11,17 @@
   "success_count": 30,
   "failure_count": 0,
   "success_rate": 1.0,
+  "normalization_count": 59,
   "latency_ms": {
-    "mean": 12181.768,
-    "median": 11953.36,
-    "min": 11116.057,
-    "max": 14585.306
+    "mean": 11251.502,
+    "median": 10945.849,
+    "min": 10052.94,
+    "max": 14842.552
   },
   "usage": {
-    "prompt_tokens": 38343,
-    "completion_tokens": 19060,
-    "total_tokens": 57403
+    "prompt_tokens": 45843,
+    "completion_tokens": 17400,
+    "total_tokens": 63243
   },
   "database": "data/processed/m0_04_mcocr_devset/invoices_v1.sqlite",
   "outputs": {

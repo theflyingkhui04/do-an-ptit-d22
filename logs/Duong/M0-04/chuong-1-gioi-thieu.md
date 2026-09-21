@@ -1,8 +1,8 @@
 # CHƯƠNG 1. GIỚI THIỆU
 
-> **Bản nháp phục vụ nghiệm thu M0-04**  
-> Đề tài: *Giải mã suy đoán thích ứng phần cứng cho suy luận LLM tự-host trên GPU phổ thông*  
-> Nhóm thực hiện: Đồ án tốt nghiệp D22 PTIT  
+> **Bản nháp phục vụ nghiệm thu M0-04**<br>
+> Đề tài: *Giải mã suy đoán thích ứng phần cứng cho suy luận LLM tự-host trên GPU phổ thông*<br>
+> Nhóm thực hiện: Đồ án tốt nghiệp D22 PTIT
 > Ngày cập nhật: 20/09/2026
 
 ## 1.1. Đặt vấn đề
@@ -135,8 +135,8 @@ Chương này đã trình bày bối cảnh tự host LLM trên GPU phổ thông
 
 Ba câu hỏi nghiên cứu tập trung lần lượt vào hiệu năng, độ tin cậy và phạm vi workload hưởng lợi. Pipeline hóa đơn tiếng Việt từ MC-OCR được chọn làm workload vì tạo ra ba mức entropy: Node 1 text-to-JSON, Node 2 text-to-SQL và Node 3 SQL-to-BI. M0-04 đã đặt nền tảng bằng JSON Schema, SQLite schema, dev-set 30 mẫu và runner Node 1 qua Ollama. Những thành phần này là cơ sở để tiếp tục hiện thực Node 2, hoàn thiện benchmark vLLM và đánh giá toàn diện trong các mốc tiếp theo.
 
-## 1.11. Quy cách dàn trang bản thảo PTIT
+## 1.11. Nguyên tắc chuyển sang bản thảo chính thức
 
-Bản Markdown này là nội dung nguồn để đưa vào bản thảo quyển đồ án. Khi chuyển sang Word hoặc LaTeX theo mẫu PTIT của khoa, giữ nguyên thứ tự mục và áp dụng các quy cách sau: khổ giấy A4; lề trái 3,5 cm, lề phải 2,0 cm, lề trên 2,0 cm và lề dưới 2,0 cm; phông Times New Roman; cỡ chữ nội dung 13 pt; giãn dòng 1,5; căn đều hai lề; thụt đầu dòng đoạn văn 1 cm; tiêu đề chương in hoa, đậm và căn giữa; tiêu đề mục đánh số thập phân; đánh số trang ở chân trang. Bảng, hình và sơ đồ được đánh số theo chương khi bổ sung vào bản chính thức.
+Bản Markdown này là nguồn nội dung đã chốt để đưa vào quyển đồ án. Khi chuyển sang Word hoặc LaTeX, nhóm giữ nguyên thứ tự mục và nội dung học thuật của chương. Khổ giấy, lề, phông chữ, cỡ chữ, giãn dòng, cách đánh số trang, bảng và hình sẽ được áp dụng theo template chính thức của khoa; các thông số trình bày này chưa được xem là đã khóa trong M0-04.
 
-Với quy cách trên, nội dung 3.672 từ của bản nháp tương đương khoảng 5–7 trang nội dung học thuật, tùy lượng khoảng trắng, bảng biểu và yêu cầu cụ thể của mẫu PTIT được nhóm sử dụng. Bản này không tự nhận thay thế template hành chính của trường; các trang bìa, nhận xét, mục lục, danh mục bảng/hình và tài liệu tham khảo được đặt ở phần đầu/cuối quyển, không tính vào nội dung Chương 1.
+Nội dung hiện có khoảng 3.800 từ và dự kiến tương đương 5–7 trang nội dung học thuật sau khi áp dụng template chính thức. Số trang thực tế chỉ được xác nhận trên bản đã dàn trang. Các trang bìa, nhận xét, mục lục, danh mục bảng/hình và tài liệu tham khảo nằm ngoài nội dung Chương 1.

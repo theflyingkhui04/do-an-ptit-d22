@@ -1,9 +1,9 @@
 # BÁO CÁO PHÂN TÍCH NGHIỆP VỤ VÀ MÔ HÌNH HÓA DỮ LIỆU HÓA ĐƠN
 
-> **Mốc:** M0-04  
-> **Vai trò:** BA - Phân tích nghiệp vụ và mô hình hóa dữ liệu  
-> **Phạm vi:** Hóa đơn bán lẻ/hóa đơn VAT tiếng Việt trong workload MC-OCR  
-> **Schema áp dụng:** `invoice_extraction.v1`  
+> **Mốc:** M0-04<br>
+> **Vai trò:** BA - Phân tích nghiệp vụ và mô hình hóa dữ liệu<br>
+> **Phạm vi:** Hóa đơn bán lẻ/hóa đơn VAT tiếng Việt trong workload MC-OCR<br>
+> **Schema áp dụng:** `invoice_extraction.v1`
 > **SQLite version:** `user_version=1`
 
 ## 1. Mục đích và phạm vi phân tích

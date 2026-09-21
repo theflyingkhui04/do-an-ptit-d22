@@ -32,18 +32,18 @@ và ảnh audit. Nhãn annotation không được đưa vào prompt Node 1.
 ### 3. Bản thảo Chương 1
 
 Bản thảo hoàn chỉnh nằm tại
-[chuong-1-gioi-thieu.md](chuong-1-gioi-thieu.md). Nội dung gồm 3.888 từ,
-11 mục chính, và phần quy cách dàn trang A4 theo yêu cầu bản thảo PTIT. Bản
+[chuong-1-gioi-thieu.md](chuong-1-gioi-thieu.md). Nội dung hiện có khoảng
+3.800 từ và gồm 11 mục chính. Bản
 Word chỉnh sửa được nằm tại [chuong-1-gioi-thieu.docx](chuong-1-gioi-thieu.docx).
-Khi
-đưa vào template chính thức của khoa, giữ nguyên nội dung và áp dụng lề,
-font, giãn dòng, đánh số chương/mục và số trang theo template đó.
+Hai bản đã được đồng bộ nội dung; thông số dàn trang và số trang thực tế sẽ
+được xác nhận sau khi áp dụng template chính thức của khoa.
 
 ## Trạng thái nghiệm thu
 
 - [x] Bản mô tả nghiệp vụ, JSON Schema và ví dụ input/output.
 - [x] Dev-set tối thiểu 20 hóa đơn sạch.
-- [x] Bản nháp Chương 1 đủ nội dung 5–7 trang sau dàn trang.
+- [x] Bản nháp Chương 1 đủ nội dung dự kiến cho 5–7 trang sau khi áp dụng
+  template chính thức.
 
 Các kết quả Ollama local là functional PoC; benchmark hiệu năng chính thức
 vẫn phải chạy trên vLLM theo kế hoạch thực nghiệm.

@@ -88,6 +88,62 @@ def validate_source_binding(payload: dict[str, Any], expected_source: object) ->
     raise ValueError(f"Source binding mismatch for: {', '.join(mismatched)}")
 
 
+def normalize_canonical_payload(
+    payload: dict[str, Any], expected_source: object
+) -> list[str]:
+    """Apply auditable structural fixes without inventing business values."""
+    normalizations = []
+    invoice = payload.get("invoice")
+    if isinstance(invoice, dict):
+        issued_date = invoice.get("issued_date")
+        issued_time = invoice.get("issued_time")
+        if (
+            invoice.get("issued_at") is None
+            and isinstance(issued_date, str)
+            and isinstance(issued_time, str)
+        ):
+            normalized_time = f"{issued_time}:00" if len(issued_time) == 5 else issued_time
+            invoice["issued_at"] = f"{issued_date}T{normalized_time}"
+            normalizations.append("invoice.issued_at composed from issued_date and issued_time")
+
+    totals = payload.get("totals")
+    if isinstance(totals, dict):
+        for field_name in ("subtotal", "discount", "vat_amount", "total_amount"):
+            if totals.get(field_name) is None:
+                totals[field_name] = {"raw": None, "value": None, "currency": None}
+                normalizations.append(
+                    f"totals.{field_name} replaced null with an empty money object"
+                )
+
+    extraction = payload.get("extraction")
+    evidence_rows = extraction.get("field_evidence") if isinstance(extraction, dict) else None
+    source_text = expected_source.get("raw_text") if isinstance(expected_source, dict) else None
+    if isinstance(evidence_rows, list):
+        retained_evidence = []
+        for index, evidence in enumerate(evidence_rows):
+            if not isinstance(evidence, dict):
+                retained_evidence.append(evidence)
+                continue
+            if "source_label" not in evidence:
+                evidence["source_label"] = None
+                normalizations.append(
+                    f"extraction.field_evidence[{index}].source_label defaulted to null"
+                )
+            raw_text = evidence.get("raw_text")
+            if (
+                isinstance(source_text, str)
+                and isinstance(raw_text, str)
+                and raw_text not in source_text
+            ):
+                normalizations.append(
+                    f"extraction.field_evidence[{index}] removed: raw_text is not a source substring"
+                )
+                continue
+            retained_evidence.append(evidence)
+        extraction["field_evidence"] = retained_evidence
+    return normalizations
+
+
 def prepare_run(
     conn: Any,
     run_id: str,
@@ -225,6 +281,7 @@ def main() -> int:
     latencies_ms = []
     prompt_tokens = 0
     completion_tokens = 0
+    normalization_count = 0
 
     try:
         for index, row in enumerate(request_rows, start=1):
@@ -246,6 +303,9 @@ def main() -> int:
                 prompt_tokens += usage_value(response, "prompt_tokens")
                 completion_tokens += usage_value(response, "completion_tokens")
                 payload, content = parse_assistant_payload(response)
+                normalizations = normalize_canonical_payload(
+                    payload, row.get("expected_source")
+                )
                 validate_source_binding(payload, row.get("expected_source"))
                 if conn is not None:
                     invoice_id = insert_extraction(
@@ -265,9 +325,11 @@ def main() -> int:
                         "invoice_id": invoice_id,
                         "latency_ms": round(latency_ms, 3),
                         "assistant_content": content,
+                        "normalizations": normalizations,
                         "payload": payload,
                     }
                 )
+                normalization_count += len(normalizations)
                 print(f"[{index}/{len(request_rows)}] OK {sample_id} ({latency_ms:.0f} ms)")
             except Exception as exc:
                 latency_ms = (time.perf_counter() - started) * 1000
@@ -303,6 +365,7 @@ def main() -> int:
         "success_count": len(validated_outputs),
         "failure_count": len(failures),
         "success_rate": round(len(validated_outputs) / len(request_rows), 4),
+        "normalization_count": normalization_count,
         "latency_ms": {
             "mean": round(statistics.fmean(latencies_ms), 3) if latencies_ms else None,
             "median": round(statistics.median(latencies_ms), 3) if latencies_ms else None,

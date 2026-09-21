@@ -139,3 +139,20 @@ exists, calls `/v1/chat/completions` in JSON mode, verifies source binding,
 validates `invoice_extraction.v1`, and loads valid outputs into SQLite. Raw
 responses and failures remain under the gitignored `data/processed/` tree; a
 compact reproducibility summary is written to `experiments/results/`.
+
+Before validation, the runner may apply these deterministic canonicalization
+rules:
+
+- compose `invoice.issued_at` from existing normalized `issued_date` and
+  `issued_time`;
+- replace a null required totals container with an empty money object whose
+  `raw`, `value`, and `currency` fields are all null;
+- default an omitted evidence `source_label` to null; and
+- discard an evidence row whose `raw_text` is not a verbatim substring of the
+  pipeline-owned source text.
+
+Every applied rule is retained in the output's normalization audit list, and
+the original assistant response remains unchanged in `raw_responses.jsonl`.
+These rules only repair the canonical envelope or remove unsupported evidence.
+Seller, buyer, item, money, and tax values are never inferred or overwritten by
+post-processing without OCR evidence.

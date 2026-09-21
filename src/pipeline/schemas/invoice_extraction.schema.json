@@ -184,7 +184,37 @@
         "payment_method": {
           "$ref": "#/$defs/nullable_string"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "issued_date": {"type": "string"},
+              "issued_time": {"type": "string"}
+            },
+            "required": ["issued_date", "issued_time"]
+          },
+          "then": {
+            "properties": {
+              "issued_at": {"type": "string"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "issued_at": {"type": "string"}
+            },
+            "required": ["issued_at"]
+          },
+          "then": {
+            "properties": {
+              "issued_date": {"type": "string"},
+              "issued_time": {"type": "string"}
+            }
+          }
+        }
+      ]
     },
     "money": {
       "type": "object",

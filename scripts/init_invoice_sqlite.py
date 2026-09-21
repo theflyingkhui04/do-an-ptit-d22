@@ -76,6 +76,23 @@ def semantic_validation_errors(payload: dict) -> list[str]:
     if issued_at and issued_time and issued_at.time() != issued_time:
         errors.append("invoice.issued_at: time component conflicts with invoice.issued_time")
 
+    source_value = payload.get("source", {})
+    source = source_value if isinstance(source_value, dict) else {}
+    source_raw_text = source.get("raw_text")
+    extraction_value = payload.get("extraction", {})
+    extraction = extraction_value if isinstance(extraction_value, dict) else {}
+    evidence_value = extraction.get("field_evidence", [])
+    evidence_rows = evidence_value if isinstance(evidence_value, list) else []
+    if isinstance(source_raw_text, str):
+        for index, evidence in enumerate(evidence_rows):
+            if not isinstance(evidence, dict):
+                continue
+            evidence_text = evidence.get("raw_text")
+            if isinstance(evidence_text, str) and evidence_text not in source_raw_text:
+                errors.append(
+                    f"extraction.field_evidence[{index}].raw_text: not a verbatim source substring"
+                )
+
     items_value = payload.get("items", [])
     items = items_value if isinstance(items_value, list) else []
     line_numbers = [
