@@ -15,16 +15,16 @@ Danh sách **đầy đủ** các tài liệu đồ án cần có, vai trò của
 | File | Vai trò | Ai giữ | Trạng thái |
 |---|---|---|---|
 | [01-gioi-thieu.md](01-gioi-thieu.md) | Tên đề tài, bối cảnh, phát biểu bài toán, **câu hỏi nghiên cứu**, mục tiêu/phạm vi, đầu ra, đóng góp | Cả nhóm | ✅ đã cập nhật 11/09 |
-| [02-tong-quan-tai-lieu.md](02-tong-quan-tai-lieu.md) | Khảo sát 3 hướng (KV-cache / nén prompt / spec decoding) + lý do chọn hướng C | TV3 | ✅ |
+| [02-tong-quan-tai-lieu.md](02-tong-quan-tai-lieu.md) | Khảo sát 3 hướng (KV-cache / nén prompt / spec decoding) + lý do chọn hướng C | Dương | ✅ |
 | [03-quyet-dinh-thiet-ke.md](03-quyet-dinh-thiet-ke.md) | **Nhật ký quyết định (ADR)** — mọi QĐ lớn kèm lý do + các câu hỏi còn mở | Khôi | ✅ |
 | [04-quy-trinh-va-ke-hoach.md](04-quy-trinh-va-ke-hoach.md) | Quy trình làm việc, nhịp, phân vai, MoSCoW, lộ trình mốc, sổ rủi ro | Khôi (PM) | ✅ |
 | [05-thiet-ke-he-thong.md](05-thiet-ke-he-thong.md) | Kiến trúc, **2 giao diện đóng băng**, thuật toán bộ điều khiển, sơ đồ luồng | Khôi | 🟡 khung sườn — chốt trong Tuần 1 |
-| [06-ke-hoach-thuc-nghiem.md](06-ke-hoach-thuc-nghiem.md) | **Giao thức đo**, ma trận kết quả, cách xác minh lossless, kỷ luật thống kê | TV2 | 🟡 khung sườn — chốt trước M1 |
-| [07-thuat-ngu.md](07-thuat-ngu.md) | Bảng thuật ngữ & ký hiệu (α, τ, TPOT, ITL, MAT…) — **dùng thống nhất trong cả quyển** | TV3 | ✅ |
-| [08-outline-quyen.md](08-outline-quyen.md) | Dàn ý quyển báo cáo, ánh xạ chương ↔ tài liệu ↔ người viết | TV3 | ✅ |
-| [references.md](references.md) | Danh mục trích dẫn kèm arXiv ID và trạng thái bình duyệt | TV3 | ✅ |
+| [06-ke-hoach-thuc-nghiem.md](06-ke-hoach-thuc-nghiem.md) | **Giao thức đo**, ma trận kết quả, cách xác minh lossless, kỷ luật thống kê | Đại | 🟡 khung sườn — chốt trước M1 |
+| [07-thuat-ngu.md](07-thuat-ngu.md) | Bảng thuật ngữ & ký hiệu (alpha, tau, TPOT, ITL, MAT…) — **dùng thống nhất trong cả quyển** | Dương | ✅ |
+| [08-outline-quyen.md](08-outline-quyen.md) | Dàn ý quyển báo cáo, ánh xạ chương ↔ tài liệu ↔ người viết | Dương | ✅ |
+| [references.md](references.md) | Danh mục trích dẫn kèm arXiv ID và trạng thái bình duyệt | Dương | ✅ |
 | [paper_summary/](paper_summary/) | Tóm tắt sâu 6 paper nền + mạch vấn đề→giải pháp | Khôi | ✅ |
-| [slide/](slide/) | Slide bảo vệ | TV3 | 🟡 sau M4 |
+| [slide/](slide/) | Slide bảo vệ | Dương | 🟡 sau M4 |
 
 ## Tài liệu kỹ thuật (ngoài `docs/`)
 

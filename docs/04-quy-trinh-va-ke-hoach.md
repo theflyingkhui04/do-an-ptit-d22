@@ -58,20 +58,36 @@ Khoảng 21h tối thứ 2 và thứ 5, mỗi thành viên nhắn đúng 3 dòng
 
 ---
 
-## 3. Phân công nhiệm vụ & Ranh giới Module
+## 3. Phân công nhiệm vụ & Cơ chế Ghép cặp Luân phiên 70/30 (Pair-Rotation System)
 
-Để tránh xung đột mã nguồn (merge conflict) và người này phải chờ người kia, dự án chia thành 3 phần độc lập tương ứng với 3 thành viên:
+Đồ án tốt nghiệp đòi hỏi **cả 3 thành viên đều phải hiểu sâu và nắm vững toàn bộ kiến trúc**, từ tầng thuật toán Core-Engine, bộ công cụ đo kiểm Benchmark đến Pipeline ứng dụng thực tế. Dự án không chia rẽ biệt lập ("nước sông không phạm nước giếng"), mà vận hành theo mô hình **Ghép cặp Luân phiên 70/30**:
 
-| Kỹ sư đảm nhiệm | Vai trò | Trách nhiệm chính | Vùng mã nguồn | Giao diện phối hợp với bạn khác |
+### 3.1. Phân vai hạt nhân (Core Ownership - 70% effort)
+Mỗi thành viên là "kiến trúc sư trưởng" (Lead) chịu trách nhiệm chính về mặt kỹ thuật, chất lượng code và tiến độ của một luồng trọng điểm:
+
+| Kỹ sư đảm nhiệm | Vai trò | Trách nhiệm hạt nhân (70% effort) | Vùng mã nguồn | Giao diện chuẩn hóa |
 |---|---|---|---|---|
 | **Khôi** | **Dev + PM** *(AI Systems & Quản lý dự án)* | Nghiên cứu thuật toán điều khiển cây nháp, tích hợp vào vLLM, xây dựng API server. Duyệt và merge code vào nhánh `main`. Viết Chương 2 & 3. | `src/proposer/`, `src/server/` | Cung cấp endpoint chuẩn OpenAI (`/v1/chat/completions`) và dữ liệu đo đạc (telemetry JSON). |
-| **Dương** | **Dev + IT** *(MLOps, Benchmark & Hạ tầng)* | Xây dựng harness benchmark tự động, quản trị môi trường máy chủ GPU T4, chạy sweep concurrency, thu thập log và vẽ biểu đồ F1→F6. Viết Chương 4 & 5. | `experiments/` | Gọi API server của Khôi và đọc dữ liệu telemetry để xuất ra file CSV/biểu đồ. |
-| **Đại** | **Dev + BA** *(AI Application & Trưởng nhóm Tài liệu)* | Phân tích nghiệp vụ hóa đơn VAT, thiết kế schema dữ liệu, xây dựng pipeline 3 node (Trích xuất JSON $\rightarrow$ SQL $\rightarrow$ Báo cáo). Định dạng quyển báo cáo chuẩn PTIT và thiết kế slide. Viết Chương 1 & 6. | `src/pipeline/`, `docs/` | Gửi dữ liệu hóa đơn qua API server của Khôi dưới dạng các request thông thường. |
+| **Đại** | **Dev + IT** *(MLOps, Benchmark & Hạ tầng)* | Xây dựng harness benchmark tự động, quản trị môi trường máy chủ GPU T4, chạy sweep concurrency, thu thập log JSONL và vẽ biểu đồ F1→F6. Viết Chương 4 & 5. | `experiments/` | Gọi API server của Khôi và đọc dữ liệu telemetry để xuất ra file CSV/biểu đồ. |
+| **Dương** | **Dev + BA** *(AI Application & Trưởng nhóm Tài liệu)* | Phân tích nghiệp vụ hóa đơn VAT, thiết kế schema dữ liệu, xây dựng pipeline 3 node (Trích xuất JSON → SQL → Báo cáo). Định dạng quyển báo cáo chuẩn PTIT và thiết kế slide. Viết Chương 1 & 6. | `src/pipeline/`, `docs/` | Gửi dữ liệu hóa đơn qua API server của Khôi dưới dạng các request thông thường. |
 
-### Hai giao diện đóng băng (Frozen Interfaces)
-Hai giao diện này được chốt cứng ngay từ Tuần 1 để 3 bạn làm việc song song mà không cần chờ nhau:
-1. **Giao diện A (Engine ↔ Đo lường):** Khôi cung cấp log JSON telemetry chứa các thông số: `acceptance_rate`, `tree_budgets`, `tpot_ms`, `vram_peak_mb`. Dương chỉ việc đọc cấu trúc JSON này để phân tích.
-2. **Giao diện B (Engine ↔ Pipeline ứng dụng):** Pipeline của Đại giao tiếp với server của Khôi thuần túy qua giao thức HTTP chuẩn OpenAI (`POST /v1/chat/completions`).
+### 3.2. Cơ chế Ghép cặp và Luân phiên (Pair-Rotation Matrix)
+* **Quy tắc 2 người/task:** Tại một thời điểm, mỗi task phát triển chỉ có đúng **2 người cùng làm**:
+  * **1 Lead (70% effort):** Chủ trì kiến trúc, gánh ~70% checklist subtasks (4/6 mục).
+  * **1 Partner (30% effort):** Hỗ trợ code, viết test/script, gánh ~30% checklist subtasks (2/6 mục) và đóng vai trò Peer Reviewer cho PR.
+* **Cân bằng tải:** Mỗi thành viên trong tuần luôn có: `70% (Lead task của mình) + 30% (Partner task của bạn) = 100% effort/tuần`.
+* **Ma trận luân phiên theo chu kỳ tuần (Tuần A / Tuần B):**
+
+| Luồng công việc | Tuần A (Tuần 1: 22/09 – 28/09) | Tuần B (Tuần 2: 29/09 – 04/10) |
+|---|---|---|
+| **AI Systems / Engine** | **Khôi (Lead 70%)** + Dương (Partner 30%) | **Khôi (Lead 70%)** + Đại (Partner 30%) |
+| **Benchmark / Harness** | **Đại (Lead 70%)** + Khôi (Partner 30%) | **Đại (Lead 70%)** + Dương (Partner 30%) |
+| **Data / Pipeline VAT** | **Dương (Lead 70%)** + Đại (Partner 30%) | **Dương (Lead 70%)** + Khôi (Partner 30%) |
+
+### 3.3. Hai giao diện đóng băng (Frozen Interfaces)
+Hai giao diện này được chốt cứng làm "hợp đồng kỹ thuật", giúp người Partner (30%) tự tin tham gia đóng góp code vào luồng của Lead mà không lo xung đột hay làm vỡ cấu trúc:
+1. **Giao diện A (Engine ↔ Đo lường):** Khôi cung cấp log JSON telemetry chứa các thông số: `acceptance_rate`, `tree_budgets`, `tpot_ms`, `vram_peak_mb`. Đại đọc cấu trúc JSON này để phân tích và sweep tự động.
+2. **Giao diện B (Engine ↔ Pipeline ứng dụng):** Pipeline của Dương giao tiếp với server của Khôi thuần túy qua giao thức HTTP chuẩn OpenAI (`POST /v1/chat/completions`).
 
 ---
 
@@ -151,8 +167,8 @@ Tuần 13 (07–13/12):   Tuần đệm dự phòng / Chờ ngày bảo vệ ch�
 ```
 
 ### Ba cổng đánh giá & Điều chỉnh phạm vi (Checkpoints)
-1. **Ngày 04/10:** Nếu chưa có kết quả đo ổn định của 2 làn cơ sở $\rightarrow$ Cắt bỏ toàn bộ các mục ở tầng COULD, thu nhỏ pipeline hóa đơn về 1 node duy nhất.
-2. **Ngày 01/11 (Quan trọng nhất):** Nếu phương pháp Adaptive không giúp tăng tốc hơn so với cấu hình tĩnh $\rightarrow$ **Chủ động chuyển hướng góc kể chuyện của đồ án**: Đề tài trở thành *"Nghiên cứu thực nghiệm chuyên sâu về các ranh giới suy hao và giới hạn vật lý của giải mã suy đoán trên GPU phổ thông"*. Đây vẫn là một kết quả khoa học giá trị và hoàn toàn đủ điều kiện bảo vệ điểm cao.
+1. **Ngày 04/10:** Nếu chưa có kết quả đo ổn định của 2 làn cơ sở → Cắt bỏ toàn bộ các mục ở tầng COULD, thu nhỏ pipeline hóa đơn về 1 node duy nhất.
+2. **Ngày 01/11 (Quan trọng nhất):** Nếu phương pháp Adaptive không giúp tăng tốc hơn so với cấu hình tĩnh → **Chủ động chuyển hướng góc kể chuyện của đồ án**: Đề tài trở thành *"Nghiên cứu thực nghiệm chuyên sâu về các ranh giới suy hao và giới hạn vật lý của giải mã suy đoán trên GPU phổ thông"*. Đây vẫn là một kết quả khoa học giá trị và hoàn toàn đủ điều kiện bảo vệ điểm cao.
 3. **Ngày 15/11:** Bất kể tính năng nào chưa xong đều phải dừng lại để đóng băng mã nguồn; các tính năng dở dang sẽ được đưa vào phần "Hạn chế & Hướng phát triển trong tương lai".
 
 ---
@@ -165,8 +181,8 @@ Tuần 13 (07–13/12):   Tuần đệm dự phòng / Chờ ngày bảo vệ ch�
 | **R2** | GPU T4 16GB bị tràn bộ nhớ (OOM) khi chạy tải lớn | Trung bình | Cao | Dùng mô hình lượng tử hóa 4-bit (AWQ/GPTQ) để giải phóng VRAM cho KV cache. Hạ trần concurrency nếu cần và nêu rõ giới hạn phần cứng trong báo cáo. |
 | **R3** | Môi trường máy chủ (Colab/Kaggle) bị nhiễu thời gian đo | Cao | Cao | Bỏ qua 3 request đầu (warm-up), lặp lại ít nhất 5 lần mỗi cấu hình và lấy giá trị trung vị (median). Đan xen các lần chạy giữa các làn để triệt tiêu độ trôi phần cứng. |
 | **R4** | Thuật toán Adaptive không chạy nhanh hơn bản mặc định | Trung bình | Cao | Sử dụng phương án tại Cổng kiểm soát 01/11: Chuyển hướng thành đề tài nghiên cứu thực nghiệm đánh giá ranh giới hiệu quả. |
-| **R5** | Một thành viên bận việc riêng hoặc thi cử trong 1–2 tuần | Cao | Trung bình | Nhờ 2 giao diện đóng băng độc lập, công việc của bạn đó không làm nghẽn 2 bạn còn lại. Hai bạn còn lại có thể hỗ trợ chạy tiếp các phần cốt lõi. |
-| **R6** | Xung đột mã nguồn khi làm việc chung | Trung bình | Trung bình | Mỗi người sở hữu một thư mục riêng; chỉ làm việc trên branch riêng; chỉ có Khôi mới có quyền duyệt merge vào nhánh `main`. |
+| **R5** | Một thành viên bận việc riêng hoặc thi cử trong 1–2 tuần | Cao | Trung bình | Nhờ cơ chế Ghép cặp Luân phiên 70/30 và 2 giao diện đóng băng, người Partner trong cặp của tuần đó có thể gánh tiếp phần việc mà không làm nghẽn tiến độ chung. |
+| **R6** | Xung đột mã nguồn khi làm việc chung theo cặp | Trung bình | Trung bình | Luôn làm việc trên nhánh tính năng riêng (`feat/...`), tuân thủ chuẩn giao tiếp module; Partner review chéo PR trước khi Khôi merge vào nhánh `main`. |
 | **R7** | Nhà trường thông báo lịch bảo vệ sớm hơn dự kiến | Trung bình | Cao | Toàn bộ kế hoạch đã được thiết kế để đóng băng vào 15/11, tạo sẵn 2–3 tuần đệm an toàn trước ngày bảo vệ. |
 
 ---

@@ -104,15 +104,14 @@ do-an-ptit-d22/
 
 ## Team
 
-| Role | Name |
-|---|---|
-| Member | Cấn Đức Khôi ([GitHub](https://github.com/theflyingkhui04) · [LinkedIn](https://linkedin.com/in/duckhoi04)) |
-| Member | *(add)* |
-| Member | *(add)* |
-| AI Systems & PM (Dev + PM) | Cấn Đức Khôi ([GitHub](https://github.com/theflyingkhui04) · [LinkedIn](https://linkedin.com/in/duckhoi04)) |
-| MLOps & Performance (Dev + IT) | Dương |
-| AI Application & BA (Dev + BA) | Đại |
-| Advisor | *(add)* |
+Nhóm áp dụng mô hình **Ghép cặp Luân phiên 70/30 (Pair-Rotation System)**: Mỗi thành viên chủ trì (Lead) 70% mảng chuyên môn cốt lõi, đồng thời luân phiên đồng hành (Partner) 30% ở các mảng còn lại để cả 3 người đều nắm chắc toàn diện hệ thống khi bảo vệ đồ án.
+
+| Chuyên môn cốt lõi (Lead 70%) | Thành viên | Vai trò |
+|---|---|---|
+| AI Systems & PM (Core-Engine, vLLM) | Cấn Đức Khôi ([GitHub](https://github.com/theflyingkhui04) · | Dev + PM |
+| MLOps & Infrastructure (Benchmark Harness, GPU T4) | Bùi Thiên - Đại | Dev + IT |
+| AI Application & Data (Pipeline MC-OCR, VAT Invoices) | Dương Nguyễn Thế | Dev + BA |
+| Advisor | *(Cập nhật theo GVHD)* | GVHD |
 
 ## Status
 

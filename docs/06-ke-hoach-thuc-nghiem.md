@@ -1,7 +1,7 @@
 # Kế hoạch thực nghiệm
 # Kế hoạch Thực nghiệm (Experimental Methodology)
 
-> 🟡 **Khung sườn — chốt trước M1 (04/10).** Chủ trì: TV2.
+> 🟡 **Khung sườn — chốt trước M1 (04/10).** Chủ trì: Đại (hỗ trợ luân phiên: Khôi, Dương).
 > Ký hiệu: [07-thuat-ngu.md](07-thuat-ngu.md). Câu hỏi nghiên cứu: [01 §1.3](01-gioi-thieu.md).
 > **Cập nhật:** 14/09/2026.  
 > **Chủ trì thực hiện:** Đại (Dev + IT — MLOps & Performance Engineer).  

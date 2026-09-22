@@ -88,9 +88,9 @@ if N_star == 0:
 
 ## 3. Hai Giao diện Đóng băng (Frozen Interfaces)
 
-> Đây là hợp đồng kỹ thuật bất biến giữa 3 luồng công việc. Bất kỳ thay đổi nào về cấu trúc dữ liệu đều phải được cả nhóm thông qua.
+> Đây là hợp đồng kỹ thuật chuẩn hóa giữa 3 luồng công việc. Nhờ 2 giao diện này, các thành viên khi thực hiện cơ chế **Ghép cặp Luân phiên 70/30** có thể tự tin tham gia code chéo, viết harness benchmark hoặc kết nối pipeline mà không lo xung đột cấu trúc.
 
-### 3.1. Giao diện A — Giữa Luồng Engine (Khôi) và Luồng Đo lường (TV2)
+### 3.1. Giao diện A — Giữa Luồng Core-Engine (Khôi chủ trì) và Luồng Benchmark (Đại chủ trì)
 Máy chủ phơi dữ liệu telemetry của từng request qua endpoint `/metrics/request/{request_id}` hoặc đính kèm trong response payload:
 
 ```jsonc
@@ -101,16 +101,16 @@ Máy chủ phơi dữ liệu telemetry của từng request qua endpoint `/metri
   "tpot_ms":         18.3,              // Thời gian trung bình mỗi output token
   "itl_ms":          [19.1, 17.8, ...], // Mảng độ trễ giữa từng token (để tính p50/p95)
   "output_tokens":   256,
-  "acceptance_rate": 0.71,              // Tỉ lệ chấp nhận α
-  "mean_accept_len": 3.42,              // Chiều dài chấp nhận trung bình τ
+  "acceptance_rate": 0.71,              // Tỉ lệ chấp nhận alpha
+  "mean_accept_len": 3.42,              // Chiều dài chấp nhận trung bình tau
   "tree_budgets":    [60, 60, 32, 0],   // Ngân sách N* qua từng bước (bằng chứng thích ứng)
   "vram_peak_mb":    13820,             // Đỉnh VRAM sử dụng
   "batch_size_avg":  8.0
 }
 ```
-* **Ý nghĩa:** TV2 chỉ cần đọc cấu trúc JSON này để phân tích và vẽ biểu đồ, hoàn toàn không cần can thiệp vào mã nguồn nội bộ của vLLM.
+* **Ý nghĩa:** Luồng Benchmark (Đại lead, Khôi/Dương hỗ trợ) chỉ cần đọc cấu trúc JSON này để phân tích và vẽ biểu đồ, hoàn toàn độc lập với việc can thiệp sâu vào nhân vLLM.
 
-### 3.2. Giao diện B — Giữa Luồng Engine (Khôi) và Luồng Pipeline (TV3)
+### 3.2. Giao diện B — Giữa Luồng Core-Engine (Khôi chủ trì) và Luồng Pipeline Ứng dụng (Dương chủ trì)
 Pipeline hóa đơn giao tiếp với máy chủ thuần túy qua giao thức HTTP chuẩn OpenAI:
 
 ```http
@@ -127,7 +127,7 @@ Content-Type: application/json
   "max_tokens": 1024
 }
 ```
-* **Ý nghĩa:** Chế độ phục vụ (`vanilla`, `static`, `adaptive`) được cấu hình ở cấp độ khởi động server, không nằm trong body request. Nhờ đó, code pipeline của TV3 giữ nguyên vẹn 100% khi chạy thử nghiệm trên cả 3 chế độ.
+* **Ý nghĩa:** Chế độ phục vụ (`vanilla`, `static`, `adaptive`) được cấu hình ở cấp độ khởi động server, không nằm trong body request. Nhờ đó, code pipeline của Dương (cùng Đại/Khôi hỗ trợ) giữ nguyên vẹn 100% khi chạy thử nghiệm trên cả 3 chế độ.
 
 ---
 
