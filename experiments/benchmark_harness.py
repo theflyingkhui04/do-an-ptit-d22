@@ -93,6 +93,41 @@ def ensure_summary(path: Path) -> None:
         path.write_text(",".join(SUMMARY_COLUMNS) + "\n", encoding="utf-8")
 
 
+def make_experiment_id(configured_id: str | None) -> str:
+    """Return the configured experiment ID or create a new execution ID."""
+    if configured_id:
+        return configured_id
+    return f"exp-{uuid.uuid4()}"
+
+
+def make_cell_id(args: argparse.Namespace) -> str:
+    """Build the deterministic condition identity for the current M1 cell."""
+    return f"{args.lane}__{args.workload}__c{args.concurrency}"
+
+
+def make_repeat_id(repeat_index: int) -> str:
+    """Build a repeat identity scoped by experiment_id + cell_id."""
+    return f"r{repeat_index:03d}"
+
+
+def make_request_identity(
+    experiment_id: str,
+    cell_id: str,
+    repeat_id: str,
+    request_index: int,
+    phase: str,
+) -> dict:
+    """Create identity fields before the HTTP request is executed."""
+    return {
+        "experiment_id": experiment_id,
+        "cell_id": cell_id,
+        "repeat_id": repeat_id,
+        "request_id": f"req-{uuid.uuid4()}",
+        "request_index": request_index,
+        "phase": phase,
+    }
+
+
 async def iter_sse(response: aiohttp.ClientResponse) -> AsyncIterator[str]:
     """Yield `data:` payloads from an SSE response."""
     data_lines: list[str] = []
@@ -137,14 +172,13 @@ async def run_one(
     semaphore: asyncio.Semaphore,
     args: argparse.Namespace,
     env: dict,
-    index: int,
+    identity: dict,
 ) -> dict:
     queued_at = time.perf_counter()
 
     record = {
-        "client_request_id": f"bench-{uuid.uuid4().hex[:12]}",
+        **identity,
         "server_request_id": None,
-        "request_index": index,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "lane": args.lane,
         "workload": args.workload,
@@ -232,8 +266,8 @@ async def run_one(
                         record["output_tokens"] = usage.get("completion_tokens")
                         record["server_metrics"] = data.get("metrics")
 
-                    # Match vLLM benchmark timing semantics:
-                    # final usage event is part of end-to-end response latency.
+                    # Preserve the M0-03 timing behavior for this identity-only increment.
+                    # The final usage event is included in end-to-end response latency.
                     last_timestamp = timestamp
 
             if not first_chunk:
@@ -276,13 +310,29 @@ async def run_requests(
     env: dict,
     count: int,
     concurrency: int,
+    experiment_id: str,
+    cell_id: str,
+    repeat_id: str,
+    phase: str,
+    request_index_start: int = 0,
 ) -> list[dict]:
     semaphore = asyncio.Semaphore(concurrency)
 
+    identities = [
+        make_request_identity(
+            experiment_id=experiment_id,
+            cell_id=cell_id,
+            repeat_id=repeat_id,
+            request_index=request_index_start + offset,
+            phase=phase,
+        )
+        for offset in range(count)
+    ]
+
     return await asyncio.gather(
         *[
-            run_one(session, semaphore, args, env, index)
-            for index in range(count)
+            run_one(session, semaphore, args, env, identity)
+            for identity in identities
         ]
     )
 
@@ -290,6 +340,10 @@ async def run_requests(
 async def async_main(args: argparse.Namespace) -> int:
     env, gpu_handle = environment_info(args.gpu_index)
     ensure_summary(Path(args.summary_csv))
+
+    experiment_id = make_experiment_id(args.experiment_id)
+    cell_id = make_cell_id(args)
+    repeat_id = make_repeat_id(args.repeat_index)
 
     if env["vllm_version"] != EXPECTED_VLLM:
         print(
@@ -305,9 +359,21 @@ async def async_main(args: argparse.Namespace) -> int:
 
     try:
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-            # Warm-up is not written to raw JSONL.
+            # Preserve current warm-up behavior:
+            # sequential requests at concurrency=1, not written to raw JSONL.
             for i in range(args.warmup_requests):
-                warm = await run_requests(session, args, env, 1, 1)
+                warm = await run_requests(
+                    session=session,
+                    args=args,
+                    env=env,
+                    count=1,
+                    concurrency=1,
+                    experiment_id=experiment_id,
+                    cell_id=cell_id,
+                    repeat_id=repeat_id,
+                    phase="warmup",
+                    request_index_start=i,
+                )
                 if not warm[0]["success"]:
                     print(f"Warm-up {i + 1} failed: {warm[0]['error_message']}")
                     return 4
@@ -323,11 +389,16 @@ async def async_main(args: argparse.Namespace) -> int:
 
             start = time.perf_counter()
             records = await run_requests(
-                session,
-                args,
-                env,
-                args.num_requests,
-                args.concurrency,
+                session=session,
+                args=args,
+                env=env,
+                count=args.num_requests,
+                concurrency=args.concurrency,
+                experiment_id=experiment_id,
+                cell_id=cell_id,
+                repeat_id=repeat_id,
+                phase="measured",
+                request_index_start=0,
             )
             duration = time.perf_counter() - start
 
@@ -337,7 +408,7 @@ async def async_main(args: argparse.Namespace) -> int:
     finally:
         nvmlShutdown()
 
-    run_id = f"run-{uuid.uuid4().hex[:12]}"
+    run_id = f"run-{uuid.uuid4()}"
     successes = sum(record["success"] for record in records)
     complete = sum(record["metrics_complete"] for record in records)
     output_tokens = sum(
@@ -358,7 +429,10 @@ async def async_main(args: argparse.Namespace) -> int:
         for record in records:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    print("\n===== M0-03 BENCHMARK RESULT =====")
+    print("\n===== M1-02 BENCHMARK RESULT =====")
+    print(f"experiment_id       : {experiment_id}")
+    print(f"cell_id             : {cell_id}")
+    print(f"repeat_id           : {repeat_id}")
     print(f"run_id              : {run_id}")
     print(f"requests            : {len(records)}")
     print(f"successes           : {successes}")
@@ -379,7 +453,9 @@ async def async_main(args: argparse.Namespace) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="M0-03 vLLM benchmark harness")
+    parser = argparse.ArgumentParser(
+        description="M1-02 vLLM benchmark harness identity plumbing"
+    )
 
     parser.add_argument(
         "--endpoint",
@@ -402,6 +478,23 @@ def parse_args() -> argparse.Namespace:
         default="vanilla",
     )
     parser.add_argument("--workload", default="smoke")
+    parser.add_argument(
+        "--experiment-id",
+        default=None,
+        help=(
+            "Optional experiment execution identity. "
+            "If omitted, an exp-<UUID4> value is generated."
+        ),
+    )
+    parser.add_argument(
+        "--repeat-index",
+        type=int,
+        default=1,
+        help=(
+            "Trace label for the current controlled repeat execution. "
+            "This does not freeze the final M1 repeat protocol."
+        ),
+    )
     parser.add_argument("--timeout-s", type=float, default=120)
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"))
     parser.add_argument("--gpu-index", type=int, default=0)
@@ -426,6 +519,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--warmup-requests must be >= 0")
     if args.max_tokens < 1:
         parser.error("--max-tokens must be >= 1")
+    if args.repeat_index < 1:
+        parser.error("--repeat-index must be >= 1")
 
     return args
 
