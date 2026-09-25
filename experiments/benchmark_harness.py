@@ -23,7 +23,12 @@ from pynvml import (
     nvmlSystemGetDriverVersion,
 )
 
+ENVIRONMENT_PROFILE = "m1-t4-cu130-v1"
+
+EXPECTED_GPU = "Tesla T4"
 EXPECTED_VLLM = "0.29.0"
+EXPECTED_TORCH = "2.13.0+cu130"
+EXPECTED_TORCH_CUDA = "13.0"
 
 SUMMARY_COLUMNS = [
     "lane",
@@ -74,6 +79,7 @@ def environment_info(gpu_index: int) -> tuple[dict, object]:
     mem = nvmlDeviceGetMemoryInfo(handle)
 
     info = {
+        "environment_profile": ENVIRONMENT_PROFILE,
         "gpu": name.decode() if isinstance(name, bytes) else str(name),
         "gpu_index": gpu_index,
         "gpu_memory_total_mb": round(mem.total / 1024**2, 2),
@@ -85,6 +91,26 @@ def environment_info(gpu_index: int) -> tuple[dict, object]:
         "commit": git_commit(),
     }
     return info, handle
+
+
+def validate_environment(env: dict) -> list[str]:
+    """Return environment-contract mismatches for the canonical M1 T4 runtime."""
+    expected = {
+        "gpu": EXPECTED_GPU,
+        "vllm_version": EXPECTED_VLLM,
+        "torch_version": EXPECTED_TORCH,
+        "torch_cuda_version": EXPECTED_TORCH_CUDA,
+    }
+
+    mismatches: list[str] = []
+    for field, expected_value in expected.items():
+        actual_value = env.get(field)
+        if actual_value != expected_value:
+            mismatches.append(
+                f"{field}: expected {expected_value}, got {actual_value}"
+            )
+
+    return mismatches
 
 
 def ensure_summary(path: Path) -> None:
@@ -339,17 +365,30 @@ async def run_requests(
 
 async def async_main(args: argparse.Namespace) -> int:
     env, gpu_handle = environment_info(args.gpu_index)
+
+    mismatches = validate_environment(env)
+    if mismatches:
+        print("\n===== ENVIRONMENT CONTRACT FAILED =====")
+        print(f"profile              : {ENVIRONMENT_PROFILE}")
+        for mismatch in mismatches:
+            print(f"mismatch             : {mismatch}")
+        print("=======================================")
+        nvmlShutdown()
+        return 5
+
+    print("\n===== ENVIRONMENT CONTRACT PASS =====")
+    print(f"profile              : {ENVIRONMENT_PROFILE}")
+    print(f"gpu                  : {env['gpu']}")
+    print(f"vllm_version         : {env['vllm_version']}")
+    print(f"torch_version        : {env['torch_version']}")
+    print(f"torch_cuda_version   : {env['torch_cuda_version']}")
+    print("=====================================")
+
     ensure_summary(Path(args.summary_csv))
 
     experiment_id = make_experiment_id(args.experiment_id)
     cell_id = make_cell_id(args)
     repeat_id = make_repeat_id(args.repeat_index)
-
-    if env["vllm_version"] != EXPECTED_VLLM:
-        print(
-            f"WARNING: expected vLLM {EXPECTED_VLLM}, "
-            f"found {env['vllm_version']}"
-        )
 
     timeout = aiohttp.ClientTimeout(total=args.timeout_s)
     headers = {"Content-Type": "application/json"}
