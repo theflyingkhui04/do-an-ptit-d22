@@ -1,0 +1,23 @@
+{
+  "task": "M0-04",
+  "step": "7-build-node1-inputs",
+  "schema_version": "invoice_extraction.v1",
+  "prompt_version": "node1_extractor.v1",
+  "prompt_sha256": "b983d8078a64d65235c38a4245232a396f31bc9d77453615e209d3d7305da173",
+  "samples_jsonl": "data/processed/m0_04_mcocr_devset/samples.jsonl",
+  "system_prompt": "src/pipeline/prompts/node1_extractor_system.md",
+  "model": "qwen2.5:7b-instruct",
+  "temperature": 0.0,
+  "max_tokens": 1024,
+  "seed": 42,
+  "response_format": "json_object",
+  "request_count": 30,
+  "outputs": {
+    "inputs_jsonl": "data/processed/m0_04_mcocr_devset/node1/node1_inputs.jsonl",
+    "chat_requests_jsonl": "data/processed/m0_04_mcocr_devset/node1/node1_chat_requests.jsonl",
+    "input_text_dir": "data/processed/m0_04_mcocr_devset/node1/inputs",
+    "local_summary": "data/processed/m0_04_mcocr_devset/node1/summary.json",
+    "tracked_summary": "experiments/results/m0_04_node1_requests_summary.json"
+  },
+  "prompt_policy": "MC-OCR labels are not included in the user prompt; they remain audit/debug metadata."
+}

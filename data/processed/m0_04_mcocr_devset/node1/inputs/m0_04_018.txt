@@ -1,0 +1,14 @@
+SOURCE_METADATA:
+{"sample_id": "m0_04_018", "img_id": "mcocr_public_145014pstow.jpg", "image_path": "data/processed/m0_04_mcocr_devset/images/mcocr_public_145014pstow.jpg"}
+
+OCR_TEXT:
+THỨC COFFEE
+22 Quang Trung, P10, Gò Vấp
+Ngày:
+21.04.2019
+Giờ vào:
+10.30
+Giờ ra:
+10.31
+Tiên Thanh Toán:
+52 000
