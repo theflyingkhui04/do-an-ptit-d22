@@ -396,26 +396,67 @@ async def async_main(args: argparse.Namespace) -> int:
     if args.api_key:
         headers["Authorization"] = f"Bearer {args.api_key}"
 
+    # PM-approved M1 Option B:
+    # - at least 3 warm-up requests,
+    # - at least one concurrency-matched request wave,
+    # - any larger CLI minimum is also respected.
+    effective_warmup_count = max(
+        3,
+        args.warmup_requests,
+        args.concurrency,
+    )
+    warmup_concurrency = args.concurrency
+
+    print("\n===== M1-02 WARM-UP POLICY =====")
+    print("policy               : option-b-concurrency-matched")
+    print(f"cell_id              : {cell_id}")
+    print(f"requested_minimum    : {args.warmup_requests}")
+    print(f"warmup_requests      : {effective_warmup_count}")
+    print(f"warmup_concurrency   : {warmup_concurrency}")
+    print(f"measured_concurrency : {args.concurrency}")
+    print("================================")
+
     try:
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-            # Preserve current warm-up behavior:
-            # sequential requests at concurrency=1, not written to raw JSONL.
-            for i in range(args.warmup_requests):
-                warm = await run_requests(
-                    session=session,
-                    args=args,
-                    env=env,
-                    count=1,
-                    concurrency=1,
-                    experiment_id=experiment_id,
-                    cell_id=cell_id,
-                    repeat_id=repeat_id,
-                    phase="warmup",
-                    request_index_start=i,
-                )
-                if not warm[0]["success"]:
-                    print(f"Warm-up {i + 1} failed: {warm[0]['error_message']}")
-                    return 4
+            warm = await run_requests(
+                session=session,
+                args=args,
+                env=env,
+                count=effective_warmup_count,
+                concurrency=warmup_concurrency,
+                experiment_id=experiment_id,
+                cell_id=cell_id,
+                repeat_id=repeat_id,
+                phase="warmup",
+                request_index_start=0,
+            )
+
+            warmup_failures = [
+                record for record in warm if not record["success"]
+            ]
+            if warmup_failures:
+                print("\n===== WARM-UP FAILED =====")
+                print(f"attempted            : {len(warm)}")
+                print(f"failed               : {len(warmup_failures)}")
+                for record in warmup_failures[:5]:
+                    print(
+                        "failure              : "
+                        f"request_id={record['request_id']} "
+                        f"error_type={record['error_type']} "
+                        f"error_message={record['error_message']}"
+                    )
+                if len(warmup_failures) > 5:
+                    print(
+                        f"additional_failures   : {len(warmup_failures) - 5}"
+                    )
+                print("==========================")
+                return 4
+
+            print("\n===== WARM-UP PASS =====")
+            print(f"requests             : {len(warm)}")
+            print(f"successes            : {len(warm)}")
+            print(f"concurrency_limit    : {warmup_concurrency}")
+            print("========================")
 
             stop_monitor = asyncio.Event()
             monitor_task = asyncio.create_task(
@@ -493,7 +534,10 @@ async def async_main(args: argparse.Namespace) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="M1-02 vLLM benchmark harness identity plumbing"
+        description=(
+            "M1-02 vLLM benchmark harness with identity tracing "
+            "and concurrency-matched warm-up"
+        )
     )
 
     parser.add_argument(
@@ -507,7 +551,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-requests", type=int, default=10)
     parser.add_argument("--concurrency", type=int, default=1)
-    parser.add_argument("--warmup-requests", type=int, default=3)
+    parser.add_argument(
+        "--warmup-requests",
+        type=int,
+        default=3,
+        help=(
+            "Requested minimum warm-up request count. "
+            "M1 Option B enforces an effective count of "
+            "max(3, --warmup-requests, --concurrency)."
+        ),
+    )
     parser.add_argument("--max-tokens", type=int, default=32)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)
