@@ -1,0 +1,9 @@
+SOURCE_METADATA:
+{"sample_id": "m0_04_021", "img_id": "mcocr_public_145014snrrj.jpg", "image_path": "data/processed/m0_04_mcocr_devset/images/mcocr_public_145014snrrj.jpg"}
+
+OCR_TEXT:
+NHÀ SÁCH GD-TC CẨM PHẢ
+ĐC: 212 Đường Trần Phú-Cẩm Phả
+Thời gian: 21:43:39 - 14/08/2020
+Tổng số thanh toán:
+75.000đ

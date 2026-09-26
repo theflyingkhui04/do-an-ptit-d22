@@ -1,0 +1,9 @@
+SOURCE_METADATA:
+{"sample_id": "m0_04_028", "img_id": "mcocr_public_145013zftfo.jpg", "image_path": "data/processed/m0_04_mcocr_devset/images/mcocr_public_145013zftfo.jpg"}
+
+OCR_TEXT:
+MINIMART ANAN
+Chợ Sủi Phú Thị Gia Lâm
+Ngày: 14/08/2020 14:39
+321,016
+Tổng tiền

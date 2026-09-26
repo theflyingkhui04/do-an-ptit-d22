@@ -1,0 +1,9 @@
+SOURCE_METADATA:
+{"sample_id": "m0_04_019", "img_id": "mcocr_public_145013lplfx.jpg", "image_path": "data/processed/m0_04_mcocr_devset/images/mcocr_public_145013lplfx.jpg"}
+
+OCR_TEXT:
+MINIMART ANAN
+Ngày: 16/08/2020-17:59
+Chợ Sủi Phú Thị Gia Lâm
+112,000
+Tổng tiền

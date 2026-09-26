@@ -1,0 +1,469 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://do-an-ptit-d22.local/schemas/invoice_extraction.v1.schema.json",
+  "title": "Node 1 Invoice Extraction Output",
+  "description": "Canonical v1 structured output for the MC-OCR receipt extractor workload. Source metadata is supplied by the pipeline and copied verbatim; business fields are nullable so missing OCR evidence is never invented.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "document_type",
+    "source",
+    "seller",
+    "buyer",
+    "invoice",
+    "totals",
+    "taxes",
+    "items",
+    "extraction"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "invoice_extraction.v1"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "retail_receipt",
+        "vat_invoice",
+        "unknown"
+      ]
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "seller": {
+      "$ref": "#/$defs/party"
+    },
+    "buyer": {
+      "$ref": "#/$defs/party"
+    },
+    "invoice": {
+      "$ref": "#/$defs/invoice_metadata"
+    },
+    "totals": {
+      "$ref": "#/$defs/totals"
+    },
+    "taxes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tax_line"
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/line_item"
+      }
+    },
+    "extraction": {
+      "$ref": "#/$defs/extraction_metadata"
+    }
+  },
+  "$defs": {
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "currency_code": {
+      "description": "Three-letter ISO 4217 currency code.",
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "nullable_currency_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/currency_code"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sample_id",
+        "img_id",
+        "image_path",
+        "raw_text"
+      ],
+      "properties": {
+        "sample_id": {
+          "description": "Pipeline-owned stable identifier; copy it verbatim from the request.",
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "img_id": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "image_path": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "raw_text": {
+          "description": "Pipeline-owned OCR text; copy it verbatim from OCR_TEXT, including line breaks.",
+          "type": "string"
+        }
+      }
+    },
+    "party": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "address",
+        "tax_code",
+        "phone"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "address": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "tax_code": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "phone": {
+          "$ref": "#/$defs/nullable_string"
+        }
+      }
+    },
+    "invoice_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoice_number",
+        "invoice_series",
+        "issued_at",
+        "issued_date",
+        "issued_time",
+        "currency",
+        "payment_method"
+      ],
+      "properties": {
+        "invoice_number": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "invoice_series": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "issued_at": {
+          "description": "Local timestamp if both date and time are known, formatted as YYYY-MM-DDTHH:MM:SS.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
+        },
+        "issued_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "issued_time": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{2}:\\d{2}(:\\d{2})?$"
+        },
+        "currency": {
+          "$ref": "#/$defs/nullable_currency_code"
+        },
+        "payment_method": {
+          "$ref": "#/$defs/nullable_string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "issued_date": {"type": "string"},
+              "issued_time": {"type": "string"}
+            },
+            "required": ["issued_date", "issued_time"]
+          },
+          "then": {
+            "properties": {
+              "issued_at": {"type": "string"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "issued_at": {"type": "string"}
+            },
+            "required": ["issued_at"]
+          },
+          "then": {
+            "properties": {
+              "issued_date": {"type": "string"},
+              "issued_time": {"type": "string"}
+            }
+          }
+        }
+      ]
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw",
+        "value",
+        "currency"
+      ],
+      "properties": {
+        "raw": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "currency": {
+          "$ref": "#/$defs/nullable_currency_code"
+        }
+      }
+    },
+    "quantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw",
+        "value",
+        "unit"
+      ],
+      "properties": {
+        "raw": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "unit": {
+          "$ref": "#/$defs/nullable_string"
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subtotal",
+        "discount",
+        "vat_amount",
+        "total_amount"
+      ],
+      "properties": {
+        "subtotal": {
+          "$ref": "#/$defs/money"
+        },
+        "discount": {
+          "$ref": "#/$defs/money"
+        },
+        "vat_amount": {
+          "$ref": "#/$defs/money"
+        },
+        "total_amount": {
+          "$ref": "#/$defs/money"
+        }
+      }
+    },
+    "tax_line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tax_name",
+        "tax_rate",
+        "taxable_amount",
+        "tax_amount"
+      ],
+      "properties": {
+        "tax_name": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "tax_rate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "taxable_amount": {
+          "$ref": "#/$defs/money"
+        },
+        "tax_amount": {
+          "$ref": "#/$defs/money"
+        }
+      }
+    },
+    "line_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "line_number",
+        "description",
+        "sku",
+        "quantity",
+        "unit_price",
+        "line_total",
+        "vat_rate"
+      ],
+      "properties": {
+        "line_number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "sku": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "quantity": {
+          "$ref": "#/$defs/quantity"
+        },
+        "unit_price": {
+          "$ref": "#/$defs/money"
+        },
+        "line_total": {
+          "$ref": "#/$defs/money"
+        },
+        "vat_rate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "field_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_path",
+        "raw_text",
+        "source_label"
+      ],
+      "properties": {
+        "field_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "raw_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_label": {
+          "$ref": "#/$defs/nullable_string"
+        }
+      }
+    },
+    "extraction_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "confidence",
+        "missing_fields",
+        "warnings",
+        "field_evidence"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "partial",
+            "failed"
+          ]
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "missing_fields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "field_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field_evidence"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ok"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "missing_fields": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "missing_fields": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
