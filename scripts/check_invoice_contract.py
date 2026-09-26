@@ -5,11 +5,18 @@ from __future__ import annotations
 import copy
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from pydantic import ValidationError
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from init_invoice_sqlite import connect, init_schema, insert_extraction, validate_payload
+from src.pipeline.invoice_models import validate_invoice_payload
 
 
 JSON_SCHEMA_PATH = Path("src/pipeline/schemas/invoice_extraction.schema.json")
@@ -48,6 +55,46 @@ def assert_json_contract(payload: dict) -> None:
         pass
     else:
         raise AssertionError("semantic validation accepted duplicate item line_number values")
+
+
+def assert_pydantic_contract(payload: dict) -> None:
+    validate_invoice_payload(payload)
+
+    invalid = copy.deepcopy(payload)
+    invalid["invoice"]["currency"] = "VNÄ"
+    try:
+        validate_invoice_payload(invalid)
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("Pydantic contract accepted a non-ISO currency code")
+
+    invalid = copy.deepcopy(payload)
+    invalid["invoice"]["issued_date"] = "2020-02-30"
+    try:
+        validate_invoice_payload(invalid)
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("Pydantic contract accepted an impossible calendar date")
+
+    invalid = build_relational_payload(payload)
+    invalid["items"].append(copy.deepcopy(invalid["items"][0]))
+    try:
+        validate_invoice_payload(invalid)
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("Pydantic contract accepted duplicate item line_number values")
+
+    invalid = copy.deepcopy(payload)
+    invalid["extraction"]["field_evidence"][0]["raw_text"] = "not present in OCR text"
+    try:
+        validate_invoice_payload(invalid)
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("Pydantic contract accepted non-verbatim field evidence")
 
 
 def build_relational_payload(payload: dict) -> dict:
@@ -127,8 +174,21 @@ def assert_sqlite_contract(payload: dict) -> None:
 def main() -> None:
     payload = json.loads(EXAMPLE_PATH.read_text(encoding="utf-8"))
     assert_json_contract(payload)
+    assert_pydantic_contract(payload)
     assert_sqlite_contract(payload)
-    print("OK invoice_extraction.v1 <-> SQLite user_version=1")
+    summary = {
+        "task": "M1-03",
+        "step": "invoice-contract-check",
+        "status": "PASS",
+        "json_schema": JSON_SCHEMA_PATH.as_posix(),
+        "pydantic_model": "src.pipeline.invoice_models.InvoiceExtraction",
+        "sqlite_user_version": 1,
+        "example": EXAMPLE_PATH.as_posix(),
+    }
+    report_path = Path("experiments/results/m1_03_invoice_contract_summary.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

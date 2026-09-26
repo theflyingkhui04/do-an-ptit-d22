@@ -1,0 +1,20 @@
+{
+  "task": "M1-03",
+  "step": "build-w1-node1-requests",
+  "workload_id": "w1_node1_invoice_extraction",
+  "dataset_version": "w1.m1_03.v1",
+  "schema_version": "invoice_extraction.v1",
+  "prompt_version": "node1_extractor.v1",
+  "prompt_sha256": "3452c77da3a6485c8e92e371f2861acab9ec6424bbe52477a579345a7e90f8d9",
+  "request_count": 30,
+  "model": "qwen2.5:7b-instruct",
+  "temperature": 0.0,
+  "max_tokens": 1024,
+  "seed": 42,
+  "response_format": {
+    "type": "json_object"
+  },
+  "requests_jsonl": "experiments/configs/w1/node1_chat_requests.jsonl",
+  "package_sha256": "e7cba647035f8834920d523ce8f6a70ef68896069ee71d3a862fac2fc42eff66",
+  "prompt_policy": "samples.jsonl and node1_chat_requests.jsonl exclude labels/key_text_pairs; annotation labels are kept only in provenance.jsonl for audit."
+}
