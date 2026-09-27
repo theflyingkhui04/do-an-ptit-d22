@@ -37,6 +37,14 @@ weights/
 data/
 datasets/
 
+# Exception: small curated M0-04 devset is committed for reproducibility.
+!data/
+data/*
+!data/processed/
+data/processed/*
+!data/processed/m0_04_mcocr_devset/
+!data/processed/m0_04_mcocr_devset/**
+
 # ===== Kết quả / log / cache =====
 outputs/
 results/

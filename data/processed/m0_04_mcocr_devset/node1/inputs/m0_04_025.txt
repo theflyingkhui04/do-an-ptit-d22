@@ -1,0 +1,9 @@
+SOURCE_METADATA:
+{"sample_id": "m0_04_025", "img_id": "mcocr_public_145014pfjsu.jpg", "image_path": "data/processed/m0_04_mcocr_devset/images/mcocr_public_145014pfjsu.jpg"}
+
+OCR_TEXT:
+CỬA HÀNG NĂM OÁNH
+Thôn Phú Thuỵ, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội
+Ngày: 10-08-2020
+Cộng tiền hàng
+63,000

@@ -1,0 +1,90 @@
+{
+  "schema_version": "invoice_extraction.v1",
+  "document_type": "retail_receipt",
+  "source": {
+    "sample_id": "m0_04_001",
+    "img_id": "mcocr_public_145013tlipr.jpg",
+    "image_path": "data/processed/m0_04_mcocr_devset/images/mcocr_public_145013tlipr.jpg",
+    "raw_text": "MINIMART ANAN\nChợ Sủi Phú Thị Gia Lâm\nNgày: 10/08/2020 - 17:12\nTổng tiền\n42,000"
+  },
+  "seller": {
+    "name": "MINIMART ANAN",
+    "address": "Chợ Sủi Phú Thị Gia Lâm",
+    "tax_code": null,
+    "phone": null
+  },
+  "buyer": {
+    "name": null,
+    "address": null,
+    "tax_code": null,
+    "phone": null
+  },
+  "invoice": {
+    "invoice_number": null,
+    "invoice_series": null,
+    "issued_at": "2020-08-10T17:12:00",
+    "issued_date": "2020-08-10",
+    "issued_time": "17:12:00",
+    "currency": "VND",
+    "payment_method": null
+  },
+  "totals": {
+    "subtotal": {
+      "raw": null,
+      "value": null,
+      "currency": "VND"
+    },
+    "discount": {
+      "raw": null,
+      "value": null,
+      "currency": "VND"
+    },
+    "vat_amount": {
+      "raw": null,
+      "value": null,
+      "currency": "VND"
+    },
+    "total_amount": {
+      "raw": "42,000",
+      "value": 42000,
+      "currency": "VND"
+    }
+  },
+  "taxes": [],
+  "items": [],
+  "extraction": {
+    "status": "partial",
+    "confidence": 0.82,
+    "missing_fields": [
+      "seller.tax_code",
+      "invoice.invoice_number",
+      "taxes",
+      "items"
+    ],
+    "warnings": [
+      "MC-OCR annotation exposes key receipt fields only; item rows and VAT details are unavailable for this sample."
+    ],
+    "field_evidence": [
+      {
+        "field_path": "seller.name",
+        "raw_text": "MINIMART ANAN",
+        "source_label": "SELLER"
+      },
+      {
+        "field_path": "seller.address",
+        "raw_text": "Chợ Sủi Phú Thị Gia Lâm",
+        "source_label": "ADDRESS"
+      },
+      {
+        "field_path": "invoice.issued_at",
+        "raw_text": "Ngày: 10/08/2020 - 17:12",
+        "source_label": "TIMESTAMPS"
+      },
+      {
+        "field_path": "totals.total_amount",
+        "raw_text": "Tổng tiền\n42,000",
+        "source_label": "TOTAL_COST"
+      }
+    ]
+  }
+}

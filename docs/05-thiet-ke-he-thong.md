@@ -129,6 +129,12 @@ Content-Type: application/json
 ```
 * **Ý nghĩa:** Chế độ phục vụ (`vanilla`, `static`, `adaptive`) được cấu hình ở cấp độ khởi động server, không nằm trong body request. Nhờ đó, code pipeline của Dương (cùng Đại/Khôi hỗ trợ) giữ nguyên vẹn 100% khi chạy thử nghiệm trên cả 3 chế độ.
 
+**Ghi chú về Node 1 Extractor:** Node 1 nhận văn bản do tầng dữ liệu/OCR cung cấp và sinh JSON; nó không thực hiện nhận dạng ảnh. Đầu ra nội bộ được cố định bằng JSON Schema `invoice_extraction.v1` tại [`src/pipeline/schemas/invoice_extraction.schema.json`](../src/pipeline/schemas/invoice_extraction.schema.json). Schema này chỉ chuẩn hóa dữ liệu để nạp SQLite và đo workload W1 (JSON entropy thấp); nó không thêm tham số nào vào request OpenAI-compatible ở Giao diện B, và không đưa logic nghiệp vụ hóa đơn vào engine.
+
+**Ghi chú về Node 2 Text-to-SQL:** CSDL trung gian dùng SQLite `user_version=1` theo lược đồ tại [`src/pipeline/sqlite/schema.sql`](../src/pipeline/sqlite/schema.sql). Node 2 chỉ sinh truy vấn đọc và ưu tiên ba view `v_invoice_facts`, `v_item_facts`, `v_tax_facts` để giữ SQL ngắn, ổn định, và đủ đại diện cho workload entropy trung bình. Hợp đồng liên tầng chính thức được chốt tại [`src/pipeline/README.md`](../src/pipeline/README.md).
+
+**Backend kiểm thử cục bộ:** Node 1 và Node 2 đều gọi LLM qua cùng giao diện OpenAI-compatible. Có thể dùng Ollama + `qwen2.5:7b-instruct` để smoke-test chức năng trên máy cá nhân. Kết quả Ollama không được dùng làm số liệu hiệu năng của đồ án vì backend này không chạy ba serving lane, Adaptive Proposer hoặc telemetry đã đóng băng; số liệu chính thức vẫn phải chạy trên vLLM với mô hình đích Qwen2.5-7B-Instruct 4-bit.
+
 ---
 
 ## 4. Cấu trúc Module Mã nguồn dự kiến

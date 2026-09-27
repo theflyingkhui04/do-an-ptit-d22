@@ -1,0 +1,32 @@
+{
+  "task": "M0-04",
+  "step": "7-run-node1-extractor",
+  "backend": "openai-compatible",
+  "base_url": "http://localhost:11434/v1",
+  "model": "qwen2.5:7b-instruct",
+  "run_id": "m0_04_node1_ollama_qwen2_5_7b",
+  "schema_version": "invoice_extraction.v1",
+  "prompt_version": "node1_extractor.v1",
+  "request_count": 30,
+  "success_count": 30,
+  "failure_count": 0,
+  "success_rate": 1.0,
+  "normalization_count": 59,
+  "latency_ms": {
+    "mean": 11251.502,
+    "median": 10945.849,
+    "min": 10052.94,
+    "max": 14842.552
+  },
+  "usage": {
+    "prompt_tokens": 45843,
+    "completion_tokens": 17400,
+    "total_tokens": 63243
+  },
+  "database": "data/processed/m0_04_mcocr_devset/invoices_v1.sqlite",
+  "outputs": {
+    "raw_responses": "data/processed/m0_04_mcocr_devset/node1/ollama_qwen2_5_7b/raw_responses.jsonl",
+    "validated_outputs": "data/processed/m0_04_mcocr_devset/node1/ollama_qwen2_5_7b/validated_outputs.jsonl",
+    "failures": "data/processed/m0_04_mcocr_devset/node1/ollama_qwen2_5_7b/failures.jsonl"
+  }
+}
