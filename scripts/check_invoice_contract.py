@@ -15,8 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from init_invoice_sqlite import connect, init_schema, insert_extraction, validate_payload
-from src.pipeline.invoice_models import validate_invoice_payload
+from init_invoice_sqlite import connect, init_schema, insert_extraction  # noqa: E402
+from src.pipeline.invoice_models import validate_invoice_payload  # noqa: E402
+from src.pipeline.validation import validate_payload  # noqa: E402
 
 
 JSON_SCHEMA_PATH = Path("src/pipeline/schemas/invoice_extraction.schema.json")
@@ -54,20 +55,24 @@ def assert_json_contract(payload: dict) -> None:
     except ValueError:
         pass
     else:
-        raise AssertionError("semantic validation accepted duplicate item line_number values")
+        raise AssertionError(
+            "semantic validation accepted duplicate item line_number values"
+        )
 
 
 def assert_pydantic_contract(payload: dict) -> None:
     validate_invoice_payload(payload)
 
     invalid = copy.deepcopy(payload)
-    invalid["invoice"]["currency"] = "VNÄ"
+    invalid["invoice"]["currency"] = "VNĐ"
     try:
         validate_invoice_payload(invalid)
     except ValidationError:
         pass
     else:
-        raise AssertionError("Pydantic contract accepted a non-ISO currency code")
+        raise AssertionError(
+            "Pydantic contract accepted a non-ISO currency code"
+        )
 
     invalid = copy.deepcopy(payload)
     invalid["invoice"]["issued_date"] = "2020-02-30"
@@ -76,7 +81,9 @@ def assert_pydantic_contract(payload: dict) -> None:
     except ValidationError:
         pass
     else:
-        raise AssertionError("Pydantic contract accepted an impossible calendar date")
+        raise AssertionError(
+            "Pydantic contract accepted an impossible calendar date"
+        )
 
     invalid = build_relational_payload(payload)
     invalid["items"].append(copy.deepcopy(invalid["items"][0]))
@@ -85,16 +92,22 @@ def assert_pydantic_contract(payload: dict) -> None:
     except ValidationError:
         pass
     else:
-        raise AssertionError("Pydantic contract accepted duplicate item line_number values")
+        raise AssertionError(
+            "Pydantic contract accepted duplicate item line_number values"
+        )
 
     invalid = copy.deepcopy(payload)
-    invalid["extraction"]["field_evidence"][0]["raw_text"] = "not present in OCR text"
+    invalid["extraction"]["field_evidence"][0]["raw_text"] = (
+        "not present in OCR text"
+    )
     try:
         validate_invoice_payload(invalid)
     except ValidationError:
         pass
     else:
-        raise AssertionError("Pydantic contract accepted non-verbatim field evidence")
+        raise AssertionError(
+            "Pydantic contract accepted non-verbatim field evidence"
+        )
 
 
 def build_relational_payload(payload: dict) -> dict:
@@ -105,8 +118,16 @@ def build_relational_payload(payload: dict) -> dict:
             "description": "San pham kiem thu",
             "sku": "TEST-001",
             "quantity": {"raw": "2", "value": 2, "unit": "cai"},
-            "unit_price": {"raw": "10,000", "value": 10000, "currency": "VND"},
-            "line_total": {"raw": "20,000", "value": 20000, "currency": "VND"},
+            "unit_price": {
+                "raw": "10,000",
+                "value": 10000,
+                "currency": "VND",
+            },
+            "line_total": {
+                "raw": "20,000",
+                "value": 20000,
+                "currency": "VND",
+            },
             "vat_rate": 10,
         }
     ]
@@ -114,8 +135,16 @@ def build_relational_payload(payload: dict) -> dict:
         {
             "tax_name": "VAT",
             "tax_rate": 10,
-            "taxable_amount": {"raw": "20,000", "value": 20000, "currency": "VND"},
-            "tax_amount": {"raw": "2,000", "value": 2000, "currency": "VND"},
+            "taxable_amount": {
+                "raw": "20,000",
+                "value": 20000,
+                "currency": "VND",
+            },
+            "tax_amount": {
+                "raw": "2,000",
+                "value": 2000,
+                "currency": "VND",
+            },
         }
     ]
     return relational
@@ -129,7 +158,12 @@ def assert_sqlite_contract(payload: dict) -> None:
 
         relational = build_relational_payload(payload)
         validate_payload(relational, JSON_SCHEMA_PATH)
-        invoice_id = insert_extraction(conn, relational, RUN_ID, replace=False)
+        invoice_id = insert_extraction(
+            conn,
+            relational,
+            RUN_ID,
+            replace=False,
+        )
         init_schema(conn, SQL_SCHEMA_PATH)
 
         invoice = conn.execute(
@@ -140,31 +174,54 @@ def assert_sqlite_contract(payload: dict) -> None:
             """,
             (invoice_id,),
         ).fetchone()
-        assert invoice == ("m0_04_001", "MINIMART ANAN", 42000.0, 1, 1)
+        assert invoice == (
+            "m0_04_001",
+            "MINIMART ANAN",
+            42000.0,
+            1,
+            1,
+        )
 
         item = conn.execute(
-            "SELECT sku, quantity_value, line_total_value FROM v_item_facts WHERE invoice_id = ?",
+            """
+            SELECT sku, quantity_value, line_total_value
+            FROM v_item_facts
+            WHERE invoice_id = ?
+            """,
             (invoice_id,),
         ).fetchone()
         assert item == ("TEST-001", 2.0, 20000.0)
 
         tax = conn.execute(
-            "SELECT tax_name, tax_rate, tax_amount_value FROM v_tax_facts WHERE invoice_id = ?",
+            """
+            SELECT tax_name, tax_rate, tax_amount_value
+            FROM v_tax_facts
+            WHERE invoice_id = ?
+            """,
             (invoice_id,),
         ).fetchone()
         assert tax == ("VAT", 10.0, 2000.0)
 
         try:
             conn.execute(
-                "UPDATE invoices SET missing_fields_json = ? WHERE invoice_id = ?",
+                """
+                UPDATE invoices
+                SET missing_fields_json = ?
+                WHERE invoice_id = ?
+                """,
                 ('"not-an-array"', invoice_id),
             )
         except sqlite3.IntegrityError:
             conn.rollback()
         else:
-            raise AssertionError("missing_fields_json accepted a non-array JSON value")
+            raise AssertionError(
+                "missing_fields_json accepted a non-array JSON value"
+            )
 
-        conn.execute("DELETE FROM extraction_runs WHERE run_id = ?", (RUN_ID,))
+        conn.execute(
+            "DELETE FROM extraction_runs WHERE run_id = ?",
+            (RUN_ID,),
+        )
         conn.commit()
         assert conn.execute("SELECT COUNT(*) FROM invoices").fetchone()[0] == 0
     finally:
@@ -185,9 +242,14 @@ def main() -> None:
         "sqlite_user_version": 1,
         "example": EXAMPLE_PATH.as_posix(),
     }
-    report_path = Path("experiments/results/m1_03_invoice_contract_summary.json")
+    report_path = Path(
+        "experiments/results/m1_03_invoice_contract_summary.json"
+    )
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    report_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

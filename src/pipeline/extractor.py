@@ -1,18 +1,25 @@
-"""Reusable pure-core helpers for M1-03 Node 1 invoice extraction.
-
-This module intentionally contains only deterministic, offline-testable logic:
-response-envelope parsing, strict JSON decoding, safe canonicalization, and
-source-binding verification.
-
-HTTP transport, preflight, schema/Pydantic validation, result envelopes, and
-SQLite persistence are added in later integration layers.
-"""
+"""Reusable runtime core for M1-03 Node 1 invoice extraction."""
 
 from __future__ import annotations
 
+import copy
 import json
+import time
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
+
+from src.pipeline.openai_compatible import (
+    OpenAICompatibleClient,
+    OpenAICompatibleError,
+)
+from src.pipeline.validation import (
+    DEFAULT_JSON_SCHEMA_PATH,
+    json_schema_validation_errors,
+    pydantic_validation_errors,
+    semantic_validation_errors,
+)
 
 
 class FailureCode(str, Enum):
@@ -25,6 +32,12 @@ class FailureCode(str, Enum):
     SCHEMA_VALIDATION_ERROR = "SCHEMA_VALIDATION_ERROR"
     SEMANTIC_VALIDATION_ERROR = "SEMANTIC_VALIDATION_ERROR"
     PERSISTENCE_ERROR = "PERSISTENCE_ERROR"
+
+    ENDPOINT_UNREACHABLE = "ENDPOINT_UNREACHABLE"
+    MODEL_NOT_FOUND = "MODEL_NOT_FOUND"
+    BACKEND_CONTRACT_UNSUPPORTED = "BACKEND_CONTRACT_UNSUPPORTED"
+    DATASET_INVALID = "DATASET_INVALID"
+    PROMPT_PACKAGE_INVALID = "PROMPT_PACKAGE_INVALID"
 
 
 class ExtractorStage(str, Enum):
@@ -40,7 +53,7 @@ class ExtractorStage(str, Enum):
 
 
 class ExtractorError(RuntimeError):
-    """Structured internal error carrying a stable failure code and stage."""
+    """Structured run-level/internal error carrying a stable code and stage."""
 
     def __init__(
         self,
@@ -54,29 +67,39 @@ class ExtractorError(RuntimeError):
         self.message = message
 
 
-def _reject_non_finite_json_constant(value: str) -> None:
-    """Reject NaN/Infinity/-Infinity because they are not valid strict JSON."""
+@dataclass(frozen=True)
+class Node1Success:
+    """Successful per-sample result after full validation."""
 
+    sample_id: str
+    latency_ms: float
+    raw_response: dict[str, Any]
+    assistant_content: str
+    canonical_payload: dict[str, Any]
+    normalizations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Node1Failure:
+    """Stable per-sample failure result after a request was attempted."""
+
+    sample_id: str
+    error_code: FailureCode
+    stage: ExtractorStage
+    message: str
+    latency_ms: float | None
+    raw_response: dict[str, Any] | None = None
+    assistant_content: str | None = None
+
+
+def _reject_non_finite_json_constant(value: str) -> None:
     raise ValueError(f"Non-standard JSON numeric constant: {value}")
 
 
 def parse_assistant_payload(
     response: dict[str, Any],
 ) -> tuple[dict[str, Any], str]:
-    """Extract and strictly decode ``choices[0].message.content``.
-
-    The assistant content must itself be exactly one JSON object. Markdown
-    fences, surrounding prose, JSON arrays, non-finite numeric constants,
-    empty content, and malformed response envelopes are rejected rather than
-    repaired.
-
-    Returns:
-        ``(payload, assistant_content)`` where ``assistant_content`` is the
-        exact string received in the decoded response envelope.
-
-    Raises:
-        ExtractorError: with RESPONSE_ENVELOPE_ERROR or JSON_PARSE_ERROR.
-    """
+    """Extract and strictly decode ``choices[0].message.content``."""
     try:
         choices = response["choices"]
         if not isinstance(choices, list) or not choices:
@@ -120,7 +143,6 @@ def parse_assistant_payload(
             ExtractorStage.PARSE,
             "Assistant content must decode to exactly one JSON object.",
         )
-
     return payload, content
 
 
@@ -128,12 +150,7 @@ def validate_source_binding(
     payload: dict[str, Any],
     expected_source: object,
 ) -> None:
-    """Require model-returned ``source`` to equal the trusted request source.
-
-    This function never overwrites ``payload["source"]`` with trusted data.
-    Any missing key, unexpected key, or value mismatch is evidence of a source
-    contract violation and is rejected.
-    """
+    """Require model-returned ``source`` to equal the trusted request source."""
     if not isinstance(expected_source, dict):
         raise ExtractorError(
             FailureCode.SOURCE_BINDING_ERROR,
@@ -154,7 +171,6 @@ def validate_source_binding(
 
     expected_keys = set(expected_source)
     actual_keys = set(actual_source)
-
     missing_keys = sorted(expected_keys - actual_keys)
     unexpected_keys = sorted(actual_keys - expected_keys)
     mismatched_values = sorted(
@@ -171,11 +187,11 @@ def validate_source_binding(
     if mismatched_values:
         details.append(f"value mismatch: {', '.join(mismatched_values)}")
 
-    diagnostic = "; ".join(details) or "source objects are not exactly equal"
     raise ExtractorError(
         FailureCode.SOURCE_BINDING_ERROR,
         ExtractorStage.SOURCE_BINDING,
-        f"Source binding mismatch: {diagnostic}",
+        "Source binding mismatch: "
+        + ("; ".join(details) or "source objects are not exactly equal"),
     )
 
 
@@ -183,17 +199,7 @@ def normalize_canonical_payload(
     payload: dict[str, Any],
     expected_source: object,
 ) -> list[str]:
-    """Apply only the structural repairs already allowed by M1-03.
-
-    Allowed repairs:
-    - compose ``invoice.issued_at`` from existing issued_date + issued_time;
-    - replace null total money containers with explicit empty Money objects;
-    - default missing ``field_evidence[].source_label`` to null;
-    - remove field-evidence rows whose raw_text is not a source substring.
-
-    The function MUST NOT modify source provenance or infer/change business
-    facts such as seller, buyer, item, amount, tax, identifiers, or labels.
-    """
+    """Apply only structural repairs already allowed by M1-03."""
     normalizations: list[str] = []
 
     invoice = payload.get("invoice")
@@ -245,7 +251,6 @@ def normalize_canonical_payload(
 
     if isinstance(evidence_rows, list):
         retained_evidence: list[Any] = []
-
         for index, evidence in enumerate(evidence_rows):
             if not isinstance(evidence, dict):
                 retained_evidence.append(evidence)
@@ -275,3 +280,223 @@ def normalize_canonical_payload(
         extraction["field_evidence"] = retained_evidence
 
     return normalizations
+
+
+class Node1Extractor:
+    """Reusable Node 1 runtime core around an OpenAI-compatible client."""
+
+    def __init__(
+        self,
+        client: OpenAICompatibleClient,
+        model: str,
+        json_schema_path: Path = DEFAULT_JSON_SCHEMA_PATH,
+    ) -> None:
+        if not model:
+            raise ValueError("model must be non-empty")
+        self.client = client
+        self.model = model
+        self.json_schema_path = json_schema_path
+
+    def preflight(self) -> None:
+        """Fail fast before the sample loop if endpoint/model is unusable."""
+        try:
+            models = self.client.list_models()
+        except OpenAICompatibleError as exc:
+            message = str(exc)
+            if message.startswith("Cannot reach "):
+                code = FailureCode.ENDPOINT_UNREACHABLE
+            else:
+                code = FailureCode.BACKEND_CONTRACT_UNSUPPORTED
+            raise ExtractorError(
+                code,
+                ExtractorStage.PRECONDITION,
+                message,
+            ) from exc
+
+        if self.model not in models:
+            raise ExtractorError(
+                FailureCode.MODEL_NOT_FOUND,
+                ExtractorStage.PRECONDITION,
+                f"Model {self.model!r} is not available. Available models: {models}",
+            )
+
+    def _validate_request_row(
+        self,
+        request_row: object,
+    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        if not isinstance(request_row, dict):
+            raise ExtractorError(
+                FailureCode.DATASET_INVALID,
+                ExtractorStage.PRECONDITION,
+                "request_row must be an object.",
+            )
+
+        sample_id = request_row.get("sample_id")
+        request = request_row.get("request")
+        expected_source = request_row.get("expected_source")
+
+        if not isinstance(sample_id, str) or not sample_id:
+            raise ExtractorError(
+                FailureCode.DATASET_INVALID,
+                ExtractorStage.PRECONDITION,
+                "request_row.sample_id must be a non-empty string.",
+            )
+        if not isinstance(request, dict):
+            raise ExtractorError(
+                FailureCode.DATASET_INVALID,
+                ExtractorStage.PRECONDITION,
+                f"{sample_id}: request_row.request must be an object.",
+            )
+        if not isinstance(expected_source, dict):
+            raise ExtractorError(
+                FailureCode.DATASET_INVALID,
+                ExtractorStage.PRECONDITION,
+                f"{sample_id}: request_row.expected_source must be an object.",
+            )
+        if expected_source.get("sample_id") != sample_id:
+            raise ExtractorError(
+                FailureCode.DATASET_INVALID,
+                ExtractorStage.PRECONDITION,
+                f"{sample_id}: expected_source.sample_id does not match request_row.sample_id.",
+            )
+        messages = request.get("messages")
+        if not isinstance(messages, list) or not messages:
+            raise ExtractorError(
+                FailureCode.PROMPT_PACKAGE_INVALID,
+                ExtractorStage.PRECONDITION,
+                f"{sample_id}: request.messages must be a non-empty list.",
+            )
+        if request.get("stream") not in (None, False):
+            raise ExtractorError(
+                FailureCode.BACKEND_CONTRACT_UNSUPPORTED,
+                ExtractorStage.PRECONDITION,
+                f"{sample_id}: Node1Extractor correctness path requires non-streaming requests.",
+            )
+
+        return sample_id, request, expected_source
+
+    @staticmethod
+    def _failure(
+        sample_id: str,
+        error: ExtractorError,
+        latency_ms: float | None,
+        raw_response: dict[str, Any] | None = None,
+        assistant_content: str | None = None,
+    ) -> Node1Failure:
+        return Node1Failure(
+            sample_id=sample_id,
+            error_code=error.code,
+            stage=error.stage,
+            message=error.message,
+            latency_ms=latency_ms,
+            raw_response=raw_response,
+            assistant_content=assistant_content,
+        )
+
+    def run_request(
+        self,
+        request_row: dict[str, Any],
+    ) -> Node1Success | Node1Failure:
+        """Run one frozen request through parse -> normalize -> validate.
+
+        Request-row/package errors are raised as run-level ExtractorError so
+        malformed datasets are not counted as extraction failures. Once the
+        server request is attempted, observable model/transport failures are
+        returned as Node1Failure and remain in the measured denominator.
+        """
+        sample_id, request, expected_source = self._validate_request_row(
+            request_row
+        )
+
+        request_payload = copy.deepcopy(request)
+        request_payload["model"] = self.model
+
+        started = time.perf_counter()
+        try:
+            response = self.client.chat_completions(request_payload)
+        except OpenAICompatibleError as exc:
+            latency_ms = (time.perf_counter() - started) * 1000
+            error = ExtractorError(
+                FailureCode.TRANSPORT_ERROR,
+                ExtractorStage.REQUEST,
+                str(exc),
+            )
+            return self._failure(sample_id, error, latency_ms)
+
+        latency_ms = (time.perf_counter() - started) * 1000
+        raw_response = copy.deepcopy(response)
+        assistant_content: str | None = None
+
+        try:
+            payload, assistant_content = parse_assistant_payload(response)
+            normalizations = normalize_canonical_payload(
+                payload,
+                expected_source,
+            )
+            validate_source_binding(payload, expected_source)
+        except ExtractorError as exc:
+            return self._failure(
+                sample_id,
+                exc,
+                latency_ms,
+                raw_response=raw_response,
+                assistant_content=assistant_content,
+            )
+
+        schema_errors = json_schema_validation_errors(
+            payload,
+            self.json_schema_path,
+        )
+        if schema_errors:
+            error = ExtractorError(
+                FailureCode.SCHEMA_VALIDATION_ERROR,
+                ExtractorStage.VALIDATION,
+                "; ".join(schema_errors),
+            )
+            return self._failure(
+                sample_id,
+                error,
+                latency_ms,
+                raw_response=raw_response,
+                assistant_content=assistant_content,
+            )
+
+        semantic_errors = semantic_validation_errors(payload)
+        if semantic_errors:
+            error = ExtractorError(
+                FailureCode.SEMANTIC_VALIDATION_ERROR,
+                ExtractorStage.VALIDATION,
+                "; ".join(semantic_errors),
+            )
+            return self._failure(
+                sample_id,
+                error,
+                latency_ms,
+                raw_response=raw_response,
+                assistant_content=assistant_content,
+            )
+
+        pydantic_errors = pydantic_validation_errors(payload)
+        if pydantic_errors:
+            error = ExtractorError(
+                FailureCode.SCHEMA_VALIDATION_ERROR,
+                ExtractorStage.VALIDATION,
+                "Pydantic mirror rejected payload: "
+                + "; ".join(pydantic_errors),
+            )
+            return self._failure(
+                sample_id,
+                error,
+                latency_ms,
+                raw_response=raw_response,
+                assistant_content=assistant_content,
+            )
+
+        return Node1Success(
+            sample_id=sample_id,
+            latency_ms=latency_ms,
+            raw_response=raw_response,
+            assistant_content=assistant_content,
+            canonical_payload=payload,
+            normalizations=tuple(normalizations),
+        )
