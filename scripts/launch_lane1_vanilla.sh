@@ -23,4 +23,4 @@ $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
   --gpu-memory-utilization 0.85 \
   --max-model-len 4096 \
   --max-num-seqs 32 \
-  --disable-log-requests
+  --no-enable-log-requests
