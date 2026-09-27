@@ -17,9 +17,9 @@ from src.pipeline.w1_workload import (  # noqa: E402
     W1_DATASET_VERSION,
     W1_WORKLOAD_ID,
     compute_package_sha256,
-    file_sha256,
     load_jsonl,
     request_semantic_view,
+    w1_v1_artifact_sha256,
 )
 
 
@@ -91,7 +91,7 @@ def assert_manifest_hashes(w1_dir: Path, package_manifest: dict[str, Any]) -> di
         path = REPO_ROOT / rel_path
         if not path.exists():
             raise AssertionError(f"missing artifact {name}: {rel_path}")
-        actual_hashes[name] = file_sha256(path)
+        actual_hashes[name] = w1_v1_artifact_sha256(name, path)
     for name, digest in actual_hashes.items():
         if expected_hashes.get(name) != digest:
             raise AssertionError(f"hash mismatch for {name}")

@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
 
-from src.pipeline.w1_workload import load_jsonl, request_semantic_view
+from src.pipeline.w1_workload import (
+    canonical_text_file_sha256,
+    load_jsonl,
+    request_semantic_view,
+)
 
 
 W1_DIR = Path("experiments/configs/w1")
@@ -53,6 +58,33 @@ class W1WorkloadTests(unittest.TestCase):
         self.assertEqual(view["response_format"], {"type": "json_object"})
         self.assertEqual(len(view["system_prompt_sha256"]), 64)
         self.assertEqual(len(view["user_content_sha256"]), 64)
+
+    def test_text_artifact_hash_is_eol_independent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            lf_path = root / "lf.txt"
+            crlf_path = root / "crlf.txt"
+            changed_path = root / "changed.txt"
+
+            lf_path.write_bytes(b'{"a":1}\n')
+            crlf_path.write_bytes(b'{"a":1}\r\n')
+            changed_path.write_bytes(b'{"a":2}\n')
+
+            # Same semantic text must hash identically regardless of checkout EOL.
+            self.assertEqual(
+                canonical_text_file_sha256(lf_path, "\n"),
+                canonical_text_file_sha256(crlf_path, "\n"),
+            )
+            self.assertEqual(
+                canonical_text_file_sha256(lf_path, "\r\n"),
+                canonical_text_file_sha256(crlf_path, "\r\n"),
+            )
+
+            # A semantic content change must still change the hash.
+            self.assertNotEqual(
+                canonical_text_file_sha256(lf_path, "\n"),
+                canonical_text_file_sha256(changed_path, "\n"),
+            )
 
 
 if __name__ == "__main__":

@@ -29,10 +29,10 @@ from src.pipeline.w1_workload import (  # noqa: E402
     W1_DATASET_VERSION,
     W1_WORKLOAD_ID,
     compute_package_sha256,
-    file_sha256,
     repo_relative,
     sha256_json,
     sha256_text,
+    w1_v1_artifact_sha256,
     write_jsonl,
 )
 
@@ -229,7 +229,10 @@ def main() -> None:
         "json_schema": Path("src/pipeline/schemas/invoice_extraction.schema.json"),
     }
     file_hashes = {
-        name: file_sha256(path if path.is_absolute() else REPO_ROOT / path)
+        name: w1_v1_artifact_sha256(
+            name,
+            path if path.is_absolute() else REPO_ROOT / path,
+        )
         for name, path in artifact_paths.items()
     }
     metadata = {
