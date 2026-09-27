@@ -2,17 +2,9 @@
 
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
 
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = REPO_ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-from run_node1_extractor import normalize_canonical_payload  # noqa: E402
+from src.pipeline.extractor import normalize_canonical_payload
 
 
 class NormalizeCanonicalPayloadTests(unittest.TestCase):
