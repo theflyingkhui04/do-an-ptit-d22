@@ -1,0 +1,4 @@
+# Gói phụ thuộc tối thiểu để phục vụ máy chủ vLLM (Làn 1 & Làn 2)
+vllm
+huggingface_hub
+requests
