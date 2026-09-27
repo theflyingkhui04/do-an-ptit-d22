@@ -1,0 +1,16 @@
+{
+  "task": "M1-01",
+  "step": "telemetry-contract-check",
+  "schema_version": "m1_request_telemetry.v1",
+  "status": "PASS",
+  "record_count": 1,
+  "failure_count": 0,
+  "vanilla_count": 0,
+  "static_count": 1,
+  "static_alpha_min": 0.5,
+  "static_alpha_max": 0.5,
+  "static_tau_min": 2.5,
+  "static_tau_max": 2.5,
+  "vram_peak_mb_max": 13820.0,
+  "failures": []
+}

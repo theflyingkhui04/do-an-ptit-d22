@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://do-an-ptit-d22.local/schemas/m1_request_telemetry.v1.schema.json",
+  "title": "M1 Request Telemetry",
+  "description": "Normalized per-request telemetry handoff record for M1 Interface A.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "client_request_id",
+    "server_request_id",
+    "lane",
+    "model",
+    "telemetry_transport",
+    "speculative_decoding",
+    "alpha",
+    "tau",
+    "tree_budgets",
+    "client_metrics",
+    "gpu_metrics",
+    "runtime"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "m1_request_telemetry.v1"
+    },
+    "client_request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "server_request_id": {
+      "type": ["string", "null"]
+    },
+    "lane": {
+      "type": "string",
+      "enum": ["vanilla", "static"]
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "telemetry_transport": {
+      "type": "string",
+      "const": "vllm_stream_usage_metrics.summary"
+    },
+    "speculative_decoding": {
+      "anyOf": [
+        {"$ref": "#/$defs/speculative_decoding"},
+        {"type": "null"}
+      ]
+    },
+    "alpha": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "tau": {
+      "type": ["number", "null"],
+      "minimum": 1,
+      "maximum": 4
+    },
+    "tree_budgets": {
+      "type": "null",
+      "description": "M1 static summary mode does not expose per-step tree budgets."
+    },
+    "client_metrics": {
+      "$ref": "#/$defs/client_metrics"
+    },
+    "gpu_metrics": {
+      "$ref": "#/$defs/gpu_metrics"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"lane": {"const": "vanilla"}},
+        "required": ["lane"]
+      },
+      "then": {
+        "properties": {
+          "speculative_decoding": {"type": "null"},
+          "alpha": {"type": "null"},
+          "tau": {"type": "null"},
+          "tree_budgets": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"lane": {"const": "static"}},
+        "required": ["lane"]
+      },
+      "then": {
+        "properties": {
+          "speculative_decoding": {"$ref": "#/$defs/speculative_decoding"},
+          "alpha": {"type": "number"},
+          "tau": {"type": "number"},
+          "tree_budgets": {"type": "null"}
+        },
+        "required": ["speculative_decoding", "alpha", "tau", "tree_budgets"]
+      }
+    }
+  ],
+  "$defs": {
+    "non_negative_number": {
+      "type": "number",
+      "minimum": 0
+    },
+    "speculative_decoding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mean_acceptance_length",
+        "draft_acceptance_rate",
+        "acceptance_histogram",
+        "num_spec_steps",
+        "num_accepted_draft_tokens",
+        "num_draft_tokens",
+        "num_spec_tokens"
+      ],
+      "properties": {
+        "mean_acceptance_length": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "draft_acceptance_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "acceptance_histogram": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "num_spec_steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "num_accepted_draft_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "num_draft_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "num_spec_tokens": {
+          "type": "integer",
+          "const": 3
+        }
+      }
+    },
+    "client_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ttft_ms", "tpot_ms", "e2e_ms", "output_tokens"],
+      "properties": {
+        "ttft_ms": {"$ref": "#/$defs/non_negative_number"},
+        "tpot_ms": {"$ref": "#/$defs/non_negative_number"},
+        "e2e_ms": {"$ref": "#/$defs/non_negative_number"},
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "gpu_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gpu_index",
+        "vram_peak_mb",
+        "vram_idle_before_warmup_mb",
+        "vram_idle_after_warmup_mb",
+        "vram_idle_after_smoke_mb",
+        "vram_idle_delta_mb",
+        "vram_peak_limit_mb",
+        "vram_peak_pass",
+        "vram_stability_pass"
+      ],
+      "properties": {
+        "gpu_index": {"type": "integer", "minimum": 0},
+        "vram_peak_mb": {"$ref": "#/$defs/non_negative_number"},
+        "vram_idle_before_warmup_mb": {"$ref": "#/$defs/non_negative_number"},
+        "vram_idle_after_warmup_mb": {"$ref": "#/$defs/non_negative_number"},
+        "vram_idle_after_smoke_mb": {"$ref": "#/$defs/non_negative_number"},
+        "vram_idle_delta_mb": {"type": "number"},
+        "vram_peak_limit_mb": {"$ref": "#/$defs/non_negative_number"},
+        "vram_peak_pass": {"type": "boolean"},
+        "vram_stability_pass": {"type": "boolean"}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["vllm_version"],
+      "properties": {
+        "vllm_version": {"type": ["string", "null"]},
+        "torch_version": {"type": ["string", "null"]},
+        "driver_version": {"type": ["string", "null"]},
+        "gpu_name": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

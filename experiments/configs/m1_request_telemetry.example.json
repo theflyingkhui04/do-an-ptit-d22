@@ -1,0 +1,43 @@
+{
+  "schema_version": "m1_request_telemetry.v1",
+  "client_request_id": "smoke-static-0001",
+  "server_request_id": "chatcmpl-example-static",
+  "lane": "static",
+  "model": "qwen2.5-7b-static-draft",
+  "telemetry_transport": "vllm_stream_usage_metrics.summary",
+  "speculative_decoding": {
+    "mean_acceptance_length": 2.5,
+    "draft_acceptance_rate": 0.5,
+    "acceptance_histogram": [1, 1, 1, 1],
+    "num_spec_steps": 4,
+    "num_accepted_draft_tokens": 6,
+    "num_draft_tokens": 12,
+    "num_spec_tokens": 3
+  },
+  "alpha": 0.5,
+  "tau": 2.5,
+  "tree_budgets": null,
+  "client_metrics": {
+    "ttft_ms": 151.2,
+    "tpot_ms": 27.8,
+    "e2e_ms": 429.2,
+    "output_tokens": 11
+  },
+  "gpu_metrics": {
+    "gpu_index": 0,
+    "vram_peak_mb": 13820.0,
+    "vram_idle_before_warmup_mb": 12480.0,
+    "vram_idle_after_warmup_mb": 13200.0,
+    "vram_idle_after_smoke_mb": 13260.0,
+    "vram_idle_delta_mb": 60.0,
+    "vram_peak_limit_mb": 14336.0,
+    "vram_peak_pass": true,
+    "vram_stability_pass": true
+  },
+  "runtime": {
+    "vllm_version": "0.29.0",
+    "torch_version": "2.x",
+    "driver_version": "unknown",
+    "gpu_name": "Tesla T4"
+  }
+}
