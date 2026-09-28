@@ -1,1 +1,2 @@
 lane,workload,concurrency,gpu,n_runs,ttft_p50,tpot_p50,tpot_p95,e2e_p50,alpha,tau,vram_peak_mb,throughput,speedup_vs_vanilla,variance_flag,commit,timestamp
+vanilla,smoke,1,Tesla T4,5,53.579,23.131,23.25,284.707,N/A,N/A,12184.19,9.65,1.0,False,4b3fd5f75c18b67e3d93ad67628bd1b8ec17ad14,2026-09-28T16:23:50.745139+00:00
