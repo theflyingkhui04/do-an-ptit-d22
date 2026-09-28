@@ -46,24 +46,27 @@ data/processed/*
 !data/processed/m0_04_mcocr_devset/**
 
 # ===== Kết quả / log / cache =====
-outputs/
-results/
-*.log
-runs/
+# Chỉ ignore ở thư mục gốc (thêm dấu / ở đầu để không đụng vào experiments/)
+/outputs/
+/results/
+/runs/
 wandb/
 .langfuse/
 .cache/
 .hf_cache/
 hf_cache/
-# Cho phép lưu trữ worklogs / notebooks nhiệm vụ trong logs/
-!logs/
-!logs/**
-logs/**/*.log
-# NGOẠI LỆ — bảng số & biểu đồ của đồ án PHẢI được commit (nguồn sự thật cho quyển).
-# Xem docs/06-ke-hoach-thuc-nghiem.md §5.
+# 1. Cho phép commit TOÀN BỘ file trong experiments/results/ (json, csv, biểu đồ,...)
 !experiments/results/
 !experiments/results/**
-experiments/runs/
+# 2. Cho phép commit TOÀN BỘ file telemetry trong experiments/runs/ (raw jsonl)
+!experiments/runs/
+!experiments/runs/**
+# 3. Cho phép commit TOÀN BỘ logs/ (worklog, notebook, và cả file server .log)
+!logs/
+!logs/**
+!logs/*.log
+!logs/**/*.log
+
 
 # ===== Editor / IDE =====
 .vscode/
