@@ -22,4 +22,4 @@ $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
   --dtype half \
   --gpu-memory-utilization 0.85 \
   --max-model-len 4096 \
-  --max-num-seqs 32
+  --max-num-seqs 32
