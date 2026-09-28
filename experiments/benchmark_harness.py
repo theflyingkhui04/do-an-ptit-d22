@@ -26,9 +26,10 @@ from pynvml import (
 ENVIRONMENT_PROFILE = "m1-t4-cu130-v1"
 
 EXPECTED_GPU = "Tesla T4"
-EXPECTED_VLLM = "0.29.0"
+EXPECTED_VLLM = ("0.29.0", "0.30.0")
 EXPECTED_TORCH = "2.13.0+cu130"
 EXPECTED_TORCH_CUDA = "13.0"
+
 
 DEFAULT_CONCURRENCY_SWEEP = (1, 2, 4, 8, 16, 32)
 CANONICAL_MIN_REPEATS = 5
@@ -129,7 +130,12 @@ def validate_environment(env: dict) -> list[str]:
     mismatches: list[str] = []
     for field, expected_value in expected.items():
         actual_value = env.get(field)
-        if actual_value != expected_value:
+        if isinstance(expected_value, (tuple, list, set)):
+            if actual_value not in expected_value:
+                mismatches.append(
+                    f"{field}: expected one of {expected_value}, got {actual_value}"
+                )
+        elif actual_value != expected_value:
             mismatches.append(
                 f"{field}: expected {expected_value}, got {actual_value}"
             )
@@ -659,15 +665,17 @@ async def async_main(args: argparse.Namespace) -> int:
             for mismatch in mismatches:
                 print(f"mismatch             : {mismatch}")
             print("=======================================")
-            return 5
-
-        print("\n===== ENVIRONMENT CONTRACT PASS =====")
-        print(f"profile              : {ENVIRONMENT_PROFILE}")
-        print(f"gpu                  : {env['gpu']}")
-        print(f"vllm_version         : {env['vllm_version']}")
-        print(f"torch_version        : {env['torch_version']}")
-        print(f"torch_cuda_version   : {env['torch_cuda_version']}")
-        print("=====================================")
+            if not args.skip_env_check:
+                return 5
+            print("[CẢNH BÁO] Tiếp tục chạy vì có cờ --skip-env-check")
+        else:
+            print("\n===== ENVIRONMENT CONTRACT PASS =====")
+            print(f"profile              : {ENVIRONMENT_PROFILE}")
+            print(f"gpu                  : {env['gpu']}")
+            print(f"vllm_version         : {env['vllm_version']}")
+            print(f"torch_version        : {env['torch_version']}")
+            print(f"torch_cuda_version   : {env['torch_cuda_version']}")
+            print("=====================================")
 
         ensure_summary(Path(args.summary_csv))
 
@@ -823,6 +831,11 @@ def parse_args() -> argparse.Namespace:
             "Remove any stale raw JSONL once at experiment start, before warm-up; "
             "all measured repeats/cells then append to the same experiment file."
         ),
+    )
+    parser.add_argument(
+        "--skip-env-check",
+        action="store_true",
+        help="Bỏ qua việc dừng chương trình nếu môi trường không khớp hoàn toàn (dùng khi thử nghiệm/debug).",
     )
 
     args = parser.parse_args()
