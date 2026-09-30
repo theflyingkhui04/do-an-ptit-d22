@@ -186,8 +186,74 @@ Interpretation:
 
 - Vanilla lane passed the M1 telemetry contract for 10/10 smoke requests.
 - VRAM peak was below the M1 gate: `12184.188 MiB <= 14336 MiB`.
-- `status=PARTIAL` is expected because Static Draft lane has not been run yet.
+- `status=PARTIAL` was expected at this step because Static Draft lane had not been run yet.
 
-Next step:
+## 2026-09-30 - Colab T4 Static Smoke Evidence & Final Handoff
 
-Run Static Draft lane on Colab T4. The M1-01 handoff is ready only when both `vanilla` and `static` lanes pass and the summary reports `handoff_ready=true`.
+### Static lane result
+
+Command run on Colab:
+
+```bash
+python scripts/smoke_m1_01_telemetry.py \
+  --lane static \
+  --endpoint http://127.0.0.1:8002/v1/chat/completions \
+  --model qwen2.5-7b-static-draft \
+  --requests 10 \
+  --warmup 3 \
+  --raw-out experiments/runs/m1_01_static_smoke.jsonl
+```
+
+Result summary:
+
+```json
+{
+  "task": "M1-01",
+  "step": "dual-lane-telemetry-smoke",
+  "schema_version": "m1_request_telemetry.v1",
+  "status": "PASS",
+  "completed_lanes": ["static", "vanilla"],
+  "handoff_ready": true,
+  "static": {
+    "request_count": 10,
+    "success_count": 10,
+    "failure_count": 0,
+    "telemetry_contract_pass": true,
+    "alpha_min": 0.15503875968992248,
+    "alpha_max": 0.4567901234567901,
+    "tau_min": 1.4651162790697674,
+    "tau_max": 2.3703703703703702,
+    "vram_peak_mb": 13128.188,
+    "vram_peak_limit_mb": 14336.0,
+    "raw_out": "experiments/runs/m1_01_static_smoke.jsonl"
+  }
+}
+```
+
+Runtime observed by Static smoke:
+
+- Runtime: Google Colab T4 via VS Code Tunnel `colab-t4`
+- GPU: `Tesla T4`
+- Driver: `580.82.07`
+- vLLM: `0.30.0`
+- PyTorch: `2.13.0`
+- Commit observed by smoke script: `fb8e1746d715cea4972c6c48fd44cfe7d0997cd3`
+
+Evidence files produced on Colab:
+
+- Vanilla raw request records: `experiments/runs/m1_01_vanilla_smoke.jsonl`
+- Static raw request records: `experiments/runs/m1_01_static_smoke.jsonl`
+- Aggregated summary: `experiments/results/m1_01_smoke_summary.json`
+
+Final interpretation:
+
+- Both Vanilla and Static Draft lanes passed the M1 telemetry contract for 10/10 smoke requests each.
+- Final summary status is `PASS`; `handoff_ready=true`.
+- Static lane emitted native `metrics.speculative_decoding` through the final streaming usage chunk after enabling per-request metrics in `scripts/launch_lane2_static.sh`.
+- Static alpha range: `0.15503875968992248` to `0.4567901234567901`.
+- Static tau range: `1.4651162790697674` to `2.3703703703703702`.
+- Static VRAM peak was below the M1 gate: `13128.188 MiB <= 14336 MiB`.
+
+Handoff status:
+
+M1-01 telemetry contract smoke is ready for Dai/M1-02 harness integration. Keep the Colab-generated raw JSONL and summary JSON as run evidence when syncing experiment artifacts.
