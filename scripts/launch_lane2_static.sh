@@ -27,4 +27,5 @@ $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
   --max-model-len 4096 \
   --max-num-seqs 32 \
   --speculative-config "$SPEC_CONFIG" \
-  --per-request-spec-decode-metrics summary
+  --per-request-spec-decode-metrics summary \
+  --enable-per-request-metrics
