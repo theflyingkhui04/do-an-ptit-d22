@@ -1,23 +1,71 @@
 {
   "task": "M1-01",
   "step": "dual-lane-telemetry-smoke",
-  "status": "PENDING_T4_LIVE_RUN",
   "schema_version": "m1_request_telemetry.v1",
-  "reason": "Local workspace does not have live vLLM T4 endpoints. Smoke client and telemetry validator are implemented and locally tested; final acceptance must be produced on the target Tesla T4 runtime.",
-  "completed_lanes": [],
-  "handoff_ready": false,
-  "lanes": {},
-  "required_live_commands": [
-    "python scripts/smoke_m1_01_telemetry.py --lane vanilla --endpoint http://127.0.0.1:8001/v1/chat/completions --model qwen2.5-7b-vanilla --requests 10 --warmup 3 --raw-out experiments/runs/m1_01_smoke/vanilla.jsonl --summary experiments/results/m1_01_smoke_summary.json",
-    "python scripts/smoke_m1_01_telemetry.py --lane static --endpoint http://127.0.0.1:8002/v1/chat/completions --model qwen2.5-7b-static-draft --requests 10 --warmup 3 --raw-out experiments/runs/m1_01_smoke/static.jsonl --summary experiments/results/m1_01_smoke_summary.json"
+  "status": "PASS",
+  "completed_lanes": [
+    "static",
+    "vanilla"
   ],
-  "acceptance_gate": {
-    "vanilla_requests": 10,
-    "static_requests": 10,
-    "static_alpha_source": "metrics.speculative_decoding.draft_acceptance_rate",
-    "static_tau_source": "metrics.speculative_decoding.mean_acceptance_length",
-    "vram_peak_limit_mb": 14336.0,
-    "vram_idle_delta_limit_mb": 256.0
-  },
-  "local_contract_checks_passed": true
+  "handoff_ready": true,
+  "lanes": {
+    "vanilla": {
+      "task": "M1-01",
+      "step": "dual-lane-telemetry-smoke",
+      "lane": "vanilla",
+      "endpoint": "http://127.0.0.1:8001/v1/chat/completions",
+      "model": "qwen2.5-7b-vanilla",
+      "schema_version": "m1_request_telemetry.v1",
+      "request_count": 10,
+      "success_count": 10,
+      "failure_count": 0,
+      "telemetry_contract_pass": true,
+      "alpha_min": null,
+      "alpha_max": null,
+      "tau_min": null,
+      "tau_max": null,
+      "vram_peak_mb": 12184.188,
+      "vram_peak_limit_mb": 14336.0,
+      "raw_out": "experiments/runs/m1_01_vanilla_smoke.jsonl",
+      "runtime": {
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0",
+        "aiohttp_version": "3.14.3",
+        "driver_version": "580.82.07",
+        "gpu_name": "Tesla T4",
+        "git_commit": "18134a18624e84e6978fe24154b0caac955a698b",
+        "captured_at_utc": "2026-09-30T13:30:37.075256+00:00"
+      },
+      "failures": []
+    },
+    "static": {
+      "task": "M1-01",
+      "step": "dual-lane-telemetry-smoke",
+      "lane": "static",
+      "endpoint": "http://127.0.0.1:8002/v1/chat/completions",
+      "model": "qwen2.5-7b-static-draft",
+      "schema_version": "m1_request_telemetry.v1",
+      "request_count": 10,
+      "success_count": 10,
+      "failure_count": 0,
+      "telemetry_contract_pass": true,
+      "alpha_min": 0.15503875968992248,
+      "alpha_max": 0.4567901234567901,
+      "tau_min": 1.4651162790697674,
+      "tau_max": 2.3703703703703702,
+      "vram_peak_mb": 13128.188,
+      "vram_peak_limit_mb": 14336.0,
+      "raw_out": "experiments/runs/m1_01_static_smoke.jsonl",
+      "runtime": {
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0",
+        "aiohttp_version": "3.14.3",
+        "driver_version": "580.82.07",
+        "gpu_name": "Tesla T4",
+        "git_commit": "fb8e1746d715cea4972c6c48fd44cfe7d0997cd3",
+        "captured_at_utc": "2026-09-30T14:01:41.734041+00:00"
+      },
+      "failures": []
+    }
+  }
 }
