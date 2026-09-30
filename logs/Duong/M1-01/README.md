@@ -125,3 +125,69 @@ Vanilla cells must keep `alpha = null` and `tau = null`.
 - If `num_spec_tokens != 3`, stop and fix Static lane identity before benchmarking.
 - If VRAM peak exceeds `14336 MiB` or idle delta exceeds `256 MiB`, return to Khôi for runtime/server tuning.
 - If M1-02 needs a different alpha/tau definition, stop and update the interface contract before running sweeps.
+
+## 2026-09-30 - Colab T4 Vanilla Smoke Evidence
+
+### Runtime
+
+- Runtime: Google Colab T4 via VS Code Tunnel `colab-t4`
+- GPU: `Tesla T4`
+- Driver: `580.82.07`
+- vLLM: `0.30.0`
+- PyTorch: `2.13.0`
+- Branch: `feat/m1-01-vllm-dual-lane-server`
+- Commit observed by smoke script: `18134a18624e84e6978fe24154b0caac955a698b`
+
+### Vanilla lane result
+
+Command run on Colab:
+
+```bash
+python scripts/smoke_m1_01_telemetry.py \
+  --lane vanilla \
+  --endpoint http://127.0.0.1:8001/v1/chat/completions \
+  --model qwen2.5-7b-vanilla \
+  --requests 10 \
+  --warmup 3 \
+  --raw-out experiments/runs/m1_01_vanilla_smoke.jsonl
+```
+
+Result summary:
+
+```json
+{
+  "task": "M1-01",
+  "step": "dual-lane-telemetry-smoke",
+  "schema_version": "m1_request_telemetry.v1",
+  "status": "PARTIAL",
+  "completed_lanes": ["vanilla"],
+  "handoff_ready": false,
+  "lane": "vanilla",
+  "request_count": 10,
+  "success_count": 10,
+  "failure_count": 0,
+  "telemetry_contract_pass": true,
+  "alpha_min": null,
+  "alpha_max": null,
+  "tau_min": null,
+  "tau_max": null,
+  "vram_peak_mb": 12184.188,
+  "vram_peak_limit_mb": 14336.0,
+  "raw_out": "experiments/runs/m1_01_vanilla_smoke.jsonl"
+}
+```
+
+Evidence files produced on Colab:
+
+- Raw request records: `experiments/runs/m1_01_vanilla_smoke.jsonl`
+- Aggregated summary: `experiments/results/m1_01_smoke_summary.json`
+
+Interpretation:
+
+- Vanilla lane passed the M1 telemetry contract for 10/10 smoke requests.
+- VRAM peak was below the M1 gate: `12184.188 MiB <= 14336 MiB`.
+- `status=PARTIAL` is expected because Static Draft lane has not been run yet.
+
+Next step:
+
+Run Static Draft lane on Colab T4. The M1-01 handoff is ready only when both `vanilla` and `static` lanes pass and the summary reports `handoff_ready=true`.
