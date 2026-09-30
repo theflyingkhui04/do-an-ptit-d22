@@ -87,7 +87,7 @@ start_lane1() {
     echo $pid > "$PID_FILE_LANE1"
     echo "    Tiến trình chạy nền với PID: ${pid}"
 
-    wait_for_health 8001 120 "$log_file"
+    wait_for_health 8001 300 "$log_file"
 }
 
 start_lane2() {
@@ -102,7 +102,7 @@ start_lane2() {
     echo $pid > "$PID_FILE_LANE2"
     echo "    Tiến trình chạy nền với PID: ${pid}"
 
-    wait_for_health 8002 180 "$log_file"
+    wait_for_health 8002 480 "$log_file"
 }
 
 show_status() {
