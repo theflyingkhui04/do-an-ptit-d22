@@ -257,3 +257,117 @@ Final interpretation:
 Handoff status:
 
 M1-01 telemetry contract smoke is ready for Dai/M1-02 harness integration. Keep the Colab-generated raw JSONL and summary JSON as run evidence when syncing experiment artifacts.
+
+## 2026-10-01 - W2/W3 Continuation for Dai
+
+### Added workload prompt packs
+
+Committed prompt packs for continuing M1-02 measurements from the M1-01 branch:
+
+- `experiments/configs/workloads/w2_text_to_sql.jsonl`
+- `experiments/configs/workloads/w3_free_analysis.jsonl`
+
+`experiments/benchmark_harness.py` was updated from the M1-02 sweep harness and extended with JSONL prompt loading. The harness now auto-resolves:
+
+- `--workload w2` or `--workload w2_text_to_sql` -> W2 prompt pack
+- `--workload w3` or `--workload w3_free_analysis` -> W3 prompt pack
+
+The harness records `prompt_id`, `prompt_index`, and `prompt_source` in raw JSONL so Dai can trace each measured request.
+
+### Quick smoke commands
+
+Use these before a full sweep, while the corresponding lane server is already running.
+
+Vanilla lane:
+
+```bash
+python experiments/benchmark_harness.py \
+  --lane vanilla \
+  --endpoint http://127.0.0.1:8001/v1/chat/completions \
+  --model qwen2.5-7b-vanilla \
+  --workload w2_text_to_sql \
+  --concurrency-sweep 1 2 \
+  --repeats 1 \
+  --num-requests 4 \
+  --warmup-requests 3 \
+  --max-tokens 96 \
+  --raw-out experiments/runs/m1_01_w2_vanilla_smoke.jsonl \
+  --overwrite
+
+python experiments/benchmark_harness.py \
+  --lane vanilla \
+  --endpoint http://127.0.0.1:8001/v1/chat/completions \
+  --model qwen2.5-7b-vanilla \
+  --workload w3_free_analysis \
+  --concurrency-sweep 1 2 \
+  --repeats 1 \
+  --num-requests 4 \
+  --warmup-requests 3 \
+  --max-tokens 192 \
+  --raw-out experiments/runs/m1_01_w3_vanilla_smoke.jsonl \
+  --overwrite
+```
+
+Static lane:
+
+```bash
+python experiments/benchmark_harness.py \
+  --lane static \
+  --endpoint http://127.0.0.1:8002/v1/chat/completions \
+  --model qwen2.5-7b-static-draft \
+  --workload w2_text_to_sql \
+  --concurrency-sweep 1 2 \
+  --repeats 1 \
+  --num-requests 4 \
+  --warmup-requests 3 \
+  --max-tokens 96 \
+  --raw-out experiments/runs/m1_01_w2_static_smoke.jsonl \
+  --overwrite
+
+python experiments/benchmark_harness.py \
+  --lane static \
+  --endpoint http://127.0.0.1:8002/v1/chat/completions \
+  --model qwen2.5-7b-static-draft \
+  --workload w3_free_analysis \
+  --concurrency-sweep 1 2 \
+  --repeats 1 \
+  --num-requests 4 \
+  --warmup-requests 3 \
+  --max-tokens 192 \
+  --raw-out experiments/runs/m1_01_w3_static_smoke.jsonl \
+  --overwrite
+```
+
+### Canonical M1-02-style sweep commands
+
+Run these only after smoke passes. Each invocation sweeps concurrency `[1, 2, 4, 8, 16, 32]` with 5 measured repeats per cell.
+
+```bash
+python experiments/benchmark_harness.py \
+  --lane vanilla \
+  --endpoint http://127.0.0.1:8001/v1/chat/completions \
+  --model qwen2.5-7b-vanilla \
+  --workload w2_text_to_sql \
+  --num-requests 32 \
+  --repeats 5 \
+  --warmup-requests 3 \
+  --max-tokens 96 \
+  --experiment-id m1-01-w2-vanilla \
+  --raw-out experiments/runs/m1_01_w2_vanilla_sweep.jsonl \
+  --overwrite
+
+python experiments/benchmark_harness.py \
+  --lane static \
+  --endpoint http://127.0.0.1:8002/v1/chat/completions \
+  --model qwen2.5-7b-static-draft \
+  --workload w2_text_to_sql \
+  --num-requests 32 \
+  --repeats 5 \
+  --warmup-requests 3 \
+  --max-tokens 96 \
+  --experiment-id m1-01-w2-static \
+  --raw-out experiments/runs/m1_01_w2_static_sweep.jsonl \
+  --overwrite
+```
+
+For W3, reuse the same commands with `--workload w3_free_analysis`, `--max-tokens 192`, and matching raw output names.
