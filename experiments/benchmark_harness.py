@@ -35,6 +35,8 @@ CANONICAL_MIN_REPEATS = 5
 CANONICAL_MIN_WARMUP_REQUESTS = 3
 WORKLOAD_CONFIG_DIR = Path("experiments/configs/workloads")
 DEFAULT_WORKLOAD_FILES = {
+    "w1": WORKLOAD_CONFIG_DIR / "w1_vat_extractor.jsonl",
+    "w1_vat_extractor": WORKLOAD_CONFIG_DIR / "w1_vat_extractor.jsonl",
     "w2": WORKLOAD_CONFIG_DIR / "w2_text_to_sql.jsonl",
     "w2_text_to_sql": WORKLOAD_CONFIG_DIR / "w2_text_to_sql.jsonl",
     "w3": WORKLOAD_CONFIG_DIR / "w3_free_analysis.jsonl",

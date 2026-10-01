@@ -258,21 +258,29 @@ Handoff status:
 
 M1-01 telemetry contract smoke is ready for Dai/M1-02 harness integration. Keep the Colab-generated raw JSONL and summary JSON as run evidence when syncing experiment artifacts.
 
-## 2026-10-01 - W2/W3 Continuation for Dai
+## 2026-10-01 - W1/W2/W3 Continuation for Dai
 
 ### Added workload prompt packs
 
 Committed prompt packs for continuing M1-02 measurements from the M1-01 branch:
 
+- `experiments/configs/workloads/w1_vat_extractor.jsonl`
 - `experiments/configs/workloads/w2_text_to_sql.jsonl`
 - `experiments/configs/workloads/w3_free_analysis.jsonl`
 
 `experiments/benchmark_harness.py` was updated from the M1-02 sweep harness and extended with JSONL prompt loading. The harness now auto-resolves:
 
+- `--workload w1` or `--workload w1_vat_extractor` -> W1 prompt pack
 - `--workload w2` or `--workload w2_text_to_sql` -> W2 prompt pack
 - `--workload w3` or `--workload w3_free_analysis` -> W3 prompt pack
 
 The harness records `prompt_id`, `prompt_index`, and `prompt_source` in raw JSONL so Dai can trace each measured request.
+
+Token caps used for smoke/sweep handoff:
+
+- W1 VAT JSON extraction: `--max-tokens 256`
+- W2 Text-to-SQL: `--max-tokens 96`
+- W3 free analysis: `--max-tokens 192`
 
 ### Quick smoke commands
 
@@ -281,6 +289,19 @@ Use these before a full sweep, while the corresponding lane server is already ru
 Vanilla lane:
 
 ```bash
+python experiments/benchmark_harness.py \
+  --lane vanilla \
+  --endpoint http://127.0.0.1:8001/v1/chat/completions \
+  --model qwen2.5-7b-vanilla \
+  --workload w1_vat_extractor \
+  --concurrency-sweep 1 2 \
+  --repeats 1 \
+  --num-requests 4 \
+  --warmup-requests 3 \
+  --max-tokens 256 \
+  --raw-out experiments/runs/m1_01_w1_vanilla_smoke.jsonl \
+  --overwrite
+
 python experiments/benchmark_harness.py \
   --lane vanilla \
   --endpoint http://127.0.0.1:8001/v1/chat/completions \
@@ -311,6 +332,19 @@ python experiments/benchmark_harness.py \
 Static lane:
 
 ```bash
+python experiments/benchmark_harness.py \
+  --lane static \
+  --endpoint http://127.0.0.1:8002/v1/chat/completions \
+  --model qwen2.5-7b-static-draft \
+  --workload w1_vat_extractor \
+  --concurrency-sweep 1 2 \
+  --repeats 1 \
+  --num-requests 4 \
+  --warmup-requests 3 \
+  --max-tokens 256 \
+  --raw-out experiments/runs/m1_01_w1_static_smoke.jsonl \
+  --overwrite
+
 python experiments/benchmark_harness.py \
   --lane static \
   --endpoint http://127.0.0.1:8002/v1/chat/completions \
@@ -347,6 +381,32 @@ python experiments/benchmark_harness.py \
   --lane vanilla \
   --endpoint http://127.0.0.1:8001/v1/chat/completions \
   --model qwen2.5-7b-vanilla \
+  --workload w1_vat_extractor \
+  --num-requests 32 \
+  --repeats 5 \
+  --warmup-requests 3 \
+  --max-tokens 256 \
+  --experiment-id m1-01-w1-vanilla \
+  --raw-out experiments/runs/m1_01_w1_vanilla_sweep.jsonl \
+  --overwrite
+
+python experiments/benchmark_harness.py \
+  --lane static \
+  --endpoint http://127.0.0.1:8002/v1/chat/completions \
+  --model qwen2.5-7b-static-draft \
+  --workload w1_vat_extractor \
+  --num-requests 32 \
+  --repeats 5 \
+  --warmup-requests 3 \
+  --max-tokens 256 \
+  --experiment-id m1-01-w1-static \
+  --raw-out experiments/runs/m1_01_w1_static_sweep.jsonl \
+  --overwrite
+
+python experiments/benchmark_harness.py \
+  --lane vanilla \
+  --endpoint http://127.0.0.1:8001/v1/chat/completions \
+  --model qwen2.5-7b-vanilla \
   --workload w2_text_to_sql \
   --num-requests 32 \
   --repeats 5 \
@@ -370,4 +430,4 @@ python experiments/benchmark_harness.py \
   --overwrite
 ```
 
-For W3, reuse the same commands with `--workload w3_free_analysis`, `--max-tokens 192`, and matching raw output names.
+For W3, reuse the W2 commands with `--workload w3_free_analysis`, `--max-tokens 192`, and matching raw output names.

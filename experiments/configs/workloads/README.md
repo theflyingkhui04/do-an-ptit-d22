@@ -4,6 +4,7 @@ This directory stores committed prompt sets for M1 baseline benchmark sweeps.
 
 - `w2_text_to_sql.jsonl`: medium-entropy Vietnamese Text-to-SQL prompts over a VAT invoice schema.
 - `w3_free_analysis.jsonl`: high-entropy Vietnamese free-form VAT analysis prompts.
+- `w1_vat_extractor.jsonl`: low-entropy VAT JSON extraction prompts.
 
 Each JSONL row has:
 
