@@ -54,6 +54,79 @@ def calculate_p95(values: list[float]) -> float:
     return round(val, 3)
 
 
+def calculate_repeat_throughputs(records: list[dict]) -> list[float]:
+    """Tính system output throughput cho từng measured repeat."""
+    if not records:
+        raise ValueError("Không thể tính throughput từ cell không có records.")
+
+    repeat_groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
+
+    for record in records:
+        repeat_id = record.get("repeat_id")
+        run_id = record.get("run_id")
+
+        if not repeat_id or not run_id:
+            raise ValueError(
+                "Measured record thiếu repeat identity: "
+                f"repeat_id={repeat_id!r}, run_id={run_id!r}"
+            )
+
+        repeat_groups[(repeat_id, run_id)].append(record)
+
+    repeat_throughputs = []
+
+    for (repeat_id, run_id), repeat_records in repeat_groups.items():
+        durations = [r.get("run_duration_s") for r in repeat_records]
+
+        if any(duration is None for duration in durations):
+            raise ValueError(
+                "Repeat thiếu run_duration_s: "
+                f"repeat_id={repeat_id}, run_id={run_id}"
+            )
+
+        if any(not isinstance(duration, (int, float)) for duration in durations):
+            raise ValueError(
+                "Repeat có run_duration_s không phải số: "
+                f"repeat_id={repeat_id}, run_id={run_id}"
+            )
+
+        repeat_duration = float(durations[0])
+
+        if repeat_duration <= 0:
+            raise ValueError(
+                "Repeat có run_duration_s <= 0: "
+                f"repeat_id={repeat_id}, run_id={run_id}"
+            )
+
+        if any(
+            not math.isclose(
+                float(duration),
+                repeat_duration,
+                rel_tol=0.0,
+                abs_tol=1e-9,
+            )
+            for duration in durations
+        ):
+            raise ValueError(
+                "Các records trong cùng repeat có "
+                "run_duration_s không nhất quán: "
+                f"repeat_id={repeat_id}, run_id={run_id}, "
+                f"durations={sorted(set(durations))}"
+            )
+
+        total_output_tokens = sum(
+            r.get("output_tokens", 0)
+            for r in repeat_records
+            if isinstance(r.get("output_tokens"), int)
+        )
+
+        repeat_throughputs.append(
+            total_output_tokens / repeat_duration
+        )
+
+    return repeat_throughputs
+
+
 def aggregate_raw_jsonl(raw_path: Path) -> list[dict]:
     if not raw_path.exists():
         raise FileNotFoundError(f"Không tìm thấy file: {raw_path}")
@@ -96,7 +169,7 @@ def aggregate_raw_jsonl(raw_path: Path) -> list[dict]:
         # 3. Tính Min - Max và Cảnh báo Phương sai (docs/06: (max - min) / median > 15%)
         tpot_min = round(min(tpot_vals), 3) if tpot_vals else 0.0
         tpot_max = round(max(tpot_vals), 3) if tpot_vals else 0.0
-        
+
         if tpot_p50 > 0:
             variance_ratio = (tpot_max - tpot_min) / tpot_p50
             variance_flag = variance_ratio > 0.15
@@ -110,10 +183,9 @@ def aggregate_raw_jsonl(raw_path: Path) -> list[dict]:
         commit_sha = sample.get("commit", "unknown")
         vram_peak = round(max(vram_vals), 2) if vram_vals else 0.0
 
-        # Output throughput ước tính (tokens/s)
-        total_tokens = sum(r.get("output_tokens", 0) for r in records if isinstance(r.get("output_tokens"), int))
-        total_time = sum(r.get("run_duration_s", 0) for r in records if r.get("run_duration_s") is not None)
-        throughput = round(total_tokens / total_time, 2) if total_time > 0 else 0.0
+        # System output throughput: tính theo repeat rồi lấy median across repeats
+        repeat_throughputs = calculate_repeat_throughputs(records)
+        throughput = round(statistics.median(repeat_throughputs), 2)
 
         summary_row = {
             "lane": lane,
