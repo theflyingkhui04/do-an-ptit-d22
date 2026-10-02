@@ -70,7 +70,44 @@ Result: all checks passed.
 - M0-04 gives complete seller/address/timestamp/total evidence across the 30 samples.
 - Buyer/items/VAT evidence is sparse or absent in the upstream OCR labels, so those fields remain nullable and must not be over-claimed.
 - `origin/main` still does not contain M0-04 because GitHub branch protection requires review. This branch currently carries the M0-04 dependency explicitly.
+## 2026-10-01 - PTIT thesis template + Chapter 1 draft finalized
 
+### Scope completed by Duong
+
+- Added the PTIT-style report template for the thesis manuscript:
+  - `docs/00-template-quyen-bao-cao-ptit.md`
+- Completed the draft for Chương 1 (Mở đầu) in:
+  - `docs/01-gioi-thieu.md`
+- Kept the chapter aligned to the project decisions and terminology in:
+  - `docs/03-quyet-dinh-thiet-ke.md`
+  - `docs/04-quy-trinh-va-ke-hoach.md`
+  - `docs/06-ke-hoach-thuc-nghiem.md`
+  - `docs/07-thuat-ngu.md`
+
+### PTIT report template included
+
+The standard template covers:
+
+- cover and front matter structure
+- chapter layout and numbering rules
+- font/layout conventions
+- figure/table naming conventions
+- writing flow for introduction, problem statement, objectives, scope, contributions, and thesis structure
+- final review checklist before thesis submission
+
+### Chương 1 draft status
+
+The draft now contains the core sections required for a PTIT-style introduction:
+
+- problem background and motivation
+- formal problem statement
+- research questions (RQ1–RQ3)
+- goals and scope
+- outside-of-scope boundaries
+- planned contribution summary
+- thesis structure overview
+
+This is now consistent with the work already tracked in the project docs and is ready to be expanded into the formal thesis manuscript in the next drafting cycle.
 ## Handoff to Dai
 
 ### Dai can start from here
