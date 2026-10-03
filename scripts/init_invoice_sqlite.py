@@ -6,14 +6,20 @@ import argparse
 import json
 import sqlite3
 import sys
-from datetime import date, datetime, time
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.pipeline.validation import (  # noqa: E402
+    DEFAULT_JSON_SCHEMA_PATH,
+    validate_payload,
+)
 
 
 DEFAULT_SCHEMA_PATH = Path("src/pipeline/sqlite/schema.sql")
-DEFAULT_JSON_SCHEMA_PATH = Path("src/pipeline/schemas/invoice_extraction.schema.json")
 DEFAULT_EXAMPLE_PATH = Path("src/pipeline/examples/node1_extractor_output_m0_04_001.json")
 DEFAULT_RUN_ID = "m0_04_schema_smoke"
 
@@ -45,80 +51,6 @@ def init_schema(conn: sqlite3.Connection, schema_path: Path) -> None:
         raise RuntimeError(f"Unsupported SQLite schema version: {user_version}")
     conn.executescript(schema_path.read_text(encoding="utf-8"))
     conn.commit()
-
-
-def semantic_validation_errors(payload: dict) -> list[str]:
-    errors = []
-    if not isinstance(payload, dict):
-        return errors
-    invoice_value = payload.get("invoice", {})
-    invoice = invoice_value if isinstance(invoice_value, dict) else {}
-
-    parsers = (
-        ("invoice.issued_date", invoice.get("issued_date"), date.fromisoformat),
-        ("invoice.issued_time", invoice.get("issued_time"), time.fromisoformat),
-        ("invoice.issued_at", invoice.get("issued_at"), datetime.fromisoformat),
-    )
-    parsed = {}
-    for field_path, value, parser in parsers:
-        if value is None:
-            continue
-        try:
-            parsed[field_path] = parser(value)
-        except ValueError:
-            errors.append(f"{field_path}: invalid calendar value {value!r}")
-
-    issued_at = parsed.get("invoice.issued_at")
-    issued_date = parsed.get("invoice.issued_date")
-    issued_time = parsed.get("invoice.issued_time")
-    if issued_at and issued_date and issued_at.date() != issued_date:
-        errors.append("invoice.issued_at: date component conflicts with invoice.issued_date")
-    if issued_at and issued_time and issued_at.time() != issued_time:
-        errors.append("invoice.issued_at: time component conflicts with invoice.issued_time")
-
-    source_value = payload.get("source", {})
-    source = source_value if isinstance(source_value, dict) else {}
-    source_raw_text = source.get("raw_text")
-    extraction_value = payload.get("extraction", {})
-    extraction = extraction_value if isinstance(extraction_value, dict) else {}
-    evidence_value = extraction.get("field_evidence", [])
-    evidence_rows = evidence_value if isinstance(evidence_value, list) else []
-    if isinstance(source_raw_text, str):
-        for index, evidence in enumerate(evidence_rows):
-            if not isinstance(evidence, dict):
-                continue
-            evidence_text = evidence.get("raw_text")
-            if isinstance(evidence_text, str) and evidence_text not in source_raw_text:
-                errors.append(
-                    f"extraction.field_evidence[{index}].raw_text: not a verbatim source substring"
-                )
-
-    items_value = payload.get("items", [])
-    items = items_value if isinstance(items_value, list) else []
-    line_numbers = [
-        item.get("line_number")
-        for item in items
-        if isinstance(item, dict) and isinstance(item.get("line_number"), int)
-    ]
-    if len(line_numbers) != len(set(line_numbers)):
-        errors.append("items: line_number values must be unique")
-    return errors
-
-
-def validate_payload(payload: dict, json_schema_path: Path) -> None:
-    schema = json.loads(json_schema_path.read_text(encoding="utf-8"))
-    Draft202012Validator.check_schema(schema)
-    errors = sorted(
-        Draft202012Validator(schema).iter_errors(payload),
-        key=lambda error: list(error.absolute_path),
-    )
-    details = [
-            f"{'.'.join(str(part) for part in error.absolute_path) or '$'}: {error.message}"
-            for error in errors
-    ]
-    details.extend(semantic_validation_errors(payload))
-    if details:
-        raise ValueError(f"Payload does not match invoice_extraction.v1: {'; '.join(details)}")
 
 
 def money_value(data: dict, name: str, key: str) -> object:
@@ -331,8 +263,16 @@ def insert_extraction(
 def print_summary(conn: sqlite3.Connection) -> None:
     user_version = conn.execute("PRAGMA user_version").fetchone()[0]
     print(f"sqlite_user_version: {user_version}")
-    for table_name in ("extraction_runs", "invoices", "invoice_items", "invoice_taxes", "field_evidence"):
-        count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+    for table_name in (
+        "extraction_runs",
+        "invoices",
+        "invoice_items",
+        "invoice_taxes",
+        "field_evidence",
+    ):
+        count = conn.execute(
+            f"SELECT COUNT(*) FROM {table_name}"
+        ).fetchone()[0]
         print(f"{table_name}: {count}")
 
     rows = conn.execute(
@@ -351,7 +291,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("db_path", type=Path)
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA_PATH)
-    parser.add_argument("--json-schema", type=Path, default=DEFAULT_JSON_SCHEMA_PATH)
+    parser.add_argument(
+        "--json-schema",
+        type=Path,
+        default=DEFAULT_JSON_SCHEMA_PATH,
+    )
     parser.add_argument("--load-example", action="store_true")
     parser.add_argument("--example", type=Path, default=DEFAULT_EXAMPLE_PATH)
     parser.add_argument("--run-id", default=DEFAULT_RUN_ID)

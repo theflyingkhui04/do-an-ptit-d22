@@ -1,0 +1,27 @@
+{
+  "task": "M1-03",
+  "step": "check-w1-workload",
+  "status": "PASS",
+  "workload_id": "w1_node1_invoice_extraction",
+  "dataset_version": "w1.m1_03.v1",
+  "sample_count": 30,
+  "request_count": 30,
+  "package_sha256": "e7cba647035f8834920d523ce8f6a70ef68896069ee71d3a862fac2fc42eff66",
+  "file_hashes": {
+    "samples_jsonl": "56d33223f3d19b2f573cc7acf71e3b2288e36de05815f6f7073fda90ca3a4799",
+    "provenance_jsonl": "37b8a7a2f6acf9202997ecc975b7663ee07d1bae9df29320894d649b14a8ac80",
+    "manifest_csv": "8ee660c2e82bee6a90e685a64e9b9e53ca112d866d471979131aa1ec4b9a5bfd",
+    "node1_inputs_jsonl": "1cd69a43177375e2a3dab5ba4b4b27ca233f1288a49211c803086756ef7219ce",
+    "node1_chat_requests_jsonl": "0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360",
+    "system_prompt": "3452c77da3a6485c8e92e371f2861acab9ec6424bbe52477a579345a7e90f8d9",
+    "json_schema": "254caf3a7f01f258e5ea9b80409d46f5229aaf6922e036e953730013d7a2862b"
+  },
+  "checks": {
+    "min_samples": true,
+    "unique_sample_ids": true,
+    "provenance_complete": true,
+    "no_label_leakage": true,
+    "request_source_binding": true,
+    "package_hash": true
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "workload_id": "w2_text_to_sql",
+  "dataset_version": "w2.m1_03.v1",
+  "prompt_version": "w2_text_to_sql.v1",
+  "task_name": "Text-to-SQL over Vietnamese VAT invoice schema",
+  "entropy_profile": "medium",
+  "sample_count": 12,
+  "model": "qwen2.5:7b-instruct",
+  "temperature": 0.0,
+  "max_tokens": 96,
+  "seed": 42,
+  "source_ref": "origin/feat/m1-01-vllm-dual-lane-server",
+  "freeze_decision": "freeze W2 v1 prompt pack for M1 benchmark handoff",
+  "handoff_note": "Consume chat_requests.jsonl directly; concurrency, warm-up, and repeats stay in M1-02 harness.",
+  "package_sha256": "b2d92487cbe356ab9f7201865ed69fadab25c45fabf5f97fe5ef4c71f9da0cd6",
+  "artifacts": {
+    "samples_jsonl": "experiments/configs/w2/samples.jsonl",
+    "provenance_jsonl": "experiments/configs/w2/provenance.jsonl",
+    "manifest_csv": "experiments/configs/w2/manifest.csv",
+    "chat_requests_jsonl": "experiments/configs/w2/chat_requests.jsonl",
+    "system_prompt": "experiments/configs/w2/system_prompt.md",
+    "source_prompts_jsonl": "experiments/configs/workloads/w2_text_to_sql.jsonl"
+  },
+  "file_hashes": {
+    "samples_jsonl": "d0d05968f2fe6e81a1d6a3e4c992d02772a1a1df7074bf05b491c4e561175345",
+    "provenance_jsonl": "25458e2ff0322fa2f4be0c5b75ae2a9a6fdee0cdb143b29695c40ce36bd2cb5b",
+    "manifest_csv": "52c3a5805faa3147efbca5f99a2809ec0c67d7a4477b439eb2b4ed59376da33d",
+    "chat_requests_jsonl": "9acc38d38f410cc2261fac963d74648180c8ec3fdef249143952ca1dee8da2c2",
+    "system_prompt": "6eadba66bcb05d3469feafa2c93f2fa0e80a759ac390501b1410bd9037ffe36b",
+    "source_prompts_jsonl": "7c9130324619c4ac4801535f3bb6fa132696d222584b15f3477a976c6c87c326"
+  }
+}

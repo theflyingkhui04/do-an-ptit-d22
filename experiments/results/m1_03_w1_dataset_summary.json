@@ -1,0 +1,29 @@
+{
+  "task": "M1-03",
+  "step": "build-w1-workload",
+  "workload_id": "w1_node1_invoice_extraction",
+  "dataset_version": "w1.m1_03.v1",
+  "sample_count": 30,
+  "minimum_required_samples": 30,
+  "schema_version": "invoice_extraction.v1",
+  "prompt_version": "node1_extractor.v1",
+  "package_sha256": "e7cba647035f8834920d523ce8f6a70ef68896069ee71d3a862fac2fc42eff66",
+  "label_totals_audit_only": {
+    "ADDRESS": 34,
+    "SELLER": 31,
+    "TIMESTAMPS": 36,
+    "TOTAL_COST": 59
+  },
+  "artifacts": {
+    "samples_jsonl": "experiments/configs/w1/samples.jsonl",
+    "provenance_jsonl": "experiments/configs/w1/provenance.jsonl",
+    "manifest_csv": "experiments/configs/w1/manifest.csv",
+    "node1_inputs_jsonl": "experiments/configs/w1/node1_inputs.jsonl",
+    "node1_chat_requests_jsonl": "experiments/configs/w1/node1_chat_requests.jsonl",
+    "system_prompt": "experiments/configs/w1/system_prompt.md",
+    "json_schema": "src/pipeline/schemas/invoice_extraction.schema.json"
+  },
+  "upstream_m0_04_commit": "1c8c5c610168cd3f4c68e72d6130949228284d70",
+  "freeze_decision": "freeze W1 v1 from the tracked 30-sample M0-04 devset",
+  "coverage_note": "M0-04 provides seller/address/timestamp/total evidence for all samples; buyer/items/VAT fields remain nullable and should not be over-claimed."
+}

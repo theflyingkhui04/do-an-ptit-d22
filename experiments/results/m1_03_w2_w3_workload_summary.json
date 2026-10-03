@@ -1,0 +1,52 @@
+{
+  "task": "M1-03",
+  "step": "build-w2-w3-workload-packages",
+  "status": "PASS",
+  "source_ref": "origin/feat/m1-01-vllm-dual-lane-server",
+  "workloads": [
+    {
+      "workload_id": "w2_text_to_sql",
+      "dataset_version": "w2.m1_03.v1",
+      "sample_count": 12,
+      "package_sha256": "b2d92487cbe356ab9f7201865ed69fadab25c45fabf5f97fe5ef4c71f9da0cd6",
+      "artifacts": {
+        "samples_jsonl": "experiments/configs/w2/samples.jsonl",
+        "provenance_jsonl": "experiments/configs/w2/provenance.jsonl",
+        "manifest_csv": "experiments/configs/w2/manifest.csv",
+        "chat_requests_jsonl": "experiments/configs/w2/chat_requests.jsonl",
+        "system_prompt": "experiments/configs/w2/system_prompt.md",
+        "source_prompts_jsonl": "experiments/configs/workloads/w2_text_to_sql.jsonl"
+      },
+      "file_hashes": {
+        "samples_jsonl": "d0d05968f2fe6e81a1d6a3e4c992d02772a1a1df7074bf05b491c4e561175345",
+        "provenance_jsonl": "25458e2ff0322fa2f4be0c5b75ae2a9a6fdee0cdb143b29695c40ce36bd2cb5b",
+        "manifest_csv": "52c3a5805faa3147efbca5f99a2809ec0c67d7a4477b439eb2b4ed59376da33d",
+        "chat_requests_jsonl": "9acc38d38f410cc2261fac963d74648180c8ec3fdef249143952ca1dee8da2c2",
+        "system_prompt": "6eadba66bcb05d3469feafa2c93f2fa0e80a759ac390501b1410bd9037ffe36b",
+        "source_prompts_jsonl": "7c9130324619c4ac4801535f3bb6fa132696d222584b15f3477a976c6c87c326"
+      }
+    },
+    {
+      "workload_id": "w3_free_analysis",
+      "dataset_version": "w3.m1_03.v1",
+      "sample_count": 12,
+      "package_sha256": "b06f32df357b5c60550f98817d9f6a1aade79b2258aafcb345e7b657cfd011b3",
+      "artifacts": {
+        "samples_jsonl": "experiments/configs/w3/samples.jsonl",
+        "provenance_jsonl": "experiments/configs/w3/provenance.jsonl",
+        "manifest_csv": "experiments/configs/w3/manifest.csv",
+        "chat_requests_jsonl": "experiments/configs/w3/chat_requests.jsonl",
+        "system_prompt": "experiments/configs/w3/system_prompt.md",
+        "source_prompts_jsonl": "experiments/configs/workloads/w3_free_analysis.jsonl"
+      },
+      "file_hashes": {
+        "samples_jsonl": "aac9e3a410633ca3545371f9200d2119729091207f379bd302325202a47992de",
+        "provenance_jsonl": "7cf9dbe8e68bca5e53b6cb4cb1539d07bce63c54181fc675dfa7734d90160ef3",
+        "manifest_csv": "11c9f8a069e77b562f3f83017db966e55ac40dbb3864beaccc0eee65626ba8f2",
+        "chat_requests_jsonl": "40ef62c105803365215f115c6aeacb85b5fe14ea2f8e48ce151aabe86b89d648",
+        "system_prompt": "44d81e7e753441bf918cbb48ace85b356081993e0d1a71016709ef37266d5637",
+        "source_prompts_jsonl": "93c4d421d794f861450a8e689ba825128cfb64ddef5aab30ff3811635f8bf471"
+      }
+    }
+  ]
+}

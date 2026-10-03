@@ -1,0 +1,9 @@
+{
+  "task": "M1-03",
+  "step": "invoice-contract-check",
+  "status": "PASS",
+  "json_schema": "src/pipeline/schemas/invoice_extraction.schema.json",
+  "pydantic_model": "src.pipeline.invoice_models.InvoiceExtraction",
+  "sqlite_user_version": 1,
+  "example": "src/pipeline/examples/node1_extractor_output_m0_04_001.json"
+}

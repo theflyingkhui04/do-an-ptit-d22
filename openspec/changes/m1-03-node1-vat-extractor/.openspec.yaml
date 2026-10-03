@@ -1,0 +1,9 @@
+schema: spec-driven
+created: 2026-09-26
+goal: Build the M1-03 Node 1 MC-OCR VAT/receipt text-to-JSON workload on top of the frozen invoice_extraction.v1 contract, including a reproducible W1 dataset manifest, OpenAI-compatible extractor, validation, evaluation, and evidence.
+affected_areas:
+  - src/pipeline
+  - experiments/configs
+  - experiments/results
+  - tests
+  - logs/Duong/M1-03

@@ -16,6 +16,7 @@ fastapi
 uvicorn
 openai          # client để kiểm thử endpoint tương thích OpenAI
 aiohttp
+pydantic        # typed mirror cho invoice_extraction.v1
 
 # ----- Orchestration (đánh giá end-to-end) -----
 langgraph

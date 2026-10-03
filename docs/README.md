@@ -14,6 +14,7 @@ Danh sách **đầy đủ** các tài liệu đồ án cần có, vai trò của
 
 | File | Vai trò | Ai giữ | Trạng thái |
 |---|---|---|---|
+| [00-template-quyen-bao-cao-ptit.md](00-template-quyen-bao-cao-ptit.md) | Mẫu template quyển báo cáo theo chuẩn PTIT + checklist trình bày | Dương | ✅ |
 | [01-gioi-thieu.md](01-gioi-thieu.md) | Tên đề tài, bối cảnh, phát biểu bài toán, **câu hỏi nghiên cứu**, mục tiêu/phạm vi, đầu ra, đóng góp | Cả nhóm | ✅ đã cập nhật 11/09 |
 | [02-tong-quan-tai-lieu.md](02-tong-quan-tai-lieu.md) | Khảo sát 3 hướng (KV-cache / nén prompt / spec decoding) + lý do chọn hướng C | Dương | ✅ |
 | [03-quyet-dinh-thiet-ke.md](03-quyet-dinh-thiet-ke.md) | **Nhật ký quyết định (ADR)** — mọi QĐ lớn kèm lý do + các câu hỏi còn mở | Khôi | ✅ |
