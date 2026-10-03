@@ -23,13 +23,40 @@ from pynvml import (
     nvmlSystemGetDriverVersion,
 )
 
+try:
+    from workload_adapter import (
+        WorkloadContractError,
+        WorkloadIntegrity,
+        build_request_payload,
+        build_workload_metadata,
+        load_workload_rows,
+        resolve_sample_index,
+        select_workload_row,
+        validate_manifest_consistency,
+        validate_workload_label,
+        verify_workload_integrity,
+    )
+except ImportError:
+    from experiments.workload_adapter import (
+        WorkloadContractError,
+        WorkloadIntegrity,
+        build_request_payload,
+        build_workload_metadata,
+        load_workload_rows,
+        resolve_sample_index,
+        select_workload_row,
+        validate_manifest_consistency,
+        validate_workload_label,
+        verify_workload_integrity,
+    )
+
+
 ENVIRONMENT_PROFILE = "m1-t4-cu130-v1"
 
 EXPECTED_GPU = "Tesla T4"
 EXPECTED_VLLM = ("0.29.0", "0.30.0")
 EXPECTED_TORCH = "2.13.0+cu130"
 EXPECTED_TORCH_CUDA = "13.0"
-
 
 DEFAULT_CONCURRENCY_SWEEP = (1, 2, 4, 8, 16, 32)
 CANONICAL_MIN_REPEATS = 5
@@ -109,7 +136,9 @@ def environment_info(gpu_index: int) -> tuple[dict, object]:
         "gpu": name.decode() if isinstance(name, bytes) else str(name),
         "gpu_index": gpu_index,
         "gpu_memory_total_mb": round(mem.total / 1024**2, 2),
-        "driver_version": driver.decode() if isinstance(driver, bytes) else str(driver),
+        "driver_version": (
+            driver.decode() if isinstance(driver, bytes) else str(driver)
+        ),
         "torch_version": torch.__version__,
         "torch_cuda_version": torch.version.cuda,
         "vllm_version": package_version("vllm"),
@@ -143,11 +172,7 @@ def validate_environment(env: dict) -> list[str]:
 
 
 def ensure_summary(path: Path) -> None:
-    """Create the canonical summary header if missing.
-
-    Aggregation into summary.csv is intentionally not implemented in this
-    increment; raw measured JSONL remains the output evidence.
-    """
+    """Create the canonical summary header if missing."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists() or path.stat().st_size == 0:
         path.write_text(",".join(SUMMARY_COLUMNS) + "\n", encoding="utf-8")
@@ -222,6 +247,30 @@ async def monitor_vram(handle, stop: asyncio.Event, interval: float) -> float:
     return round(max(peak, used), 2)
 
 
+def build_legacy_workload_rows(args: argparse.Namespace) -> list[dict]:
+    """Preserve the previous one-prompt path for smoke/debug runs only."""
+    return [
+        {
+            "workload_id": args.workload,
+            "dataset_version": "legacy-cli",
+            "sample_id": "legacy-cli-000",
+            "prompt_version": "legacy-cli.v1",
+            "request": {
+                "model": args.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": args.prompt,
+                    }
+                ],
+                "temperature": args.temperature,
+                "max_tokens": args.max_tokens,
+                "seed": args.seed,
+            },
+        }
+    ]
+
+
 async def run_one(
     session: aiohttp.ClientSession,
     semaphore: asyncio.Semaphore,
@@ -229,7 +278,10 @@ async def run_one(
     env: dict,
     identity: dict,
     concurrency: int,
+    payload: dict,
+    workload_metadata: dict,
 ) -> dict:
+    """Execute exactly one already-resolved HTTP request and measure it."""
     queued_at = time.perf_counter()
 
     record = {
@@ -239,9 +291,29 @@ async def run_one(
         "lane": args.lane,
         "workload": args.workload,
         "concurrency": concurrency,
-        "model": args.model,
-        "temperature": args.temperature,
-        "seed": args.seed,
+        "model": payload["model"],
+        "temperature": payload.get("temperature"),
+        "seed": payload.get("seed"),
+        "max_completion_tokens": payload.get("max_completion_tokens"),
+        "response_format": payload.get("response_format"),
+        "workload_id": workload_metadata["workload_id"],
+        "dataset_version": workload_metadata["dataset_version"],
+        "sample_id": workload_metadata["sample_id"],
+        "sample_index": workload_metadata["sample_index"],
+        "canonical_sample_count": workload_metadata[
+            "canonical_sample_count"
+        ],
+        "sample_policy": workload_metadata["sample_policy"],
+        "prompt_version": workload_metadata["prompt_version"],
+        "package_model": workload_metadata.get("package_model"),
+        "manifest_package_sha256": workload_metadata.get(
+            "manifest_package_sha256"
+        ),
+        "workload_artifact_key": workload_metadata.get("workload_artifact_key"),
+        "workload_file_sha256": workload_metadata.get("workload_file_sha256"),
+        "workload_schema_version": workload_metadata.get("schema_version"),
+        "img_id": workload_metadata.get("img_id"),
+        "expected_source": workload_metadata.get("expected_source"),
         "success": False,
         "metrics_complete": False,
         "http_status": None,
@@ -257,17 +329,6 @@ async def run_one(
         "generated_text": "",
         "server_metrics": None,
         **env,
-    }
-
-    payload = {
-        "model": args.model,
-        "messages": [{"role": "user", "content": args.prompt}],
-        "temperature": args.temperature,
-        "seed": args.seed,
-        "max_completion_tokens": args.max_tokens,
-        "n": 1,
-        "stream": True,
-        "stream_options": {"include_usage": True},
     }
 
     try:
@@ -365,6 +426,9 @@ async def run_requests(
     session: aiohttp.ClientSession,
     args: argparse.Namespace,
     env: dict,
+    workload_rows: list[dict],
+    workload_integrity: WorkloadIntegrity | None,
+    sample_policy: str,
     count: int,
     concurrency: int,
     experiment_id: str,
@@ -373,18 +437,52 @@ async def run_requests(
     phase: str,
     request_index_start: int = 0,
 ) -> list[dict]:
+    """Resolve identity/sample/payload first, then schedule concurrent work."""
     semaphore = asyncio.Semaphore(concurrency)
+    resolved_requests: list[tuple[dict, dict, dict]] = []
 
-    identities = [
-        make_request_identity(
+    for offset in range(count):
+        request_index = request_index_start + offset
+
+        sample_index = resolve_sample_index(
+            len(workload_rows),
+            request_index,
+            sample_policy=sample_policy,
+        )
+
+        identity = make_request_identity(
             experiment_id=experiment_id,
             cell_id=cell_id,
             repeat_id=repeat_id,
-            request_index=request_index_start + offset,
+            request_index=request_index,
             phase=phase,
         )
-        for offset in range(count)
-    ]
+
+        row = select_workload_row(
+            workload_rows,
+            request_index,
+            sample_policy=sample_policy,
+        )
+
+        workload_metadata = build_workload_metadata(
+            row,
+            integrity=workload_integrity,
+        )
+        workload_metadata.update(
+            {
+                "sample_index": sample_index,
+                "canonical_sample_count": len(workload_rows),
+                "sample_policy": sample_policy,
+            }
+        )
+        payload = build_request_payload(
+            row,
+            runtime_model=args.model,
+        )
+
+        resolved_requests.append(
+            (identity, payload, workload_metadata)
+        )
 
     return await asyncio.gather(
         *[
@@ -395,8 +493,10 @@ async def run_requests(
                 env=env,
                 identity=identity,
                 concurrency=concurrency,
+                payload=payload,
+                workload_metadata=workload_metadata,
             )
-            for identity in identities
+            for identity, payload, workload_metadata in resolved_requests
         ]
     )
 
@@ -405,6 +505,9 @@ async def warm_up_cell(
     session: aiohttp.ClientSession,
     args: argparse.Namespace,
     env: dict,
+    workload_rows: list[dict],
+    workload_integrity: WorkloadIntegrity | None,
+    sample_policy: str,
     experiment_id: str,
     cell_id: str,
     concurrency: int,
@@ -423,12 +526,16 @@ async def warm_up_cell(
     print(f"warmup_requests      : {effective_warmup_count}")
     print(f"warmup_concurrency   : {concurrency}")
     print(f"measured_concurrency : {concurrency}")
+    print(f"sample_policy        : {sample_policy}")
     print("==============================")
 
     warm = await run_requests(
         session=session,
         args=args,
         env=env,
+        workload_rows=workload_rows,
+        workload_integrity=workload_integrity,
+        sample_policy=sample_policy,
         count=effective_warmup_count,
         concurrency=concurrency,
         experiment_id=experiment_id,
@@ -448,6 +555,7 @@ async def warm_up_cell(
             print(
                 "failure              : "
                 f"request_id={record['request_id']} "
+                f"sample_id={record.get('sample_id')} "
                 f"error_type={record['error_type']} "
                 f"error_message={record['error_message']}"
             )
@@ -469,6 +577,9 @@ async def run_repeat(
     session: aiohttp.ClientSession,
     args: argparse.Namespace,
     env: dict,
+    workload_rows: list[dict],
+    workload_integrity: WorkloadIntegrity | None,
+    sample_policy: str,
     gpu_handle,
     raw_writer: RawJsonlWriter,
     experiment_id: str,
@@ -493,6 +604,9 @@ async def run_repeat(
             session=session,
             args=args,
             env=env,
+            workload_rows=workload_rows,
+            workload_integrity=workload_integrity,
+            sample_policy=sample_policy,
             count=args.num_requests,
             concurrency=concurrency,
             experiment_id=experiment_id,
@@ -549,6 +663,9 @@ async def run_cell(
     session: aiohttp.ClientSession,
     args: argparse.Namespace,
     env: dict,
+    workload_rows: list[dict],
+    workload_integrity: WorkloadIntegrity | None,
+    sample_policy: str,
     gpu_handle,
     raw_writer: RawJsonlWriter,
     experiment_id: str,
@@ -568,6 +685,9 @@ async def run_cell(
         session=session,
         args=args,
         env=env,
+        workload_rows=workload_rows,
+        workload_integrity=workload_integrity,
+        sample_policy=sample_policy,
         experiment_id=experiment_id,
         cell_id=cell_id,
         concurrency=concurrency,
@@ -580,6 +700,9 @@ async def run_cell(
             session=session,
             args=args,
             env=env,
+            workload_rows=workload_rows,
+            workload_integrity=workload_integrity,
+            sample_policy=sample_policy,
             gpu_handle=gpu_handle,
             raw_writer=raw_writer,
             experiment_id=experiment_id,
@@ -606,6 +729,9 @@ async def run_sweep(
     session: aiohttp.ClientSession,
     args: argparse.Namespace,
     env: dict,
+    workload_rows: list[dict],
+    workload_integrity: WorkloadIntegrity | None,
+    sample_policy: str,
     gpu_handle,
     raw_writer: RawJsonlWriter,
     experiment_id: str,
@@ -615,6 +741,8 @@ async def run_sweep(
     print(f"experiment_id        : {experiment_id}")
     print(f"lane                 : {args.lane}")
     print(f"workload             : {args.workload}")
+    print(f"canonical_samples    : {len(workload_rows)}")
+    print(f"sample_policy        : {sample_policy}")
     print(f"concurrencies        : {concurrencies}")
     print(f"repeats_per_cell     : {args.repeats}")
     print(f"requests_per_repeat  : {args.num_requests}")
@@ -625,6 +753,9 @@ async def run_sweep(
             session=session,
             args=args,
             env=env,
+            workload_rows=workload_rows,
+            workload_integrity=workload_integrity,
+            sample_policy=sample_policy,
             gpu_handle=gpu_handle,
             raw_writer=raw_writer,
             experiment_id=experiment_id,
@@ -655,6 +786,94 @@ def resolve_concurrencies(args: argparse.Namespace) -> list[int]:
 
 
 async def async_main(args: argparse.Namespace) -> int:
+    if args.workload_file is not None:
+        try:
+            workload_integrity = verify_workload_integrity(
+                args.workload_file
+            )
+            workload_rows = load_workload_rows(args.workload_file)
+            validate_manifest_consistency(
+                workload_integrity,
+                workload_rows,
+            )
+            args.workload = validate_workload_label(
+                args.workload,
+                workload_rows[0]["workload_id"],
+            )
+        except WorkloadContractError as exc:
+            print("\n===== WORKLOAD CONTRACT FAILED =====")
+            print(f"error                : {exc}")
+            print("====================================")
+            return 6
+
+        sample_policy = args.sample_policy
+        workload_mode = "canonical-jsonl"
+    else:
+        workload_rows = build_legacy_workload_rows(args)
+        workload_integrity = None
+        sample_policy = "cycle"
+        workload_mode = "legacy-single-prompt"
+
+    concurrencies = resolve_concurrencies(args)
+
+    # Strict mode must fail before GPU/server work if either measured requests
+    # or the largest cell warm-up would require implicit sample reuse.
+    max_warmup_count = max(
+        CANONICAL_MIN_WARMUP_REQUESTS,
+        args.warmup_requests,
+        max(concurrencies),
+    )
+    required_requests = max(args.num_requests, max_warmup_count)
+
+    if (
+        args.workload_file is not None
+        and sample_policy == "strict"
+        and required_requests > len(workload_rows)
+    ):
+        print("\n===== WORKLOAD EXPANSION POLICY REQUIRED =====")
+        print(f"sample_count         : {len(workload_rows)}")
+        print(f"requests_required    : {required_requests}")
+        print(f"sample_policy        : {sample_policy}")
+        print(
+            "Canonical package reuse would be required. "
+            "Do not silently cycle/random-sample."
+        )
+        print("PM DECISION REQUIRED before canonical reuse.")
+        print("==============================================")
+        return 6
+
+    print("\n===== WORKLOAD INPUT =====")
+    print(f"mode                 : {workload_mode}")
+    print(f"workload             : {args.workload}")
+    print(f"workload_file        : {args.workload_file}")
+    print(f"sample_count         : {len(workload_rows)}")
+    print(f"sample_policy        : {sample_policy}")
+    print(f"package_workload_id  : {workload_rows[0]['workload_id']}")
+    print(f"dataset_version      : {workload_rows[0]['dataset_version']}")
+    print(f"prompt_version       : {workload_rows[0]['prompt_version']}")
+    if workload_integrity is not None:
+        print(f"manifest_path        : {workload_integrity.manifest_path}")
+        print(f"artifact_key         : {workload_integrity.artifact_key}")
+        print(f"workload_file_sha256 : {workload_integrity.actual_sha256}")
+        print(
+            "manifest_package_sha256: "
+            f"{workload_integrity.manifest_package_sha256}"
+        )
+    print("==========================")
+
+    if args.workload_file is not None and sample_policy == "cycle":
+        print("\n===== EXPLICIT SAMPLE REUSE =====")
+        print("policy               : deterministic-cycle")
+        print(
+            "mapping              : "
+            "sample_index = request_index % sample_count"
+        )
+        print(
+            "WARNING: use as canonical evidence only after PM/protocol "
+            "approval of this expansion policy."
+        )
+        print("=================================")
+
     env, gpu_handle = environment_info(args.gpu_index)
 
     try:
@@ -679,7 +898,6 @@ async def async_main(args: argparse.Namespace) -> int:
 
         ensure_summary(Path(args.summary_csv))
 
-        concurrencies = resolve_concurrencies(args)
         experiment_id = make_experiment_id(args.experiment_id)
         raw_writer = RawJsonlWriter(Path(args.raw_out), args.overwrite)
         raw_writer.prepare()
@@ -710,15 +928,24 @@ async def async_main(args: argparse.Namespace) -> int:
             timeout=timeout,
             headers=headers,
         ) as session:
-            return await run_sweep(
-                session=session,
-                args=args,
-                env=env,
-                gpu_handle=gpu_handle,
-                raw_writer=raw_writer,
-                experiment_id=experiment_id,
-                concurrencies=concurrencies,
-            )
+            try:
+                return await run_sweep(
+                    session=session,
+                    args=args,
+                    env=env,
+                    workload_rows=workload_rows,
+                    workload_integrity=workload_integrity,
+                    sample_policy=sample_policy,
+                    gpu_handle=gpu_handle,
+                    raw_writer=raw_writer,
+                    experiment_id=experiment_id,
+                    concurrencies=concurrencies,
+                )
+            except WorkloadContractError as exc:
+                print("\n===== WORKLOAD EXECUTION FAILED =====")
+                print(f"error                : {exc}")
+                print("=====================================")
+                return 6
     finally:
         nvmlShutdown()
 
@@ -727,7 +954,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "M1-02 vLLM benchmark harness with automatic concurrency sweep, "
-            "cell-scoped Option-B warm-up, identity tracing, and measured repeats."
+            "cell-scoped Option-B warm-up, canonical workload replay, "
+            "identity tracing, and measured repeats."
         )
     )
 
@@ -739,6 +967,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--prompt",
         default="Trả lời đúng một câu: Hà Nội là thủ đô của nước nào?",
+        help=(
+            "Legacy smoke/debug prompt. Ignored when --workload-file is supplied."
+        ),
+    )
+    parser.add_argument(
+        "--workload-file",
+        type=Path,
+        default=None,
+        help=(
+            "Canonical workload chat-request JSONL. When supplied, "
+            "messages/temperature/seed/max_tokens/response_format come from "
+            "the frozen package rather than legacy CLI semantic fields."
+        ),
+    )
+    parser.add_argument(
+        "--sample-policy",
+        choices=["strict", "cycle"],
+        default="strict",
+        help=(
+            "Mapping from request_index to canonical samples. 'strict' forbids "
+            "sample reuse. 'cycle' uses request_index %% sample_count and must "
+            "not be treated as canonical scientific evidence until PM/protocol "
+            "approval of that expansion policy."
+        ),
     )
     parser.add_argument(
         "--num-requests",
@@ -789,21 +1041,51 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=CANONICAL_MIN_WARMUP_REQUESTS,
         help=(
-            "Requested minimum warm-up request count. "
-            "PM-approved Option B enforces "
-            "max(3, --warmup-requests, current_cell_concurrency). "
+            "Requested minimum warm-up request count. PM-approved Option B "
+            "enforces max(3, --warmup-requests, current_cell_concurrency). "
             "Warm-up runs once per cell before all measured repeats."
         ),
     )
-    parser.add_argument("--max-tokens", type=int, default=32)
-    parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=32,
+        help=(
+            "Legacy smoke/debug token budget. Ignored when --workload-file "
+            "is supplied."
+        ),
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help=(
+            "Legacy smoke/debug temperature. Ignored when --workload-file "
+            "is supplied."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help=(
+            "Legacy smoke/debug seed. Ignored when --workload-file is supplied."
+        ),
+    )
     parser.add_argument(
         "--lane",
         choices=["vanilla", "static", "adaptive"],
         default="vanilla",
     )
-    parser.add_argument("--workload", default="smoke")
+    parser.add_argument(
+        "--workload",
+        default="smoke",
+        help=(
+            "Workload label used in cell identity. Canonical --workload-file "
+            "runs require W1, W2, or W3 and validate the label against the "
+            "package workload_id. Legacy smoke/debug runs may use other labels."
+        ),
+    )
     parser.add_argument(
         "--experiment-id",
         default=None,
@@ -835,11 +1117,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-env-check",
         action="store_true",
-        help="Bỏ qua việc dừng chương trình nếu môi trường không khớp hoàn toàn (dùng khi thử nghiệm/debug).",
+        help=(
+            "Bỏ qua việc dừng chương trình nếu môi trường không khớp hoàn toàn "
+            "(dùng khi thử nghiệm/debug)."
+        ),
     )
 
     args = parser.parse_args()
     concurrencies = resolve_concurrencies(args)
+
+    if args.workload_file is not None and args.workload == "smoke":
+        parser.error(
+            "--workload must be explicitly set when --workload-file is used"
+        )
 
     if args.num_requests < 1:
         parser.error("--num-requests must be >= 1")
