@@ -13,11 +13,14 @@ else
   VLLM_CMD="python3 -m vllm.entrypoints.openai.api_server"
 fi
 
-# 3. Khởi chạy máy chủ vLLM OpenAI-compatible
+# 3. Khởi chạy máy chủ vLLM OpenAI-compatible.
+# PM-approved M1 canonical protocol pins vLLM neutral generation defaults so
+# model-side generation_config.json does not silently inject sampling settings.
 $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
   --host 0.0.0.0 \
   --port 8001 \
   --served-model-name qwen2.5-7b-vanilla \
+  --generation-config vllm \
   --quantization awq \
   --dtype half \
   --gpu-memory-utilization 0.85 \

@@ -565,11 +565,54 @@ def load_workload_rows(path: Path) -> list[dict]:
     return rows
 
 
+def resolve_repeat_offset(
+    sample_count: int,
+    requests_per_repeat: int,
+    repeat_index: int,
+    *,
+    sample_policy: str,
+) -> int:
+    """Return the deterministic per-repeat sample offset.
+
+    PM-approved canonical policy ``cycle-rotate`` advances the start position
+    by the remainder left after each measured repeat:
+
+        offset = ((repeat_index - 1) *
+                  (requests_per_repeat % sample_count)) % sample_count
+
+    ``strict`` and legacy/debug ``cycle`` do not rotate and therefore return 0.
+    """
+    if sample_count < 1:
+        raise WorkloadContractError(
+            f"sample_count must be >= 1, got {sample_count}"
+        )
+    if requests_per_repeat < 1:
+        raise WorkloadContractError(
+            "requests_per_repeat must be >= 1, "
+            f"got {requests_per_repeat}"
+        )
+    if repeat_index < 1:
+        raise WorkloadContractError(
+            f"repeat_index must be >= 1, got {repeat_index}"
+        )
+
+    if sample_policy in {"strict", "cycle"}:
+        return 0
+    if sample_policy == "cycle-rotate":
+        step = requests_per_repeat % sample_count
+        return ((repeat_index - 1) * step) % sample_count
+
+    raise WorkloadContractError(
+        f"unsupported sample policy: {sample_policy!r}"
+    )
+
+
 def resolve_sample_index(
     sample_count: int,
     request_index: int,
     *,
     sample_policy: str,
+    sample_offset: int = 0,
 ) -> int:
     """Resolve request_index to zero-based canonical sample_index."""
     if sample_count < 1:
@@ -582,7 +625,17 @@ def resolve_sample_index(
             f"request_index must be >= 0, got {request_index}"
         )
 
+    if sample_offset < 0 or sample_offset >= sample_count:
+        raise WorkloadContractError(
+            "sample_offset must satisfy 0 <= sample_offset < sample_count, "
+            f"got sample_offset={sample_offset}, sample_count={sample_count}"
+        )
+
     if sample_policy == "strict":
+        if sample_offset != 0:
+            raise WorkloadContractError(
+                "strict sample policy requires sample_offset=0"
+            )
         if request_index >= sample_count:
             raise WorkloadContractError(
                 "canonical workload exhausted: "
@@ -593,7 +646,15 @@ def resolve_sample_index(
         return request_index
 
     if sample_policy == "cycle":
+        if sample_offset != 0:
+            raise WorkloadContractError(
+                "legacy cycle policy requires sample_offset=0; "
+                "use cycle-rotate for deterministic rotating offsets"
+            )
         return request_index % sample_count
+
+    if sample_policy == "cycle-rotate":
+        return (request_index + sample_offset) % sample_count
 
     raise WorkloadContractError(
         f"unsupported sample policy: {sample_policy!r}"
@@ -605,6 +666,7 @@ def select_workload_row(
     request_index: int,
     *,
     sample_policy: str,
+    sample_offset: int = 0,
 ) -> dict:
     """Resolve request_index to a canonical workload row before scheduling."""
     if not rows:
@@ -616,6 +678,7 @@ def select_workload_row(
         len(rows),
         request_index,
         sample_policy=sample_policy,
+        sample_offset=sample_offset,
     )
 
     return rows[sample_index]

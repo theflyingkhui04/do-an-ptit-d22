@@ -30,6 +30,7 @@ try:
         build_request_payload,
         build_workload_metadata,
         load_workload_rows,
+        resolve_repeat_offset,
         resolve_sample_index,
         select_workload_row,
         validate_manifest_consistency,
@@ -43,6 +44,7 @@ except ImportError:
         build_request_payload,
         build_workload_metadata,
         load_workload_rows,
+        resolve_repeat_offset,
         resolve_sample_index,
         select_workload_row,
         validate_manifest_consistency,
@@ -300,6 +302,7 @@ async def run_one(
         "dataset_version": workload_metadata["dataset_version"],
         "sample_id": workload_metadata["sample_id"],
         "sample_index": workload_metadata["sample_index"],
+        "sample_offset": workload_metadata["sample_offset"],
         "canonical_sample_count": workload_metadata[
             "canonical_sample_count"
         ],
@@ -436,6 +439,7 @@ async def run_requests(
     repeat_id: str | None,
     phase: str,
     request_index_start: int = 0,
+    sample_offset: int = 0,
 ) -> list[dict]:
     """Resolve identity/sample/payload first, then schedule concurrent work."""
     semaphore = asyncio.Semaphore(concurrency)
@@ -448,6 +452,7 @@ async def run_requests(
             len(workload_rows),
             request_index,
             sample_policy=sample_policy,
+            sample_offset=sample_offset,
         )
 
         identity = make_request_identity(
@@ -462,6 +467,7 @@ async def run_requests(
             workload_rows,
             request_index,
             sample_policy=sample_policy,
+            sample_offset=sample_offset,
         )
 
         workload_metadata = build_workload_metadata(
@@ -471,6 +477,7 @@ async def run_requests(
         workload_metadata.update(
             {
                 "sample_index": sample_index,
+                "sample_offset": sample_offset,
                 "canonical_sample_count": len(workload_rows),
                 "sample_policy": sample_policy,
             }
@@ -543,6 +550,7 @@ async def warm_up_cell(
         repeat_id=None,
         phase="warmup",
         request_index_start=0,
+        sample_offset=0,
     )
 
     warmup_failures = [record for record in warm if not record["success"]]
@@ -588,6 +596,12 @@ async def run_repeat(
     repeat_index: int,
 ) -> int:
     repeat_id = make_repeat_id(repeat_index)
+    sample_offset = resolve_repeat_offset(
+        len(workload_rows),
+        args.num_requests,
+        repeat_index,
+        sample_policy=sample_policy,
+    )
 
     stop_monitor = asyncio.Event()
     monitor_task = asyncio.create_task(
@@ -614,6 +628,7 @@ async def run_repeat(
             repeat_id=repeat_id,
             phase="measured",
             request_index_start=0,
+            sample_offset=sample_offset,
         )
         duration = time.perf_counter() - start
     finally:
@@ -640,6 +655,7 @@ async def run_repeat(
     print(f"experiment_id       : {experiment_id}")
     print(f"cell_id             : {cell_id}")
     print(f"repeat_id           : {repeat_id}")
+    print(f"sample_offset       : {sample_offset}")
     print(f"run_id              : {run_id}")
     print(f"requests            : {len(records)}")
     print(f"successes           : {successes}")
@@ -862,17 +878,33 @@ async def async_main(args: argparse.Namespace) -> int:
     print("==========================")
 
     if args.workload_file is not None and sample_policy == "cycle":
-        print("\n===== EXPLICIT SAMPLE REUSE =====")
+        print("\n===== NON-CANONICAL SAMPLE REUSE =====")
         print("policy               : deterministic-cycle")
         print(
             "mapping              : "
             "sample_index = request_index % sample_count"
         )
         print(
-            "WARNING: use as canonical evidence only after PM/protocol "
-            "approval of this expansion policy."
+            "WARNING: simple cycle is retained for debug/backward compatibility; "
+            "the PM-approved canonical reuse policy is cycle-rotate."
         )
-        print("=================================")
+        print("======================================")
+
+    if args.workload_file is not None and sample_policy == "cycle-rotate":
+        print("\n===== PM-APPROVED SAMPLE REUSE =====")
+        print("policy               : deterministic-cycle-rotate")
+        print(
+            "repeat_offset        : "
+            "((repeat_index - 1) * (num_requests % sample_count)) "
+            "% sample_count"
+        )
+        print(
+            "mapping              : "
+            "sample_index = (request_index + repeat_offset) % sample_count"
+        )
+        print("lane_pairing         : exact same mapping for Vanilla and Static")
+        print("warmup_offset        : 0")
+        print("====================================")
 
     env, gpu_handle = environment_info(args.gpu_index)
 
@@ -983,13 +1015,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--sample-policy",
-        choices=["strict", "cycle"],
+        choices=["strict", "cycle", "cycle-rotate"],
         default="strict",
         help=(
             "Mapping from request_index to canonical samples. 'strict' forbids "
-            "sample reuse. 'cycle' uses request_index %% sample_count and must "
-            "not be treated as canonical scientific evidence until PM/protocol "
-            "approval of that expansion policy."
+            "sample reuse. 'cycle' is the legacy/debug zero-offset cycle. "
+            "'cycle-rotate' is the PM-approved canonical reuse policy: each "
+            "measured repeat uses deterministic rotating offset "
+            "((repeat_index-1)*(num_requests%sample_count))%sample_count, "
+            "with the exact same mapping across Vanilla and Static."
         ),
     )
     parser.add_argument(

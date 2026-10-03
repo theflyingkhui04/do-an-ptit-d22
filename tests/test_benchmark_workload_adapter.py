@@ -24,6 +24,7 @@ from workload_adapter import (  # noqa: E402
     build_request_payload,
     build_workload_metadata,
     load_workload_rows,
+    resolve_repeat_offset,
     resolve_sample_index,
     select_workload_row,
     validate_manifest_consistency,
@@ -170,6 +171,49 @@ class BenchmarkWorkloadAdapterTests(unittest.TestCase):
                 sample_policy="cycle",
             ),
             7,
+        )
+
+    def test_cycle_rotate_offsets_balance_w2_across_five_repeats(self) -> None:
+        offsets = [
+            resolve_repeat_offset(
+                12,
+                32,
+                repeat_index,
+                sample_policy="cycle-rotate",
+            )
+            for repeat_index in range(1, 6)
+        ]
+        self.assertEqual(offsets, [0, 8, 4, 0, 8])
+
+        counts = [0] * 12
+        for repeat_index in range(1, 6):
+            sample_offset = resolve_repeat_offset(
+                12,
+                32,
+                repeat_index,
+                sample_policy="cycle-rotate",
+            )
+            for request_index in range(32):
+                sample_index = resolve_sample_index(
+                    12,
+                    request_index,
+                    sample_policy="cycle-rotate",
+                    sample_offset=sample_offset,
+                )
+                counts[sample_index] += 1
+
+        self.assertEqual(sum(counts), 160)
+        self.assertEqual(sorted(counts), [13] * 8 + [14] * 4)
+
+    def test_cycle_rotate_uses_explicit_offset(self) -> None:
+        self.assertEqual(
+            resolve_sample_index(
+                12,
+                5,
+                sample_policy="cycle-rotate",
+                sample_offset=4,
+            ),
+            9,
         )
 
     def test_strict_sample_index_is_identity_mapping(self) -> None:
@@ -426,6 +470,26 @@ class BenchmarkWorkloadAdapterTests(unittest.TestCase):
 
 
 
+    def test_launchers_pin_vllm_generation_config(self) -> None:
+        vanilla = REPO_ROOT / "scripts" / "launch_lane1_vanilla.sh"
+        static = REPO_ROOT / "scripts" / "launch_lane2_static.sh"
+
+        if not (vanilla.exists() and static.exists()):
+            self.skipTest("run this test after copying the files into the repo")
+
+        vanilla_text = vanilla.read_text(encoding="utf-8")
+        static_text = static.read_text(encoding="utf-8")
+
+        self.assertIn("--generation-config vllm", vanilla_text)
+        self.assertIn("--generation-config vllm", static_text)
+        self.assertIn("--served-model-name qwen2.5-7b-vanilla", vanilla_text)
+        self.assertIn(
+            "--served-model-name qwen2.5-7b-static-draft",
+            static_text,
+        )
+
+
+
 class BenchmarkHarnessOrchestrationTests(
     unittest.IsolatedAsyncioTestCase
 ):
@@ -468,6 +532,9 @@ class BenchmarkHarnessOrchestrationTests(
                     "sample_index": workload_metadata[
                         "sample_index"
                     ],
+                    "sample_offset": workload_metadata[
+                        "sample_offset"
+                    ],
                     "sample_id": workload_metadata[
                         "sample_id"
                     ],
@@ -500,7 +567,7 @@ class BenchmarkHarnessOrchestrationTests(
                 env={},
                 workload_rows=rows,
                 workload_integrity=None,
-                sample_policy="cycle",
+                sample_policy="cycle-rotate",
                 count=5,
                 concurrency=3,
                 experiment_id="exp-test",
@@ -508,6 +575,7 @@ class BenchmarkHarnessOrchestrationTests(
                 repeat_id="r001",
                 phase="measured",
                 request_index_start=0,
+                sample_offset=2,
             )
 
         # gather() preserves input-awaitable result order even when
@@ -517,28 +585,28 @@ class BenchmarkHarnessOrchestrationTests(
             [
                 {
                     "request_index": 0,
-                    "sample_index": 0,
-                    "sample_id": "sample-000",
-                },
-                {
-                    "request_index": 1,
-                    "sample_index": 1,
-                    "sample_id": "sample-001",
-                },
-                {
-                    "request_index": 2,
                     "sample_index": 2,
                     "sample_id": "sample-002",
                 },
                 {
-                    "request_index": 3,
+                    "request_index": 1,
                     "sample_index": 0,
                     "sample_id": "sample-000",
                 },
                 {
-                    "request_index": 4,
+                    "request_index": 2,
                     "sample_index": 1,
                     "sample_id": "sample-001",
+                },
+                {
+                    "request_index": 3,
+                    "sample_index": 2,
+                    "sample_id": "sample-002",
+                },
+                {
+                    "request_index": 4,
+                    "sample_index": 0,
+                    "sample_id": "sample-000",
                 },
             ],
         )
@@ -550,19 +618,19 @@ class BenchmarkHarnessOrchestrationTests(
 
         self.assertEqual(
             by_request_index[3]["sample_index"],
-            0,
+            2,
         )
         self.assertEqual(
             by_request_index[3]["sample_id"],
-            "sample-000",
+            "sample-002",
         )
         self.assertEqual(
             by_request_index[4]["sample_index"],
-            1,
+            0,
         )
         self.assertEqual(
             by_request_index[4]["sample_id"],
-            "sample-001",
+            "sample-000",
         )
 
         for request_index in range(5):
@@ -574,14 +642,15 @@ class BenchmarkHarnessOrchestrationTests(
             )
             self.assertEqual(
                 item["sample_policy"],
-                "cycle",
+                "cycle-rotate",
             )
+            self.assertEqual(item["sample_offset"], 2)
             self.assertEqual(
                 item["model"],
                 "qwen2.5-7b-vanilla",
             )
 
-            expected_sample_index = request_index % 3
+            expected_sample_index = (request_index + 2) % 3
 
             self.assertEqual(
                 item["messages"],
