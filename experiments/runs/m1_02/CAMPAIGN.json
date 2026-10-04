@@ -1,0 +1,56 @@
+{
+  "benchmark_commit": "f307e33f9aea4bbd45499f548480cb7d6f90a4b9",
+  "canonical_raw_root": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z",
+  "created_utc": "2026-10-04T10:27:25Z",
+  "evidence_branch": "evidence/m1-02-f307e33",
+  "expected_total": {
+    "cells": 36,
+    "measured_repeats": 180,
+    "measured_requests": 5760,
+    "sweeps": 6
+  },
+  "experiment_id": "m1-02-f307e33-20261004T102725Z",
+  "note": "Campaign initialized before measurements. This manifest is provenance/setup metadata, not benchmark result evidence.",
+  "protocol": {
+    "concurrency": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "lanes": [
+      "vanilla",
+      "static"
+    ],
+    "measured_requests_per_repeat": 32,
+    "repeats_per_cell": 5,
+    "sample_policy": "cycle-rotate",
+    "sweep_order": [
+      "vanilla/W1",
+      "static/W1",
+      "vanilla/W2",
+      "static/W2",
+      "vanilla/W3",
+      "static/W3"
+    ],
+    "workloads": [
+      "W1",
+      "W2",
+      "W3"
+    ]
+  },
+  "runtime": {
+    "aiohttp": "3.13.5",
+    "cuda": "13.0",
+    "driver": "580.178.04",
+    "gpu": "Tesla T4",
+    "nvidia_ml_py": "13.595.45",
+    "torch": "2.13.0+cu130",
+    "visible_cuda_devices": 1,
+    "vllm": "0.30.0"
+  },
+  "schema": "m1_02_campaign.v1",
+  "status": "initialized_no_measurements"
+}
