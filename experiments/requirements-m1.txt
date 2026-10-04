@@ -3,7 +3,7 @@
 # uv pip install --python .venv/bin/python --torch-backend=cu130 -r experiments/requirements-m1.txt
 
 torch==2.13.0
-vllm>=0.29.0,<=0.30.0
+vllm==0.30.0
 aiohttp==3.13.5
 nvidia-ml-py==13.595.45
 
