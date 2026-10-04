@@ -1,0 +1,33 @@
+{
+  "workload_id": "w3_free_analysis",
+  "dataset_version": "w3.m1_03.v2",
+  "prompt_version": "w3_business_analysis.v2",
+  "task_name": "Vietnamese VAT business-analysis free-form generation",
+  "entropy_profile": "high",
+  "sample_count": 12,
+  "model": "qwen2.5:7b-instruct",
+  "temperature": 0.0,
+  "max_tokens": 768,
+  "seed": 42,
+  "decision": "PM-approved W2-C pipeline-aligned diverse SQL + W3-D business-analysis-only diverse scenarios",
+  "freeze_decision": "freeze W3 v2 after PM-approved workload redesign",
+  "handoff_note": "Consume chat_requests.jsonl directly; concurrency, warm-up, repeats, generation-config, and sample reuse remain M1-02 harness/server protocol.",
+  "benchmark_contract_note": "Node 3 business-analysis only; diverse VAT/business scenarios; v2 freezes max_tokens=768 after diagnostics showed 12/12 prompts truncated at 192 and 5/12 still truncated at 512; a 1024 diagnostic probe observed natural stops up to 681 tokens.",
+  "package_sha256": "657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689",
+  "artifacts": {
+    "samples_jsonl": "experiments/configs/w3_v2/samples.jsonl",
+    "provenance_jsonl": "experiments/configs/w3_v2/provenance.jsonl",
+    "manifest_csv": "experiments/configs/w3_v2/manifest.csv",
+    "chat_requests_jsonl": "experiments/configs/w3_v2/chat_requests.jsonl",
+    "system_prompt": "experiments/configs/w3_v2/system_prompt.md",
+    "source_prompts_jsonl": "experiments/configs/workloads/w3_business_analysis_v2.jsonl"
+  },
+  "file_hashes": {
+    "samples_jsonl": "00e133874fe525577389400532be29af7983b38459e72ca52d5e056559617bfe",
+    "provenance_jsonl": "d89f80be1ec907645d5097debc8fc9d5693c4e3d19e4e84bfa76b03a5e87bec3",
+    "manifest_csv": "1460eb4d0ac8b1f180ba3f5b03b4c6f33be6747db8c2226b274d7ce416926a3d",
+    "chat_requests_jsonl": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+    "system_prompt": "fee80fb2e4e1499f264ed8545337a0eda19a55c901c1ad461b32542a3fb85bd7",
+    "source_prompts_jsonl": "3ab4c4734d72731c94c87ec869977b61341b60b8bc3b0c6c2b8846beac2ea115"
+  }
+}
