@@ -4,21 +4,22 @@ set -euo pipefail
 # ============================================================
 # M1-02 FULL CANONICAL BASELINE CAMPAIGN
 #
-# Order:
-#   Vanilla/W1
-#   Static/W1
-#   Vanilla/W2
-#   Static/W2
-#   Vanilla/W3
-#   Static/W3
+# Sweep order:
+#   1. Vanilla / W1
+#   2. Static  / W1
+#   3. Vanilla / W2
+#   4. Static  / W2
+#   5. Vanilla / W3
+#   6. Static  / W3
 #
-# Each sweep:
-#   6 concurrency cells
-#   5 measured repeats/cell
-#   32 measured requests/repeat
-#   = 960 measured requests
+# Per sweep:
+#   6 concurrency cells: [1, 2, 4, 8, 16, 32]
+#   5 measured repeats / cell
+#   32 measured requests / repeat
 #
-# Campaign:
+#   6 * 5 * 32 = 960 measured requests / sweep
+#
+# Full campaign:
 #   6 sweeps
 #   36 cells
 #   180 measured repeats
@@ -30,6 +31,7 @@ EVID=/kaggle/working/do-an-ptit-d22-evidence
 
 FROZEN_SHA=f307e33f9aea4bbd45499f548480cb7d6f90a4b9
 EVID_BRANCH=evidence/m1-02-f307e33
+
 EXPECTED_EXPERIMENT_ID=m1-02-f307e33-20261004T102725Z
 
 CAMPAIGN_FILE="$EVID/experiments/runs/m1_02/CAMPAIGN.json"
@@ -52,6 +54,10 @@ SERVER_PGID=""
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
 export CUDA_VISIBLE_DEVICES=0
 
+
+# ============================================================
+# Common helpers
+# ============================================================
 
 fail() {
     echo
@@ -89,6 +95,7 @@ cleanup_server() {
             grep -qx "$SERVER_PGID"
         then
             echo "Graceful shutdown timed out; KILL PGID $SERVER_PGID"
+
             kill -KILL -- "-$SERVER_PGID" 2>/dev/null || true
         fi
     fi
@@ -103,7 +110,6 @@ wait_gpu_release() {
     local free_mib=0
 
     for _ in $(seq 1 "$GPU_RELEASE_TIMEOUT_S"); do
-
         free_mib="$(
             nvidia-smi -i 0 \
                 --query-gpu=memory.free \
@@ -169,6 +175,7 @@ ensure_prelaunch_clean() {
 
 wait_health() {
     local port="$1"
+
     local start_ts
     local now_ts
     local elapsed
@@ -176,7 +183,6 @@ wait_health() {
     start_ts="$(date +%s)"
 
     while true; do
-
         if curl -fsS \
             --max-time 3 \
             "http://127.0.0.1:${port}/health" \
@@ -201,6 +207,7 @@ wait_health() {
         fi
 
         echo "waiting for health... ${elapsed}s"
+
         sleep 3
     done
 }
@@ -252,6 +259,7 @@ import json
 import os
 from pathlib import Path
 
+
 pgid = int(os.environ["SERVER_PGID"])
 lane = os.environ["LANE"]
 port = os.environ["PORT"]
@@ -266,7 +274,6 @@ served = {
 candidates = []
 
 for proc in Path("/proc").iterdir():
-
     if not proc.name.isdigit():
         continue
 
@@ -305,6 +312,7 @@ if len(candidates) != 1:
         f"found {len(candidates)}: {candidates!r}"
     )
 
+
 pid, args = candidates[0]
 
 print("vLLM PID =", pid)
@@ -334,8 +342,8 @@ expected = {
     "--max-num-seqs": "32",
 }
 
-for flag, expected_value in expected.items():
 
+for flag, expected_value in expected.items():
     actual = value(flag)
 
     if actual != expected_value:
@@ -346,7 +354,6 @@ for flag, expected_value in expected.items():
 
 
 if lane == "vanilla":
-
     if "--speculative-config" in args:
         raise SystemExit(
             "Vanilla unexpectedly has --speculative-config"
@@ -358,7 +365,6 @@ if lane == "vanilla":
         )
 
 else:
-
     if value("--per-request-spec-decode-metrics") != "summary":
         raise SystemExit(
             "Static must use "
@@ -394,6 +400,7 @@ import json
 import sys
 from pathlib import Path
 
+
 path = Path(sys.argv[1])
 expected_sha = sys.argv[2]
 
@@ -417,26 +424,6 @@ PY
 }
 
 
-resume_rc() {
-    local lane="$1"
-    local workload="$2"
-
-    set +e
-
-    python3 "$RESUME_CHECK" \
-        --evidence-repo "$EVID" \
-        --lane "$lane" \
-        --workload "$workload" \
-        --experiment-id "$EXPERIMENT_ID"
-
-    local rc=$?
-
-    set -e
-
-    return "$rc"
-}
-
-
 # ============================================================
 # Campaign identity
 # ============================================================
@@ -447,6 +434,7 @@ test "$EXPERIMENT_ID" = "$EXPECTED_EXPERIMENT_ID" \
     || fail "unexpected experiment ID: $EXPERIMENT_ID"
 
 REL_DIR="experiments/runs/m1_02/$EXPERIMENT_ID"
+
 WORK_DIR="/kaggle/working/m1_02_campaign/$EXPERIMENT_ID"
 
 mkdir -p "$WORK_DIR"
@@ -463,7 +451,8 @@ echo "============================================================"
 
 PREFLIGHT_LOG="$WORK_DIR/preflight.log"
 
-"$PREFLIGHT" 2>&1 | tee "$PREFLIGHT_LOG"
+"$PREFLIGHT" 2>&1 |
+tee "$PREFLIGHT_LOG"
 
 git -C "$EVID" push \
     --dry-run \
@@ -473,8 +462,7 @@ echo "PUSH AUTH: PASS"
 
 
 # ============================================================
-# Freeze this exact full-campaign runner + six run configs
-# BEFORE any measurement.
+# Freeze exact runner + six run configs BEFORE measurement
 # ============================================================
 
 prepare_provenance() {
@@ -484,6 +472,19 @@ prepare_provenance() {
     local runner_dst
     local durable_preflight
 
+    local existing_sha
+
+    local local_sha
+    local remote_sha
+
+    local any_completed=0
+
+    local cfg
+    local cfg_rel
+
+    local -a structured_paths
+
+
     runner_source="$(readlink -f "$0")"
 
     runner_sha="$(
@@ -492,46 +493,64 @@ prepare_provenance() {
     )"
 
     runner_rel="experiments/runs/m1_02/tooling/run_m1_02_full_campaign.sh"
+
     runner_dst="$EVID/$runner_rel"
 
     durable_preflight="$EVID/$REL_DIR/preflight.log"
+
 
     echo
     echo "=== FREEZE FULL CAMPAIGN PROVENANCE ==="
     echo "runner SHA256: $runner_sha"
 
-    if [ -f "$runner_dst" ]; then
 
+    if find "$EVID/$REL_DIR" \
+        -maxdepth 1 \
+        -name '*.done.json' \
+        -print -quit 2>/dev/null |
+        grep -q .
+    then
+        any_completed=1
+    fi
+
+
+    if [ -f "$runner_dst" ]; then
         existing_sha="$(
             sha256sum "$runner_dst" |
             awk '{print $1}'
         )"
 
         if [ "$existing_sha" != "$runner_sha" ]; then
-
-            if find "$EVID/$REL_DIR" \
-                -maxdepth 1 \
-                -name '*.done.json' \
-                -print -quit 2>/dev/null |
-                grep -q .
-            then
+            if [ "$any_completed" -eq 1 ]; then
                 fail \
                     "durable full runner differs after measurements exist"
             fi
 
             cp "$runner_source" "$runner_dst"
+
             chmod +x "$runner_dst"
         fi
 
     else
         cp "$runner_source" "$runner_dst"
+
         chmod +x "$runner_dst"
     fi
 
 
-    if [ ! -f "$durable_preflight" ]; then
+    # Before any completed sweep exists, refresh the preflight
+    # evidence for the exact session that is about to measure.
+    #
+    # After durable measurements exist, preserve the existing
+    # campaign preflight artifact.
+    if [ "$any_completed" -eq 0 ]; then
         mkdir -p "$(dirname "$durable_preflight")"
+
         cp "$PREFLIGHT_LOG" "$durable_preflight"
+
+    elif [ ! -f "$durable_preflight" ]; then
+        fail \
+            "completed measurements exist but durable preflight.log is missing"
     fi
 
 
@@ -546,22 +565,27 @@ prepare_provenance() {
 import hashlib
 import json
 import os
+
 from datetime import datetime, timezone
 from pathlib import Path
+
 
 bench = Path(os.environ["BENCH"])
 evid = Path(os.environ["EVID"])
 
 experiment_id = os.environ["EXPERIMENT_ID"]
 frozen_sha = os.environ["FROZEN_SHA"]
+
 rel_dir = Path(os.environ["REL_DIR"])
 
 runner_sha = os.environ["RUNNER_SHA"]
 runner_rel = os.environ["RUNNER_REL"]
 
 
-def sha256(path: Path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def sha256(path: Path) -> str:
+    return hashlib.sha256(
+        path.read_bytes()
+    ).hexdigest()
 
 
 specs = [
@@ -573,6 +597,7 @@ specs = [
         8001,
         "qwen2.5-7b-vanilla",
     ),
+
     (
         "static",
         "W1",
@@ -581,6 +606,7 @@ specs = [
         8002,
         "qwen2.5-7b-static-draft",
     ),
+
     (
         "vanilla",
         "W2",
@@ -589,6 +615,7 @@ specs = [
         8001,
         "qwen2.5-7b-vanilla",
     ),
+
     (
         "static",
         "W2",
@@ -597,6 +624,7 @@ specs = [
         8002,
         "qwen2.5-7b-static-draft",
     ),
+
     (
         "vanilla",
         "W3",
@@ -605,6 +633,7 @@ specs = [
         8001,
         "qwen2.5-7b-vanilla",
     ),
+
     (
         "static",
         "W3",
@@ -615,7 +644,12 @@ specs = [
     ),
 ]
 
-harness = bench / "experiments/benchmark_harness.py"
+
+harness = (
+    bench
+    / "experiments/benchmark_harness.py"
+)
+
 
 for (
     lane,
@@ -640,15 +674,18 @@ for (
         / f"{name}.done.json"
     )
 
-    old = None
-
     if config_path.exists():
         old = json.loads(
-            config_path.read_text(encoding="utf-8")
+            config_path.read_text(
+                encoding="utf-8"
+            )
         )
 
         old_runner_sha = (
-            old.get("runner", {}).get("sha256")
+            old.get(
+                "runner",
+                {},
+            ).get("sha256")
         )
 
         if (
@@ -663,75 +700,174 @@ for (
         if old_runner_sha == runner_sha:
             continue
 
-    launcher = bench / launcher_rel
-    workload_file = bench / workload_rel
+
+    launcher = (
+        bench
+        / launcher_rel
+    )
+
+    workload_file = (
+        bench
+        / workload_rel
+    )
+
 
     config = {
-        "schema": "m1_02_sweep_run_config.v2",
-        "experiment_id": experiment_id,
-        "lane": lane,
-        "workload": workload,
-        "created_utc": datetime.now(
-            timezone.utc
-        ).isoformat(),
-        "benchmark_commit": frozen_sha,
+        "schema":
+            "m1_02_sweep_run_config.v2",
+
+        "experiment_id":
+            experiment_id,
+
+        "lane":
+            lane,
+
+        "workload":
+            workload,
+
+        "created_utc":
+            datetime.now(
+                timezone.utc
+            ).isoformat(),
+
+        "benchmark_commit":
+            frozen_sha,
+
         "runner": {
-            "path": runner_rel,
-            "sha256": runner_sha,
+            "path":
+                runner_rel,
+
+            "sha256":
+                runner_sha,
         },
+
         "benchmark_harness": {
-            "path": "experiments/benchmark_harness.py",
-            "sha256": sha256(harness),
+            "path":
+                "experiments/benchmark_harness.py",
+
+            "sha256":
+                sha256(harness),
         },
+
         "launcher": {
-            "path": launcher_rel,
-            "sha256": sha256(launcher),
+            "path":
+                launcher_rel,
+
+            "sha256":
+                sha256(launcher),
         },
+
         "workload_artifact": {
-            "path": workload_rel,
-            "sha256": sha256(workload_file),
+            "path":
+                workload_rel,
+
+            "sha256":
+                sha256(workload_file),
         },
+
         "server": {
-            "port": port,
-            "endpoint": (
-                f"http://127.0.0.1:{port}"
-                "/v1/chat/completions"
-            ),
-            "served_model": model,
-            "fresh_server_per_sweep": True,
-            "restart_between_cells": False,
-            "restart_between_repeats": False,
-            "prefix_cache_reset_between_cells": False,
-            "prefix_cache_reset_between_repeats": False,
+            "port":
+                port,
+
+            "endpoint":
+                (
+                    f"http://127.0.0.1:{port}"
+                    "/v1/chat/completions"
+                ),
+
+            "served_model":
+                model,
+
+            "fresh_server_per_sweep":
+                True,
+
+            "restart_between_cells":
+                False,
+
+            "restart_between_repeats":
+                False,
+
+            "prefix_cache_reset_between_cells":
+                False,
+
+            "prefix_cache_reset_between_repeats":
+                False,
         },
+
         "measurement": {
-            "sample_policy": "cycle-rotate",
-            "concurrency_order": [1, 2, 4, 8, 16, 32],
-            "repeats_per_cell": 5,
-            "measured_requests_per_repeat": 32,
-            "requested_warmup_requests": 3,
-            "warmup_policy": (
-                "max(3, requested_warmup, concurrency)"
-            ),
-            "warmup_once_per_cell": True,
-            "timeout_s": 120.0,
-            "gpu_index": 0,
-            "vram_sample_interval_s": 0.05,
-            "expected_cells": 6,
-            "expected_measured_repeats": 30,
-            "expected_measured_requests": 960,
+            "sample_policy":
+                "cycle-rotate",
+
+            "concurrency_order":
+                [
+                    1,
+                    2,
+                    4,
+                    8,
+                    16,
+                    32,
+                ],
+
+            "repeats_per_cell":
+                5,
+
+            "measured_requests_per_repeat":
+                32,
+
+            "requested_warmup_requests":
+                3,
+
+            "warmup_policy":
+                (
+                    "max(3, requested_warmup, "
+                    "concurrency)"
+                ),
+
+            "warmup_once_per_cell":
+                True,
+
+            "timeout_s":
+                120.0,
+
+            "gpu_index":
+                0,
+
+            "vram_sample_interval_s":
+                0.05,
+
+            "expected_cells":
+                6,
+
+            "expected_measured_repeats":
+                30,
+
+            "expected_measured_requests":
+                960,
         },
     }
 
+
     if lane == "static":
         config["speculative_decoding"] = {
-            "method": "draft_model",
-            "draft_model": "Qwen/Qwen2.5-0.5B-Instruct",
-            "num_speculative_tokens": 3,
-            "use_heterogeneous_vocab": True,
-            "draft_sample_method": "greedy",
-            "per_request_spec_decode_metrics": "summary",
+            "method":
+                "draft_model",
+
+            "draft_model":
+                "Qwen/Qwen2.5-0.5B-Instruct",
+
+            "num_speculative_tokens":
+                3,
+
+            "use_heterogeneous_vocab":
+                True,
+
+            "draft_sample_method":
+                "greedy",
+
+            "per_request_spec_decode_metrics":
+                "summary",
         }
+
 
     config_path.parent.mkdir(
         parents=True,
@@ -745,11 +881,13 @@ for (
             indent=2,
             sort_keys=True,
         ) + "\n",
+
         encoding="utf-8",
     )
 PY
 
 
+    # Update tooling hash manifest.
     (
         cd "$EVID/experiments/runs/m1_02/tooling"
 
@@ -764,19 +902,60 @@ PY
     )
 
 
+    # Stage the runner, tooling manifest and preflight log.
     git -C "$EVID" add \
-        "experiments/runs/m1_02/tooling/run_m1_02_full_campaign.sh" \
+        "$runner_rel" \
         "experiments/runs/m1_02/tooling/SHA256SUMS" \
-        "$REL_DIR"/*.run_config.json \
         "$REL_DIR/preflight.log"
+
+
+    # Stage every run_config explicitly.
+    for cfg in "$EVID/$REL_DIR"/*.run_config.json; do
+        test -f "$cfg" \
+            || fail "missing run config: $cfg"
+
+        cfg_rel="${cfg#"$EVID"/}"
+
+        git -C "$EVID" add "$cfg_rel"
+    done
 
 
     if ! git -C "$EVID" diff --cached --quiet; then
 
-        git -C "$EVID" diff --cached --check
+        # ----------------------------------------------------
+        # Whitespace policy:
+        #
+        # Lint only artifacts we directly control:
+        #   - generated campaign runner
+        #   - run_config JSON files
+        #
+        # Do not whitespace-lint machine-generated
+        # preflight.log.
+        # ----------------------------------------------------
+
+        structured_paths=(
+            "$runner_rel"
+        )
+
+        for cfg in "$EVID/$REL_DIR"/*.run_config.json; do
+            cfg_rel="${cfg#"$EVID"/}"
+
+            structured_paths+=(
+                "$cfg_rel"
+            )
+        done
+
+
+        git -C "$EVID" diff \
+            --cached \
+            --check \
+            -- \
+            "${structured_paths[@]}"
+
 
         git -C "$EVID" commit \
             -m "evidence(m1-02): freeze full baseline campaign provenance"
+
 
         git -C "$EVID" push \
             origin "$EVID_BRANCH"
@@ -793,15 +972,21 @@ PY
         awk '{print $1}'
     )"
 
+
     echo "local evidence HEAD : $local_sha"
     echo "remote evidence HEAD: $remote_sha"
 
+
     test "$local_sha" = "$remote_sha" \
-        || fail "provenance remote durability failed"
+        || fail \
+            "provenance remote durability failed"
+
 
     test -z "$(
         git -C "$EVID" status --porcelain
-    )" || fail "evidence checkout dirty after provenance freeze"
+    )" || fail \
+        "evidence checkout dirty after provenance freeze"
+
 
     echo "FULL CAMPAIGN PROVENANCE: DURABLE PASS"
 }
@@ -811,7 +996,7 @@ prepare_provenance
 
 
 # ============================================================
-# One canonical lane/workload sweep
+# Run one lane/workload sweep
 # ============================================================
 
 run_sweep() {
@@ -825,6 +1010,7 @@ run_sweep() {
 
     local key
     local run_dir
+
     local raw_tmp
     local harness_log
     local server_log
@@ -834,12 +1020,31 @@ run_sweep() {
     local harness_log_rel
     local server_log_rel
 
+    local resume
+    local health_rc
+
+    local raw_sha
+    local copied_sha
+
+    local HARNESS_LOG_SHA
+    local SERVER_LOG_SHA
+
+    local local_sha
+    local remote_sha
+
+
     key="${lane}_${workload,,}"
+
 
     echo
     echo "============================================================"
     echo "SWEEP: $lane / $workload"
     echo "============================================================"
+
+
+    # --------------------------------------------------------
+    # Resume / skip gate
+    # --------------------------------------------------------
 
     set +e
 
@@ -857,6 +1062,7 @@ run_sweep() {
     case "$resume" in
         0)
             echo "$lane/$workload COMPLETE_VALID -> SKIP"
+
             return 0
             ;;
 
@@ -871,16 +1077,24 @@ run_sweep() {
     esac
 
 
+    # --------------------------------------------------------
+    # Lane configuration
+    # --------------------------------------------------------
+
     case "$lane" in
         vanilla)
             launcher="$BENCH/scripts/launch_lane1_vanilla.sh"
+
             port=8001
+
             model=qwen2.5-7b-vanilla
             ;;
 
         static)
             launcher="$BENCH/scripts/launch_lane2_static.sh"
+
             port=8002
+
             model=qwen2.5-7b-static-draft
             ;;
 
@@ -889,6 +1103,10 @@ run_sweep() {
             ;;
     esac
 
+
+    # --------------------------------------------------------
+    # Workload configuration
+    # --------------------------------------------------------
 
     case "$workload" in
         W1)
@@ -913,11 +1131,16 @@ run_sweep() {
 
     mkdir -p "$run_dir"
 
+
     raw_tmp="$run_dir/${key}.jsonl"
+
     harness_log="$run_dir/${key}.harness.log"
+
     server_log="$run_dir/${key}.server.log"
 
 
+    # If a local partial file exists while remote resume says
+    # NOT_STARTED, do not append or silently delete it.
     if [ -e "$raw_tmp" ]; then
         fail \
             "$lane/$workload partial local raw exists: $raw_tmp; " \
@@ -928,56 +1151,89 @@ run_sweep() {
     ensure_prelaunch_clean
 
 
+    # --------------------------------------------------------
+    # Start server
+    # --------------------------------------------------------
+
     echo
     echo "=== START SERVER: $lane / $workload ==="
 
+
     : > "$server_log"
+
 
     setsid bash "$launcher" \
         >"$server_log" 2>&1 &
 
+
     SERVER_PID=$!
 
+
     sleep 1
+
 
     SERVER_PGID="$(
         ps -o pgid= -p "$SERVER_PID" |
         xargs
     )"
 
+
     test -n "$SERVER_PGID" \
         || fail "could not resolve server PGID"
+
 
     echo "launcher PID: $SERVER_PID"
     echo "server PGID : $SERVER_PGID"
     echo "server log  : $server_log"
 
 
+    # --------------------------------------------------------
+    # Server readiness
+    # --------------------------------------------------------
+
     echo
     echo "=== WAIT HEALTH ==="
 
+
     set +e
+
     wait_health "$port"
+
     health_rc=$?
+
     set -e
+
 
     if [ "$health_rc" -ne 0 ]; then
         echo "===== SERVER LOG TAIL ====="
+
         tail -n 200 "$server_log" || true
+
         fail \
             "$lane/$workload server readiness failed rc=$health_rc"
     fi
 
 
-    verify_model "$port" "$model"
+    verify_model \
+        "$port" \
+        "$model"
 
-    verify_live_command "$lane" "$port"
 
+    verify_live_command \
+        "$lane" \
+        "$port"
+
+
+    # --------------------------------------------------------
+    # Canonical harness
+    # --------------------------------------------------------
 
     echo
     echo "=== RUN CANONICAL HARNESS ==="
 
+
     cd "$BENCH"
+
 
     python3 "$HARNESS" \
         --endpoint "http://127.0.0.1:${port}/v1/chat/completions" \
@@ -998,8 +1254,13 @@ run_sweep() {
     tee "$harness_log"
 
 
+    # --------------------------------------------------------
+    # Strong canonical validation
+    # --------------------------------------------------------
+
     echo
     echo "=== VALIDATE 960-RECORD SWEEP ==="
+
 
     python3 "$VALIDATOR" \
         --raw "$raw_tmp" \
@@ -1013,22 +1274,35 @@ run_sweep() {
         awk '{print $1}'
     )"
 
+
     echo "validated raw SHA256=$raw_sha"
 
+
+    # --------------------------------------------------------
+    # Controlled server shutdown
+    # --------------------------------------------------------
 
     echo
     echo "=== SHUT DOWN SERVER ==="
 
+
     cleanup_server
+
 
     SERVER_PID=""
     SERVER_PGID=""
 
+
     wait_gpu_release
 
 
+    # --------------------------------------------------------
+    # Raw checkpoint
+    # --------------------------------------------------------
+
     echo
     echo "=== CHECKPOINT RAW → EVIDENCE ==="
+
 
     "$CHECKPOINT" \
         "$EVID" \
@@ -1039,13 +1313,22 @@ run_sweep() {
 
 
     done_rel="$REL_DIR/${key}.done.json"
+
     raw_rel="$REL_DIR/${key}.jsonl"
+
     harness_log_rel="$REL_DIR/${key}.harness.log"
+
     server_log_rel="$REL_DIR/${key}.server.log"
+
+
+    # --------------------------------------------------------
+    # Attach logs to checkpoint
+    # --------------------------------------------------------
 
     cp \
         "$harness_log" \
         "$EVID/$harness_log_rel"
+
 
     cp \
         "$server_log" \
@@ -1056,6 +1339,7 @@ run_sweep() {
         sha256sum "$EVID/$harness_log_rel" |
         awk '{print $1}'
     )"
+
 
     SERVER_LOG_SHA="$(
         sha256sum "$EVID/$server_log_rel" |
@@ -1071,19 +1355,38 @@ run_sweep() {
     python3 - <<'PY'
 import json
 import os
+
 from pathlib import Path
 
-path = Path(os.environ["DONE"])
 
-data = json.loads(
-    path.read_text(encoding="utf-8")
+path = Path(
+    os.environ["DONE"]
 )
 
-data["harness_log_path"] = os.environ["HARNESS_LOG_REL"]
-data["harness_log_sha256"] = os.environ["HARNESS_LOG_SHA"]
 
-data["server_log_path"] = os.environ["SERVER_LOG_REL"]
-data["server_log_sha256"] = os.environ["SERVER_LOG_SHA"]
+data = json.loads(
+    path.read_text(
+        encoding="utf-8"
+    )
+)
+
+
+data["harness_log_path"] = (
+    os.environ["HARNESS_LOG_REL"]
+)
+
+data["harness_log_sha256"] = (
+    os.environ["HARNESS_LOG_SHA"]
+)
+
+data["server_log_path"] = (
+    os.environ["SERVER_LOG_REL"]
+)
+
+data["server_log_sha256"] = (
+    os.environ["SERVER_LOG_SHA"]
+)
+
 
 path.write_text(
     json.dumps(
@@ -1092,6 +1395,7 @@ path.write_text(
         indent=2,
         sort_keys=True,
     ) + "\n",
+
     encoding="utf-8",
 )
 PY
@@ -1102,15 +1406,45 @@ PY
         "$harness_log_rel" \
         "$server_log_rel"
 
-    git -C "$EVID" diff --cached --check
 
+    # --------------------------------------------------------
+    # IMPORTANT:
+    #
+    # vLLM/server/harness logs are machine-generated evidence.
+    # They may legitimately contain trailing whitespace.
+    #
+    # Preserve their bytes exactly.
+    #
+    # Whitespace-check only the structured JSON marker that
+    # we control.
+    # --------------------------------------------------------
+
+    git -C "$EVID" diff \
+        --cached \
+        --check \
+        -- \
+        "$done_rel"
+
+
+    # checkpoint helper already created the local commit
+    # containing raw + initial done marker.
+    #
+    # Amend that same commit with:
+    # - final done marker
+    # - harness log
+    # - server log
     git -C "$EVID" commit \
         --amend \
         --no-edit
 
 
+    # --------------------------------------------------------
+    # Revalidate copied evidence
+    # --------------------------------------------------------
+
     echo
     echo "=== REVERIFY COPIED RAW ==="
+
 
     python3 "$VALIDATOR" \
         --raw "$EVID/$raw_rel" \
@@ -1124,12 +1458,19 @@ PY
         awk '{print $1}'
     )"
 
-    test "$copied_sha" = "$raw_sha" \
-        || fail "$lane/$workload raw SHA changed after copy"
 
+    test "$copied_sha" = "$raw_sha" \
+        || fail \
+            "$lane/$workload raw SHA changed after copy"
+
+
+    # --------------------------------------------------------
+    # Durable push
+    # --------------------------------------------------------
 
     echo
     echo "=== PUSH SWEEP EVIDENCE ==="
+
 
     git -C "$EVID" push \
         origin "$EVID_BRANCH"
@@ -1139,21 +1480,30 @@ PY
         git -C "$EVID" rev-parse HEAD
     )"
 
+
     remote_sha="$(
         git -C "$EVID" ls-remote origin \
             "refs/heads/$EVID_BRANCH" |
         awk '{print $1}'
     )"
 
+
     echo "local evidence HEAD : $local_sha"
     echo "remote evidence HEAD: $remote_sha"
 
-    test "$local_sha" = "$remote_sha" \
-        || fail "$lane/$workload remote durability mismatch"
 
+    test "$local_sha" = "$remote_sha" \
+        || fail \
+            "$lane/$workload remote durability mismatch"
+
+
+    # --------------------------------------------------------
+    # Resume gate must now say COMPLETE_VALID
+    # --------------------------------------------------------
 
     echo
     echo "=== POST-PUSH RESUME CHECK ==="
+
 
     python3 "$RESUME_CHECK" \
         --evidence-repo "$EVID" \
@@ -1164,7 +1514,8 @@ PY
 
     test -z "$(
         git -C "$EVID" status --porcelain
-    )" || fail "evidence checkout dirty after $lane/$workload"
+    )" || fail \
+        "evidence checkout dirty after $lane/$workload"
 
 
     echo
@@ -1176,27 +1527,28 @@ PY
 
 
 # ============================================================
-# Required PM-approved interleaved order
+# Required interleaved campaign order
 # ============================================================
 
 run_sweep vanilla W1
-run_sweep static  W1
+run_sweep static W1
 
 run_sweep vanilla W2
-run_sweep static  W2
+run_sweep static W2
 
 run_sweep vanilla W3
-run_sweep static  W3
+run_sweep static W3
 
 
 # ============================================================
-# Verify all 6 are durable before aggregation
+# Verify all six sweeps before aggregation
 # ============================================================
 
 echo
 echo "============================================================"
 echo "VERIFY ALL SIX SWEEPS"
 echo "============================================================"
+
 
 for spec in \
     "vanilla W1" \
@@ -1217,16 +1569,19 @@ done
 
 
 # ============================================================
-# If final campaign marker already exists, verify and exit.
+# Existing completed campaign guard
 # ============================================================
 
 RUN_COMPLETE="$EVID/$REL_DIR/RUN_COMPLETE.json"
+
 FINAL_SUMMARY="$EVID/experiments/results/summary.csv"
+
 
 if [ -f "$RUN_COMPLETE" ]; then
 
     echo
     echo "RUN_COMPLETE.json already exists; verifying..."
+
 
     RUN_COMPLETE="$RUN_COMPLETE" \
     FINAL_SUMMARY="$FINAL_SUMMARY" \
@@ -1235,28 +1590,61 @@ if [ -f "$RUN_COMPLETE" ]; then
 import hashlib
 import json
 import os
+
 from pathlib import Path
 
-marker_path = Path(os.environ["RUN_COMPLETE"])
-summary_path = Path(os.environ["FINAL_SUMMARY"])
-evid = Path(os.environ["EVID"])
 
-marker = json.loads(
-    marker_path.read_text(encoding="utf-8")
+marker_path = Path(
+    os.environ["RUN_COMPLETE"]
 )
 
+summary_path = Path(
+    os.environ["FINAL_SUMMARY"]
+)
+
+evid = Path(
+    os.environ["EVID"]
+)
+
+
+marker = json.loads(
+    marker_path.read_text(
+        encoding="utf-8"
+    )
+)
+
+
 if marker.get("status") != "COMPLETE_VALID":
-    raise SystemExit("RUN_COMPLETE status is not COMPLETE_VALID")
+    raise SystemExit(
+        "RUN_COMPLETE status is not COMPLETE_VALID"
+    )
+
+
+if not summary_path.is_file():
+    raise SystemExit(
+        "RUN_COMPLETE exists but summary.csv is missing"
+    )
+
 
 summary_sha = hashlib.sha256(
     summary_path.read_bytes()
 ).hexdigest()
 
+
 if summary_sha != marker["summary_sha256"]:
-    raise SystemExit("summary SHA mismatch")
+    raise SystemExit(
+        "summary SHA mismatch"
+    )
+
 
 for item in marker["raw_files"]:
+
     path = evid / item["path"]
+
+    if not path.is_file():
+        raise SystemExit(
+            f"raw missing: {item['path']}"
+        )
 
     actual = hashlib.sha256(
         path.read_bytes()
@@ -1267,17 +1655,20 @@ for item in marker["raw_files"]:
             f"raw SHA mismatch: {item['path']}"
         )
 
+
 print("EXISTING RUN_COMPLETE: VERIFIED")
 PY
 
+
     echo
     echo "M1-02 FULL CAMPAIGN: ALREADY DURABLE COMPLETE"
+
     exit 0
 fi
 
 
 # ============================================================
-# Aggregate the six validated raw files -> summary.csv
+# Aggregate 6 raw JSONLs -> summary.csv
 # ============================================================
 
 echo
@@ -1285,17 +1676,23 @@ echo "============================================================"
 echo "AGGREGATE RAW → experiments/results/summary.csv"
 echo "============================================================"
 
+
 RAW_FILES=(
     "$EVID/$REL_DIR/vanilla_w1.jsonl"
     "$EVID/$REL_DIR/static_w1.jsonl"
+
     "$EVID/$REL_DIR/vanilla_w2.jsonl"
     "$EVID/$REL_DIR/static_w2.jsonl"
+
     "$EVID/$REL_DIR/vanilla_w3.jsonl"
     "$EVID/$REL_DIR/static_w3.jsonl"
 )
 
+
 SUMMARY_TMP="$WORK_DIR/summary.csv"
+
 AGG_LOG_TMP="$WORK_DIR/aggregate_results.log"
+
 
 python3 "$AGGREGATOR" \
     --raw "${RAW_FILES[@]}" \
@@ -1306,7 +1703,7 @@ tee "$AGG_LOG_TMP"
 
 
 # ============================================================
-# Validate canonical summary invariants
+# Validate summary invariants
 # ============================================================
 
 SUMMARY_TMP="$SUMMARY_TMP" \
@@ -1315,30 +1712,65 @@ python3 - <<'PY'
 import csv
 import math
 import os
+
 from pathlib import Path
 
-path = Path(os.environ["SUMMARY_TMP"])
-frozen_sha = os.environ["FROZEN_SHA"]
+
+path = Path(
+    os.environ["SUMMARY_TMP"]
+)
+
+frozen_sha = (
+    os.environ["FROZEN_SHA"]
+)
+
 
 with path.open(
     encoding="utf-8",
     newline="",
 ) as f:
-    rows = list(csv.DictReader(f))
+    rows = list(
+        csv.DictReader(f)
+    )
+
 
 print("summary rows =", len(rows))
+
 
 if len(rows) != 36:
     raise SystemExit(
         f"expected exactly 36 summary rows, got {len(rows)}"
     )
 
+
 expected = {
-    (lane, workload, concurrency)
-    for lane in ("vanilla", "static")
-    for workload in ("W1", "W2", "W3")
-    for concurrency in (1, 2, 4, 8, 16, 32)
+    (
+        lane,
+        workload,
+        concurrency,
+    )
+
+    for lane in (
+        "vanilla",
+        "static",
+    )
+
+    for workload in (
+        "W1",
+        "W2",
+        "W3",
+    )
+
+    for concurrency in (
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+    )
 }
+
 
 actual = {
     (
@@ -1346,15 +1778,18 @@ actual = {
         row["workload"],
         int(row["concurrency"]),
     )
+
     for row in rows
 }
+
 
 if actual != expected:
     raise SystemExit(
         f"summary cell coverage mismatch; "
-        f"missing={sorted(expected-actual)}, "
-        f"extra={sorted(actual-expected)}"
+        f"missing={sorted(expected - actual)}, "
+        f"extra={sorted(actual - expected)}"
     )
+
 
 for row in rows:
 
@@ -1364,24 +1799,32 @@ for row in rows:
         row["concurrency"],
     )
 
+
     if int(row["n_runs"]) != 5:
         raise SystemExit(
             f"{cell}: n_runs != 5"
         )
+
 
     if row["commit"] != frozen_sha:
         raise SystemExit(
             f"{cell}: wrong benchmark commit"
         )
 
+
     speedup = float(
         row["speedup_vs_vanilla"]
     )
 
-    if not math.isfinite(speedup) or speedup <= 0:
+
+    if (
+        not math.isfinite(speedup)
+        or speedup <= 0
+    ):
         raise SystemExit(
             f"{cell}: invalid speedup={speedup}"
         )
+
 
     if row["lane"] == "vanilla":
 
@@ -1395,44 +1838,62 @@ for row in rows:
                 f"{cell}: vanilla speedup != 1"
             )
 
+
         if row["alpha"] != "N/A":
             raise SystemExit(
                 f"{cell}: vanilla alpha should be N/A"
             )
+
 
         if row["tau"] != "N/A":
             raise SystemExit(
                 f"{cell}: vanilla tau should be N/A"
             )
 
+
     else:
 
-        alpha = float(row["alpha"])
-        tau = float(row["tau"])
+        alpha = float(
+            row["alpha"]
+        )
 
-        if not (0.0 <= alpha <= 1.0):
+        tau = float(
+            row["tau"]
+        )
+
+
+        if not (
+            0.0 <= alpha <= 1.0
+        ):
             raise SystemExit(
-                f"{cell}: alpha out of range"
+                f"{cell}: alpha out of range: {alpha}"
             )
 
-        if not (1.0 <= tau <= 4.0):
+
+        if not (
+            1.0 <= tau <= 4.0
+        ):
             raise SystemExit(
-                f"{cell}: tau out of range"
+                f"{cell}: tau out of range: {tau}"
             )
+
 
 print("SUMMARY CANONICAL VALIDATION: PASS")
 PY
 
 
 # ============================================================
-# Copy canonical summary + aggregation log
+# Copy canonical summary + aggregator log
 # ============================================================
 
-mkdir -p "$EVID/experiments/results"
+mkdir -p \
+    "$EVID/experiments/results"
+
 
 cp \
     "$SUMMARY_TMP" \
     "$EVID/experiments/results/summary.csv"
+
 
 cp \
     "$AGG_LOG_TMP" \
@@ -1448,29 +1909,45 @@ REL_DIR="$REL_DIR" \
 EXPERIMENT_ID="$EXPERIMENT_ID" \
 FROZEN_SHA="$FROZEN_SHA" \
 python3 - <<'PY'
+import csv
 import hashlib
 import json
 import os
+
 from datetime import datetime, timezone
 from pathlib import Path
 
-evid = Path(os.environ["EVID"])
-rel_dir = Path(os.environ["REL_DIR"])
 
-experiment_id = os.environ["EXPERIMENT_ID"]
-frozen_sha = os.environ["FROZEN_SHA"]
+evid = Path(
+    os.environ["EVID"]
+)
+
+rel_dir = Path(
+    os.environ["REL_DIR"]
+)
+
+experiment_id = (
+    os.environ["EXPERIMENT_ID"]
+)
+
+frozen_sha = (
+    os.environ["FROZEN_SHA"]
+)
+
 
 names = [
     "vanilla_w1.jsonl",
     "static_w1.jsonl",
+
     "vanilla_w2.jsonl",
     "static_w2.jsonl",
+
     "vanilla_w3.jsonl",
     "static_w3.jsonl",
 ]
 
 
-def sha256(path: Path):
+def sha256(path: Path) -> str:
     return hashlib.sha256(
         path.read_bytes()
     ).hexdigest()
@@ -1480,30 +1957,54 @@ raw_files = []
 
 total_lines = 0
 
+
 for name in names:
 
-    rel = rel_dir / name
-    path = evid / rel
+    rel = (
+        rel_dir
+        / name
+    )
+
+    path = (
+        evid
+        / rel
+    )
+
+    if not path.is_file():
+        raise SystemExit(
+            f"missing canonical raw: {rel}"
+        )
+
 
     lines = sum(
         1
+
         for line in path.read_text(
             encoding="utf-8"
         ).splitlines()
+
         if line.strip()
     )
+
 
     if lines != 960:
         raise SystemExit(
             f"{name}: expected 960 measured rows, got {lines}"
         )
 
+
     total_lines += lines
 
+
     raw_files.append({
-        "path": rel.as_posix(),
-        "sha256": sha256(path),
-        "measured_records": lines,
+        "path":
+            rel.as_posix(),
+
+        "sha256":
+            sha256(path),
+
+        "measured_records":
+            lines,
     })
 
 
@@ -1513,16 +2014,28 @@ if total_lines != 5760:
     )
 
 
-summary = evid / "experiments/results/summary.csv"
-
-summary_rows = (
-    len(
-        summary.read_text(
-            encoding="utf-8"
-        ).splitlines()
-    )
-    - 1
+summary = (
+    evid
+    / "experiments/results/summary.csv"
 )
+
+
+if not summary.is_file():
+    raise SystemExit(
+        "canonical summary.csv missing"
+    )
+
+
+with summary.open(
+    encoding="utf-8",
+    newline="",
+) as f:
+    summary_rows = len(
+        list(
+            csv.DictReader(f)
+        )
+    )
+
 
 if summary_rows != 36:
     raise SystemExit(
@@ -1531,24 +2044,55 @@ if summary_rows != 36:
 
 
 marker = {
-    "schema": "m1_02_campaign_complete.v1",
-    "status": "COMPLETE_VALID",
-    "experiment_id": experiment_id,
-    "benchmark_commit": frozen_sha,
-    "completed_utc": datetime.now(
-        timezone.utc
-    ).isoformat(),
-    "sweeps": 6,
-    "cells": 36,
-    "measured_repeats": 180,
-    "measured_requests": total_lines,
-    "raw_files": raw_files,
-    "summary_path": "experiments/results/summary.csv",
-    "summary_rows": summary_rows,
-    "summary_sha256": sha256(summary),
+    "schema":
+        "m1_02_campaign_complete.v1",
+
+    "status":
+        "COMPLETE_VALID",
+
+    "experiment_id":
+        experiment_id,
+
+    "benchmark_commit":
+        frozen_sha,
+
+    "completed_utc":
+        datetime.now(
+            timezone.utc
+        ).isoformat(),
+
+    "sweeps":
+        6,
+
+    "cells":
+        36,
+
+    "measured_repeats":
+        180,
+
+    "measured_requests":
+        total_lines,
+
+    "raw_files":
+        raw_files,
+
+    "summary_path":
+        "experiments/results/summary.csv",
+
+    "summary_rows":
+        summary_rows,
+
+    "summary_sha256":
+        sha256(summary),
 }
 
-output = evid / rel_dir / "RUN_COMPLETE.json"
+
+output = (
+    evid
+    / rel_dir
+    / "RUN_COMPLETE.json"
+)
+
 
 output.write_text(
     json.dumps(
@@ -1557,15 +2101,22 @@ output.write_text(
         indent=2,
         sort_keys=True,
     ) + "\n",
+
     encoding="utf-8",
 )
 
-print(json.dumps(marker, indent=2))
+
+print(
+    json.dumps(
+        marker,
+        indent=2,
+    )
+)
 PY
 
 
 # ============================================================
-# Final evidence commit + remote verification
+# Final evidence commit
 # ============================================================
 
 git -C "$EVID" add \
@@ -1573,10 +2124,21 @@ git -C "$EVID" add \
     "$REL_DIR/aggregate_results.log" \
     "$REL_DIR/RUN_COMPLETE.json"
 
-git -C "$EVID" diff --cached --check
+
+# aggregate_results.log is machine-generated.
+#
+# Preserve it exactly and lint only canonical structured files.
+git -C "$EVID" diff \
+    --cached \
+    --check \
+    -- \
+    "experiments/results/summary.csv" \
+    "$REL_DIR/RUN_COMPLETE.json"
+
 
 git -C "$EVID" commit \
     -m "evidence(m1-02): finalize baseline raw telemetry and summary"
+
 
 git -C "$EVID" push \
     origin "$EVID_BRANCH"
@@ -1586,30 +2148,35 @@ LOCAL_SHA="$(
     git -C "$EVID" rev-parse HEAD
 )"
 
+
 REMOTE_SHA="$(
     git -C "$EVID" ls-remote origin \
         "refs/heads/$EVID_BRANCH" |
     awk '{print $1}'
 )"
 
+
 echo "local evidence HEAD : $LOCAL_SHA"
 echo "remote evidence HEAD: $REMOTE_SHA"
 
+
 test "$LOCAL_SHA" = "$REMOTE_SHA" \
-    || fail "final remote durability mismatch"
+    || fail \
+        "final remote durability mismatch"
 
 
 test -z "$(
     git -C "$EVID" status --porcelain
-)" || fail "evidence checkout dirty after finalization"
+)" || fail \
+    "evidence checkout dirty after finalization"
 
 
 echo
 echo "============================================================"
 echo "M1-02 FULL CAMPAIGN: DURABLE PASS"
 echo "experiment_id=$EXPERIMENT_ID"
-echo "raw files        = 6"
-echo "measured requests= 5760"
-echo "summary rows     = 36"
-echo "summary path     = experiments/results/summary.csv"
+echo "raw files         = 6"
+echo "measured requests = 5760"
+echo "summary rows      = 36"
+echo "summary path      = experiments/results/summary.csv"
 echo "============================================================"

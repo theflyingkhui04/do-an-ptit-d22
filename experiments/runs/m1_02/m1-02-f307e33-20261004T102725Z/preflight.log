@@ -8,8 +8,8 @@ BENCHMARK CHECKOUT: PASS
 
 === 3. EVIDENCE CHECKOUT ===
 evidence branch     : evidence/m1-02-f307e33
-evidence local HEAD : fe909df7b6ba3a40ea0040f322484f63430f5939
-evidence remote HEAD: fe909df7b6ba3a40ea0040f322484f63430f5939
+evidence local HEAD : 7f80c85e80d215b01efb2b3f5a0cce2ef656e1d7
+evidence remote HEAD: 7f80c85e80d215b01efb2b3f5a0cce2ef656e1d7
 EVIDENCE CHECKOUT: PASS
 
 === 4. CUDA VISIBILITY ===
