@@ -1,0 +1,59 @@
+=== 1. REQUIRED TOOLS ===
+TOOLS: PASS
+
+=== 2. CHECKOUTS ===
+benchmark branch : feat/m1-02-concurrency-sweep-baseline
+benchmark HEAD   : f307e33f9aea4bbd45499f548480cb7d6f90a4b9
+BENCHMARK CHECKOUT: PASS
+
+=== 3. EVIDENCE CHECKOUT ===
+evidence branch     : evidence/m1-02-f307e33
+evidence local HEAD : fe909df7b6ba3a40ea0040f322484f63430f5939
+evidence remote HEAD: fe909df7b6ba3a40ea0040f322484f63430f5939
+EVIDENCE CHECKOUT: PASS
+
+=== 4. CUDA VISIBILITY ===
+CUDA_VISIBLE_DEVICES=0
+
+=== 5. PYTHON RUNTIME CONTRACT ===
+CUDA_VISIBLE_DEVICES = 0
+torch devices        = 1
+torch GPU            = Tesla T4
+torch                = 2.13.0+cu130
+torch_cuda           = 13.0
+vllm                 = 0.30.0
+aiohttp              = 3.13.5
+nvidia-ml-py         = 13.595.45
+PYTHON RUNTIME: PASS
+
+=== 6. NVIDIA DRIVER / GPU FREE MEMORY ===
+GPU name : Tesla T4
+driver   : 580.178.04
+free MiB : 14912
+GPU CONTRACT: PASS
+
+=== 7. WORKLOAD ARTIFACTS ===
+experiments/configs/w1/node1_chat_requests.jsonl
+  expected: 0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360
+  actual  : 0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360
+experiments/configs/w2_v2/chat_requests.jsonl
+  expected: bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c
+  actual  : bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c
+experiments/configs/w3_v2/chat_requests.jsonl
+  expected: 57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b
+  actual  : 57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b
+WORKLOAD ARTIFACTS: PASS
+
+=== 8. BENCHMARK ENTRYPOINTS ===
+FOUND: experiments/benchmark_harness.py
+FOUND: experiments/aggregate_results.py
+FOUND: scripts/launch_lane1_vanilla.sh
+FOUND: scripts/launch_lane2_static.sh
+ENTRYPOINTS: PASS
+
+========================================
+M1-02 PRE-FLIGHT: PASS
+No server was started.
+No benchmark request was sent.
+No campaign ID was created.
+========================================

@@ -1,0 +1,64 @@
+{
+  "benchmark_commit": "f307e33f9aea4bbd45499f548480cb7d6f90a4b9",
+  "benchmark_harness": {
+    "path": "experiments/benchmark_harness.py",
+    "sha256": "7459677f051bbaceb2a1cf3c40475ee271c68fe7d70865a9b927b62e28b2d489"
+  },
+  "created_utc": "2026-10-04T11:08:17.635373+00:00",
+  "experiment_id": "m1-02-f307e33-20261004T102725Z",
+  "lane": "static",
+  "launcher": {
+    "path": "scripts/launch_lane2_static.sh",
+    "sha256": "2c446dd5d7b062bc70769825801122d1854f8e940809299c229ea2e50bcc89e2"
+  },
+  "measurement": {
+    "concurrency_order": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "expected_cells": 6,
+    "expected_measured_repeats": 30,
+    "expected_measured_requests": 960,
+    "gpu_index": 0,
+    "measured_requests_per_repeat": 32,
+    "repeats_per_cell": 5,
+    "requested_warmup_requests": 3,
+    "sample_policy": "cycle-rotate",
+    "timeout_s": 120.0,
+    "vram_sample_interval_s": 0.05,
+    "warmup_once_per_cell": true,
+    "warmup_policy": "max(3, requested_warmup, concurrency)"
+  },
+  "runner": {
+    "path": "experiments/runs/m1_02/tooling/run_m1_02_full_campaign.sh",
+    "sha256": "e53beceb3ca3b1c26181ae6446f924a7a8d50e0b16d110981df056e48e9ef01c"
+  },
+  "schema": "m1_02_sweep_run_config.v2",
+  "server": {
+    "endpoint": "http://127.0.0.1:8002/v1/chat/completions",
+    "fresh_server_per_sweep": true,
+    "port": 8002,
+    "prefix_cache_reset_between_cells": false,
+    "prefix_cache_reset_between_repeats": false,
+    "restart_between_cells": false,
+    "restart_between_repeats": false,
+    "served_model": "qwen2.5-7b-static-draft"
+  },
+  "speculative_decoding": {
+    "draft_model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "draft_sample_method": "greedy",
+    "method": "draft_model",
+    "num_speculative_tokens": 3,
+    "per_request_spec_decode_metrics": "summary",
+    "use_heterogeneous_vocab": true
+  },
+  "workload": "W3",
+  "workload_artifact": {
+    "path": "experiments/configs/w3_v2/chat_requests.jsonl",
+    "sha256": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b"
+  }
+}
