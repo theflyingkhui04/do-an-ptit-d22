@@ -304,7 +304,7 @@ class AggregateResultsContractTests(unittest.TestCase):
             1.25,
             places=9,
         )
-        
+
     def test_cell_summary_preserves_pairing_provenance(self) -> None:
         record = make_record(
             lane="vanilla",
