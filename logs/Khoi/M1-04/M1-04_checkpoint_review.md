@@ -6,7 +6,7 @@
 - **Chủ trì cuộc họp:** Cấn Đức Khôi (Team Lead / PM / AI Systems)
 - **Thành viên tham dự đầy đủ:**
   1. **Cấn Đức Khôi** (Lead 40% — Điều phối, Kiến trúc Server, Đối soát Kỷ luật Đo lường, Trực quan hóa Biểu đồ)
-  2. **Bùi Thiên Đại** (Member 30% — MLOps, Nâng cấp Benchmark Harness, Quét Concurrency Sweep trên T4)
+  2. **Bùi Đại** (Member 30% — MLOps, Nâng cấp Benchmark Harness, Quét Concurrency Sweep trên T4)
   3. **Dương Nguyễn Thế** (Member 30% — Core Engine, MC-OCR Pipeline Node 1, Chuẩn hóa Telemetry & Soạn thảo Báo cáo)
 - **Tài nguyên thẩm định:**
   - Kho mã nguồn: `https://github.com/theflyingkhui04/do-an-ptit-d22`
