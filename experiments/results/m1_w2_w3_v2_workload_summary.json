@@ -1,0 +1,52 @@
+{
+  "task": "M1-03/M1-02 workload contract update",
+  "step": "build-w2-w3-v2-packages",
+  "status": "PASS",
+  "decision": "PM-approved W2-C pipeline-aligned diverse SQL + W3-D business-analysis-only diverse scenarios",
+  "workloads": [
+    {
+      "workload_id": "w2_text_to_sql",
+      "dataset_version": "w2.m1_03.v2",
+      "sample_count": 12,
+      "package_sha256": "529f159c6837a9e2e326f70e0420eb80a1d0788f58d42a74734efee675fe7d9f",
+      "artifacts": {
+        "samples_jsonl": "experiments/configs/w2_v2/samples.jsonl",
+        "provenance_jsonl": "experiments/configs/w2_v2/provenance.jsonl",
+        "manifest_csv": "experiments/configs/w2_v2/manifest.csv",
+        "chat_requests_jsonl": "experiments/configs/w2_v2/chat_requests.jsonl",
+        "system_prompt": "experiments/configs/w2_v2/system_prompt.md",
+        "source_prompts_jsonl": "experiments/configs/workloads/w2_text_to_sql_v2.jsonl"
+      },
+      "file_hashes": {
+        "samples_jsonl": "1fc3d2d97d32814ad1d6fb5430b71a003ef40a3a7fad4842b05c38dbf1d91025",
+        "provenance_jsonl": "308f0d0ee5322e4c926cb0ab3fda2921f0b214c2d82951010ce445848ba332b1",
+        "manifest_csv": "54f00468133e1d659676046e6c1fa18b5b6b2f218d1e2e72d6554d0066a719fa",
+        "chat_requests_jsonl": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c",
+        "system_prompt": "40a0bff9f8a9701e992efeac38f60d48094bc5376649990ba5b22975e413605b",
+        "source_prompts_jsonl": "28fe9b5618875197d37636cc13ef9a5e240f5d03e71b844ad248d94fa89a474f"
+      }
+    },
+    {
+      "workload_id": "w3_free_analysis",
+      "dataset_version": "w3.m1_03.v2",
+      "sample_count": 12,
+      "package_sha256": "657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689",
+      "artifacts": {
+        "samples_jsonl": "experiments/configs/w3_v2/samples.jsonl",
+        "provenance_jsonl": "experiments/configs/w3_v2/provenance.jsonl",
+        "manifest_csv": "experiments/configs/w3_v2/manifest.csv",
+        "chat_requests_jsonl": "experiments/configs/w3_v2/chat_requests.jsonl",
+        "system_prompt": "experiments/configs/w3_v2/system_prompt.md",
+        "source_prompts_jsonl": "experiments/configs/workloads/w3_business_analysis_v2.jsonl"
+      },
+      "file_hashes": {
+        "samples_jsonl": "00e133874fe525577389400532be29af7983b38459e72ca52d5e056559617bfe",
+        "provenance_jsonl": "d89f80be1ec907645d5097debc8fc9d5693c4e3d19e4e84bfa76b03a5e87bec3",
+        "manifest_csv": "1460eb4d0ac8b1f180ba3f5b03b4c6f33be6747db8c2226b274d7ce416926a3d",
+        "chat_requests_jsonl": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+        "system_prompt": "fee80fb2e4e1499f264ed8545337a0eda19a55c901c1ad461b32542a3fb85bd7",
+        "source_prompts_jsonl": "3ab4c4734d72731c94c87ec869977b61341b60b8bc3b0c6c2b8846beac2ea115"
+      }
+    }
+  ]
+}

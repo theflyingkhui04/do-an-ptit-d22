@@ -1,0 +1,18 @@
+{
+  "benchmark_commit": "f307e33f9aea4bbd45499f548480cb7d6f90a4b9",
+  "created_utc": "2026-10-04T15:53:57Z",
+  "expected_measured_records": 960,
+  "experiment_id": "m1-02-f307e33-20261004T102725Z",
+  "harness_log_path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w1.harness.log",
+  "harness_log_sha256": "41a3b47386fd16abacbdcb23ccc26f43d5b1f7792d3d9c0bfc9145b8f15d11aa",
+  "lane": "vanilla",
+  "measured_records": 960,
+  "raw_path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w1.jsonl",
+  "raw_sha256": "806cde2769728da62e497aa57deb84a3de571cf7f714ffb0711ba196a71bbd57",
+  "schema": "m1_02_sweep_done.v1",
+  "server_log_path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w1.server.log",
+  "server_log_sha256": "9e745edd7878f73f86cf7575c8b01f7f4640d62337580d4c413a63a424b2ff26",
+  "validation_status": "PASS",
+  "validator": "validate_m1_02_sweep.py",
+  "workload": "W1"
+}

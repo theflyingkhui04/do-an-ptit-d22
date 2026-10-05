@@ -1,0 +1,123 @@
+{
+  "task": "M1-02",
+  "mode": "diagnostic-only-not-benchmark-evidence",
+  "purpose": "Select a W3 v2 output-token ceiling that avoids artificial truncation before the first package freeze.",
+  "base_git_sha": "dc1bf28e080148869f41fcd31537ae0c4addbca6",
+  "runtime_model": "qwen2.5-7b-vanilla",
+  "workload_id": "w3_free_analysis",
+  "dataset_version": "w3.m1_03.v2",
+  "prompt_version": "w3_business_analysis.v2",
+  "final_candidate_max_tokens": 768,
+  "final_package_sha256": "657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689",
+  "diagnostics": {
+    "cap_192": {
+      "sample_count": 12,
+      "completed": 12,
+      "errors": 0,
+      "truncation_suspected_count": 12,
+      "truncated_sample_ids": [
+        "w3_business_v2_001",
+        "w3_business_v2_002",
+        "w3_business_v2_003",
+        "w3_business_v2_004",
+        "w3_business_v2_005",
+        "w3_business_v2_006",
+        "w3_business_v2_007",
+        "w3_business_v2_008",
+        "w3_business_v2_009",
+        "w3_business_v2_010",
+        "w3_business_v2_011",
+        "w3_business_v2_012"
+      ],
+      "max_observed_output_tokens": 192,
+      "finish_reasons": {
+        "w3_business_v2_001": "length",
+        "w3_business_v2_002": "length",
+        "w3_business_v2_003": "length",
+        "w3_business_v2_004": "length",
+        "w3_business_v2_005": "length",
+        "w3_business_v2_006": "length",
+        "w3_business_v2_007": "length",
+        "w3_business_v2_008": "length",
+        "w3_business_v2_009": "length",
+        "w3_business_v2_010": "length",
+        "w3_business_v2_011": "length",
+        "w3_business_v2_012": "length"
+      }
+    },
+    "cap_512": {
+      "sample_count": 12,
+      "completed": 12,
+      "errors": 0,
+      "truncation_suspected_count": 5,
+      "truncated_sample_ids": [
+        "w3_business_v2_005",
+        "w3_business_v2_007",
+        "w3_business_v2_008",
+        "w3_business_v2_009",
+        "w3_business_v2_010"
+      ],
+      "max_observed_output_tokens": 512,
+      "finish_reasons": {
+        "w3_business_v2_001": "stop",
+        "w3_business_v2_002": "stop",
+        "w3_business_v2_003": "stop",
+        "w3_business_v2_004": "stop",
+        "w3_business_v2_005": "length",
+        "w3_business_v2_006": "stop",
+        "w3_business_v2_007": "length",
+        "w3_business_v2_008": "length",
+        "w3_business_v2_009": "length",
+        "w3_business_v2_010": "length",
+        "w3_business_v2_011": "stop",
+        "w3_business_v2_012": "stop"
+      }
+    },
+    "cap_1024_probe": {
+      "sample_count": 5,
+      "length_finished": 0,
+      "output_tokens": {
+        "w3_business_v2_005": 610,
+        "w3_business_v2_007": 596,
+        "w3_business_v2_008": 544,
+        "w3_business_v2_009": 617,
+        "w3_business_v2_010": 681
+      },
+      "max_observed_output_tokens": 681
+    },
+    "cap_768": {
+      "sample_count": 12,
+      "completed": 12,
+      "errors": 0,
+      "truncation_suspected_count": 0,
+      "truncated_sample_ids": [],
+      "max_observed_output_tokens": 681,
+      "finish_reasons": {
+        "w3_business_v2_001": "stop",
+        "w3_business_v2_002": "stop",
+        "w3_business_v2_003": "stop",
+        "w3_business_v2_004": "stop",
+        "w3_business_v2_005": "stop",
+        "w3_business_v2_006": "stop",
+        "w3_business_v2_007": "stop",
+        "w3_business_v2_008": "stop",
+        "w3_business_v2_009": "stop",
+        "w3_business_v2_010": "stop",
+        "w3_business_v2_011": "stop",
+        "w3_business_v2_012": "stop"
+      }
+    }
+  },
+  "decision": {
+    "accepted_cap": 768,
+    "pm_approved": true,
+    "acceptance_criterion": "All 12 W3 v2 samples complete without HTTP errors, finish_reason=length, or output_tokens reaching the cap.",
+    "observed_result": "12/12 completed; 0 errors; 0 truncation suspected; maximum observed output length 681 tokens."
+  },
+  "evidence_file_sha256": {
+    "cap1024_probe.json": "9efbfd42abb5133f38a8337554cfb63d756518791d9d61574c4f9b0948cc6ec0",
+    "cap192_raw.jsonl": "495afe074a01dcb8557ffac538f3cbb489a6c408e6def1beceac4b608bbb9bb2",
+    "cap512_raw.jsonl": "7774f801885ba64de70d2f389f61fc1907644755edde97437247e096f1c26170",
+    "cap768_raw.jsonl": "09e90e84169f8556a25b405826eb12be164b8ff0a6b9ecffcb582eb967154da1"
+  }
+}

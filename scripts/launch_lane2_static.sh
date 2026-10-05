@@ -16,11 +16,14 @@ else
   VLLM_CMD="python3 -m vllm.entrypoints.openai.api_server"
 fi
 
-# 4. Khởi chạy máy chủ vLLM OpenAI-compatible trên cổng 8002
+# 4. Khởi chạy máy chủ vLLM OpenAI-compatible trên cổng 8002.
+# PM-approved M1 canonical protocol pins the same vLLM neutral generation
+# defaults as Vanilla; the intended experimental difference is spec decoding.
 $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
   --host 0.0.0.0 \
   --port 8002 \
   --served-model-name qwen2.5-7b-static-draft \
+  --generation-config vllm \
   --quantization awq \
   --dtype half \
   --gpu-memory-utilization 0.85 \
@@ -28,4 +31,3 @@ $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
   --max-num-seqs 32 \
   --speculative-config "$SPEC_CONFIG" \
   --per-request-spec-decode-metrics summary
-

@@ -1,0 +1,447 @@
+
+===== ĐỐI SOÁT VÀ TỔNG HỢP SỐ LIỆU M1-02 =====
+Raw input          : /kaggle/working/do-an-ptit-d22-evidence/experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w1.jsonl
+Raw input          : /kaggle/working/do-an-ptit-d22-evidence/experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/static_w1.jsonl
+Raw input          : /kaggle/working/do-an-ptit-d22-evidence/experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w2.jsonl
+Raw input          : /kaggle/working/do-an-ptit-d22-evidence/experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/static_w2.jsonl
+Raw input          : /kaggle/working/do-an-ptit-d22-evidence/experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w3.jsonl
+Raw input          : /kaggle/working/do-an-ptit-d22-evidence/experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/static_w3.jsonl
+CSV output         : /kaggle/working/m1_02_campaign/m1-02-f307e33-20261004T102725Z/summary.csv
+
+Kết quả tổng hợp chi tiết theo từng Cell:
+---------------------------------------------------------------------------
+Cell: static__W1__c1
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 154.75
+  • TPOT p50 (ms)   : 20.428 (Repeat Min: 20.383, Repeat Max: 20.451)
+  • TPOT p95 (ms)   : 20.744
+  • E2E p50 (ms)    : 13245.122
+  • Độ lệch TPOT    : 0.33%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.915859979 / 3.744576577
+  • Throughput      : 48.48 tok/s
+  • Speedup vs Van. : 1.341981594
+---------------------------------------------------------------------------
+Cell: vanilla__W1__c1
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 71.268
+  • TPOT p50 (ms)   : 27.414 (Repeat Min: 27.377, Repeat Max: 27.429)
+  • TPOT p95 (ms)   : 27.535
+  • E2E p50 (ms)    : 17595.971
+  • Độ lệch TPOT    : 0.19%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 36.38 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W1__c2
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 245.99
+  • TPOT p50 (ms)   : 22.994 (Repeat Min: 22.97, Repeat Max: 23.036)
+  • TPOT p95 (ms)   : 23.381
+  • E2E p50 (ms)    : 14962.197
+  • Độ lệch TPOT    : 0.29%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.916172419 / 3.745412596
+  • Throughput      : 85.16 tok/s
+  • Speedup vs Van. : 1.29024963
+---------------------------------------------------------------------------
+Cell: vanilla__W1__c2
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 99.846
+  • TPOT p50 (ms)   : 29.668 (Repeat Min: 29.651, Repeat Max: 29.683)
+  • TPOT p95 (ms)   : 29.868
+  • E2E p50 (ms)    : 19084.586
+  • Độ lệch TPOT    : 0.11%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 66.81 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W1__c4
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 297.745
+  • TPOT p50 (ms)   : 26.137 (Repeat Min: 26.099, Repeat Max: 26.153)
+  • TPOT p95 (ms)   : 26.72
+  • E2E p50 (ms)    : 16996.38
+  • Độ lệch TPOT    : 0.21%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.916284886 / 3.745685151
+  • Throughput      : 147.21 tok/s
+  • Speedup vs Van. : 1.33362666
+---------------------------------------------------------------------------
+Cell: vanilla__W1__c4
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 121.429
+  • TPOT p50 (ms)   : 34.857 (Repeat Min: 34.791, Repeat Max: 34.865)
+  • TPOT p95 (ms)   : 35.016
+  • E2E p50 (ms)    : 22400.009
+  • Độ lệch TPOT    : 0.21%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 112.02 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W1__c8
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 398.535
+  • TPOT p50 (ms)   : 35.633 (Repeat Min: 35.559, Repeat Max: 35.72)
+  • TPOT p95 (ms)   : 36.481
+  • E2E p50 (ms)    : 23128.975
+  • Độ lệch TPOT    : 0.45%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.916597275 / 3.746808434
+  • Throughput      : 214.64 tok/s
+  • Speedup vs Van. : 1.2615553
+---------------------------------------------------------------------------
+Cell: vanilla__W1__c8
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 154.32
+  • TPOT p50 (ms)   : 44.953 (Repeat Min: 44.908, Repeat Max: 45.135)
+  • TPOT p95 (ms)   : 45.429
+  • E2E p50 (ms)    : 28913.961
+  • Độ lệch TPOT    : 0.5%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 172.91 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W1__c16
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 556.116
+  • TPOT p50 (ms)   : 55.426 (Repeat Min: 55.146, Repeat Max: 55.468)
+  • TPOT p95 (ms)   : 56.334
+  • E2E p50 (ms)    : 36011.566
+  • Độ lệch TPOT    : 0.58%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.916461709 / 3.746405087
+  • Throughput      : 271.91 tok/s
+  • Speedup vs Van. : 1.224695991
+---------------------------------------------------------------------------
+Cell: vanilla__W1__c16
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 225.375
+  • TPOT p50 (ms)   : 67.88 (Repeat Min: 67.738, Repeat Max: 67.916)
+  • TPOT p95 (ms)   : 68.268
+  • E2E p50 (ms)    : 43617.447
+  • Độ lệch TPOT    : 0.26%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 224.55 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W1__c32
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 875.605
+  • TPOT p50 (ms)   : 97.539 (Repeat Min: 97.227, Repeat Max: 97.724)
+  • TPOT p95 (ms)   : 98.942
+  • E2E p50 (ms)    : 63780.321
+  • Độ lệch TPOT    : 0.51%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.915707519 / 3.744311204
+  • Throughput      : 304.04 tok/s
+  • Speedup vs Van. : 1.160264099
+---------------------------------------------------------------------------
+Cell: vanilla__W1__c32
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 380.592
+  • TPOT p50 (ms)   : 113.171 (Repeat Min: 113.043, Repeat Max: 113.319)
+  • TPOT p95 (ms)   : 113.361
+  • E2E p50 (ms)    : 72748.704
+  • Độ lệch TPOT    : 0.24%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 264.65 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W2__c1
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 133.37
+  • TPOT p50 (ms)   : 18.861 (Repeat Min: 18.829, Repeat Max: 18.906)
+  • TPOT p95 (ms)   : 20.219
+  • E2E p50 (ms)    : 1873.468
+  • Độ lệch TPOT    : 0.41%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.802967564 / 3.408902692
+  • Throughput      : 48.87 tok/s
+  • Speedup vs Van. : 1.338158104
+---------------------------------------------------------------------------
+Cell: vanilla__W2__c1
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 43.393
+  • TPOT p50 (ms)   : 25.239 (Repeat Min: 25.064, Repeat Max: 25.277)
+  • TPOT p95 (ms)   : 25.425
+  • E2E p50 (ms)    : 2432.488
+  • Độ lệch TPOT    : 0.84%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 39.21 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W2__c2
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 200.01
+  • TPOT p50 (ms)   : 19.681 (Repeat Min: 19.674, Repeat Max: 20.546)
+  • TPOT p95 (ms)   : 21.024
+  • E2E p50 (ms)    : 1992.294
+  • Độ lệch TPOT    : 4.43%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.802414834 / 3.407244502
+  • Throughput      : 89.99 tok/s
+  • Speedup vs Van. : 1.31705706
+---------------------------------------------------------------------------
+Cell: vanilla__W2__c2
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 82.59
+  • TPOT p50 (ms)   : 25.921 (Repeat Min: 25.862, Repeat Max: 25.944)
+  • TPOT p95 (ms)   : 26.043
+  • E2E p50 (ms)    : 2529.509
+  • Độ lệch TPOT    : 0.32%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 74.55 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W2__c4
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 216.51
+  • TPOT p50 (ms)   : 20.721 (Repeat Min: 20.553, Repeat Max: 20.781)
+  • TPOT p95 (ms)   : 21.738
+  • E2E p50 (ms)    : 2109.766
+  • Độ lệch TPOT    : 1.1%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.812061347 / 3.43618404
+  • Throughput      : 169.73 tok/s
+  • Speedup vs Van. : 1.334346798
+---------------------------------------------------------------------------
+Cell: vanilla__W2__c4
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 89.662
+  • TPOT p50 (ms)   : 27.649 (Repeat Min: 27.62, Repeat Max: 27.695)
+  • TPOT p95 (ms)   : 27.877
+  • E2E p50 (ms)    : 2696.552
+  • Độ lệch TPOT    : 0.27%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 138.94 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W2__c8
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 258.367
+  • TPOT p50 (ms)   : 24.871 (Repeat Min: 24.822, Repeat Max: 25.049)
+  • TPOT p95 (ms)   : 26.555
+  • E2E p50 (ms)    : 2506.989
+  • Độ lệch TPOT    : 0.91%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.802414834 / 3.407244502
+  • Throughput      : 263.54 tok/s
+  • Speedup vs Van. : 1.229464034
+---------------------------------------------------------------------------
+Cell: vanilla__W2__c8
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 104.801
+  • TPOT p50 (ms)   : 30.578 (Repeat Min: 30.467, Repeat Max: 30.681)
+  • TPOT p95 (ms)   : 30.919
+  • E2E p50 (ms)    : 2963.399
+  • Độ lệch TPOT    : 0.7%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 232.3 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W2__c16
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 377.136
+  • TPOT p50 (ms)   : 33.375 (Repeat Min: 33.23, Repeat Max: 33.438)
+  • TPOT p95 (ms)   : 36.035
+  • E2E p50 (ms)    : 3197.573
+  • Độ lệch TPOT    : 0.62%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.80743623 / 3.42230869
+  • Throughput      : 383.12 tok/s
+  • Speedup vs Van. : 1.167910112
+---------------------------------------------------------------------------
+Cell: vanilla__W2__c16
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 155.733
+  • TPOT p50 (ms)   : 38.979 (Repeat Min: 38.732, Repeat Max: 39.174)
+  • TPOT p95 (ms)   : 39.805
+  • E2E p50 (ms)    : 3470.456
+  • Độ lệch TPOT    : 1.13%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 357.47 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W2__c32
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 598.106
+  • TPOT p50 (ms)   : 51.261 (Repeat Min: 50.203, Repeat Max: 51.949)
+  • TPOT p95 (ms)   : 57.104
+  • E2E p50 (ms)    : 5298.109
+  • Độ lệch TPOT    : 3.41%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.808201402 / 3.424604205
+  • Throughput      : 481.22 tok/s
+  • Speedup vs Van. : 1.039932892
+---------------------------------------------------------------------------
+Cell: vanilla__W2__c32
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 235.38
+  • TPOT p50 (ms)   : 53.308 (Repeat Min: 53.184, Repeat Max: 54.045)
+  • TPOT p95 (ms)   : 56.176
+  • E2E p50 (ms)    : 5324.657
+  • Độ lệch TPOT    : 1.62%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 491.43 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W3__c1
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 133.546
+  • TPOT p50 (ms)   : 25.446 (Repeat Min: 25.029, Repeat Max: 25.928)
+  • TPOT p95 (ms)   : 27.27
+  • E2E p50 (ms)    : 12653.453
+  • Độ lệch TPOT    : 3.53%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.546218764 / 2.638656293
+  • Throughput      : 39.25 tok/s
+  • Speedup vs Van. : 0.999214022
+---------------------------------------------------------------------------
+Cell: vanilla__W3__c1
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 56.489
+  • TPOT p50 (ms)   : 25.426 (Repeat Min: 25.393, Repeat Max: 25.443)
+  • TPOT p95 (ms)   : 25.544
+  • E2E p50 (ms)    : 12954.798
+  • Độ lệch TPOT    : 0.2%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 39.24 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W3__c2
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 205.102
+  • TPOT p50 (ms)   : 26.73 (Repeat Min: 26.657, Repeat Max: 26.865)
+  • TPOT p95 (ms)   : 28.372
+  • E2E p50 (ms)    : 13286.58
+  • Độ lệch TPOT    : 0.78%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.543698919 / 2.631096757
+  • Throughput      : 73.72 tok/s
+  • Speedup vs Van. : 0.977066966
+---------------------------------------------------------------------------
+Cell: vanilla__W3__c2
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 82.13
+  • TPOT p50 (ms)   : 26.117 (Repeat Min: 26.047, Repeat Max: 26.157)
+  • TPOT p95 (ms)   : 26.26
+  • E2E p50 (ms)    : 13253.078
+  • Độ lệch TPOT    : 0.42%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 76.18 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W3__c4
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 221.418
+  • TPOT p50 (ms)   : 27.93 (Repeat Min: 27.638, Repeat Max: 28.106)
+  • TPOT p95 (ms)   : 29.668
+  • E2E p50 (ms)    : 14058.144
+  • Độ lệch TPOT    : 1.68%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.555331237 / 2.665993712
+  • Throughput      : 141.9 tok/s
+  • Speedup vs Van. : 0.998424633
+---------------------------------------------------------------------------
+Cell: vanilla__W3__c4
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 91.018
+  • TPOT p50 (ms)   : 27.886 (Repeat Min: 27.846, Repeat Max: 27.964)
+  • TPOT p95 (ms)   : 28.162
+  • E2E p50 (ms)    : 14323.021
+  • Độ lệch TPOT    : 0.42%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 139.87 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W3__c8
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 269.638
+  • TPOT p50 (ms)   : 33.105 (Repeat Min: 32.865, Repeat Max: 33.482)
+  • TPOT p95 (ms)   : 35.539
+  • E2E p50 (ms)    : 16863.052
+  • Độ lệch TPOT    : 1.86%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.551849893 / 2.655549679
+  • Throughput      : 225.96 tok/s
+  • Speedup vs Van. : 0.93288023
+---------------------------------------------------------------------------
+Cell: vanilla__W3__c8
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 101.536
+  • TPOT p50 (ms)   : 30.883 (Repeat Min: 30.84, Repeat Max: 30.911)
+  • TPOT p95 (ms)   : 31.229
+  • E2E p50 (ms)    : 15874.883
+  • Độ lệch TPOT    : 0.23%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 241.4 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W3__c16
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 365.28
+  • TPOT p50 (ms)   : 43.598 (Repeat Min: 43.242, Repeat Max: 43.697)
+  • TPOT p95 (ms)   : 46.18
+  • E2E p50 (ms)    : 21595.302
+  • Độ lệch TPOT    : 1.04%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.542849267 / 2.6285478
+  • Throughput      : 322.08 tok/s
+  • Speedup vs Van. : 0.899123813
+---------------------------------------------------------------------------
+Cell: vanilla__W3__c16
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 136.053
+  • TPOT p50 (ms)   : 39.2 (Repeat Min: 39.142, Repeat Max: 39.335)
+  • TPOT p95 (ms)   : 40.088
+  • E2E p50 (ms)    : 20108.833
+  • Độ lệch TPOT    : 0.49%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 351.13 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+Cell: static__W3__c32
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 556.96
+  • TPOT p50 (ms)   : 67.224 (Repeat Min: 66.859, Repeat Max: 67.605)
+  • TPOT p95 (ms)   : 74.054
+  • E2E p50 (ms)    : 34858.503
+  • Độ lệch TPOT    : 1.11%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : 0.539453609 / 2.618360828
+  • Throughput      : 394.99 tok/s
+  • Speedup vs Van. : 0.80605141
+---------------------------------------------------------------------------
+Cell: vanilla__W3__c32
+  • Số request đo   : 160 (qua 5 lần lặp / repeats)
+  • TTFT p50 (ms)   : 285.126
+  • TPOT p50 (ms)   : 54.186 (Repeat Min: 53.802, Repeat Max: 54.727)
+  • TPOT p95 (ms)   : 54.83
+  • E2E p50 (ms)    : 27988.776
+  • Độ lệch TPOT    : 1.71%
+  • Variance Flag   : ✅ ỔN ĐỊNH (<=15%)
+  • Alpha / Tau     : N/A / N/A
+  • Throughput      : 483.1 tok/s
+  • Speedup vs Van. : 1.0
+---------------------------------------------------------------------------
+
+[THÀNH CÔNG] Đã ghi 36 dòng vào /kaggle/working/m1_02_campaign/m1-02-f307e33-20261004T102725Z/summary.csv
+

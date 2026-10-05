@@ -1,0 +1,56 @@
+{
+  "benchmark_commit": "f307e33f9aea4bbd45499f548480cb7d6f90a4b9",
+  "benchmark_harness": {
+    "path": "experiments/benchmark_harness.py",
+    "sha256": "7459677f051bbaceb2a1cf3c40475ee271c68fe7d70865a9b927b62e28b2d489"
+  },
+  "created_utc": "2026-10-04T13:52:49.007094+00:00",
+  "experiment_id": "m1-02-f307e33-20261004T102725Z",
+  "lane": "vanilla",
+  "launcher": {
+    "path": "scripts/launch_lane1_vanilla.sh",
+    "sha256": "c9e00bcca1a03d25a257f0e1377cbd39395c27f51ef389d96913b8ad64da3a5d"
+  },
+  "measurement": {
+    "concurrency_order": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "expected_cells": 6,
+    "expected_measured_repeats": 30,
+    "expected_measured_requests": 960,
+    "gpu_index": 0,
+    "measured_requests_per_repeat": 32,
+    "repeats_per_cell": 5,
+    "requested_warmup_requests": 3,
+    "sample_policy": "cycle-rotate",
+    "timeout_s": 120.0,
+    "vram_sample_interval_s": 0.05,
+    "warmup_once_per_cell": true,
+    "warmup_policy": "max(3, requested_warmup, concurrency)"
+  },
+  "runner": {
+    "path": "experiments/runs/m1_02/tooling/run_m1_02_full_campaign.sh",
+    "sha256": "ae0c0dfa91a9203643448fb36fbf20bf177c65e95b2197667a7c5a6dd2905388"
+  },
+  "schema": "m1_02_sweep_run_config.v2",
+  "server": {
+    "endpoint": "http://127.0.0.1:8001/v1/chat/completions",
+    "fresh_server_per_sweep": true,
+    "port": 8001,
+    "prefix_cache_reset_between_cells": false,
+    "prefix_cache_reset_between_repeats": false,
+    "restart_between_cells": false,
+    "restart_between_repeats": false,
+    "served_model": "qwen2.5-7b-vanilla"
+  },
+  "workload": "W3",
+  "workload_artifact": {
+    "path": "experiments/configs/w3_v2/chat_requests.jsonl",
+    "sha256": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b"
+  }
+}

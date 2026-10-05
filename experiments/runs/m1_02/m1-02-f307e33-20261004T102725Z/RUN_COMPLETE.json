@@ -1,0 +1,46 @@
+{
+  "benchmark_commit": "f307e33f9aea4bbd45499f548480cb7d6f90a4b9",
+  "cells": 36,
+  "completed_utc": "2026-10-05T07:11:39.007952+00:00",
+  "experiment_id": "m1-02-f307e33-20261004T102725Z",
+  "measured_repeats": 180,
+  "measured_requests": 5760,
+  "raw_files": [
+    {
+      "measured_records": 960,
+      "path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w1.jsonl",
+      "sha256": "806cde2769728da62e497aa57deb84a3de571cf7f714ffb0711ba196a71bbd57"
+    },
+    {
+      "measured_records": 960,
+      "path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/static_w1.jsonl",
+      "sha256": "e21c245f4f7a93e8083c274e582e650fbbe45f5897fe8bae121a178720cdf0e4"
+    },
+    {
+      "measured_records": 960,
+      "path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w2.jsonl",
+      "sha256": "d854d57af0f04eabdf1bbec53ae11c16a33af732cf8521e8ec150a3ebfe3fbd1"
+    },
+    {
+      "measured_records": 960,
+      "path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/static_w2.jsonl",
+      "sha256": "b0fbf4c13dc485da2186cd5147226cfeb702389ec4f334e396c6f516c2989732"
+    },
+    {
+      "measured_records": 960,
+      "path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/vanilla_w3.jsonl",
+      "sha256": "8f022ab999e8ad4997b3ffb6a57912c5fa890887aab1fd0ab9f78306119e2854"
+    },
+    {
+      "measured_records": 960,
+      "path": "experiments/runs/m1_02/m1-02-f307e33-20261004T102725Z/static_w3.jsonl",
+      "sha256": "42e2b05e3242fb95692d7c1af9584422ecd56d316e66353081bc7e1bb8814e09"
+    }
+  ],
+  "schema": "m1_02_campaign_complete.v1",
+  "status": "COMPLETE_VALID",
+  "summary_path": "experiments/results/summary.csv",
+  "summary_rows": 36,
+  "summary_sha256": "bf6eaa9c7ae730c7e0dc3086e0b3539851c6816d1f39317c789fefd7c8c3c2a7",
+  "sweeps": 6
+}
