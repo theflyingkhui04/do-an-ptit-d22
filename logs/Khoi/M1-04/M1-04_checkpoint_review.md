@@ -40,7 +40,7 @@ Cuộc họp Cổng Kiểm Soát M1 (M1 Checkpoint Review Gate) là điểm dừ
 - **Trạng thái PR:** PR #3 (`feat/m1-01-vllm-dual-lane-server`) đã merge thành công vào `main` tại commit `09058bd`.
 
 ### 2.2. Luồng 2 (Task M1-02): Benchmark Harness Tự Động & Quét Ma Trận Concurrency 1→32
-- **Đại diện báo cáo:** Bùi Thiên Đại & Cấn Đức Khôi.
+- **Đại diện báo cáo:** Bùi Đức Đại & Cấn Đức Khôi.
 - **Kết quả nghiệm thu:**
   - Nâng cấp [`experiments/benchmark_harness.py`](../../../experiments/benchmark_harness.py) hỗ trợ tự động sweep qua 6 mức concurrency: `[1, 2, 4, 8, 16, 32]`.
   - Khóa cứng hợp đồng môi trường `m1-t4-cu130-v1` (Tesla T4, CUDA 13.0, PyTorch 2.13.0, vLLM 0.29.0/0.30.0).
