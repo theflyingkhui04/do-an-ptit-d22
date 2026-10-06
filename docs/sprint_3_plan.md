@@ -1,6 +1,6 @@
 # Kế Hoạch Phân Rã Chi Tiết Sprint 3: Cột Mốc M2 — Hardware-Aware Adaptive Speculative Decoding (v0) & Lossless Verification
 
-- **Thời gian thực hiện:** 05/10/2026 – 18/10/2026 (14 ngày / 2 tuần)
+- **Thời gian thực hiện:** 05/10/2026 – 14/10/2026 (10 ngày) *(Kế hoạch ép tiến độ để tối ưu hóa quỹ thời gian cho Sprint 5 mở rộng huấn luyện Qwen 3.5 9B)*
 - **Cột mốc mục tiêu:** **M2 (Adaptive v0 & Lossless Verification)**
 - **Mục tiêu cốt lõi của Sprint 3:**
   1. Hiện thực hóa **Bộ điều khiển Cây nháp Thích ứng phần cứng (Hardware-Aware Adaptive Speculative Controller v0)** tích hợp vào vLLM engine nhằm tự động điều chỉnh độ sâu nháp $k$ hoặc ngắt về Vanilla khi $\alpha$ thấp, triệt tiêu 100% hiện tượng "tăng tốc âm" đã ghi nhận ở W3.
@@ -16,7 +16,7 @@ Dựa trên nguyên tắc quản trị MoSCoW và phân chia vai trò chuyên m�
 ```
                       CẤU TRÚC PHÂN RÃ CÔNG VIỆC SPRINT 3 (M2)
 +---------------------------------------------------------------------------------+
-|                                SPRINT 3 (05/10 - 18/10)                         |
+|                                SPRINT 3 (05/10 - 14/10)                         |
 +---------------------------------------------------------------------------------+
           |                                      |
           v                                      v
@@ -38,8 +38,8 @@ Dựa trên nguyên tắc quản trị MoSCoW và phân chia vai trò chuyên m�
 
 ### Task 1: `[M2-01] Xây dựng Module Hardware Profiler & Mô hình Chi phí Suy luận (Cost Model) trên GPU T4`
 - **Mã công việc:** `[M2-01]`
-- **Thời gian:** 05/10/2026 – 09/10/2026 (5 ngày)
-- **Người thực hiện:** Cấn Đức Khôi (Lead 70%) & Bùi Thiên Đại (Partner 30%)
+- **Thời gian:** 05/10/2026 – 08/10/2026 (4 ngày)
+- **Người thực hiện:** Cấn Đức Khôi (Lead 70%) & Bùi Đức Đại (Partner 30%)
 - **Mục tiêu kỹ thuật:**
   - Viết module độc lập [`src/engine/hardware_profiler.py`](../../../src/engine/hardware_profiler.py) tự động chạy đo vi benchmark lúc khởi động (startup warmup):
     - Đo thời gian forward đơn bước của Target 7B-AWQ ($C_T$) theo các kích thước batch size ($B \in [1, 2, 4, 8, 16, 32]$).
@@ -54,7 +54,7 @@ Dựa trên nguyên tắc quản trị MoSCoW và phân chia vai trò chuyên m�
 
 ### Task 2: `[M2-02] Hiện thực hóa Bộ điều khiển Cây nháp Thích ứng (Adaptive Speculative Controller v0)`
 - **Mã công việc:** `[M2-02]`
-- **Thời gian:** 07/10/2026 – 13/10/2026 (7 ngày)
+- **Thời gian:** 07/10/2026 – 10/10/2026 (4 ngày)
 - **Người thực hiện:** Cấn Đức Khôi (Lead 60%) & Dương Nguyễn Thế (Partner 40%)
 - **Mục tiêu kỹ thuật:**
   - Xây dựng lớp điều khiển `AdaptiveDraftController` tích hợp vào cơ chế `custom_proposer` của vLLM:
@@ -73,8 +73,8 @@ Dựa trên nguyên tắc quản trị MoSCoW và phân chia vai trò chuyên m�
 
 ### Task 3: `[M2-03] Xây dựng Kịch bản Kiểm chứng Lossless Verification (100% Token Match @ temp=0)`
 - **Mã công việc:** `[M2-03]`
-- **Thời gian:** 10/10/2026 – 14/10/2026 (5 ngày)
-- **Người thực hiện:** Bùi Thiên Đại (Lead 70%) & Cấn Đức Khôi (Partner 30%)
+- **Thời gian:** 09/10/2026 – 12/10/2026 (4 ngày)
+- **Người thực hiện:** Bùi Đức Đại (Lead 70%) & Cấn Đức Khôi (Partner 30%)
 - **Mục tiêu kỹ thuật:**
   - Viết kịch bản kiểm tra tự động [`tests/verify_lossless.py`](../../../tests/verify_lossless.py) thực thi so sánh đầu ra:
     - Chạy đồng thời 50 prompt chuẩn (trích xuất từ W1, W2, W3) trên cả 2 làn: Vanilla vs Adaptive ở thiết lập suy luận chuẩn xác (`temperature = 0.0`, `greedy`).
@@ -90,8 +90,8 @@ Dựa trên nguyên tắc quản trị MoSCoW và phân chia vai trò chuyên m�
 
 ### Task 4: `[M2-04] Mở rộng Benchmark Harness & Đo đạc Thực nghiệm Đối chứng 3 Làn (M2 Sweep)`
 - **Mã công việc:** `[M2-04]`
-- **Thời gian:** 12/10/2026 – 17/10/2026 (6 ngày)
-- **Người thực hiện:** Bùi Thiên Đại (Lead 60%) & Dương Nguyễn Thế (Partner 40%)
+- **Thời gian:** 11/10/2026 – 13/10/2026 (3 ngày)
+- **Người thực hiện:** Bùi Đức Đại (Lead 60%) & Dương Nguyễn Thế (Partner 40%)
 - **Mục tiêu kỹ thuật:**
   - Nâng cấp `benchmark_harness.py` hỗ trợ đo đạc luân phiên cả 3 làn: `vanilla`, `static`, và `adaptive`.
   - Quét toàn diện ma trận: 3 làn × 3 workloads (W1, W2, W3) × 6 mức concurrency (`1, 2, 4, 8, 16, 32`) = **54 ô thực nghiệm** (mỗi ô lặp lại 5 lần, tổng cộng 270 lượt đo).
@@ -105,17 +105,17 @@ Dựa trên nguyên tắc quản trị MoSCoW và phân chia vai trò chuyên m�
 
 ---
 
-## 2. Lịch Trình Thực Hiện & Timeline Chi Tiết (05/10 – 18/10)
+## 2. Lịch Trình Thực Hiện & Timeline Chi Tiết (05/10 – 14/10)
 
 | Giai đoạn | Thời gian | Nhiệm vụ trọng tâm | Thành viên phụ trách |
 | :--- | :---: | :--- | :--- |
-| **Tuần 3** (05/10 – 11/10) | 05/10 – 07/10 | Setup môi trường M2, viết `hardware_profiler.py` trích xuất chi phí T4 | Khôi, Đại |
+| **Giai đoạn 1: Đo lường & Engine lõi** | 05/10 – 08/10 | Setup môi trường M2, viết `hardware_profiler.py` trích xuất chi phí T4 | Khôi, Đại |
 | | 07/10 – 10/10 | Hiện thực hóa lõi `AdaptiveDraftController` v0 tích hợp vLLM | Khôi, Dương |
-| | 10/10 – 11/10 | Smoke test làn Adaptive trên Colab T4, kiểm tra chuyển trạng thái $k$ | Cả nhóm |
-| **Tuần 4** (12/10 – 18/10) | 12/10 – 14/10 | Thực hiện kiểm chứng Lossless Verification (50/50 prompts match) | Đại, Khôi |
-| | 14/10 – 16/10 | Chạy full sweep benchmark 3 làn (54 cells) trên Colab/Kaggle T4 | Đại, Dương |
-| | 16/10 – 17/10 | Tổng hợp `m2_summary.csv`, xuất bản biểu đồ F1/F2 3 làn, cập nhật Chương 5 | Khôi, Dương |
-| | **18/10/2026** | **Họp Cổng Kiểm Soát M2 (M2 Gate Review): Nghiệm thu đóng Sprint 3** | Cả nhóm |
+| | 09/10 – 10/10 | Smoke test làn Adaptive trên Colab T4, kiểm tra chuyển trạng thái $k$ | Cả nhóm |
+| **Giai đoạn 2: Kiểm chứng & Đo đối chứng** | 09/10 – 12/10 | Thực hiện kiểm chứng Lossless Verification (50/50 prompts match) | Đại, Khôi |
+| | 11/10 – 13/10 | Chạy full sweep benchmark 3 làn (54 cells) trên Colab/Kaggle T4 | Đại, Dương |
+| | 13/10 – 14/10 | Tổng hợp `m2_summary.csv`, xuất bản biểu đồ F1/F2 3 làn, cập nhật Chương 5 | Khôi, Dương |
+| | **14/10/2026** | **Họp Cổng Kiểm Soát M2 (M2 Gate Review): Nghiệm thu đóng Sprint 3** | Cả nhóm |
 
 ---
 
@@ -132,8 +132,8 @@ Dựa trên nguyên tắc quản trị MoSCoW và phân chia vai trò chuyên m�
 ## 4. Kế Hoạch Quản Trị Thẻ Task trên Trello
 
 Sau khi kế hoạch này được phê duyệt, Team Lead (Khôi) sẽ tạo các thẻ công việc tương ứng trên Trello tại cột **`📌 Sprint 3 · To-Do`**:
-1. `[M2-01] Xây dựng Module Hardware Profiler & Mô hình Chi phí Suy luận trên T4`
-2. `[M2-02] Hiện thực hóa Bộ điều khiển Cây nháp Thích ứng (Adaptive Controller v0)`
-3. `[M2-03] Xây dựng Kịch bản Kiểm chứng Lossless Verification (100% Token Match @ temp=0)`
-4. `[M2-04] Mở rộng Benchmark Harness & Đo đạc Thực nghiệm Đối chứng 3 Làn`
-5. `[M2-05] Đánh giá Cổng Kiểm Soát M2 (18/10): Nghiệm thu Thuật toán Adaptive v0 & Báo cáo`
+1. `[M2-01] Xây dựng Module Hardware Profiler & Mô hình Chi phí Suy luận trên T4 (05/10 – 08/10)`
+2. `[M2-02] Hiện thực hóa Bộ điều khiển Cây nháp Thích ứng (Adaptive Controller v0) (07/10 – 10/10)`
+3. `[M2-03] Xây dựng Kịch bản Kiểm chứng Lossless Verification (100% Token Match @ temp=0) (09/10 – 12/10)`
+4. `[M2-04] Mở rộng Benchmark Harness & Đo đạc Thực nghiệm Đối chứng 3 Làn (11/10 – 13/10)`
+5. `[M2-05] Đánh giá Cổng Kiểm Soát M2 (14/10): Nghiệm thu Thuật toán Adaptive v0 & Báo cáo`

@@ -50,7 +50,7 @@ Cuộc họp Cổng Kiểm Soát M1 (M1 Checkpoint Review Gate) là điểm dừ
 - **Trạng thái PR:** PR #4 (`feat/m1-02-concurrency-sweep-baseline`) và PR #5 (`fix/m1-02-throughput-aggregation`) đã merge vào `main`.
 
 ### 2.3. Luồng 3 (Task M1-03): Pipeline MC-OCR Node 1 & Đóng Gói Bộ Workload W1, W2, W3
-- **Đại diện báo cáo:** Dương Nguyễn Thế & Bùi Thiên Đại.
+- **Đại diện báo cáo:** Dương Nguyễn Thế & Bùi Đức Đại.
 - **Kết quả nghiệm thu:**
   - Hoàn thiện Node 1 (VAT JSON Extractor) theo kiến trúc đường ống xử lý hóa đơn MC-OCR tiếng Việt: trích xuất chuẩn 7 trường thông tin pháp lý từ văn bản OCR thô.
   - Đóng gói 3 tập prompt kiểm thử chuẩn hóa lưu trữ dưới dạng JSONL:
@@ -78,7 +78,7 @@ Hội đồng đã kiểm tra toàn bộ 36 ô đo lường trong file `summary.
 ```
 
 ### 3.1. Phân Tích Chuyên Sâu Hiện Tượng Tăng Tốc Âm (Negative Speedup) trên W3
-Đồng chí Bùi Thiên Đại và Cấn Đức Khôi đã trình bày báo cáo phân tích cơ chế suy hao tính toán trên Tesla T4:
+Đồng chí Bùi Đức Đại và Cấn Đức Khôi đã trình bày báo cáo phân tích cơ chế suy hao tính toán trên Tesla T4:
 
 1. **Bản chất của Speculative Decoding:**
    Độ trễ trung bình của một bước giải mã suy đoán được biểu diễn qua công thức lý thuyết:
@@ -125,7 +125,7 @@ Hội đồng chính thức ký duyệt đóng băng 2 giao diện phục vụ c
 - [x] Toàn bộ 4 thẻ task của Sprint 2 (`M1-01`, `M1-02`, `M1-03`, `M1-04`) đủ điều kiện chuyển sang cột **Done**.
 
 ### 5.2. Chuyển giao sang Sprint 3 (Mốc M2):
-- **Thời gian Sprint 3:** Bắt đầu từ 05/10/2026 đến 18/10/2026.
+- **Thời gian Sprint 3:** Bắt đầu từ 05/10/2026 đến 14/10/2026 (Đã cập nhật theo timesheet ép tiến độ tối ưu).
 - **Trọng tâm Sprint 3:** Xây dựng bộ điều khiển thích ứng (Adaptive Controller v0), kiểm chứng tính nguyên vẹn không suy giảm chất lượng văn bản (Lossless Verification 100% Match), và đo đạc 3 làn đối chứng.
 - Tài liệu phân rã chi tiết đã được phê duyệt tại: [`docs/sprint_3_plan.md`](../../../docs/sprint_3_plan.md).
 
@@ -136,5 +136,5 @@ Hội đồng chính thức ký duyệt đóng băng 2 giao diện phục vụ c
 | Thành viên | Vai trò | Chữ ký xác nhận |
 | :--- | :--- | :---: |
 | **Cấn Đức Khôi** | Team Lead / AI Systems / PM | *Khôi (Đã ký)* |
-| **Bùi Thiên Đại** | MLOps / Benchmark Harness Lead | *Đại (Đã ký)* |
+| **Bùi Đức Đại** | MLOps / Benchmark Harness Lead | *Đại (Đã ký)* |
 | **Dương Nguyễn Thế** | Core Engine / BA / Data Lead | *Dương (Đã ký)* |

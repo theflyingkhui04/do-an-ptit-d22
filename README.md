@@ -109,7 +109,7 @@ Nhóm áp dụng mô hình **Ghép cặp Luân phiên 70/30 (Pair-Rotation Syste
 | Chuyên môn cốt lõi (Lead 70%) | Thành viên | Vai trò |
 |---|---|---|
 | AI Systems & PM (Core-Engine, vLLM) | Cấn Đức Khôi ([GitHub](https://github.com/theflyingkhui04) · | Dev + PM |
-| MLOps & Infrastructure (Benchmark Harness, GPU T4) | Bùi Thiên - Đại | Dev + IT |
+| MLOps & Infrastructure (Benchmark Harness, GPU T4) | Bùi Đức Đại | Dev + IT |
 | AI Application & Data (Pipeline MC-OCR, VAT Invoices) | Dương Nguyễn Thế | Dev + BA |
 | Advisor | *(Cập nhật theo GVHD)* | GVHD |
 

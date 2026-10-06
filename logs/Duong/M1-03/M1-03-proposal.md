@@ -8,7 +8,7 @@
 > **Code plan:** `logs/Duong/M1-03/plan.md`  
 > **Proposal đích:** `logs/Duong/M1-03/proposal.md`  
 > **Lead:** Dương Nguyễn Thế — 70%  
-> **Partner:** Bùi Thiên Đại — 30%  
+> **Partner:** Bùi Đức Đại — 30%  
 > **Ngưỡng dataset đã chốt theo OpenSpec:** W1 >= 30 mẫu  
 > **Hiện tại:** Chưa tạo/sửa branch hoặc code từ proposal này.
 

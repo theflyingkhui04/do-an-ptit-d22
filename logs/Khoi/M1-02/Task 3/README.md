@@ -4,7 +4,7 @@
 - **Tiêu đề Checklist Trello:** `[Khôi] Đối soát thuật toán đo luật: warm-up >=3 reqs, lặp lại >=5 lần, tính median và khoảng min-max`  
   *(Tên chuẩn hóa kỹ thuật: `[Khôi] Kiểm tra cơ chế Warm-up, Lặp lại và Viết code tính thống kê (Median, Min-Max)`)*
 - **Người thực hiện:** Cấn Đức Khôi (Partner 30% kiêm PM / Reviewer kỹ thuật)
-- **Lead phụ trách mốc:** Bùi Thiên Đại (Lead 70% — MLOps & Benchmark Harness)
+- **Lead phụ trách mốc:** Bùi Đức Đại (Lead 70% — MLOps & Benchmark Harness)
 - **Thời gian thực hiện:** 28/09/2026
 - **Tài nguyên & Mã nguồn liên quan:**
   - Kế hoạch đo lường thực nghiệm: [`docs/06-ke-hoach-thuc-nghiem.md`](../../../docs/06-ke-hoach-thuc-nghiem.md)

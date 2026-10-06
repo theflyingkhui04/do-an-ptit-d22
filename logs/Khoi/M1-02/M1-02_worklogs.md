@@ -1,7 +1,7 @@
 # Worklog Kỹ Thuật: [M1-02] Tự Động Hóa Benchmark Harness & Đối Soát Thực Nghiệm Hai Làn Cơ Sở (Vanilla vs. Static Draft)
 
 - **Mã công việc:** `[M1-02]` (Cột mốc M1 · Baseline Benchmark)
-- **Người thực hiện:** Cấn Đức Khôi (Partner 30% kiêm PM / Reviewer kỹ thuật) & Bùi Thiên Đại (Lead 70% — MLOps & Benchmark Harness)
+- **Người thực hiện:** Cấn Đức Khôi (Partner 30% kiêm PM / Reviewer kỹ thuật) & Bùi Đức Đại (Lead 70% — MLOps & Benchmark Harness)
 - **Thời gian thực hiện:** 23/09/2026 – 05/10/2026
 - **Tài nguyên & Mã nguồn kiểm chứng:**
   - Kế hoạch đo lường thực nghiệm: [`docs/06-ke-hoach-thuc-nghiem.md`](../../../docs/06-ke-hoach-thuc-nghiem.md)
@@ -23,7 +23,7 @@ Task `[M1-02]` đóng vai trò là "xương sống đo lường" của cột m�
 - **Làn 2 (Static Draft Baseline):** Target 7B-AWQ + Draft Model `Qwen2.5-0.5B-Instruct` (cố định $k=3$ tokens nháp).
 
 ### Phân công vai trò giữa Đại và Khôi:
-1. **Bùi Thiên Đại (Lead 70%):** Khóa cứng môi trường thực nghiệm (`requirements-m1.txt`), nâng cấp `benchmark_harness.py` hỗ trợ sweep tự động qua 6 mức concurrency `[1, 2, 4, 8, 16, 32]`, thực hiện chạy đo đạc thực tế trên Colab/Kaggle T4 và xuất bản raw JSONL.
+1. **Bùi Đức Đại (Lead 70%):** Khóa cứng môi trường thực nghiệm (`requirements-m1.txt`), nâng cấp `benchmark_harness.py` hỗ trợ sweep tự động qua 6 mức concurrency `[1, 2, 4, 8, 16, 32]`, thực hiện chạy đo đạc thực tế trên Colab/Kaggle T4 và xuất bản raw JSONL.
 2. **Cấn Đức Khôi (Partner 30% kiêm PM / Reviewer):**
    - **Đối soát kỷ luật đo lường (Subtask 3):** Rà soát cơ chế Warm-up Option B, vòng lặp lặp lại (>=5 repeats), viết module `aggregate_results.py` gom nhóm median, min-max và cờ cảnh báo phương sai `variance_flag` (chi tiết tại [Task 3/README.md](./Task%203/README.md)).
    - **Xử lý sự cố môi trường & tương thích hệ thống:** Fix lỗi ký tự Windows CRLF, phân quyền thực thi bash, hỗ trợ vLLM 0.30.0 trong hợp đồng môi trường.
