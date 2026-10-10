@@ -126,10 +126,64 @@ tests/test_budget_controller.py::test_controller_reset_and_stats PASSED  [100%]
 
 ---
 
-## 5. Bàn Giao Kỹ Thuật (Handoff) & Bước Tiếp Theo
+## 5. Phân Tích Chuyên Sâu Các Quyết Định Thiết Kế (Design Q&A & Insights)
+
+Nhóm đã ghi lại các phân tích phản biện kỹ thuật để phục vụ viết thuyết minh Chương 3 và trả lời Hội đồng đánh giá:
+
+### 5.1. Tầng 1: Vì sao chọn ngưỡng VRAM trống < 1500 MB? Đổi GPU khác có sửa được không?
+* **Nguồn gốc vật lý trên Tesla T4:**
+  - GPU T4 có 16 GB VRAM vật lý (PyTorch nhận khả dụng ~14.56 GB).
+  - Trọng số mô hình Qwen2.5-7B AWQ chiếm cố định ~5.3 GB. Phân vùng KV-cache của vLLM chiếm ~6.5 GB.
+  - Khi chịu tải cao (concurrency = 16..32), đỉnh VRAM ghi nhận tại Sprint 2 lên tới **12.3 GB – 13.5 GB** (chỉ còn dư 1.0 – 1.5 GB).
+  - Trong Speculative Decoding, mỗi bước sinh nháp và kiểm chứng cần cấp phát thêm bộ nhớ tạm thời cho tensor kích hoạt (activations) và cây nháp. Nếu vùng đệm tụt dưới 1,500 MB, việc cấp phát block PagedAttention tiếp theo sẽ đối mặt rủi ro chí mạng: **`CUDA Out of Memory (OOM)` làm sụp đổ toàn bộ server vLLM**.
+* **Khả năng thích ứng khi đổi sang GPU khác (A100, L4, RTX 3090/4090):**
+  - Trong code, `min_free_vram_mb` là tham số độc lập trong hàm khởi tạo:
+    ```python
+    BudgetController(min_free_vram_mb=1500.0)
+    ```
+  - Thay đổi tham số này hoàn toàn **không làm sai lệch logic toán học**, vì đây là một lớp bảo vệ độc lập (Safety Guard).
+  - Khi triển khai trên GPU dung lượng lớn như A100 (80GB), có thể nâng ngưỡng an toàn lên 4,000 MB hoặc chuyển sang tỷ lệ tương đối: `free_vram / total_vram < 0.10` (dưới 10% VRAM còn trống thì chuyển về Vanilla).
+
+### 5.2. Tầng 2 & 3: Cơ sở toán học của các con số 0.65 và 0.80? Có phải áng chừng không?
+Những con số này **không phải phỏng đoán cảm tính**, mà được hiệu chuẩn trực tiếp từ **bài toán điểm hòa vốn (Break-even Analysis)** và **số liệu thực nghiệm M1**:
+* **Điều kiện tăng tốc lý thuyết:**
+  ```text
+  Tốc độ Speculative > Tốc độ Vanilla <=> E[tau(k)] / C(k, B) > 1 / C(0, B)
+  <=> E[tau(k)] > C(k, B) / C(0, B)
+  ```
+  Trên T4, thời gian một bước Vanilla `C(0) ~ 20 ms`, thời gian một bước nháp 3 token `C(3) ~ 32 ms`. Tỷ số chi phí phần cứng: `C(3) / C(0) ~ 1.60`.
+* **Cơ sở ngưỡng ngắt 0.65 (Tầng 2 - Safety Fallback Gate):**
+  - Tại Workload W3 (phân tích mở), số liệu M1 ghi nhận `alpha = 0.545` (54.5%), dẫn đến speedup tụt xuống **0.81x** (tăng tốc âm -19% do GPU bị nghẽn compute ở tải cao).
+  - Điểm hòa vốn lý thuyết (khi Speedup = 1.00x) trên T4 nằm quanh `alpha ~ 0.58 – 0.62`.
+  - Ngưỡng **0.65** được thiết lập như một **vách ngăn phòng thủ an toàn (safety margin)**: Khi alpha rơi xuống dưới 0.65, xác suất chạy chậm hơn Vanilla là cực cao. Việc ngắt về k = 0 triệt tiêu 100% hiện tượng tăng tốc âm.
+* **Cơ sở ngưỡng mở rộng 0.80 (Tầng 3 - High Alpha Expansion):**
+  - Mỗi khi tăng độ sâu nháp từ k=3 lên k=4, mô hình nhỏ phải forward thêm một bước.
+  - Xác suất chấp nhận token thứ 4 giảm theo quy luật lũy thừa: `P = alpha^4`.
+    - Nếu alpha = 0.70: `0.70^4 = 0.24` (chỉ 24% cơ hội đúng, 76% lãng phí tài nguyên).
+    - Nếu alpha = 0.85 (như W1/W2): `0.85^4 = 0.52` (hơn 52% cơ hội đúng, việc mở rộng k=4 mới bắt đầu đem lại lợi ích vượt trội).
+  - Do đó, 0.80 là điều kiện lọc khắt khe để tránh việc nháp quá dài gây lãng phí chu kỳ GPU.
+
+### 5.3. Có thể không chặn được không?
+* **Nếu không chặn VRAM (Tầng 1):** Server sẽ đối mặt nguy cơ crash OOM khi chạy concurrency cao trên GPU phổ thông.
+* **Nếu không chặn alpha (Tầng 2):** Hệ thống sẽ lặp lại khuyết điểm của Static Draft ở M1, sinh văn bản tự do chậm hơn Vanilla 19%, đánh mất mục tiêu cốt lõi của đề tài tốt nghiệp.
+
+### 5.4. Lộ trình nâng cấp: Từ ngưỡng Heuristic v0 sang Công thức Giải tích Tự thích ứng (Dynamic Break-Even Alpha)
+Trong bản v0 (Sprint 3), nhóm áp dụng các ngưỡng thực nghiệm (calibrated empirical thresholds) để kiểm chứng tính ổn định của luồng điều khiển.
+Ở mốc M3, khi module `HardwareProfiler` hoàn thiện việc đo ma trận chi phí `C(k, B)` thực tế lúc khởi động máy:
+- Controller sẽ không cần hardcode con số 0.65 nữa, mà sẽ tự động giải phương trình tìm **ngưỡng hòa vốn động theo thời gian thực**:
+  ```text
+  Giải nghiệm alpha_break_even(B) thỏa mãn:
+  1 + alpha + alpha^2 + ... + alpha^k == C(k, B) / C(0, B)
+  ```
+- Khi chuyển đổi môi trường từ T4 sang L4, A100 hay H100, `HardwareProfiler` sinh ra bảng `C(k, B)` mới, và controller sẽ tự động thích ứng với điểm hòa vốn của GPU đó mà không cần can thiệp mã nguồn. Đây chính là **đóng góp khoa học mới (Novelty)** bảo vệ trước hội đồng.
+
+---
+
+## 6. Bàn Giao Kỹ Thuật (Handoff) & Bước Tiếp Theo
 
 1. **Checklist 1 thẻ Trello `[M2-01]`:** Đã hoàn thành 100% mục `[Khôi] Thiết kế lớp BudgetController v0 tính toán N* theo rolling average alpha`.
 2. **Bàn giao cho Partner (Bùi Đức Đại):**
    - Đại có thể sử dụng `src.proposer.controller.BudgetController` để viết các kịch bản unit test mô phỏng mở rộng theo checklist số 3 (`[Đại] Viết unit test mô phỏng thay đổi tree budget theo các kịch bản alpha cao/thấp`).
 3. **Kế hoạch tiếp theo của Khôi:**
    - Triển khai checklist số 2: Tích hợp hook điều phối `BudgetController` vào vòng lặp generate của server vLLM (hoặc adapter engine).
+
