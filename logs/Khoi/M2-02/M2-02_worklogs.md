@@ -66,24 +66,46 @@ Nhóm đã ghi lại các phân tích phản biện kỹ thuật sâu sắc gi�
 
 ---
 
-### 2.3. Vấn đề quy mô (Scale) dự án ở các Sprint sau: Nếu Thầy yêu cầu dùng EAGLE-3.1 thì sao?
-* **Có nên chuyển sang EAGLE-3.1 ngay lúc này không?**
-  - **TUYỆT ĐỐI KHÔNG NÊN ĐỔI Ở SPRINT 3!** Bởi vì:
-    1. *Chưa có Checkpoint cho Qwen2.5:* Tác giả EAGLE-3.1 và RedHatAI hiện **chỉ mới phát hành checkpoint cho dòng LLaMA-3.1** (`RedHatAI/Llama-3.1-8B-speculator.eagle3`), hoàn toàn chưa có cho Qwen2.5. Nếu muốn dùng, nhóm phải tự train (vi phạm QĐ-10: không tự train model nháp để tránh rủi ro vỡ tiến độ).
-    2. *Suy giảm năng lực Tiếng Việt:* Nếu đổi sang LLaMA-3.1 để có sẵn EAGLE-3.1, mô hình LLaMA-3.1 vốn rất yếu tiếng Việt (vocab 128k so với 152k của Qwen), làm hỏng độ chính xác của pipeline MC-OCR tiếng Việt.
-    3. *Nghẽn VRAM & Giới hạn Concurrency:* Nhóm đã đo thử EAGLE-3.1 trên T4 ở M0 ([M0-02 §5.2](../../../logs/Khoi/M0-02/M0-02_worklogs.md#L150-L154)): EAGLE-3.1 chiếm tới 7.19 GB VRAM, KV Cache chỉ còn 3.48 GB, **concurrency tối đa bị ép xuống 13.51x** (không thể quét lên 32 luồng như cam kết của đồ án).
-* **Nếu sau này Thầy bắt buộc dùng EAGLE-3.1 thì có phải sửa code/thiết kế lại hệ thống nhiều không?**
-  - **GẦN NHƯ KHÔNG PHẢI SỬA HỆ THỐNG!**
-  - Nhờ nguyên lý thiết kế **Decoupling (tách rời)** của nhóm: `AdaptiveDraftController` và `AdaptiveProposerAdapter` hoạt động hoàn toàn độc lập với mô hình nháp bên dưới. Nó chỉ nhận `alpha` và `C(k, B)` để ra quyết định `k*`. 
-  - Nếu sau này chuyển sang EAGLE-3.1, ta chỉ cần sửa đúng 1 dòng cấu hình trong file launcher (`--speculative-config '{"method": "eagle3", ...}'`), toàn bộ mã nguồn controller của Khôi giữ nguyên 100%.
-* **Các số đo ở Sprint 1 & 2 có trở nên vô dụng không?**
-  - **KHÔNG HỀ VÔ DỤNG!** Số liệu M1 (Qwen 7B + 0.5B) đóng vai trò là **Chương 4: Nghiệm thu thực nghiệm cơ sở (Baseline Study)** chứng minh hiện tượng tăng tốc âm. 
-  - Nếu sau này nhóm chạy thêm EAGLE-3.1 (dự kiến ở Sprint 5 mở rộng), số liệu đó sẽ trở thành **Ablation Study so sánh chéo** giữa hai kiến trúc nháp (Draft Model độc lập vs EAGLE Speculator Head), làm luận án thêm phần dày dặn và học thuật!
+### 2.3. Chiến Lược Hai Luồng Song Song (Dual-Track Strategy): Bảo Vệ Tiến Độ & Huấn Luyện Mở Rộng EAGLE-3.1
+
+Sau khi thảo luận sâu sắc, Team Lead (Khôi) đã chính thức chốt **Quyết định Chiến lược Hai Luồng Song Song (Dual-Track Pivot)**:
+
+```text
+                               CHIẾN LƯỢC HAI LUỒNG SONG SONG (DUAL-TRACK)
++----------------------------------------------------------------------------------------------------+
+| LUỒNG 1: MAIN PRODUCTION TRACK (ĐƯỜNG GĂNG TỐT NGHIỆP - CRITICAL PATH)                              |
+| - Cấu hình: Qwen2.5-7B-AWQ + Draft Model Qwen2.5-0.5B trên GPU T4 16GB.                            |
+| - Tiến độ: Bám sát Sprint 3 (M2 Adaptive Controller v0 & Lossless Verification).                  |
+| - Số liệu: Kế thừa 36 ô thực nghiệm M1, hoàn thiện full 54 ô đối chứng 3 làn M2.                  |
+| - Mục tiêu: ĐẢM BẢO 100% TIẾN ĐỘ BẢO VỆ TỐT NGHIỆP, an toàn, ổn định production.                   |
++----------------------------------------------------------------------------------------------------+
+                                                  │
+                                                  │ Chạy song song không chặn tiến độ
+                                                  ▼
++----------------------------------------------------------------------------------------------------+
+| LUỒNG 2: R&D / OUTSOURCE EFFORT TRACK (TỰ HUẤN LUYỆN EAGLE-3.1 CHO QWEN2.5)                       |
+| - Mục tiêu: Tự train 1 Draft Speculator Head EAGLE-3.1 chuyên biệt cho Qwen2.5-7B.                |
+| - Hạ tầng: Mượn/thuê GPU A100 (theo QĐ-02), sử dụng framework SafeAILab/EAGLE hoặc SpecForge.      |
+| - Vai trò trong đồ án:                                                                             |
+|   1. Trình diễn Demo tốc độ bứt phá tại buổi bảo vệ tốt nghiệp.                                    |
+|   2. Minh chứng kỹ năng MLOps / Model Training chuyên sâu của nhóm sinh viên PTIT.                 |
+|   3. Cung cấp bài đo Ablation Study so sánh chéo: Đánh giá bộ điều khiển AdaptiveDraftController   |
+|      khi cắm vào Draft Model độc lập 0.5B vs khi cắm vào EAGLE-3.1 Head tự train.                  |
++----------------------------------------------------------------------------------------------------+
+```
+
+* **Vì sao tách 2 luồng là quyết định đúng đắn nhất?**
+  1. *Triệt tiêu rủi ro vỡ tiến độ:* Nếu dồn toàn bộ nguồn lực vào việc train EAGLE-3.1 ngay lúc này, chỉ cần checkpoint train bị lỗi convergence, lệch loss hoặc kernel vLLM chưa tương thích là toàn bộ Sprint 3 sẽ bị trễ hạn. Tách luồng 2 thành "luồng ngoài" giúp Luồng 1 về đích đúng hẹn 100%.
+  2. *Bảo toàn 100% giá trị số đo M1 & M2:* Số liệu đo trên Draft Model 0.5B là luận cứ khoa học chính thức cho Chương 4. Số liệu của luồng EAGLE-3.1 sẽ là phần điểm cộng vượt trội (Extra Academic Value) trong Chương 5.
+  3. *Chứng minh tính độc lập của kiến trúc (Architectural Independence):* Nhờ thiết kế tách rời (Decoupling) của `AdaptiveDraftController` và `AdaptiveProposerAdapter`, cả 2 luồng đều dùng chung 100% bộ điều khiển của Khôi. Khi checkpoint EAGLE-3.1 train xong, nhóm chỉ cần cắm vào launcher mà không phải sửa một dòng logic điều khiển nào!
 
 ---
 
 ## 3. Kế Hoạch Triển Khai Tiếp Theo (Implementation Roadmap)
 
-1. **Checklist 1 M2-02:** Cài đặt lớp `AdaptiveDraftController(BudgetController)` trong [`src/proposer/controller.py`](../../../src/proposer/controller.py) với đầy đủ cửa sổ trượt 10 bước và Warm-up Unbiased.
-2. **Checklist 2 M2-02:** Tách bạch phương thức `apply_budget_rule()` với các ngưỡng `0.65` và `0.80`.
-3. **Viết Unit Test kiểm chứng:** Bổ sung test cases chuyên sâu trong [`tests/test_budget_controller.py`](../../../tests/test_budget_controller.py) cho `AdaptiveDraftController`.
+1. **Checklist 1 M2-02 (Khôi):** Cài đặt lớp `AdaptiveDraftController(BudgetController)` trong [`src/proposer/controller.py`](../../../src/proposer/controller.py) với cửa sổ trượt 10 bước và Warm-up Unbiased.
+2. **Checklist 2 M2-02 (Khôi):** Tách bạch phương thức `apply_budget_rule()` với các ngưỡng `0.65` và `0.80`.
+3. **Checklist 3 & 4 M2-02 (Dương):** Cài đặt Memory Pressure Rule và Launcher Làn 3 `launch_lane3_adaptive.sh`.
+4. **Viết Unit Test kiểm chứng:** Bổ sung test cases chuyên sâu trong [`tests/test_budget_controller.py`](../../../tests/test_budget_controller.py) cho `AdaptiveDraftController`.
+5. **Kích hoạt Luồng 2 (R&D Track):** Chuẩn bị kịch bản training EAGLE-3.1 trên môi trường GPU A100.
+
