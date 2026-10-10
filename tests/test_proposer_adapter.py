@@ -52,3 +52,46 @@ def test_propose_fallback_skips_draft_generator():
     # Hàm draft_generator không được phép chạy khi k=0 để tiết kiệm GPU compute
     assert not called
 
+
+def test_simulation_decoding_loop():
+    adapter = AdaptiveProposerAdapter(controller_kwargs={"fallback_threshold": 0.65})
+    req_id = "req_sim_loop"
+    adapter.start_request(req_id, initial_alpha=0.9)
+
+    # Bước 1..3: alpha cao (3/3 đúng) -> giữ k=3 hoặc 4
+    for _ in range(3):
+        out = adapter.propose(req_id, draft_generator=lambda k: [1] * k)
+        assert out.budget_k > 0
+        adapter.on_verification_completed(req_id, num_accepted=out.budget_k, num_drafted=out.budget_k)
+
+    # Bước 4..6: alpha tụt dốc (0/3 đúng như W3) -> adapter nhận diện và chuyển về k=0
+    for _ in range(4):
+        out = adapter.propose(req_id, draft_generator=lambda k: [1] * k)
+        if not out.skipped_draft:
+            adapter.on_verification_completed(req_id, num_accepted=0, num_drafted=out.budget_k)
+
+    # Bước 7: Phải rơi vào Vanilla Fallback (k=0)
+    out_last = adapter.propose(req_id, draft_generator=lambda k: [1] * k)
+    assert out_last.budget_k == 0
+    assert out_last.skipped_draft
+
+    # Kết thúc request: xuất telemetry và giải phóng bộ nhớ
+    telemetry = adapter.end_request(req_id)
+    assert "tree_budgets" in telemetry
+    assert 0 in telemetry["tree_budgets"]  # Đã có bước k=0
+    assert telemetry["tree_budgets"][0] > 0  # Bước đầu tiên có nháp
+    assert adapter.active_request_count == 0  # Đã giải phóng RAM
+
+
+def test_adapter_memory_cleanup():
+    adapter = AdaptiveProposerAdapter()
+    for i in range(10):
+        req_id = f"req_{i}"
+        adapter.propose(req_id, draft_generator=lambda k: [1] * k)
+    assert adapter.active_request_count == 10
+
+    for i in range(10):
+        adapter.end_request(f"req_{i}")
+    assert adapter.active_request_count == 0
+
+

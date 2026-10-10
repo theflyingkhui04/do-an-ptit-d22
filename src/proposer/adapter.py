@@ -80,3 +80,34 @@ class AdaptiveProposerAdapter:
             reason=decision.reason,
         )
 
+    def on_verification_completed(
+        self,
+        request_id: str,
+        num_accepted: int,
+        num_drafted: int,
+    ) -> float:
+        """Receives verification telemetry from Target model and updates rolling alpha."""
+        controller = self.get_controller(request_id)
+        return controller.update(num_accepted=num_accepted, num_drafted=num_drafted)
+
+    def get_telemetry(self, request_id: str) -> dict:
+        """Extracts runtime telemetry snapshot matching Interface A contract."""
+        controller = self.get_controller(request_id)
+        stats = controller.get_stats()
+        return {
+            "request_id": request_id,
+            "lane": "adaptive",
+            "alpha_ema": stats["alpha_ema"],
+            "tree_budgets": stats["tree_budgets"],
+            "mean_accept_len": stats.get("mean_k", 0.0),
+            "step_count": stats["step_count"],
+        }
+
+    def end_request(self, request_id: str) -> dict:
+        """Finalizes request, returns full Interface A telemetry, and releases session memory."""
+        telemetry = self.get_telemetry(request_id)
+        if request_id in self._active_sessions:
+            del self._active_sessions[request_id]
+        return telemetry
+
+
