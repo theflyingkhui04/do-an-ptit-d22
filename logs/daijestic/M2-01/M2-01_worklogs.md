@@ -1,125 +1,137 @@
-# Worklog Kỹ Thuật: [M2-01] Kiểm Thử BudgetController v0 — Chuyển Đổi Tree Budget Theo Acceptance Rate
+# Worklog Kỹ Thuật: [M2-01] Kiểm Thử Chuyển Đổi Tree Budget Theo Acceptance Rate
 
-## Thông tin công việc
+## 0. Thông Tin Công Việc
 
-- **Mã công việc:** `[M2-01]`
-- **Cột mốc:** M2 — Adaptive v0 & Lossless Verification
-- **Người thực hiện:** Bùi Thiên Đại (daijestic) — Partner 30%, Unit Test & Technical Review
-- **Người phụ trách chính:** Cấn Đức Khôi — Lead 70%, Implementation & Integration
-- **Ngày ghi nhận:** 10/10/2026
-- **Branch kiểm thử:** `feat/m2-01-budget-controller-v0`
-- **Base implementation SHA:** `ddf24d194e13b08b5033109d192184f7f55518d5`
+- **Task:** `[M2-01] Hardware Profiler & BudgetController v0`
+- **Phần được phân công:** `[Đại] Viết unit test mô phỏng thay đổi tree budget theo các kịch bản alpha cao/thấp`
+- **Người thực hiện:** Bùi Thiên Đại (daijestic) — Partner 30%, Testing & Technical Review
+- **Lead:** Cấn Đức Khôi — Dev & PM
+- **Ngày thực hiện và xác minh:** 10/10/2026
+- **Repository:** `theflyingkhui04/do-an-ptit-d22`
+- **Branch:** `feat/m2-01-budget-controller-v0`
+- **Implementation SHA ban đầu:** `ddf24d194e13b08b5033109d192184f7f55518d5`
+- **Upstream M2-02 SHA:** `bba730d`
+- **Commit của Đại sau rebase:** `37225b7` (trước bản sửa test mới nhất)
 - **Môi trường:** Google Colab T4, Linux, Python 3.13.15, pytest 8.4.2
-- **Trạng thái:** Unit tests PASS; chờ commit/push, review và nghiệm thu checklist
+- **Trạng thái:** Unit-test verification PASS; bản sửa cuối và worklog chưa commit/push, chưa được PM nghiệm thu.
 
-### Phạm vi được phân công
-
-**[Đại] Viết unit test mô phỏng thay đổi tree budget theo các kịch bản alpha cao/thấp.**
-
-Phần việc tập trung xác minh logic của `BudgetController v0` và `AdaptiveProposerAdapter` do Khôi hiện thực, đặc biệt là khả năng thay đổi draft budget theo acceptance telemetry trong cùng một request.
-
-Đây là phần tiếp nối implementation và unit tests nền tảng được Khôi ghi nhận tại `logs/Khoi/M2-01/M2-01_worklogs.md`.
+Tài liệu này ghi nhận phần việc do Đại thực hiện, tiếp nối implementation và worklog của Khôi tại `logs/Khoi/M2-01/M2-01_worklogs.md`.
 
 ---
 
-## 1. Bối Cảnh & Mục Tiêu Kiểm Thử
+## 1. Bối Cảnh Và Mục Tiêu
 
-### 1.1. Bối cảnh
+### 1.1. Bối cảnh nghiên cứu
 
-Kết quả baseline M1 cho thấy hiệu quả Speculative Decoding phụ thuộc vào workload và acceptance rate. Một cấu hình draft depth cố định có thể đem lại speedup trong trường hợp acceptance cao nhưng gây tăng chi phí không cần thiết khi acceptance thấp.
+Đề tài nghiên cứu *Hardware-Aware Speculative Decoding for Self-Hosted LLM Inference on Consumer GPUs* hướng tới điều chỉnh speculative decoding theo đặc điểm phần cứng và workload.
 
-BudgetController v0 được thiết kế để điều chỉnh ngân sách nháp `k` dựa trên:
+Ở baseline M1, nhóm đã quan sát sự khác biệt về acceptance và speedup giữa các workload. Điều này đặt ra yêu cầu không sử dụng một draft depth cố định trong mọi tình huống.
 
-- Acceptance rate trung bình hàm mũ (`alpha_ema`).
-- Mô hình chi phí phần cứng `C(k, B)`.
-- Ngưỡng fallback khi acceptance thấp.
-- Giới hạn bộ nhớ VRAM.
+`BudgetController v0` do Khôi hiện thực nhằm lựa chọn ngân sách nháp `k` từ acceptance telemetry, cost profile và memory pressure.
 
-Khôi đã xây dựng controller và adapter cùng 18 unit tests nền tảng.
+Để kiểm tra controller không chỉ trả về những giá trị hợp lệ mà còn thực sự chuyển trạng thái khi acceptance thay đổi, Đại thực hiện thêm các test mô phỏng theo chuỗi.
 
-Phần kiểm thử của Đại tiếp tục xác minh **state transitions**: khi acceptance thay đổi qua các bước decoding, quyết định budget và dữ liệu telemetry có phản ánh chính xác thay đổi đó hay không.
+### 1.2. Mục tiêu của Đại
 
-### 1.2. Mục tiêu
+1. Xác minh budget được lựa chọn đúng tại các mức alpha cao, trung bình và thấp.
+2. Mô phỏng acceptance thay đổi liên tiếp trong cùng request.
+3. Kiểm tra chuỗi `tree_budgets` và telemetry tương ứng.
+4. Xác minh adapter bỏ qua draft generator khi `k=0`.
+5. Kiểm tra VRAM guard được ưu tiên.
+6. Tìm và chứng minh bằng test các trường hợp biên chưa được baseline tests bao phủ.
+7. Đảm bảo tests của M2-01 tiếp tục chạy đúng khi M2-02 được phát triển trên branch chung.
 
-1. Xác minh quyết định budget tại các mức acceptance cao, trung bình và thấp.
-2. Mô phỏng chuỗi acceptance thay đổi trong cùng một request.
-3. Xác minh controller tự động chuyển sang Vanilla khi acceptance xuống dưới ngưỡng.
-4. Xác minh VRAM guard được ưu tiên cao hơn quyết định mở rộng draft.
-5. Kiểm tra consistency giữa budget thực thi và telemetry `tree_budgets`.
-6. Phát hiện những giới hạn logic chưa được các unit tests nền tảng bao phủ.
+### 1.3. Phạm vi
 
-### 1.3. Test oracle và giới hạn
+Đây là **CPU-level unit testing với synthetic cost fixtures**.
 
-Các kết quả kỳ vọng được xác định từ công thức EMA, mô hình chi phí và controller policy hiện hành.
-
-Các cost matrix trong unit tests là dữ liệu giả lập (*synthetic fixture*) được chọn có chủ đích để kiểm tra thuật toán, **không phải số đo phần cứng Tesla T4**.
+Phạm vi không bao gồm GPU benchmark, đo VRAM leak thực tế, chạy vLLM adaptive server hoặc đánh giá speedup.
 
 ---
 
-## 2. Phân Tích Thuật Toán Trước Khi Viết Test
+## 2. Source Reading Và Phân Tích Thuật Toán
 
-### 2.1. Rolling acceptance rate
+### 2.1. Các thành phần được đọc và kiểm tra
 
-Controller sử dụng công thức:
+- `src/proposer/controller.py`
+- `src/proposer/adapter.py`
+- `src/proposer/__init__.py`
+- `tests/test_budget_controller.py`
+- `tests/test_proposer_adapter.py`
+
+`BudgetController` quản lý acceptance state và lựa chọn budget.
+
+`AdaptiveProposerAdapter` quản lý controller theo từng request, gọi draft generator và nhận verification feedback.
+
+### 2.2. Rolling acceptance
+
+Công thức EMA:
 
 ```text
 alpha_step = num_accepted / num_drafted
 
-alpha_ema(t)
-    = beta * alpha_ema(t-1)
-      + (1 - beta) * alpha_step
+alpha_ema(t) =
+    beta * alpha_ema(t-1)
+    + (1 - beta) * alpha_step
 ```
 
-Với `beta = 0.8`, EMA phản ánh dữ liệu acceptance mới nhưng vẫn giữ một phần ảnh hưởng của các bước trước.
+Cấu hình được kiểm thử:
 
-### 2.2. Chi phí và hiệu quả dự kiến
+```text
+ema_beta = 0.8
+fallback_threshold = 0.65
+high_threshold = 0.80
+```
 
-Số token được tạo kỳ vọng mỗi verification step:
+### 2.3. Expected accepted-token progress và cost model
+
+Controller v0 sử dụng ước lượng:
 
 ```text
 E[tau(k)] = 1 + alpha + alpha^2 + ... + alpha^k
 ```
 
-Hiệu quả dự kiến:
+Efficiency dự kiến:
 
 ```text
 efficiency(k, B) = E[tau(k)] / C(k, B)
 ```
 
-Controller xét các budget `k ∈ {0, 2, 3, 4}`, so sánh efficiency với Vanilla và áp dụng các safety guard.
+Ngân sách được xem xét:
 
-Vì vậy, **alpha cao không tự động chứng minh `k=4` tối ưu**. Test cần sử dụng cost profile xác định để kiểm chứng các budget được chọn.
+```text
+k in {0, 2, 3, 4}
+```
 
-### 2.3. Các ngưỡng chính
+Quyết định còn chịu ảnh hưởng của:
 
-| Điều kiện | Hành vi cần kiểm tra |
-|---|---|
-| `alpha_ema < 0.65` | Fallback về `k=0` |
-| `0.65 ≤ alpha_ema < 0.80` | Chỉ xem xét budget được policy cho phép |
-| `alpha_ema ≥ 0.80` | Có thể xem xét `k=4` |
-| Free VRAM dưới ngưỡng | Bắt buộc `k=0` |
+- Cost profile.
+- Acceptance threshold.
+- VRAM guard.
+- Candidate budgets.
+
+Do đó, không thể khẳng định một mức alpha luôn tương ứng với một giá trị `k` trong mọi cost profile.
 
 ---
 
-## 3. Thiết Kế Bộ Kiểm Thử Của Đại
+## 3. Thiết Kế Bộ Test Của Đại
 
-### 3.1. File kiểm thử
+### 3.1. Artifacts
 
-Hai file mới được xây dựng:
+Hai file test được bổ sung:
 
 ```text
-tests/
-├── test_budget_fallback_recovery.py
-└── test_budget_transition_scenarios.py
+tests/test_budget_transition_scenarios.py
+tests/test_budget_fallback_recovery.py
 ```
 
-File `test_budget_transition_scenarios.py` là phần kiểm thử trực tiếp cho checklist alpha cao/thấp.
+`test_budget_transition_scenarios.py` phục vụ trực tiếp checklist mô phỏng high/low alpha.
 
-File `test_budget_fallback_recovery.py` bổ sung regression evidence về một failure mode được phát hiện trong quá trình review.
+`test_budget_fallback_recovery.py` ghi nhận một failure mode được phát hiện trong quá trình review.
 
-### 3.2. Kịch bản A — Budget selection theo các mức alpha
+### 3.2. Test fixture
 
-Sử dụng `CostProfile` giả lập:
+Sử dụng cost matrix giả lập, đơn vị millisecond:
 
 ```python
 CostProfile(
@@ -132,221 +144,233 @@ CostProfile(
 )
 ```
 
-Đơn vị chi phí là millisecond, chỉ dùng làm test fixture.
+Ma trận trên **không phải T4 hardware measurement**. Các giá trị được chọn để tạo ra test oracle xác định cho cost-model selection.
 
-Các trường hợp kỳ vọng:
+### 3.3. Test theo các mức alpha
 
-| Alpha đầu vào | Budget kỳ vọng |
+| Initial alpha | Expected budget |
 |---|---|
-| `0.90` | `k=4` |
-| `0.72` | `k=3` |
-| `0.50` | `k=0` |
+| 0.90 | k=4 |
+| 0.72 | k=3 |
+| 0.50 | k=0 |
 
-Các lựa chọn này là kết quả của cả cost profile và policy hiện hành. Chúng không phải quy tắc bắt buộc cho mọi workload hoặc mọi GPU.
+Test dùng `pytest.mark.parametrize` để tách ba trường hợp độc lập.
 
-### 3.3. Kịch bản B — State transitions trong cùng request
+Mỗi trường hợp kiểm tra `decision.k` và `decision.alpha_ema`.
 
-Mô phỏng một request có acceptance cao ở giai đoạn đầu, sau đó giảm dần.
+### 3.4. Test state transition trong cùng request
 
-**Bước 1 — Acceptance cao**
+Mục tiêu là xác minh chuỗi high → medium → low acceptance.
+
+**Stage 1 — High acceptance**
 
 ```text
-Initial alpha_ema = 0.90
-Selected budget   = 4
-Verification      = 4 accepted / 4 drafted
+Initial alpha = 0.90
+Selected budget = 4
+Verification = 4 accepted / 4 drafted
 
-New alpha_ema:
-0.8 * 0.90 + 0.2 * 1.0 = 0.92
+Next EMA =
+0.8 * 0.90 + 0.2 * 1.0
+= 0.92
 ```
 
-**Bước 2 — Acceptance bắt đầu giảm**
+**Stage 2 — Acceptance giảm**
 
 ```text
-alpha_ema         = 0.92
-Selected budget   = 4
-Verification      = 0 accepted / 4 drafted
+Current EMA = 0.92
+Selected budget = 4
+Verification = 0 accepted / 4 drafted
 
-New alpha_ema:
-0.8 * 0.92 + 0.2 * 0.0 = 0.736
+Next EMA =
+0.8 * 0.92 + 0.2 * 0
+= 0.736
 ```
 
-**Bước 3 — Acceptance trung bình**
+**Stage 3 — Medium acceptance**
 
 ```text
-alpha_ema         = 0.736
-Selected budget   = 3
-Verification      = 0 accepted / 3 drafted
+Current EMA = 0.736
+Selected budget = 3
+Verification = 0 accepted / 3 drafted
 
-New alpha_ema:
-0.8 * 0.736 + 0.2 * 0.0 = 0.5888
+Next EMA =
+0.8 * 0.736
+= 0.5888
 ```
 
-**Bước 4 — Acceptance thấp**
+**Stage 4 — Low acceptance**
 
 ```text
-alpha_ema         = 0.5888
+Current EMA = 0.5888
 Fallback threshold = 0.65
-Selected budget    = 0
 
-Draft generator skipped
+Selected budget = 0
+Draft generation skipped
 ```
 
-Chuỗi budget kỳ vọng:
+Expected sequence:
 
 ```text
 tree_budgets = [4, 4, 3, 0]
 ```
 
-Kết quả telemetry kỳ vọng:
+Expected telemetry:
 
 ```text
 alpha_ema = 0.5888
 step_count = 3
-mean_k = (4 + 4 + 3 + 0) / 4 = 2.75
+mean_k = 2.75
 ```
 
-Test còn kiểm tra `draft_generator` chỉ được gọi với:
+Expected draft generator calls:
 
 ```text
 [4, 4, 3]
 ```
 
-Điều này xác nhận không sinh nháp khi controller quyết định `k=0`.
+Test cũng xác minh request session được xóa sau `end_request()`.
 
-### 3.4. Kịch bản C — VRAM safety override
+### 3.5. Test VRAM guard
 
-Khởi tạo request có acceptance cao:
+Input giả lập:
 
 ```text
-alpha_ema = 0.95
+initial_alpha = 0.95
 min_free_vram_mb = 1500
 free_vram_mb = 1000
 ```
 
-Hành vi kỳ vọng:
+Expected:
 
 ```text
-Selected budget = 0
+budget_k = 0
 skipped_draft = True
 draft_tokens = []
 ```
 
-Mục tiêu là xác minh safety guard được ưu tiên ngay cả khi acceptance rất cao.
+Test xác nhận memory guard có ưu tiên cao hơn acceptance-based selection.
 
-Đây là mô phỏng tín hiệu bộ nhớ, không phải phép đo VRAM thực tế trên GPU.
+Nó không đo VRAM allocation hoặc chứng minh không có OOM.
 
 ---
 
-## 4. Regression Tests — Phát Hiện Fallback Recovery Limitation
+## 4. Regression Finding — Fallback Recovery Limitation
 
-### 4.1. Phát hiện
+### 4.1. Vấn đề phát hiện
 
-Qua việc tracing `BudgetController.update()` và `AdaptiveProposerAdapter.propose()`, phát hiện trạng thái fallback có thể bị duy trì vô thời hạn trong cùng request.
+Trong controller v0, khi acceptance giảm dưới ngưỡng, hệ thống có thể rơi vào trạng thái fallback và không tự phục hồi trong cùng request.
 
-Tại:
+Ví dụ:
 
 ```text
 alpha_ema = 0.60
 fallback_threshold = 0.65
+
+select_budget() -> k=0
 ```
 
-Controller chọn `k=0`.
+Khi adapter nhận `k=0`, nó bỏ qua draft generator.
 
-Adapter không gọi draft generator, nên không phát sinh acceptance observation mới từ speculative verification.
+Do không còn speculative verification observation, alpha có thể không được cập nhật.
 
-Nếu không có nguồn observation khác:
+Trong implementation M2-01, `update(0, 0)` cũng không làm EMA thay đổi.
+
+Khi đó:
 
 ```text
 alpha_ema remains 0.60
-next selected budget = 0
+next budget remains 0
 ```
 
-Ngay cả khi gọi:
+### 4.2. Phân loại
 
-```python
-controller.update(
-    num_accepted=0,
-    num_drafted=0,
-)
-```
+- **Severity:** MAJOR
+- **Location:** `src/proposer/controller.py`, `src/proposer/adapter.py`
+- **Problem:** Low-acceptance fallback không có recovery mechanism nội tại.
+- **Impact:** Controller có thể tiếp tục chọn Vanilla trong cùng request dù đặc điểm sinh token về sau thay đổi.
+- **Evidence:** CPU-level regression tests.
 
-logic hiện tại cũng giữ nguyên EMA.
+Đây là failure mode của logic hiện có, chưa phải lỗi được quan sát từ vLLM production runtime.
 
-**Phân loại:** MAJOR — fallback recovery limitation.
+### 4.3. Regression tests được thêm
 
-### 4.2. Regression evidence
+Bảy trường hợp bao phủ:
 
-Bảy test bổ sung kiểm tra:
+1. Low-alpha fallback duy trì khi không có feedback.
+2. Zero-draft update không làm EMA phục hồi.
+3. Adapter bỏ qua draft generator ở `k=0`.
+4. Simulated verification observation làm EMA thay đổi.
+5. VRAM guard vẫn được áp dụng sau khi EMA vượt ngưỡng.
+6. Favorable cost profile cho phép chọn draft budget trở lại.
+7. Unfavorable cost profile có thể tiếp tục chọn Vanilla.
 
-1. Fallback tiếp tục duy trì khi không có feedback mới.
-2. `update(0, 0)` không làm EMA phục hồi.
-3. Adapter không gọi draft generator trong fallback.
-4. Acceptance observation giả lập có thể cập nhật EMA.
-5. VRAM guard vẫn có ưu tiên sau khi EMA vượt ngưỡng.
-6. Cost profile thuận lợi có thể cho phép chọn draft budget trở lại.
-7. Cost profile bất lợi vẫn có thể khiến Vanilla là lựa chọn đúng.
+### 4.4. Kiểm chứng khả năng EMA phục hồi
 
 Với:
 
 ```text
-alpha_ema = 0.60
-ema_beta = 0.8
-new acceptance observation = 1.0
+Initial EMA = 0.60
+beta = 0.8
+new observed acceptance = 1.0
 ```
 
-EMA sau cập nhật:
+Kết quả:
 
 ```text
-0.8 * 0.60 + 0.2 * 1.0 = 0.68
+new EMA =
+0.8 * 0.60 + 0.2 * 1.0
+= 0.68
 ```
 
-Như vậy EMA vượt ngưỡng fallback `0.65`.
+EMA vượt ngưỡng `0.65`, nhưng điều này không tự đảm bảo `k>0`.
 
-Tuy nhiên cần phân biệt ba sự kiện:
+Cần phân biệt:
 
 ```text
-Probe executed
+Verification observation received
     !=
-EMA recovered
+EMA crosses fallback threshold
     !=
-Adaptive decoding resumed
+Adaptive decoding resumes
 ```
 
-Các test hiện tại chỉ đưa observation giả lập vào controller. **Không có cơ chế periodic probing được hiện thực trong production code.**
+### 4.5. Đề xuất, chưa triển khai
 
-### 4.3. Đề xuất kỹ thuật — chưa được duyệt
+Phương án được xem xét là **bounded periodic probing** nhằm thu thập acceptance feedback mới sau khi rơi vào Vanilla fallback.
 
-Đề xuất nghiên cứu *bounded periodic probing*: định kỳ cho phép draft nhỏ để thu thập acceptance telemetry mới, với điều kiện kiểm soát VRAM và overhead.
+Các ràng buộc cần xem xét:
 
-Các tham số như chu kỳ probe, draft depth, giới hạn chi phí và chính sách recovery chưa được chốt.
+- Giới hạn tần suất probing.
+- Giới hạn draft depth khi probe.
+- Không probing khi memory pressure không an toàn.
+- Đo cả probing overhead.
+- Đánh giá bằng latency/throughput, không chỉ acceptance.
 
-**PM DECISION REQUIRED:** Chỉ triển khai nếu PM chấp thuận scope và phương án đo kiểm. Không tự sửa controller policy trong checklist unit test này.
+**PM DECISION REQUIRED:** Thay đổi controller policy vượt khỏi việc chỉ viết unit test. Chưa được tự triển khai hay điều chỉnh experiment protocol.
 
 ---
 
-## 5. Kết Quả Thực Thi Trên Colab T4
+## 5. Baseline Test Verification Trước Rebase
 
-### 5.1. Lệnh chạy
+### 5.1. Git identity
+
+```text
+Branch:
+feat/m2-01-budget-controller-v0
+
+HEAD:
+ddf24d194e13b08b5033109d192184f7f55518d5
+```
+
+### 5.2. Lệnh kiểm thử
 
 ```bash
-cd /root/do-an-ptit-d22
-
-git rev-parse HEAD
-
 python -m pytest \
   tests/test_budget_controller.py \
   tests/test_proposer_adapter.py \
   tests/test_budget_fallback_recovery.py \
   tests/test_budget_transition_scenarios.py \
   -v
-
-git status --short
-```
-
-### 5.2. Git identity
-
-```text
-ddf24d194e13b08b5033109d192184f7f55518d5
 ```
 
 ### 5.3. Kết quả
@@ -354,40 +378,22 @@ ddf24d194e13b08b5033109d192184f7f55518d5
 ```text
 Python 3.13.15
 pytest 8.4.2
-Linux
 
 collected 30 items
 
-tests/test_budget_controller.py
-    12 passed
+12 BudgetController tests PASSED
+ 6 ProposerAdapter tests PASSED
+ 7 fallback regression tests PASSED
+ 5 budget transition tests PASSED
 
-tests/test_proposer_adapter.py
-     6 passed
-
-tests/test_budget_fallback_recovery.py
-     7 passed
-
-tests/test_budget_transition_scenarios.py
-     5 passed
-
-========================
 30 passed in 0.08s
-========================
 ```
 
-| Thành phần | Số test | Kết quả |
-|---|---:|---|
-| BudgetController baseline | 12 | PASS |
-| ProposerAdapter baseline | 6 | PASS |
-| Fallback regression | 7 | PASS |
-| Alpha transition scenarios | 5 | PASS |
-| **Tổng** | **30** | **PASS** |
+Kết quả này xác minh test suite trên code trước thay đổi M2-02.
 
-Tất cả các assertions trong bốn file đã PASS trên implementation SHA được ghi nhận.
+### 5.4. Git review
 
-### 5.4. Kiểm tra thay đổi Git
-
-Đã sử dụng:
+Hai file test mới đã được review bằng:
 
 ```bash
 git add -N \
@@ -401,147 +407,415 @@ git diff -- \
   tests/test_budget_transition_scenarios.py
 ```
 
-Kết quả:
+Diff tại thời điểm review:
 
 ```text
-tests/test_budget_fallback_recovery.py
-    185 lines added
+tests/test_budget_fallback_recovery.py       185 lines
+tests/test_budget_transition_scenarios.py    203 lines
 
-tests/test_budget_transition_scenarios.py
-    203 lines added
-
-2 files changed, 388 insertions(+)
+Total: 388 lines
 ```
 
-`git diff --check` không báo lỗi trong output đã cung cấp.
-
-Tuy nhiên, `git add -N` mới chỉ đánh dấu intent-to-add. Tại thời điểm ghi log, **hai file chưa có commit/push riêng của Đại**.
+`git diff --check` không báo lỗi.
 
 ---
 
-## 6. Phân Tích Kết Quả Và Giới Hạn
+## 6. Commit Đầu Tiên Và Đồng Bộ Branch
 
-### 6.1. Những điều đã được chứng minh
+### 6.1. Commit local ban đầu
 
-**FACT 1:** Các test hiện có đã chạy thành công trên Git SHA xác định.
-
-**FACT 2:** BudgetController có thể lựa chọn các budget khác nhau trong các synthetic scenarios có alpha và chi phí được kiểm soát.
-
-**FACT 3:** Test mô phỏng trong cùng request xác nhận chuỗi `tree_budgets = [4, 4, 3, 0]`.
-
-**FACT 4:** Khi `k=0`, adapter bỏ qua draft generator trong kịch bản đã kiểm thử.
-
-**FACT 5:** Memory-pressure guard giả lập có thể ép controller về `k=0` ngay cả khi acceptance cao.
-
-### 6.2. Những điều chưa được chứng minh
-
-- Controller và adapter đã hoạt động bên trong decoding loop thực tế của vLLM.
-- Adaptive lane đã được khởi động và vượt smoke test trên GPU.
-- Không có VRAM leak hoặc RAM leak trong quá trình vận hành dài.
-- Cost profile thực tế trên Tesla T4 đã được đo, xác minh hoặc hiệu chuẩn.
-- Adaptive decoding cải thiện latency, TPOT hoặc throughput trên benchmark chuẩn.
-- Periodic probing đã được hiện thực.
-- Thuật toán luôn khôi phục được speculative mode trong mọi request.
-
-### 6.3. Vấn đề telemetry cần lưu ý
-
-Trong adapter hiện tại, trường `mean_accept_len` được lấy từ `mean_k`.
-
-Hai khái niệm khác nhau:
+Commit được tạo trên branch M2-01:
 
 ```text
-mean_k
-    = average selected draft budget
-
-mean_accept_len
-    = average accepted draft length
+0511abc
+test(m2-01): add budget transition and fallback regression tests
 ```
 
-Không thể dùng trực tiếp `mean_k` thay cho accepted length khi phân tích hiệu quả speculative decoding.
-
-**Review finding:** Cần đối chiếu với telemetry contract trước khi dùng trường này để tính acceptance metric trong benchmark.
-
-### 6.4. Giới hạn memory testing
-
-Việc `active_request_count == 0` sau `end_request()` xác nhận session được loại khỏi dictionary quản lý của adapter.
-
-Nó không chứng minh Python heap hoặc GPU VRAM đã được giải phóng hoàn toàn.
-
-Ngoài ra, `_history` của controller là list có thể tăng theo số lần `select_budget()` trong một request. Cần kiểm tra tác động đến memory footprint đối với request dài.
-
----
-
-## 7. Bàn Giao Và Nghiệm Thu
-
-### 7.1. Artifacts
-
-**Files do Đại bổ sung:**
+Author:
 
 ```text
-tests/test_budget_fallback_recovery.py
-tests/test_budget_transition_scenarios.py
+BUI DUC DAI
 ```
 
-**Files upstream của Khôi được kiểm thử:**
-
-```text
-src/proposer/controller.py
-src/proposer/adapter.py
-tests/test_budget_controller.py
-tests/test_proposer_adapter.py
-```
-
-**Worklog của Đại:**
+Commit bao gồm:
 
 ```text
 logs/daijestic/M2-01/M2-01_worklogs.md
+tests/test_budget_fallback_recovery.py
+tests/test_budget_transition_scenarios.py
 ```
 
-### 7.2. Trạng thái checklist
+### 6.2. Branch divergence
 
-**Checklist:** `[Đại] Viết unit test mô phỏng thay đổi tree budget theo các kịch bản alpha cao/thấp`
+Sau `git fetch origin`, Git báo:
 
-- [x] Đọc và tracing controller/adapter.
-- [x] Xác định các test scenarios và expected results.
-- [x] Viết test cho acceptance cao, trung bình và thấp.
-- [x] Viết test cho chuỗi chuyển đổi budget trong cùng request.
-- [x] Xác minh VRAM guard bằng mock input.
-- [x] Chạy 30/30 unit tests PASS.
-- [x] Review diff của hai file test mới.
-- [ ] Commit và push artifacts lên GitHub.
-- [ ] Handoff để Khôi review và PM xác nhận nghiệm thu.
+```text
+[ahead 1, behind 3]
+```
 
-**Kết luận:** Phần unit test alpha cao/thấp đã PASS về chức năng. Chưa ghi nhận `DONE WITH EVIDENCE` ở cấp repository cho đến khi có commit/PR, review và handoff đầy đủ.
+Trong thời gian Đại thực hiện unit tests, Khôi đã thêm ba commit M2-02 lên branch dùng chung:
 
-### 7.3. Những việc không thuộc bằng chứng nghiệm thu này
+```text
+c00ff21  docs(m2-02): initialize M2-02 worklog
+9d93cf0  docs(m2-02): update dual-track strategy
+bba730d  feat(m2-02): implement AdaptiveDraftController
+```
 
-VRAM leak benchmark thực tế trên T4 và integration smoke test cần được xác minh riêng theo acceptance criteria, phụ thuộc runtime và implementation tích hợp.
+Lần push trực tiếp bị từ chối:
 
-Không được dùng kết quả 30 unit tests để thay thế benchmark khoa học hoặc xác nhận toàn bộ M2-01 hoàn thành.
+```text
+[rejected] (non-fast-forward)
+```
+
+Đây là cơ chế bảo vệ lịch sử Git, không phải failure của unit tests.
+
+### 6.3. Backup và rebase
+
+Trước khi tích hợp remote commits, đã tạo backup reference:
+
+```bash
+git branch backup/daijestic-m2-01-0511abc 0511abc
+```
+
+Sau đó chạy:
+
+```bash
+git rebase origin/feat/m2-01-budget-controller-v0
+```
+
+Kết quả:
+
+```text
+Successfully rebased and updated refs/heads/feat/m2-01-budget-controller-v0.
+```
+
+Commit của Đại sau rebase:
+
+```text
+37225b7
+```
+
+Lịch sử mới:
+
+```text
+37225b7  test(m2-01): add budget transition and fallback regression tests
+bba730d  feat(m2-02): implement AdaptiveDraftController
+9d93cf0  docs(m2-02): update dual-track strategy
+c00ff21  docs(m2-02): initialize M2-02 worklog
+ddf24d1  docs(m2-01): finalize adapter worklog
+```
 
 ---
 
-## 8. Retrospective
+## 7. Phát Hiện Failure Sau Rebase
 
-### 8.1. Điều đã học được
+### 7.1. Kết quả kiểm thử lần đầu
 
-1. Một test PASS chỉ chứng minh hành vi đã được assertion kiểm tra, không tự chứng minh mọi yêu cầu hệ thống đều đúng.
-2. Một chuỗi state transitions cần được kiểm tra theo từng bước, không chỉ kiểm tra điểm đầu và cuối.
-3. EMA recovery và adaptive recovery là hai khái niệm khác nhau.
-4. Fallback có thể tạo ra trạng thái thiếu feedback khiến controller không thể tự đánh giá điều kiện quay lại speculative mode.
-5. Một quyết định budget đúng phải kết hợp acceptance, chi phí và memory safety.
-6. Synthetic unit tests phù hợp cho correctness của policy nhưng không thay thế measurement trên GPU thực.
+Sau rebase, chạy lại bốn file test.
 
-### 8.2. Kết luận kỹ thuật
+Kết quả:
 
-Phần kiểm thử do Đại thực hiện đã mở rộng baseline test suite từ 18 lên 30 test và tái hiện được cả budget transitions lẫn một giới hạn của fallback recovery.
+```text
+collected 37 items
 
-Kết quả là **unit-test evidence có khả năng tái hiện trên commit xác định**, không phải scientific evidence về hiệu năng Adaptive Speculative Decoding trên T4.
+36 passed
+1 failed
 
-### 8.3. Next handoff
+FAILED:
+tests/test_budget_transition_scenarios.py::
+test_tree_budget_changes_with_acceptance
+```
 
-Bàn giao hai file test, worklog, Git SHA và pytest output cho Khôi review.
+Test kỳ vọng:
 
-Đề xuất PM xem xét finding về fallback recovery và xác nhận các yêu cầu còn lại trước khi chuyển sang integration/benchmark.
+```text
+Third selected budget = 3
+```
 
-**Không tự thay đổi Trello, scope hoặc controller policy.**
+Nhưng thực tế:
+
+```text
+Actual budget = 0
+
+Low acceptance fallback:
+alpha 0.444 < threshold 0.650
+```
+
+### 7.2. Root cause
+
+M2-02 thay đổi default controller được tạo bởi `AdaptiveProposerAdapter`.
+
+Trước M2-02, adapter dùng `BudgetController` theo mặc định.
+
+Sau commit `bba730d`, constructor của adapter sử dụng:
+
+```python
+controller_cls: type[BudgetController] = AdaptiveDraftController
+```
+
+`AdaptiveDraftController` dùng *bias-corrected EMA* cho budget selection.
+
+Với hai acceptance samples:
+
+```text
+[1.0, 0.0]
+```
+
+Raw EMA:
+
+```text
+0.736
+```
+
+Nhưng effective alpha:
+
+```text
+(0.736 - 0.90 * 0.8^2) / (1 - 0.8^2)
+= 0.444444...
+```
+
+Vì effective alpha thấp hơn `0.65`, M2-02 chọn `k=0`.
+
+Ngược lại, test M2-01 ban đầu được thiết kế cho `BudgetController`, dùng raw EMA `0.736` và synthetic cost model, nên kỳ vọng `k=3`.
+
+### 7.3. Kết luận nguyên nhân
+
+**Observation:** 1/37 tests thất bại sau rebase.
+
+**Root cause:** Test M2-01 phụ thuộc ngầm vào default controller class, trong khi default của adapter đã được M2-02 thay đổi.
+
+**Inference:** Failure này là vấn đề tương thích test với upstream implementation. Chưa đủ căn cứ kết luận M2-02 production logic bị sai.
+
+Không được sửa production controller hoặc nới assertion để ép test PASS.
+
+---
+
+## 8. Cách Khắc Phục Và Verification Cuối
+
+### 8.1. Giải pháp
+
+Sử dụng explicit dependency injection khi tạo adapter để test M2-01 luôn kiểm tra `BudgetController` đúng phạm vi.
+
+Đảm bảo phần import chỉ có:
+
+```python
+from src.proposer.adapter import AdaptiveProposerAdapter
+from src.proposer.controller import BudgetController, CostProfile
+```
+
+Trong `test_tree_budget_changes_with_acceptance()`:
+
+```python
+adapter = AdaptiveProposerAdapter(
+    controller_cls=BudgetController,
+    controller_kwargs={
+        "initial_alpha": 0.90,
+        "ema_beta": 0.80,
+        "fallback_threshold": 0.65,
+        "high_threshold": 0.80,
+        "cost_profile": make_profile(),
+    },
+)
+```
+
+Không thay đổi test oracle hoặc expected budget sequence.
+
+### 8.2. Verification sau sửa
+
+Lệnh đã thực hiện:
+
+```bash
+python -m pytest \
+  tests/test_budget_controller.py \
+  tests/test_proposer_adapter.py \
+  tests/test_budget_fallback_recovery.py \
+  tests/test_budget_transition_scenarios.py \
+  -q
+
+git diff --check
+git diff -- tests/test_budget_transition_scenarios.py
+```
+
+Kết quả thực tế:
+
+```text
+..................................... [100%]
+
+37 passed in 0.10s
+```
+
+`git diff --check` không báo lỗi.
+
+### 8.3. Final code review
+
+Diff cuối cùng của test chỉ gồm:
+
+- Chỉ định `controller_cls=BudgetController`.
+- Chuẩn hóa dấu phẩy và cách đóng constructor.
+- Loại bỏ dòng trống dư giữa import và helper function.
+
+Không sửa:
+
+- Controller production logic.
+- Adapter production logic.
+- Cost profile.
+- Test oracle.
+- Expected transition sequence.
+- Acceptance thresholds.
+
+Không còn duplicate import.
+
+### 8.4. Kết luận verification
+
+**FACT:** Cả 37 unit tests đã PASS sau rebase và sửa phụ thuộc controller class.
+
+**FACT:** 12 tests mới của Đại tiếp tục PASS cùng với 25 baseline/upstream tests.
+
+**FACT:** Không cần thay đổi production code để khôi phục kết quả PASS.
+
+**LIMITATION:** Kết quả này xác minh CPU-level controller/adapter logic trên working tree sau rebase, không chứng minh vLLM integration hoặc runtime GPU correctness.
+
+---
+
+## 9. Tổng Hợp Evidence
+
+| Evidence | Kết quả |
+|---|---|
+| M2-01 implementation ban đầu | `ddf24d1` |
+| M2-02 upstream implementation | `bba730d` |
+| Commit test của Đại sau rebase | `37225b7` |
+| Test trước rebase | 30/30 PASS |
+| Test ngay sau rebase | 36 PASS, 1 FAIL |
+| Root cause | Default adapter controller đổi sang `AdaptiveDraftController` |
+| Fix | Explicit `controller_cls=BudgetController` |
+| Test sau fix | 37/37 PASS |
+| Python | 3.13.15 |
+| pytest | 8.4.2 |
+| GPU | Colab T4 được cấp phát; unit tests không sử dụng GPU computation |
+| Whitespace check | PASS |
+| Final fix commit | Chưa tạo |
+| Push GitHub | Chưa xác minh |
+| PM acceptance | Chưa xác minh |
+
+Việc giữ lại cả kết quả FAIL trung gian là cần thiết để tái hiện quá trình phát hiện, phân tích và khắc phục vấn đề tương thích.
+
+Không được xóa thất bại trung gian khỏi nhật ký chỉ vì lần chạy cuối đã PASS.
+
+---
+
+## 10. Technical Findings Chưa Được Giải Quyết
+
+### Finding 1 — Fallback Recovery Limitation
+
+**Severity:** MAJOR
+
+Controller có thể duy trì `k=0` trong cùng request khi thiếu acceptance observation mới.
+
+Regression tests chứng minh failure mode ở mức logic.
+
+**Recommendation:** Đề xuất PM xem xét bounded periodic probing hoặc recovery policy khác.
+
+**Status:** Chưa được chấp thuận hoặc implemented.
+
+### Finding 2 — Telemetry Semantics
+
+**Severity:** MAJOR nếu trường này được dùng tính acceptance metric trong benchmark.
+
+Adapter hiện ánh xạ:
+
+```text
+mean_accept_len <- mean_k
+```
+
+Nhưng `mean_k` phản ánh budget trung bình, không phải accepted draft length thực tế.
+
+**Recommendation:** Đối chiếu Interface A và metric formulas trước khi dùng dữ liệu này trong experimental analysis.
+
+**Status:** Chưa thay đổi production code.
+
+### Finding 3 — Memory Lifecycle
+
+**Severity:** Chưa đủ bằng chứng để khẳng định memory leak.
+
+`_history` lưu một entry cho mỗi lần budget selection và có thể tăng theo độ dài request.
+
+`end_request()` xóa controller khỏi `_active_sessions`, nhưng `active_request_count == 0` không chứng minh RAM/VRAM đã trở về baseline.
+
+**Recommendation:** Chỉ kết luận memory safety sau controlled measurement trên T4 với warm-up, repeats, request lifecycle và memory sampling được ghi rõ.
+
+---
+
+## 11. Checklist Và Trạng Thái Bàn Giao
+
+### Checklist được phân công
+
+**[Đại] Viết unit test mô phỏng thay đổi tree budget theo các kịch bản alpha cao/thấp**
+
+- [x] Đọc implementation và tracing controller/adapter.
+- [x] Xác định test scenarios và expected transitions.
+- [x] Kiểm thử acceptance cao, trung bình và thấp.
+- [x] Kiểm thử chuỗi high → medium → low trong cùng request.
+- [x] Kiểm thử `tree_budgets` và telemetry.
+- [x] Kiểm thử VRAM guard bằng simulated input.
+- [x] Bổ sung regression tests cho fallback limitation.
+- [x] Chạy 30/30 tests PASS trước rebase.
+- [x] Backup commit trước khi đồng bộ branch.
+- [x] Rebase thành công lên upstream M2-02.
+- [x] Phân tích 36 PASS / 1 FAIL sau rebase.
+- [x] Khắc phục phụ thuộc ngầm vào default controller.
+- [x] Chạy 37/37 tests PASS sau sửa.
+- [x] Kiểm tra final diff và whitespace.
+- [ ] Commit bản sửa test và worklog cuối cùng.
+- [ ] Push artifacts lên GitHub.
+- [ ] Handoff cho Khôi review.
+- [ ] PM xác nhận nghiệm thu checklist.
+
+**Engineering status:** FUNCTIONALLY DONE — FINAL COMMIT/PUSH PENDING.
+
+**Repository acceptance status:** Chưa có bằng chứng push và review cuối cùng.
+
+Không tự cập nhật Trello hoặc tự đánh dấu PM checklist hoàn thành.
+
+---
+
+## 12. Retrospective Và Bài Học
+
+### 12.1. Điều đã học
+
+1. Một passing test chỉ xác nhận hành vi nằm trong phạm vi assertion.
+2. Synthetic unit tests kiểm tra controller logic, không đại diện cho GPU performance.
+3. State transitions cần được kiểm chứng trong cùng request chứ không chỉ ở các giá trị alpha độc lập.
+4. Raw EMA và bias-corrected EMA có thể dẫn đến quyết định budget khác nhau.
+5. Thay đổi default dependency có thể làm test cũ thất bại dù API vẫn tương thích.
+6. Explicit controller injection làm mục tiêu unit test rõ ràng và ít phụ thuộc implementation khác.
+7. Git rebase thành công không đồng nghĩa toàn bộ tests vẫn đúng.
+8. Failure trung gian phải được ghi lại như engineering evidence, không bỏ qua.
+9. Acceptance recovery, budget recovery và speculative-runtime recovery là các khái niệm khác nhau.
+10. Hoàn thành code, commit local, push remote và PM acceptance là các mốc riêng biệt.
+
+### 12.2. Kết luận
+
+Phần việc của Đại đã bổ sung 12 test cases tập trung vào budget transitions, fallback behavior và controller edge cases.
+
+Trước rebase, toàn bộ 30 tests PASS trên M2-01 implementation.
+
+Sau khi Khôi triển khai M2-02, test suite mở rộng lên 37 tests. Một test của Đại phát hiện sự thay đổi default adapter controller và được sửa bằng explicit dependency injection.
+
+**Final local verification: 37/37 PASS.**
+
+Kết quả hiện tại đủ để chứng minh phần kiểm thử logic high/low alpha đã được triển khai và hoạt động theo controller contract được chọn.
+
+Chưa đủ để kết luận toàn bộ M2-01 hoặc Adaptive Speculative Decoding runtime đã nghiệm thu.
+
+### 12.3. Next Handoff
+
+Lưu worklog phiên bản mới, commit bản sửa test và tài liệu, đồng bộ branch remote an toàn, sau đó gửi Khôi/PM các bằng chứng:
+
+- Git SHA cuối cùng.
+- Test artifacts.
+- Worklog.
+- pytest output `37 passed in 0.10s`.
+- Finding fallback recovery và telemetry semantics.
+- Giới hạn của CPU-level verification.
+
+**Không tự sửa Trello, đổi scope hoặc điều chỉnh benchmark protocol.**

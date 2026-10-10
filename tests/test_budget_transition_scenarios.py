@@ -19,7 +19,6 @@ import pytest
 from src.proposer.adapter import AdaptiveProposerAdapter
 from src.proposer.controller import BudgetController, CostProfile
 
-
 def make_profile():
     """Deterministic synthetic costs in milliseconds."""
     return CostProfile(
@@ -63,13 +62,14 @@ def test_tree_budget_changes_with_acceptance():
     """Simulate high -> medium -> low alpha in one request."""
 
     adapter = AdaptiveProposerAdapter(
+        controller_cls=BudgetController,
         controller_kwargs={
             "initial_alpha": 0.90,
             "ema_beta": 0.80,
             "fallback_threshold": 0.65,
             "high_threshold": 0.80,
             "cost_profile": make_profile(),
-        }
+        },
     )
 
     request_id = "m2-01-alpha-transition"
