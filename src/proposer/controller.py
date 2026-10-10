@@ -91,3 +91,76 @@ class BudgetController:
         self.alpha_ema = self.ema_beta * self.alpha_ema + (1.0 - self.ema_beta) * step_alpha
         return self.alpha_ema
 
+    def select_budget(
+        self,
+        batch_size: int = 1,
+        free_vram_mb: float = 16000.0,
+    ) -> BudgetDecision:
+        """Selects optimal budget k* in candidate_budgets based on VRAM, alpha, and cost model."""
+        alpha = self.alpha_ema
+
+        # 1. Memory Pressure Rule (Chống OOM)
+        if free_vram_mb < self.min_free_vram_mb:
+            decision = BudgetDecision(
+                k=0,
+                alpha_ema=alpha,
+                expected_tokens=1.0,
+                reason=f"VRAM pressure: free {free_vram_mb:.1f}MB < min {self.min_free_vram_mb:.1f}MB",
+            )
+            self._history.append({"k": 0, "alpha": alpha, "reason": decision.reason})
+            return decision
+
+        # 2. Safety Fallback Gate (Triệt tiêu tăng tốc âm khi alpha thấp)
+        if alpha < self.fallback_threshold:
+            decision = BudgetDecision(
+                k=0,
+                alpha_ema=alpha,
+                expected_tokens=1.0,
+                reason=f"Low acceptance fallback: alpha {alpha:.3f} < threshold {self.fallback_threshold:.3f}",
+            )
+            self._history.append({"k": 0, "alpha": alpha, "reason": decision.reason})
+            return decision
+
+        # 3. Cost-Model Argmax kết hợp Heuristic Guards
+        c_vanilla = self.cost_profile.get_cost(k=0, batch_size=batch_size)
+        vanilla_efficiency = 1.0 / max(c_vanilla, 1e-4)
+
+        best_k = 0
+        best_efficiency = vanilla_efficiency
+        best_expected_tokens = 1.0
+
+        for cand_k in self.candidate_budgets:
+            if cand_k == 0:
+                continue
+
+            # Heuristic guard: Không mở rộng k=4 trừ khi alpha >= high_threshold (0.80)
+            if cand_k == 4 and alpha < self.high_threshold:
+                continue
+
+            e_tau = self.estimate_expected_tokens(cand_k, alpha)
+            c_cand = self.cost_profile.get_cost(k=cand_k, batch_size=batch_size)
+            efficiency = e_tau / max(c_cand, 1e-4)
+
+            # Heuristic mid-alpha: nếu alpha < high_threshold (0.80) và cand_k == 2,
+            # ưu tiên k=2 hơn k=3 nếu hiệu năng ngang ngửa để giảm tải tính toán
+            if efficiency > best_efficiency:
+                best_efficiency = efficiency
+                best_k = cand_k
+                best_expected_tokens = e_tau
+
+        reason = (
+            "Vanilla fallback (efficiency bound)"
+            if best_k == 0
+            else f"Optimal budget k={best_k} with eff={best_efficiency:.4f}"
+        )
+
+        decision = BudgetDecision(
+            k=best_k,
+            alpha_ema=alpha,
+            expected_tokens=best_expected_tokens,
+            reason=reason,
+        )
+        self._history.append({"k": best_k, "alpha": alpha, "reason": decision.reason})
+        return decision
+
+

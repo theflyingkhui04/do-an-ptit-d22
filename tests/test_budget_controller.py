@@ -71,3 +71,59 @@ def test_rolling_alpha_sliding_window_bound():
 
     assert len(controller._window) == 3
 
+
+def test_select_budget_vram_pressure():
+    from src.proposer.controller import BudgetController
+
+    controller = BudgetController(min_free_vram_mb=2000.0)
+    # VRAM chỉ còn 1000MB -> Phải ép k = 0
+    decision = controller.select_budget(batch_size=1, free_vram_mb=1000.0)
+    assert decision.k == 0
+    assert "vram" in decision.reason.lower()
+
+
+def test_select_budget_fallback_low_alpha():
+    from src.proposer.controller import BudgetController
+
+    controller = BudgetController(initial_alpha=0.50, fallback_threshold=0.65)
+    decision = controller.select_budget(batch_size=1)
+    # alpha = 0.50 < 0.65 -> ngắt về 0 (Vanilla)
+    assert decision.k == 0
+    assert "fallback" in decision.reason.lower() or "alpha" in decision.reason.lower()
+
+
+def test_select_budget_heuristic_high_alpha():
+    from src.proposer.controller import BudgetController
+
+    controller = BudgetController(initial_alpha=0.88)
+    decision = controller.select_budget(batch_size=1)
+    assert decision.k in [3, 4]
+    assert decision.k > 0
+
+
+def test_select_budget_heuristic_mid_alpha():
+    from src.proposer.controller import BudgetController
+
+    controller = BudgetController(initial_alpha=0.72, high_threshold=0.80, fallback_threshold=0.65)
+    decision = controller.select_budget(batch_size=1)
+    # alpha in [0.65, 0.80) -> chọn k=2 hoặc 3 (không chọn k=4)
+    assert decision.k in [2, 3]
+    assert decision.k != 4
+
+
+def test_select_budget_cost_model_argmax():
+    from src.proposer.controller import BudgetController, CostProfile
+
+    cost_matrix = {
+        (0, 1): 20.0,
+        (2, 1): 24.0,
+        (3, 1): 28.0,
+        (4, 1): 38.0,
+    }
+    profile = CostProfile(matrix=cost_matrix)
+    controller = BudgetController(cost_profile=profile, initial_alpha=0.90)
+    decision = controller.select_budget(batch_size=1)
+    assert decision.k > 0
+    assert decision.expected_tokens > 1.0
+
+
