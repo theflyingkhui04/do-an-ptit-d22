@@ -1,4 +1,5 @@
 """Adaptive Speculative Proposer Module."""
-from src.proposer.controller import CostProfile, BudgetDecision
+from src.proposer.controller import BudgetController, CostProfile, BudgetDecision
 
-__all__ = ["CostProfile", "BudgetDecision"]
+__all__ = ["BudgetController", "CostProfile", "BudgetDecision"]
+

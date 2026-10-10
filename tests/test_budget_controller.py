@@ -24,3 +24,50 @@ def test_cost_profile_default_estimation():
     profile = CostProfile()
     assert profile.get_cost(k=0, batch_size=1) == 20.0
     assert profile.get_cost(k=3, batch_size=1) == 20.0 + 3 * 3.0
+
+
+def test_estimate_expected_tokens():
+    from src.proposer.controller import BudgetController
+
+    controller = BudgetController()
+    # Khi k = 0, chỉ có 1 token của vanilla
+    assert controller.estimate_expected_tokens(k=0, alpha=0.9) == 1.0
+
+    # Khi k = 1, E[tau] = 1 + alpha
+    assert pytest.approx(controller.estimate_expected_tokens(k=1, alpha=0.8), 0.001) == 1.8
+
+    # Khi k = 3, alpha = 0.5: E[tau] = 1 + 0.5 + 0.25 + 0.125 = 1.875
+    assert pytest.approx(controller.estimate_expected_tokens(k=3, alpha=0.5), 0.001) == 1.875
+
+    # Khi k = 3, alpha = 0.9: E[tau] = 1 + 0.9 + 0.81 + 0.729 = 3.439
+    assert pytest.approx(controller.estimate_expected_tokens(k=3, alpha=0.9), 0.001) == 3.439
+
+
+def test_rolling_alpha_updates():
+    from src.proposer.controller import BudgetController
+
+    controller = BudgetController(window_size=5, ema_beta=0.8, initial_alpha=0.8)
+    assert controller.get_rolling_alpha() == 0.8
+
+    # Bước 1: trúng 3/3 (alpha_curr = 1.0)
+    # alpha_ema = 0.8 * 0.8 + 0.2 * 1.0 = 0.64 + 0.2 = 0.84
+    new_alpha = controller.update(num_accepted=3, num_drafted=3)
+    assert pytest.approx(new_alpha, 0.001) == 0.84
+    assert pytest.approx(controller.get_rolling_alpha(), 0.001) == 0.84
+
+    # Bước 2: trúng 0/3 (alpha_curr = 0.0)
+    # alpha_ema = 0.8 * 0.84 + 0.2 * 0.0 = 0.672
+    new_alpha = controller.update(num_accepted=0, num_drafted=3)
+    assert pytest.approx(new_alpha, 0.001) == 0.672
+    assert pytest.approx(controller.get_rolling_alpha(), 0.001) == 0.672
+
+
+def test_rolling_alpha_sliding_window_bound():
+    from src.proposer.controller import BudgetController
+
+    controller = BudgetController(window_size=3)
+    for _ in range(10):
+        controller.update(num_accepted=2, num_drafted=3)
+
+    assert len(controller._window) == 3
+
