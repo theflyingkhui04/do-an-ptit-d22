@@ -163,4 +163,23 @@ class BudgetController:
         self._history.append({"k": best_k, "alpha": alpha, "reason": decision.reason})
         return decision
 
+    def reset(self, initial_alpha: Optional[float] = None) -> None:
+        """Resets controller state when beginning a new sequence/prompt."""
+        if initial_alpha is not None:
+            self.alpha_ema = initial_alpha
+        self._window.clear()
+        self._history.clear()
+
+    def get_stats(self) -> dict:
+        """Exports runtime telemetry matching Interface A contract."""
+        tree_budgets = [h["k"] for h in self._history]
+        return {
+            "alpha_ema": self.alpha_ema,
+            "tree_budgets": tree_budgets,
+            "step_count": len(self._window),
+            "mean_k": (sum(tree_budgets) / len(tree_budgets)) if tree_budgets else 0.0,
+            "history": list(self._history),
+        }
+
+
 

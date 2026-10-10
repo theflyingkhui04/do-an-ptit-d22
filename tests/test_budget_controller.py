@@ -127,3 +127,25 @@ def test_select_budget_cost_model_argmax():
     assert decision.expected_tokens > 1.0
 
 
+def test_controller_reset_and_stats():
+    from src.proposer.controller import BudgetController
+
+    controller = BudgetController(initial_alpha=0.8)
+    controller.select_budget()
+    controller.update(num_accepted=3, num_drafted=3)
+    controller.select_budget()
+
+    stats = controller.get_stats()
+    assert "tree_budgets" in stats
+    assert len(stats["tree_budgets"]) == 2
+    assert stats["step_count"] == 1
+    assert "mean_k" in stats
+    assert "alpha_ema" in stats
+
+    controller.reset(initial_alpha=0.75)
+    assert controller.get_rolling_alpha() == 0.75
+    assert controller.get_stats()["tree_budgets"] == []
+    assert controller.get_stats()["step_count"] == 0
+
+
+
