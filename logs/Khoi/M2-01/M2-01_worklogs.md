@@ -179,11 +179,41 @@ Trong bản v0 (Sprint 3), nhóm áp dụng các ngưỡng thực nghiệm (cali
 
 ---
 
-## 6. Bàn Giao Kỹ Thuật (Handoff) & Bước Tiếp Theo
+## 6. Hiện Thực Hóa AdaptiveProposerAdapter & Tích Hợp Hook Vòng Lặp Decoding
 
-1. **Checklist 1 thẻ Trello `[M2-01]`:** Đã hoàn thành 100% mục `[Khôi] Thiết kế lớp BudgetController v0 tính toán N* theo rolling average alpha`.
-2. **Bàn giao cho Partner (Bùi Đức Đại):**
-   - Đại có thể sử dụng `src.proposer.controller.BudgetController` để viết các kịch bản unit test mô phỏng mở rộng theo checklist số 3 (`[Đại] Viết unit test mô phỏng thay đổi tree budget theo các kịch bản alpha cao/thấp`).
-3. **Kế hoạch tiếp theo của Khôi:**
-   - Triển khai checklist số 2: Tích hợp hook điều phối `BudgetController` vào vòng lặp generate của server vLLM (hoặc adapter engine).
+Theo phân công checklist số 2 (`[Khôi] Tích hợp custom proposer hook vào vòng lặp generate của vLLM`), Khôi đã hoàn thiện module [`src/proposer/adapter.py`](../../../src/proposer/adapter.py):
+
+### 6.1. Thiết kế Lớp `AdaptiveProposerAdapter`
+Adapter đóng vai trò cầu nối trung gian giữa nhân suy luận của vLLM và bộ điều khiển `BudgetController`:
+- **Quản lý phiên độc lập per-request (`_active_sessions: dict[str, BudgetController]`):** Mỗi request sở hữu một controller theo dõi tỷ lệ `alpha_ema` riêng, phản ánh chính xác ngữ cảnh entropy của từng prompt.
+- **Hook đề xuất nháp (`propose()`):**
+  - Trước mỗi bước sinh, adapter hỏi `controller.select_budget()`.
+  - Nếu `k* == 0` (Vanilla Fallback): Adapter đặt cờ `skipped_draft = True`, trả về `draft_tokens = []` và **hoàn toàn bỏ qua việc gọi hàm sinh nháp (`draft_generator`)**, giúp GPU tiết kiệm 100% tài nguyên tính toán forward mô hình nhỏ.
+  - Nếu `k* > 0`: Gọi `draft_generator(k*)` và bọc dữ liệu vào `ProposalOutput`.
+- **Hook nhận phản hồi kiểm chứng (`on_verification_completed()`):**
+  - Nhận số token Target chấp nhận và cập nhật vào `controller.update(num_accepted, num_drafted)`.
+- **Hook kết thúc request & Thu hồi bộ nhớ (`end_request()`):**
+  - Trích xuất payload telemetry chuẩn Giao diện A (`tree_budgets`, `alpha_ema`, `mean_accept_len`, `step_count`).
+  - Tự động xóa phiên khỏi `_active_sessions` để chống rò rỉ bộ nhớ (zero memory leak).
+
+### 6.2. Kiểm thử Mô phỏng Decoding Loop
+Kịch bản tại [`tests/test_proposer_adapter.py`](../../../tests/test_proposer_adapter.py) đã kiểm chứng 6 test cases:
+- `test_adapter_initialization` & `test_proposal_output_structure`: Khởi tạo và bao gói dữ liệu.
+- `test_propose_with_active_draft`: Đề xuất nháp thành công k in {3, 4} khi alpha cao.
+- `test_propose_fallback_skips_draft_generator`: Xác nhận không gọi draft worker khi k=0.
+- `test_simulation_decoding_loop`: Mô phỏng chuỗi giải mã chuyển trạng thái: bước 1..3 nháp k=3 -> bước 4..6 trượt liên tục -> bước 7 tự động ngắt về k=0 -> kết thúc xuất mảng `tree_budgets`.
+- `test_adapter_memory_cleanup`: Giải phóng 100% tài nguyên sau 10 requests đồng thời.
+- **Kết quả:** Đạt **6/6 PASS** (Tổng cộng 18/18 test cases cho toàn bộ module proposer).
+
+---
+
+## 7. Bàn Giao Kỹ Thuật (Handoff) & Bước Tiếp Theo
+
+1. **Checklist 1 thẻ Trello `[M2-01]`:** Hoàn thành 100% mục `[Khôi] Thiết kế lớp BudgetController v0 tính toán N* theo rolling average alpha`.
+2. **Checklist 2 thẻ Trello `[M2-01]`:** Hoàn thành 100% mục `[Khôi] Tích hợp custom proposer hook vào vòng lặp generate của vLLM`.
+3. **Bàn giao cho Partner (Bùi Đức Đại):**
+   - Đại sẵn sàng bắt tay vào checklist số 3 (`[Đại] Viết unit test mô phỏng thay đổi tree budget theo các kịch bản alpha cao/thấp`) dựa trên `AdaptiveProposerAdapter` và `BudgetController`.
+4. **Kế hoạch tiếp theo của Khôi:**
+   - Triển khai checklist số 4: `[Khôi] Kiểm thử độ ổn định VRAM không phát sinh leak khi thay đổi kích thước cây runtime`.
+
 
