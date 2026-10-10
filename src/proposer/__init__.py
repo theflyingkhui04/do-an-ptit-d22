@@ -1,9 +1,14 @@
-"""Adaptive Speculative Proposer Module."""
-from src.proposer.controller import BudgetController, CostProfile, BudgetDecision
+from src.proposer.controller import (
+    BudgetController,
+    AdaptiveDraftController,
+    CostProfile,
+    BudgetDecision,
+)
 from src.proposer.adapter import AdaptiveProposerAdapter, ProposalOutput
 
 __all__ = [
     "BudgetController",
+    "AdaptiveDraftController",
     "CostProfile",
     "BudgetDecision",
     "AdaptiveProposerAdapter",

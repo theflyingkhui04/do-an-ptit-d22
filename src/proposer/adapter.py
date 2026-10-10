@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Callable, Any
-from src.proposer.controller import BudgetController, BudgetDecision, CostProfile
+from src.proposer.controller import (
+    BudgetController,
+    AdaptiveDraftController,
+    BudgetDecision,
+    CostProfile,
+)
 
 
 @dataclass
@@ -18,8 +23,13 @@ class ProposalOutput:
 class AdaptiveProposerAdapter:
     """Hooks into vLLM speculative proposal loop and manages per-request BudgetControllers."""
 
-    def __init__(self, controller_kwargs: Optional[dict] = None):
+    def __init__(
+        self,
+        controller_kwargs: Optional[dict] = None,
+        controller_cls: type[BudgetController] = AdaptiveDraftController,
+    ):
         self.controller_kwargs = controller_kwargs or {}
+        self.controller_cls = controller_cls
         self._active_sessions: Dict[str, BudgetController] = {}
 
     @property
@@ -35,7 +45,7 @@ class AdaptiveProposerAdapter:
         kwargs = dict(self.controller_kwargs)
         if initial_alpha is not None:
             kwargs["initial_alpha"] = initial_alpha
-        controller = BudgetController(**kwargs)
+        controller = self.controller_cls(**kwargs)
         self._active_sessions[request_id] = controller
         return controller
 
@@ -94,7 +104,7 @@ class AdaptiveProposerAdapter:
         """Extracts runtime telemetry snapshot matching Interface A contract."""
         controller = self.get_controller(request_id)
         stats = controller.get_stats()
-        return {
+        telemetry = {
             "request_id": request_id,
             "lane": "adaptive",
             "alpha_ema": stats["alpha_ema"],
@@ -102,6 +112,11 @@ class AdaptiveProposerAdapter:
             "mean_accept_len": stats.get("mean_k", 0.0),
             "step_count": stats["step_count"],
         }
+        if "effective_alpha" in stats:
+            telemetry["effective_alpha"] = stats["effective_alpha"]
+        if "is_warmed_up" in stats:
+            telemetry["is_warmed_up"] = stats["is_warmed_up"]
+        return telemetry
 
     def end_request(self, request_id: str) -> dict:
         """Finalizes request, returns full Interface A telemetry, and releases session memory."""

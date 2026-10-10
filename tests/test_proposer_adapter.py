@@ -95,3 +95,24 @@ def test_adapter_memory_cleanup():
     assert adapter.active_request_count == 0
 
 
+def test_adapter_with_adaptive_draft_controller():
+    from src.proposer.controller import AdaptiveDraftController
+
+    adapter = AdaptiveProposerAdapter()
+    req_id = "req_adaptive"
+    controller = adapter.get_controller(req_id)
+    assert isinstance(controller, AdaptiveDraftController)
+    assert controller.window_size == 10
+    assert controller.get_window_samples() == []
+
+    # Giả lập 2 bước decode
+    out1 = adapter.propose(req_id, draft_generator=lambda k: [42] * k)
+    adapter.on_verification_completed(req_id, num_accepted=2, num_drafted=out1.budget_k)
+
+    stats = adapter.end_request(req_id)
+    assert "effective_alpha" in stats
+    assert "is_warmed_up" in stats
+    assert stats["is_warmed_up"] is False  # 1 bước < 10 bước
+
+
+

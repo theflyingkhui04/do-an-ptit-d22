@@ -148,4 +148,126 @@ def test_controller_reset_and_stats():
     assert controller.get_stats()["step_count"] == 0
 
 
+def test_adaptive_draft_controller_inheritance_and_defaults():
+    from src.proposer.controller import AdaptiveDraftController, BudgetController
+
+    controller = AdaptiveDraftController()
+    assert isinstance(controller, BudgetController)
+    assert controller.window_size == 10
+    assert controller.ema_beta == 0.8
+    assert controller.initial_alpha == 0.8
+    assert controller.get_window_samples() == []
+    assert controller.step_count == 0
+
+
+def test_adaptive_draft_controller_window_tracking():
+    from src.proposer.controller import AdaptiveDraftController
+
+    controller = AdaptiveDraftController(window_size=10)
+    for i in range(15):
+        controller.update(num_accepted=i % 4, num_drafted=3)
+
+    samples = controller.get_window_samples()
+    assert len(samples) == 10
+    assert controller.step_count == 15
+    assert len(controller._window) == 10
+
+
+def test_adaptive_draft_controller_unbiased_warmup():
+    from src.proposer.controller import AdaptiveDraftController
+
+    # Test trường hợp prompt khó: bước 1 trượt sạch (0/3 accepted)
+    controller = AdaptiveDraftController(window_size=10, ema_beta=0.8, initial_alpha=0.8)
+    # Chưa update bước nào -> effective_alpha = initial_alpha
+    assert controller.get_effective_alpha() == 0.8
+
+    # Bước 1: 0/3 -> step_alpha = 0.0
+    controller.update(num_accepted=0, num_drafted=3)
+    # EMA thông thường bị ghìm ở 0.8 * 0.8 + 0.2 * 0 = 0.64
+    # Nhưng unbiased alpha phải loại bỏ hoàn toàn initial_alpha và bằng chính xác 0.0
+    assert pytest.approx(controller.get_effective_alpha(), 0.01) == 0.0
+
+    # Bước 2: 3/3 -> step_alpha = 1.0
+    controller.update(num_accepted=3, num_drafted=3)
+    # Với beta = 0.8, mẫu [0.0, 1.0], unbiased alpha = (0.8*0 + 0.2*1.0) / (1 - 0.8^2) = 0.2 / 0.36 = 0.555
+    assert pytest.approx(controller.get_effective_alpha(), 0.01) == 0.555
+
+
+def test_adaptive_draft_controller_window_stats():
+    from src.proposer.controller import AdaptiveDraftController
+
+    controller = AdaptiveDraftController(window_size=5, initial_alpha=0.8)
+    stats_empty = controller.get_window_stats()
+    assert stats_empty["is_warmed_up"] is False
+    assert stats_empty["mean"] == 0.8
+    assert stats_empty["variance"] == 0.0
+    assert stats_empty["samples"] == []
+
+    # Bơm 3 mẫu: 0.6, 0.8, 1.0
+    controller.update(num_accepted=3, num_drafted=5)  # 0.6
+    controller.update(num_accepted=4, num_drafted=5)  # 0.8
+    controller.update(num_accepted=5, num_drafted=5)  # 1.0
+
+    stats = controller.get_window_stats()
+    assert stats["is_warmed_up"] is False  # 3 < 5
+    assert pytest.approx(stats["mean"], 0.001) == 0.8
+    assert pytest.approx(stats["min"], 0.001) == 0.6
+    assert pytest.approx(stats["max"], 0.001) == 1.0
+    assert stats["variance"] == pytest.approx(0.02667, abs=1e-4)
+    assert len(stats["samples"]) == 3
+
+    # Bơm thêm 2 mẫu để đầy cửa sổ 5 bước
+    controller.update(num_accepted=5, num_drafted=5)
+    controller.update(num_accepted=5, num_drafted=5)
+    stats_full = controller.get_window_stats()
+    assert stats_full["is_warmed_up"] is True
+    assert len(stats_full["samples"]) == 5
+
+
+def test_adaptive_draft_controller_budget_rules():
+    from src.proposer.controller import AdaptiveDraftController
+
+    controller = AdaptiveDraftController(fallback_threshold=0.65, high_threshold=0.80)
+
+    # 1. High acceptance (>= 0.80) -> k = 3 (hoặc 4 nếu rất cao >= 0.90)
+    k, reason = controller.apply_budget_rule(alpha=0.85)
+    assert k == 3
+    assert "high" in reason.lower()
+
+    k_high, _ = controller.apply_budget_rule(alpha=0.92)
+    assert k_high in [3, 4]
+
+    # 2. Mid acceptance [0.65, 0.80) -> k = 2
+    k_mid, reason_mid = controller.apply_budget_rule(alpha=0.72)
+    assert k_mid == 2
+    assert "mid" in reason_mid.lower() or "throttle" in reason_mid.lower()
+
+    # 3. Low acceptance (< 0.65) -> k = 0
+    k_low, reason_low = controller.apply_budget_rule(alpha=0.55)
+    assert k_low == 0
+    assert "low" in reason_low.lower() or "fallback" in reason_low.lower()
+
+
+def test_adaptive_draft_controller_select_budget_flow():
+    from src.proposer.controller import AdaptiveDraftController
+
+    controller = AdaptiveDraftController()
+
+    # Initial state (effective_alpha = 0.80) -> k=3
+    decision = controller.select_budget()
+    assert decision.k == 3
+
+    # VRAM pressure -> ép k=0
+    decision_vram = controller.select_budget(free_vram_mb=1000.0)
+    assert decision_vram.k == 0
+    assert "vram" in decision_vram.reason.lower()
+
+    # Gặp câu khó: step 1 trượt sạch -> k lập tức rơi về 0 (chống tụt tốc độ ngay)
+    controller.update(num_accepted=0, num_drafted=3)
+    decision_step1 = controller.select_budget(free_vram_mb=16000.0)
+    assert decision_step1.k == 0
+    assert decision_step1.alpha_ema < 0.65
+
+
+
 

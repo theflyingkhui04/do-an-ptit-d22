@@ -103,9 +103,45 @@ Sau khi thảo luận sâu sắc, Team Lead (Khôi) đã chính thức chốt **
 
 ## 3. Kế Hoạch Triển Khai Tiếp Theo (Implementation Roadmap)
 
-1. **Checklist 1 M2-02 (Khôi):** Cài đặt lớp `AdaptiveDraftController(BudgetController)` trong [`src/proposer/controller.py`](../../../src/proposer/controller.py) với cửa sổ trượt 10 bước và Warm-up Unbiased.
-2. **Checklist 2 M2-02 (Khôi):** Tách bạch phương thức `apply_budget_rule()` với các ngưỡng `0.65` và `0.80`.
+1. **Checklist 1 M2-02 (Khôi):** Cài đặt lớp `AdaptiveDraftController(BudgetController)` trong [`src/proposer/controller.py`](../../../src/proposer/controller.py) với cửa sổ trượt 10 bước và Warm-up Unbiased. (✅ Hoàn thành 10/10/2026)
+2. **Checklist 2 M2-02 (Khôi):** Tách bạch phương thức `apply_budget_rule()` với các ngưỡng `0.65` và `0.80`. (✅ Hoàn thành 10/10/2026)
 3. **Checklist 3 & 4 M2-02 (Dương):** Cài đặt Memory Pressure Rule và Launcher Làn 3 `launch_lane3_adaptive.sh`.
-4. **Viết Unit Test kiểm chứng:** Bổ sung test cases chuyên sâu trong [`tests/test_budget_controller.py`](../../../tests/test_budget_controller.py) cho `AdaptiveDraftController`.
+4. **Viết Unit Test kiểm chứng:** Bổ sung test cases chuyên sâu trong [`tests/test_budget_controller.py`](../../../tests/test_budget_controller.py) cho `AdaptiveDraftController`. (✅ 25/25 tests PASS 100%)
 5. **Kích hoạt Luồng 2 (R&D Track):** Chuẩn bị kịch bản training EAGLE-3.1 trên môi trường GPU A100.
+
+---
+
+## 4. Báo Cáo Nghiệm Thu Checklist 1 & 2 (Khôi 60% — Hoàn Thành)
+
+### 4.1. Mã nguồn triển khai
+Đã cài đặt lớp `AdaptiveDraftController` trong [`src/proposer/controller.py`](../../../src/proposer/controller.py) và export tại [`src/proposer/__init__.py`](../../../src/proposer/__init__.py):
+- **Cửa sổ trượt 10 bước (`window_size = 10`):** Sử dụng `collections.deque(maxlen=10)` lưu trữ các mẫu chấp nhận thực tế `step_alpha in [0.0, 1.0]`. Cung cấp phương thức `get_window_samples() -> list[float]` để phục vụ phân tích phương sai.
+- **Cơ chế Warm-up Unbiased:**
+  - Trong các bước đầu khi `step_count < window_size`, loại bỏ hoàn toàn thiên lệch khởi tạo `initial_alpha` theo công thức:
+    ```text
+    alpha_unbiased = (alpha_ema - initial_alpha * (beta^step_count)) / (1.0 - beta^step_count)
+    ```
+  - Nếu gặp prompt W3 khó khiến bước 1 trượt sạch (`0/3 accepted`), `alpha_unbiased` rơi thẳng về `0.0`, kích hoạt ngắt về `k = 0` (Vanilla Fallback) ngay lập tức thay vì bị ghìm ở mức `0.64` và mất thêm 2–3 bước tụt tốc độ.
+- **Phương thức tự chẩn đoán `get_window_stats()`:**
+  - Trả về payload giám sát: `mean`, `min`, `max`, `variance`, `is_warmed_up` (`step_count >= window_size`), `samples`, `step_count`.
+- **Modular Budget Rule (`apply_budget_rule`):**
+  - `alpha >= 0.80`: Duy trì `k = 3` (hoặc mở rộng `k = 4` khi `alpha >= 0.90`).
+  - `0.65 <= alpha < 0.80`: Hạ độ sâu nháp xuống `k = 2` để giảm chi phí tính toán GPU.
+  - `alpha < 0.65`: Ngắt toàn bộ về `k = 0` (Vanilla Fallback).
+- **Hook sẵn sàng cho Dương (`apply_memory_pressure_rule`):**
+  - Mặc định kiểm tra `free_vram_mb < min_free_vram_mb`. Tách riêng làm hook độc lập để Dương cắm thêm kiểm tra `kv_cache_usage_pct > 90%` và `peak_vram > 13.5 GB`.
+- **Tương thích ngược Adapter:**
+  - Lớp [`AdaptiveProposerAdapter`](../../../src/proposer/adapter.py) hỗ trợ tham số `controller_cls` (mặc định trỏ thẳng vào `AdaptiveDraftController`), tích hợp telemetry mở rộng `effective_alpha` và `is_warmed_up`.
+
+### 4.2. Kết quả kiểm thử tự động (Unit Tests)
+Đã chạy toàn bộ bộ kiểm thử với kết quả **25/25 test cases PASS 100%**:
+- `tests/test_budget_controller.py`: 18/18 tests PASS (bao gồm 6 tests mới cho `AdaptiveDraftController`: kế thừa, theo dõi cửa sổ trượt, warm-up unbiased, thống kê phương sai, quy tắc ngân sách, và luồng select_budget).
+- `tests/test_proposer_adapter.py`: 7/7 tests PASS (kiểm chứng tương thích phiên per-request, skip draft khi k=0, mô phỏng vòng lặp decode, giải phóng bộ nhớ, và tích hợp `AdaptiveDraftController`).
+
+### 4.3. Cập nhật thẻ Trello
+- Thẻ `[M2-02]` (`6ac462bf8076e675bed68739`):
+  - ✅ `[Khôi] Xây dựng lớp AdaptiveDraftController theo dõi alpha_ema qua cửa sổ trượt 10 bước`: `complete`.
+  - ✅ `[Khôi] Cài đặt Budget Rule co giãn k = 0, 2, 3, 4 theo các ngưỡng alpha (0.80, 0.65)`: `complete`.
+- Trạng thái hiện tại: 2/5 checkItems hoàn thành. Sẵn sàng handoff cho Dương làm Checklist 3 (`Memory Pressure Rule`) và Checklist 4 (`Launcher Làn 3`).
+
 

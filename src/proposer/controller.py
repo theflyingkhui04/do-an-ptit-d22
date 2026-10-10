@@ -62,6 +62,7 @@ class BudgetController:
         self.cost_profile = cost_profile or CostProfile()
         self.min_free_vram_mb = min_free_vram_mb
 
+        self.initial_alpha = initial_alpha
         self._window: deque[float] = deque(maxlen=window_size)
         self._history: List[dict] = []
 
@@ -167,6 +168,7 @@ class BudgetController:
         """Resets controller state when beginning a new sequence/prompt."""
         if initial_alpha is not None:
             self.alpha_ema = initial_alpha
+            self.initial_alpha = initial_alpha
         self._window.clear()
         self._history.clear()
 
@@ -180,6 +182,193 @@ class BudgetController:
             "mean_k": (sum(tree_budgets) / len(tree_budgets)) if tree_budgets else 0.0,
             "history": list(self._history),
         }
+
+
+class AdaptiveDraftController(BudgetController):
+    """Runtime Adaptive Draft Controller for vLLM speculative decoding.
+
+    Extends BudgetController with:
+    - 10-step rolling window tracking raw acceptance samples
+    - Unbiased EMA warm-up correction for fast reaction to low acceptance rate
+    - Modular budget rules (co giãn k in {0, 2, 3, 4})
+    - Memory pressure rule hook for KV-cache and VRAM Peak monitoring
+    - Self-diagnostic window statistics (mean, variance, min, max, is_warmed_up)
+    """
+
+    def __init__(
+        self,
+        window_size: int = 10,
+        ema_beta: float = 0.8,
+        initial_alpha: float = 0.8,
+        fallback_threshold: float = 0.65,
+        high_threshold: float = 0.80,
+        candidate_budgets: Optional[List[int]] = None,
+        cost_profile: Optional[CostProfile] = None,
+        min_free_vram_mb: float = 1500.0,
+    ):
+        super().__init__(
+            window_size=window_size,
+            ema_beta=ema_beta,
+            initial_alpha=initial_alpha,
+            fallback_threshold=fallback_threshold,
+            high_threshold=high_threshold,
+            candidate_budgets=candidate_budgets,
+            cost_profile=cost_profile,
+            min_free_vram_mb=min_free_vram_mb,
+        )
+        self.step_count = 0
+
+    def update(self, num_accepted: int, num_drafted: int) -> float:
+        """Updates rolling window and EMA telemetry from the latest step verification."""
+        self.step_count += 1
+        return super().update(num_accepted=num_accepted, num_drafted=num_drafted)
+
+    def get_window_samples(self) -> List[float]:
+        """Returns the list of raw alpha samples in the current sliding window."""
+        return list(self._window)
+
+    def get_effective_alpha(self) -> float:
+        """Returns unbiased alpha taking into account warm-up correction.
+
+        If step_count == 0, returns initial_alpha.
+        When step_count > 0:
+        unbiased_alpha = (alpha_ema - initial_alpha * (ema_beta ** step_count)) / (1.0 - (ema_beta ** step_count))
+        Clamped to [0.0, 1.0].
+        """
+        if self.step_count == 0:
+            return self.initial_alpha
+
+        beta_power = self.ema_beta ** self.step_count
+        denominator = 1.0 - beta_power
+        if denominator <= 1e-6:
+            return self.alpha_ema
+
+        unbiased = (self.alpha_ema - self.initial_alpha * beta_power) / denominator
+        return min(max(unbiased, 0.0), 1.0)
+
+    def get_window_stats(self) -> dict:
+        """Returns self-diagnostic statistics of the rolling window."""
+        samples = list(self._window)
+        is_warmed_up = self.step_count >= self.window_size
+
+        if not samples:
+            return {
+                "mean": self.initial_alpha,
+                "min": self.initial_alpha,
+                "max": self.initial_alpha,
+                "variance": 0.0,
+                "is_warmed_up": False,
+                "samples": [],
+                "step_count": self.step_count,
+            }
+
+        mean_val = sum(samples) / len(samples)
+        var_val = sum((x - mean_val) ** 2 for x in samples) / len(samples)
+
+        return {
+            "mean": mean_val,
+            "min": min(samples),
+            "max": max(samples),
+            "variance": var_val,
+            "is_warmed_up": is_warmed_up,
+            "samples": samples,
+            "step_count": self.step_count,
+        }
+
+    def apply_memory_pressure_rule(
+        self,
+        free_vram_mb: float,
+        kv_cache_usage_pct: float = 0.0,
+    ) -> Optional[Tuple[int, str]]:
+        """Hook for memory pressure checks (VRAM Peak / KV-cache).
+
+        Returns (k, reason) if memory pressure triggers a rollback to k=0, else None.
+        Dương will extend this rule with KV-cache and VRAM peak checks.
+        """
+        if free_vram_mb < self.min_free_vram_mb:
+            return (
+                0,
+                f"VRAM pressure: free {free_vram_mb:.1f}MB < min {self.min_free_vram_mb:.1f}MB",
+            )
+        return None
+
+    def apply_budget_rule(self, alpha: float) -> Tuple[int, str]:
+        """Core budget rule adapting k in {0, 2, 3, 4} based on empirical alpha thresholds.
+
+        - alpha >= high_threshold (0.80): maintain k=3 (or expand to k=4 if alpha >= 0.90)
+        - fallback_threshold <= alpha < high_threshold: throttle down to k=2
+        - alpha < fallback_threshold (0.65): fallback to k=0 (Vanilla)
+        """
+        if alpha < self.fallback_threshold:
+            return (
+                0,
+                f"Low acceptance fallback: alpha {alpha:.3f} < threshold {self.fallback_threshold:.3f}",
+            )
+
+        if alpha >= self.high_threshold:
+            if alpha >= 0.90 and 4 in self.candidate_budgets:
+                return (4, f"High acceptance (aggressive): alpha {alpha:.3f} >= 0.90, selected k=4")
+            return (3, f"High acceptance: alpha {alpha:.3f} >= threshold {self.high_threshold:.3f}, maintain k=3")
+
+        # fallback_threshold <= alpha < high_threshold
+        return (
+            2,
+            f"Mid acceptance: alpha {alpha:.3f} in [{self.fallback_threshold:.2f}, {self.high_threshold:.2f}), throttled to k=2",
+        )
+
+    def select_budget(
+        self,
+        batch_size: int = 1,
+        free_vram_mb: float = 16000.0,
+        kv_cache_usage_pct: float = 0.0,
+    ) -> BudgetDecision:
+        """Selects optimal budget k* using unbiased alpha and modular rules."""
+        effective_alpha = self.get_effective_alpha()
+
+        # 1. Memory Pressure Rule (Chống OOM)
+        mem_decision = self.apply_memory_pressure_rule(
+            free_vram_mb=free_vram_mb,
+            kv_cache_usage_pct=kv_cache_usage_pct,
+        )
+        if mem_decision is not None:
+            k, reason = mem_decision
+            decision = BudgetDecision(
+                k=k,
+                alpha_ema=effective_alpha,
+                expected_tokens=1.0,
+                reason=reason,
+            )
+            self._history.append({"k": k, "alpha": effective_alpha, "reason": reason})
+            return decision
+
+        # 2. Budget Rule (Co giãn k theo alpha)
+        k, reason = self.apply_budget_rule(alpha=effective_alpha)
+        e_tau = self.estimate_expected_tokens(k, effective_alpha)
+
+        decision = BudgetDecision(
+            k=k,
+            alpha_ema=effective_alpha,
+            expected_tokens=e_tau,
+            reason=reason,
+        )
+        self._history.append({"k": k, "alpha": effective_alpha, "reason": reason})
+        return decision
+
+    def reset(self, initial_alpha: Optional[float] = None) -> None:
+        """Resets controller state when beginning a new sequence/prompt."""
+        super().reset(initial_alpha=initial_alpha)
+        if initial_alpha is not None:
+            self.initial_alpha = initial_alpha
+        self.step_count = 0
+
+    def get_stats(self) -> dict:
+        """Exports runtime telemetry matching Interface A contract plus adaptive diagnostics."""
+        base_stats = super().get_stats()
+        base_stats["effective_alpha"] = self.get_effective_alpha()
+        base_stats["is_warmed_up"] = self.step_count >= self.window_size
+        base_stats["step_count"] = self.step_count
+        return base_stats
+
 
 
 
