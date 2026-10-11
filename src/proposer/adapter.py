@@ -31,6 +31,7 @@ class AdaptiveProposerAdapter:
         self.controller_kwargs = controller_kwargs or {}
         self.controller_cls = controller_cls
         self._active_sessions: Dict[str, BudgetController] = {}
+        self._accepted_history: Dict[str, List[int]] = {}
 
     @property
     def active_request_count(self) -> int:
@@ -47,6 +48,7 @@ class AdaptiveProposerAdapter:
             kwargs["initial_alpha"] = initial_alpha
         controller = self.controller_cls(**kwargs)
         self._active_sessions[request_id] = controller
+        self._accepted_history[request_id] = []
         return controller
 
     def get_controller(self, request_id: str) -> BudgetController:
@@ -98,18 +100,29 @@ class AdaptiveProposerAdapter:
     ) -> float:
         """Receives verification telemetry from Target model and updates rolling alpha."""
         controller = self.get_controller(request_id)
+        if request_id not in self._accepted_history:
+            self._accepted_history[request_id] = []
+        if num_drafted > 0:
+            self._accepted_history[request_id].append(num_accepted)
         return controller.update(num_accepted=num_accepted, num_drafted=num_drafted)
 
     def get_telemetry(self, request_id: str) -> dict:
         """Extracts runtime telemetry snapshot matching Interface A contract."""
         controller = self.get_controller(request_id)
         stats = controller.get_stats()
+        accepted_records = self._accepted_history.get(request_id, [])
+        mean_accept_len = (
+            float(sum(accepted_records) / len(accepted_records))
+            if accepted_records
+            else 0.0
+        )
         telemetry = {
             "request_id": request_id,
             "lane": "adaptive",
             "alpha_ema": stats["alpha_ema"],
             "tree_budgets": stats["tree_budgets"],
-            "mean_accept_len": stats.get("mean_k", 0.0),
+            "mean_accept_len": mean_accept_len,
+            "mean_k": stats.get("mean_k", 0.0),
             "step_count": stats["step_count"],
         }
         if "effective_alpha" in stats:
@@ -123,6 +136,8 @@ class AdaptiveProposerAdapter:
         telemetry = self.get_telemetry(request_id)
         if request_id in self._active_sessions:
             del self._active_sessions[request_id]
+        if request_id in self._accepted_history:
+            del self._accepted_history[request_id]
         return telemetry
 
 

@@ -269,5 +269,38 @@ def test_adaptive_draft_controller_select_budget_flow():
     assert decision_step1.alpha_ema < 0.65
 
 
+def test_adaptive_draft_controller_periodic_probing_prevents_deadlock():
+    from src.proposer.controller import AdaptiveDraftController
+
+    controller = AdaptiveDraftController(
+        initial_alpha=0.50,
+        probe_interval=5,
+        probe_k=2,
+    )
+
+    # 4 consecutive steps at low alpha (0.50) -> k = 0
+    for i in range(4):
+        k, reason = controller.apply_budget_rule(alpha=0.50)
+        assert k == 0
+        assert "fallback" in reason.lower()
+        assert controller.consecutive_fallback_steps == i + 1
+
+    # 5th step reaches probe_interval -> triggers probe with k=2
+    k_probe, reason_probe = controller.apply_budget_rule(alpha=0.50)
+    assert k_probe == 2
+    assert "periodic probe" in reason_probe.lower()
+    assert controller.consecutive_fallback_steps == 0
+
+    # 6th step -> back to k=0 if alpha still low
+    k_after, _ = controller.apply_budget_rule(alpha=0.50)
+    assert k_after == 0
+    assert controller.consecutive_fallback_steps == 1
+
+    # When alpha recovers (>= 0.65), counter resets to 0
+    k_rec, _ = controller.apply_budget_rule(alpha=0.75)
+    assert k_rec == 2
+    assert controller.consecutive_fallback_steps == 0
+
+
 
 

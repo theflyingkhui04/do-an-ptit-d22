@@ -59,30 +59,42 @@ $$C(N, B) = \text{Thời gian thực thi trung vị một bước (ms)}$$
 * **Đặc điểm then chốt:** $N = 0$ tương ứng với việc **tắt hoàn toàn suy đoán** (quay về vanilla). Đây chính là **cơ chế sàn an toàn (safety fallback)** đảm bảo hệ thống không bao giờ chạy chậm hơn chế độ mặc định.
 * **Rời rạc hóa ngân sách:** Tập giá trị của $N$ được cố định thành các mốc rời rạc để tensor kích thước ổn định, tránh việc biên dịch lại CUDA Graph liên tục làm giảm hiệu năng.
 
-### 2.2. Giai đoạn phục vụ — Ra quyết định ngân sách theo thời gian thực
-Tại mỗi bước sinh token của request:
+### 2.2. Giai đoạn phục vụ — Ra quyết định ngân sách theo thời gian thực (Adaptive Controller v0)
+Tại mỗi bước sinh token của request, bộ điều khiển `AdaptiveDraftController` quyết định độ sâu nháp k trong tập {0, 2, 3, 4}:
+
 ```python
-# 1. Thu thập thông số thời gian thực
-alpha_hat = get_rolling_acceptance_rate(window=W)  # Tỉ lệ chấp nhận trượt
-B = get_current_running_requests()                 # Số request đồng thời
-free_vram = get_available_vram()                   # VRAM còn trống (MB)
+# 1. Thu thập thông số thời gian thực từ telemetry
+alpha_ema = get_rolling_acceptance_rate(window=10)   # EMA alpha kết hợp warm-up unbiased
+batch_size = get_current_running_requests()          # Số request đồng thời
+free_vram_mb = get_available_vram()                  # VRAM vật lý còn trống (MB)
+kv_cache_usage_pct = get_kv_cache_usage_percentage() # vllm:kv_cache_usage_perc (0.0 .. 100.0)
 
-# 2. Xác định trần ngân sách an toàn theo VRAM
-N_max = calculate_max_safe_budget(free_vram)
+# 2. Memory Pressure Rule (Ngắt nhị phân chống OOM)
+# Lưu ý phần cứng T4: vLLM pre-allocate 85% VRAM lúc khởi động, nên free_vram lúc rảnh có thể < 1500 MB.
+# Source-of-truth chuẩn là kv_cache_usage_pct trích xuất từ /metrics:
+if kv_cache_usage_pct > 90.0 or (is_vram_check_enabled and free_vram_mb < 1500.0):
+    k = 0  # Ép k = 0 (Vanilla), kích hoạt cooldown 3 bước, chỉ phục hồi khi KV < 80%
+    return k, "Memory pressure fallback"
 
-# 3. Tối ưu hóa tỉ số lợi ích / chi phí đo thực
-N_star = argmax(
-    N <= N_max,
-    expected_gain(N, alpha_hat) / C(N, B)
-)
+# 3. Safety Fallback Gate & Periodic Probing (Chống tăng tốc âm & bẫy deadlock)
+if alpha_ema < 0.65:
+    consecutive_fallback_steps += 1
+    if consecutive_fallback_steps >= 5:
+        # Periodic Probing: Cứ sau 5 bước fallback, thử nháp k=2 một lần để đo lại alpha
+        consecutive_fallback_steps = 0
+        return 2, "Periodic probe (k=2) after 5 fallback steps"
+    return 0, "Low acceptance fallback (alpha < 0.65)"
 
-# 4. Fallback an toàn nếu không có lợi
-if N_star == 0:
-    skip_speculative_for_this_step()
+consecutive_fallback_steps = 0  # Reset bộ đếm khi alpha phục hồi >= 0.65
+
+# 4. Tối ưu hóa tỉ số lợi ích / chi phí đo thực (Cost-Model Argmax) kết hợp Heuristic Guards
+# - alpha_ema >= 0.80: duy trì k = 3 (hoặc mở rộng k = 4 nếu alpha_ema >= 0.90)
+# - 0.65 <= alpha_ema < 0.80: hạ về k = 2 để giảm tải GPU
+k = select_budget_argmax(alpha_ema, batch_size, cost_profile)
 ```
 
-* **Tử số:** Lợi ích kỳ vọng (số token dự kiến được chấp nhận $\mathbb{E}[\tau]$) tính theo tỉ lệ trúng $\hat{\alpha}$.
-* **Mẫu số:** Chi phí thời gian $C(N, B)$ lấy trực tiếp từ bảng đo thực nghiệm phần cứng, không dùng hằng số lý thuyết.
+* **Tử số:** Lợi ích kỳ vọng (số token dự kiến được sinh E[tau]) tính theo tỉ lệ trúng: `E[tau] = 1 + sum_(i=1..k) alpha^i`.
+* **Mẫu số:** Chi phí thời gian `C(k, B)` lấy trực tiếp từ bảng đo thực nghiệm phần cứng, không dùng hằng số lý thuyết.
 
 ---
 
@@ -102,12 +114,16 @@ Máy chủ phơi dữ liệu telemetry của từng request qua endpoint `/metri
   "itl_ms":          [19.1, 17.8, ...], // Mảng độ trễ giữa từng token (để tính p50/p95)
   "output_tokens":   256,
   "acceptance_rate": 0.71,              // Tỉ lệ chấp nhận alpha
-  "mean_accept_len": 3.42,              // Chiều dài chấp nhận trung bình tau
-  "tree_budgets":    [60, 60, 32, 0],   // Ngân sách N* qua từng bước (bằng chứng thích ứng)
+  "effective_alpha": 0.71,              // Tỉ lệ chấp nhận sau hiệu chỉnh warm-up
+  "mean_accept_len": 3.42,              // Chiều dài chấp nhận trung bình thực tế tau (số token nháp Target chấp nhận)
+  "mean_k":          3.75,              // Chiều sâu ngân sách nháp trung bình được đề xuất (mean của tree_budgets)
+  "tree_budgets":    [3, 3, 4, 2, 0],   // Ngân sách k* qua từng bước (bằng chứng thích ứng)
   "vram_peak_mb":    13820,             // Đỉnh VRAM sử dụng
-  "batch_size_avg":  8.0
+  "batch_size_avg":  8.0,
+  "is_warmed_up":    true
 }
 ```
+* **Lưu ý quan trọng cho Luồng Benchmark:** `mean_accept_len` phản ánh số token nháp thực tế được Target Model chấp nhận (`tau`), dùng cho các công thức tính toán tốc độ chấp nhận. `mean_k` là giá trị trung bình của ngân sách đề xuất (`k`). Hai trường này đã được phân định độc lập từ bản vá M2-02.
 * **Ý nghĩa:** Luồng Benchmark (Đại lead, Khôi/Dương hỗ trợ) chỉ cần đọc cấu trúc JSON này để phân tích và vẽ biểu đồ, hoàn toàn độc lập với việc can thiệp sâu vào nhân vLLM.
 
 ### 3.2. Giao diện B — Giữa Luồng Core-Engine (Khôi chủ trì) và Luồng Pipeline Ứng dụng (Dương chủ trì)

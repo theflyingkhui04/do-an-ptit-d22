@@ -53,6 +53,7 @@ def test_adapter_does_not_generate_drafts_during_fallback():
         controller_kwargs={
             "initial_alpha": 0.60,
             "fallback_threshold": 0.65,
+            "probe_interval": 0,
         }
     )
 
@@ -84,6 +85,48 @@ def test_adapter_does_not_generate_drafts_during_fallback():
 
     assert len(telemetry["tree_budgets"]) == 20
     assert adapter.active_request_count == 0
+
+
+def test_adapter_periodic_probing_triggers_and_recovers():
+    """Periodic probing attempts k=2 every probe_interval steps and recovers when alpha rises."""
+    adapter = AdaptiveProposerAdapter(
+        controller_kwargs={
+            "initial_alpha": 0.60,
+            "fallback_threshold": 0.65,
+            "probe_interval": 5,
+            "probe_k": 2,
+        }
+    )
+    request_id = "probe-recovery"
+    draft_calls = []
+
+    def draft_generator(k):
+        draft_calls.append(k)
+        return [101] * k
+
+    # Steps 1..4: k=0, skipped_draft=True
+    for _ in range(4):
+        res = adapter.propose(request_id=request_id, draft_generator=draft_generator)
+        assert res.budget_k == 0
+        assert res.skipped_draft is True
+
+    assert len(draft_calls) == 0
+
+    # Step 5: Periodic probe triggers with k=2
+    probe_res = adapter.propose(request_id=request_id, draft_generator=draft_generator)
+    assert probe_res.budget_k == 2
+    assert probe_res.skipped_draft is False
+    assert len(draft_calls) == 1
+    assert "Periodic probe" in probe_res.reason
+
+    # Verification feedback confirms high acceptance on the probed tokens (2/2)
+    new_alpha = adapter.on_verification_completed(request_id, num_accepted=2, num_drafted=2)
+    assert new_alpha >= 0.65
+
+    # Step 6: Successfully recovered out of fallback, normal drafting resumes
+    recovered_res = adapter.propose(request_id=request_id, draft_generator=draft_generator)
+    assert recovered_res.budget_k >= 2
+    assert recovered_res.skipped_draft is False
 
 
 def test_real_verification_feedback_can_raise_alpha():

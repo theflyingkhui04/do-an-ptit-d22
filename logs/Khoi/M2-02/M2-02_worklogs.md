@@ -144,4 +144,48 @@ Sau khi thảo luận sâu sắc, Team Lead (Khôi) đã chính thức chốt **
   - ✅ `[Khôi] Cài đặt Budget Rule co giãn k = 0, 2, 3, 4 theo các ngưỡng alpha (0.80, 0.65)`: `complete`.
 - Trạng thái hiện tại: 2/5 checkItems hoàn thành. Sẵn sàng handoff cho Dương làm Checklist 3 (`Memory Pressure Rule`) và Checklist 4 (`Launcher Làn 3`).
 
+---
+
+## 5. Thống Nhất Kỹ Thuật Với Dương & Xử Lý 2 Lỗi Trọng Yếu (Critical Fixes — 11/10/2026)
+
+### 5.1. Thống nhất kế hoạch với Dương (Partner 40% — Core Engine & Data)
+Nhóm đã đối chiếu phản hồi kỹ thuật từ Dương và chốt các điểm then chốt:
+1. **Kiến trúc Launcher Làn 3 trên vLLM 0.30.0:**
+   - Xác nhận vLLM 0.30.0 (V1 Engine) không còn file `proposer_worker.py` (vốn thuộc engine V0 cũ).
+   - Tên metric chính xác phơi qua Prometheus `/metrics` là `vllm:kv_cache_usage_perc`.
+   - Đồng thuận phương án của Dương: Xây dựng `AdaptiveScheduler` thông qua điểm mở rộng `scheduler_cls` (`vllm/config/scheduler.py:159`), kết hợp cơ chế dynamic Speculative Decoding (`num_speculative_tokens_per_batch_size`).
+2. **Quy tắc Memory Pressure trên GPU T4 (16GB):**
+   - Trên GPU T4, do vLLM pre-allocate 85% VRAM khi khởi động (`gpu_memory_utilization = 0.85`), dung lượng `free_vram` lúc rảnh thường đã rơi xuống dưới 1500 MB.
+   - Do đó, đối với launcher Làn 3 trên T4, cho phép tắt điều kiện `free_vram < 1500 MB`, lấy `vllm:kv_cache_usage_perc > 90%` làm nguồn chân lý duy nhất (source-of-truth).
+   - Hành vi chuẩn khi áp lực xảy ra: Ép `k = 0` (ngắt suy đoán nhị phân), áp dụng cooldown 3 bước, và chỉ phục hồi suy đoán khi KV-cache giảm xuống dưới 80%.
+3. **Phê duyệt Spike Colab:** Khôi (Lead) phê duyệt cho Dương thực hiện phiên chạy thử nghiệm spike trên Colab 2–3 giờ trong ngày 12/10 để kiểm chứng tích hợp `AdaptiveScheduler` với vLLM.
+
+### 5.2. Sửa Lỗi Chí Mạng 1: Thoát Bẫy Bế Tắc (Deadlock Bug) Bằng Periodic Probing
+- **Bản chất lỗi:**
+  - Khi `alpha < 0.65`, bộ điều khiển kích hoạt Vanilla Fallback (`k = 0`).
+  - Khi `k = 0`, worker bỏ qua bước sinh nháp (`skipped_draft = True`), không thực hiện kiểm chứng nháp nên không có phản hồi mới từ Target Model.
+  - Hệ quả: Chỉ số `alpha_ema` bị đóng băng vĩnh viễn ở mức `< 0.65`, khiến request bị kẹt cứng ở chế độ Vanilla suốt toàn bộ phần còn lại của câu giải mã dù các token tiếp theo có thể rất dễ đoán.
+- **Giải pháp xử lý (Periodic Probing):**
+  - Cập nhật phương thức `apply_budget_rule()` trong [`src/proposer/controller.py`](../../../src/proposer/controller.py): Bổ sung hai tham số `probe_interval = 5` và `probe_k = 2`.
+  - Bộ đếm `consecutive_fallback_steps` theo dõi số bước fallback liên tiếp. Cứ sau đúng 5 bước fallback (`k = 0`), bộ điều khiển chủ động phát động một bước thăm dò nháp nhỏ với `probe_k = 2`.
+  - Nếu bước thăm dò mang lại kết quả chấp nhận tốt khiến `alpha` phục hồi `>= 0.65`, bộ đếm được reset về 0 và hệ thống lập tức thoát khỏi fallback để tiếp tục suy đoán bình thường.
+
+### 5.3. Sửa Lỗi Chí Mạng 2: Chuẩn Hóa Telemetry Giao Diện A (`mean_accept_len` vs `mean_k`)
+- **Bản chất lỗi:**
+  - Trong [`src/proposer/adapter.py`](../../../src/proposer/adapter.py), trường `mean_accept_len` trước đó lấy nhầm `stats.get("mean_k", 0.0)`.
+  - `mean_k` phản ánh trung bình ngân sách đề xuất (`k`), trong khi hợp đồng Giao diện A quy định `mean_accept_len` phải là trung bình số token thực tế được Target Model chấp nhận (`num_accepted` hay `tau`).
+- **Giải pháp xử lý:**
+  - Bổ sung cấu trúc dữ liệu `_accepted_history: Dict[str, List[int]]` trong adapter để ghi nhận chính xác mảng `num_accepted` qua từng bước có sinh nháp (`num_drafted > 0`).
+  - Trong `get_telemetry()`: Tính toán `mean_accept_len` là trung bình cộng của mảng `_accepted_history[request_id]`, đồng thời giữ riêng trường `mean_k` (`stats.get("mean_k", 0.0)`).
+  - Trong `end_request()`: Giải phóng triệt để cả `_active_sessions[request_id]` lẫn `_accepted_history[request_id]`, đảm bảo an toàn bộ nhớ và ngăn chặn rò rỉ RAM/VRAM theo Finding 3 của Đại.
+
+### 5.4. Kết Quả Kiểm Thử Toàn Diện (Unit Tests Parity)
+Đã chạy kiểm chứng tự động toàn bộ 4 file test liên quan với kết quả **40/40 tests PASS 100%**:
+1. `tests/test_budget_controller.py`: 19/19 tests PASS (bổ sung test `test_adaptive_draft_controller_periodic_probing_prevents_deadlock`).
+2. `tests/test_proposer_adapter.py`: 8/8 tests PASS (bổ sung test `test_adapter_telemetry_semantics_mean_accept_len_vs_mean_k`).
+3. `tests/test_budget_transition_scenarios.py`: 5/5 tests PASS.
+4. `tests/test_budget_fallback_recovery.py`: 8/8 tests PASS (cập nhật test `test_adapter_periodic_probing_triggers_and_recovers` chứng minh cơ chế probing giải phóng bế tắc).
+
+*Ghi chú:* Toàn bộ thay đổi mã nguồn và tài liệu được lưu giữ trong working directory (chưa chạy `git commit`), sẵn sàng để Team Lead xem xét `git diff` trước khi commit.
+
 

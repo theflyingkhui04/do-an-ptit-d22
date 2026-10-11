@@ -113,6 +113,31 @@ def test_adapter_with_adaptive_draft_controller():
     assert "effective_alpha" in stats
     assert "is_warmed_up" in stats
     assert stats["is_warmed_up"] is False  # 1 bước < 10 bước
+    assert stats["mean_accept_len"] == 2.0  # 2 tokens accepted
+    assert stats["mean_k"] == float(out1.budget_k)
+
+
+def test_adapter_telemetry_semantics_mean_accept_len_vs_mean_k():
+    adapter = AdaptiveProposerAdapter()
+    req_id = "req_telemetry_check"
+
+    # Step 1: propose draft, target accepts 2
+    out1 = adapter.propose(req_id, draft_generator=lambda k: [1] * k)
+    adapter.on_verification_completed(req_id, num_accepted=2, num_drafted=out1.budget_k)
+
+    # Step 2: propose draft, target accepts 1
+    out2 = adapter.propose(req_id, draft_generator=lambda k: [1] * k)
+    adapter.on_verification_completed(req_id, num_accepted=1, num_drafted=out2.budget_k)
+
+    telemetry = adapter.end_request(req_id)
+    # mean_accept_len is mean of [2, 1] = 1.5
+    assert telemetry["mean_accept_len"] == 1.5
+    # mean_k is mean of proposed budgets
+    assert telemetry["mean_k"] == (out1.budget_k + out2.budget_k) / 2.0
+    assert telemetry["mean_accept_len"] != telemetry["mean_k"]
+    # Session memory cleaned up
+    assert req_id not in adapter._accepted_history
+    assert req_id not in adapter._active_sessions
 
 
 

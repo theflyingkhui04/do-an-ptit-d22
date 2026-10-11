@@ -205,6 +205,8 @@ class AdaptiveDraftController(BudgetController):
         candidate_budgets: Optional[List[int]] = None,
         cost_profile: Optional[CostProfile] = None,
         min_free_vram_mb: float = 1500.0,
+        probe_interval: int = 5,
+        probe_k: int = 2,
     ):
         super().__init__(
             window_size=window_size,
@@ -217,6 +219,9 @@ class AdaptiveDraftController(BudgetController):
             min_free_vram_mb=min_free_vram_mb,
         )
         self.step_count = 0
+        self.probe_interval = probe_interval
+        self.probe_k = probe_k
+        self.consecutive_fallback_steps = 0
 
     def update(self, num_accepted: int, num_drafted: int) -> float:
         """Updates rolling window and EMA telemetry from the latest step verification."""
@@ -297,13 +302,25 @@ class AdaptiveDraftController(BudgetController):
 
         - alpha >= high_threshold (0.80): maintain k=3 (or expand to k=4 if alpha >= 0.90)
         - fallback_threshold <= alpha < high_threshold: throttle down to k=2
-        - alpha < fallback_threshold (0.65): fallback to k=0 (Vanilla)
+        - alpha < fallback_threshold (0.65): fallback to k=0 with periodic probing (k=probe_k every probe_interval steps)
         """
         if alpha < self.fallback_threshold:
+            self.consecutive_fallback_steps += 1
+            if self.probe_interval > 0 and self.consecutive_fallback_steps >= self.probe_interval:
+                # Kích hoạt probing để thoát bẫy kẹt Vanilla vĩnh viễn
+                self.consecutive_fallback_steps = 0
+                return (
+                    self.probe_k,
+                    f"Periodic probe: reached {self.probe_interval} fallback steps (alpha={alpha:.3f}), probing with k={self.probe_k}",
+                )
+            hold_str = f" (hold {self.consecutive_fallback_steps}/{self.probe_interval})" if self.probe_interval > 0 else ""
             return (
                 0,
-                f"Low acceptance fallback: alpha {alpha:.3f} < threshold {self.fallback_threshold:.3f}",
+                f"Low acceptance fallback: alpha {alpha:.3f} < threshold {self.fallback_threshold:.3f}{hold_str}",
             )
+
+        # alpha >= self.fallback_threshold -> reset bộ đếm fallback
+        self.consecutive_fallback_steps = 0
 
         if alpha >= self.high_threshold:
             if alpha >= 0.90 and 4 in self.candidate_budgets:
@@ -341,7 +358,7 @@ class AdaptiveDraftController(BudgetController):
             self._history.append({"k": k, "alpha": effective_alpha, "reason": reason})
             return decision
 
-        # 2. Budget Rule (Co giãn k theo alpha)
+        # 2. Budget Rule (Co giãn k theo alpha kết hợp Periodic Probing)
         k, reason = self.apply_budget_rule(alpha=effective_alpha)
         e_tau = self.estimate_expected_tokens(k, effective_alpha)
 
@@ -360,6 +377,7 @@ class AdaptiveDraftController(BudgetController):
         if initial_alpha is not None:
             self.initial_alpha = initial_alpha
         self.step_count = 0
+        self.consecutive_fallback_steps = 0
 
     def get_stats(self) -> dict:
         """Exports runtime telemetry matching Interface A contract plus adaptive diagnostics."""
@@ -367,6 +385,7 @@ class AdaptiveDraftController(BudgetController):
         base_stats["effective_alpha"] = self.get_effective_alpha()
         base_stats["is_warmed_up"] = self.step_count >= self.window_size
         base_stats["step_count"] = self.step_count
+        base_stats["consecutive_fallback_steps"] = self.consecutive_fallback_steps
         return base_stats
 
 
