@@ -52,21 +52,20 @@ python -c "import src.server.adaptive_scheduler as m; print('OK', m.AdaptiveAsyn
 
 # 1. Tham chiếu Vanilla (Làn 1)
 bash scripts/switch_lane.sh lane1
-python scripts/smoke_lane3_adaptive.py reference --port 8001 \
-    --model qwen2.5-7b-vanilla --out experiments/runs/m2_02/smoke_vanilla_outputs.json
+python scripts/smoke_lane3_adaptive.py reference --lane vanilla
+#     -> experiments/runs/m2_02/smoke_vanilla_outputs.json
 
 # 1b. Tham chiếu Static (Làn 2) — để phân biệt sai số số học với lỗi code
 bash scripts/switch_lane.sh lane2
-python scripts/smoke_lane3_adaptive.py reference --port 8002 \
-    --model qwen2.5-7b-static-draft --out experiments/runs/m2_02/smoke_static_outputs.json
+python scripts/smoke_lane3_adaptive.py reference --lane static
+#     -> experiments/runs/m2_02/smoke_static_outputs.json
 
 # 2. Làn 3 Adaptive + so sánh (lần đầu compile có thể lâu, script chờ tối đa 600 s)
 bash scripts/switch_lane.sh lane3        # log: logs/vllm_lane3.log
-python scripts/smoke_lane3_adaptive.py adaptive --port 8003 \
-    --model qwen2.5-7b-adaptive \
-    --reference experiments/runs/m2_02/smoke_vanilla_outputs.json \
-    --telemetry experiments/runs/m2_02/lane3_telemetry.jsonl \
-    --summary experiments/results/m2_02_lane3_smoke_summary.json
+python scripts/smoke_lane3_adaptive.py adaptive
+#     -> experiments/results/m2_02_lane3_smoke_summary.json
+#     (port, model và mọi đường dẫn là hằng số trong script, không truyền qua CLI;
+#      telemetry đọc từ experiments/runs/m2_02/lane3_telemetry.jsonl, mặc định của launcher)
 bash scripts/switch_lane.sh stop
 ```
 

@@ -1,23 +1,19 @@
 """Smoke test for Lane 3 (AdaptiveAsyncScheduler) — M2-02 checklist 4.
 
-A T4 cannot host two lanes at once, so the test runs in two passes:
+A T4 cannot host two lanes at once, so the test runs one lane at a time:
 
-  # Pass 1 — Vanilla reference (lane 1, port 8001)
   bash scripts/switch_lane.sh lane1
-  python scripts/smoke_lane3_adaptive.py reference --port 8001 \
-      --model qwen2.5-7b-vanilla --out experiments/runs/m2_02/smoke_vanilla_outputs.json
-
-  # Pass 2 — Adaptive lane (port 8003), compared against the reference
+  python scripts/smoke_lane3_adaptive.py reference --lane vanilla   # Pass 1 — Vanilla
+  bash scripts/switch_lane.sh lane2
+  python scripts/smoke_lane3_adaptive.py reference --lane static    # Pass 2 — Static (optional)
   bash scripts/switch_lane.sh lane3
-  python scripts/smoke_lane3_adaptive.py adaptive --port 8003 \
-      --model qwen2.5-7b-adaptive \
-      --reference experiments/runs/m2_02/smoke_vanilla_outputs.json \
-      --telemetry experiments/runs/m2_02/lane3_telemetry.jsonl \
-      --summary experiments/results/m2_02_lane3_smoke_summary.json
+  python scripts/smoke_lane3_adaptive.py adaptive                   # Pass 3 — Adaptive + checks
 
-Requests are taken from the frozen W1 / W3 v2 packages (read-only), sent one at a
-time at temperature 0. Acceptance (logs/Duong/M2-02/M2-02-openspec.md C4):
-no failed request, >= 2 distinct k values in telemetry, outputs equal Vanilla.
+Ports, served-model names and every input/output path are fixed constants below
+(no free-form URL or path arguments). Requests come from the frozen W1 / W3 v2
+packages (read-only), sent one at a time at temperature 0. Acceptance
+(logs/Duong/M2-02/M2-02-openspec.md C4): no failed request, >= 2 distinct k values
+in telemetry, outputs equal Vanilla.
 """
 from __future__ import annotations
 
@@ -34,6 +30,23 @@ import requests
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 W1_REQUESTS = PROJECT_ROOT / "experiments/configs/w1/node1_chat_requests.jsonl"
 W3_REQUESTS = PROJECT_ROOT / "experiments/configs/w3_v2/chat_requests.jsonl"
+RUNS_DIR = PROJECT_ROOT / "experiments/runs/m2_02"
+RESULTS_DIR = PROJECT_ROOT / "experiments/results"
+
+# Fixed lane table: same ports / served-model names as scripts/launch_lane*.sh.
+LANES = {
+    "vanilla": {"port": 8001, "model": "qwen2.5-7b-vanilla",
+                "outputs": RUNS_DIR / "smoke_vanilla_outputs.json"},
+    "static": {"port": 8002, "model": "qwen2.5-7b-static-draft",
+               "outputs": RUNS_DIR / "smoke_static_outputs.json"},
+    "adaptive": {"port": 8003, "model": "qwen2.5-7b-adaptive",
+                 "outputs": None},
+}
+REFERENCE_OUTPUTS = LANES["vanilla"]["outputs"]
+# Default of ADAPTIVE_TELEMETRY_PATH in scripts/launch_lane3_adaptive.sh.
+TELEMETRY_PATH = RUNS_DIR / "lane3_telemetry.jsonl"
+SUMMARY_PATH = RESULTS_DIR / "m2_02_lane3_smoke_summary.json"
+VRAM_GUARD_MIN_FREE_MB = 1500
 
 
 def load_prompts(per_workload: int) -> List[dict]:
@@ -54,16 +67,17 @@ def load_prompts(per_workload: int) -> List[dict]:
     return prompts
 
 
-def send(port: int, model: str, messages: list, max_tokens: int) -> dict:
+def send(lane: dict, messages: list, max_tokens: int) -> dict:
     payload = {
-        "model": model,
+        "model": lane["model"],
         "messages": messages,
         "temperature": 0.0,
         "seed": 0,
         "max_tokens": max_tokens,
     }
+    url = "http://127.0.0.1:%d/v1/chat/completions" % lane["port"]
     start = time.time()
-    resp = requests.post(f"http://127.0.0.1:{port}/v1/chat/completions", json=payload, timeout=600)
+    resp = requests.post(url, json=payload, timeout=600)
     latency = time.time() - start
     resp.raise_for_status()
     body = resp.json()
@@ -74,12 +88,12 @@ def send(port: int, model: str, messages: list, max_tokens: int) -> dict:
     }
 
 
-def run_prompts(port: int, model: str, prompts: List[dict], max_tokens: int) -> List[dict]:
+def run_prompts(lane: dict, prompts: List[dict], max_tokens: int) -> List[dict]:
     results = []
     for prompt in prompts:
         entry = {"workload": prompt["workload"], "sample_id": prompt["sample_id"]}
         try:
-            entry.update(send(port, model, prompt["messages"], max_tokens))
+            entry.update(send(lane, prompt["messages"], max_tokens))
             entry["ok"] = True
         except Exception as exc:  # recorded, never hides a failure
             entry["ok"] = False
@@ -100,11 +114,19 @@ def gpu_free_mb() -> Optional[float]:
         return None
 
 
-def read_telemetry(path: Path, since: float) -> List[dict]:
-    if not path.exists():
+def vram_guard_recommendation(free_mb: Optional[float]) -> Optional[str]:
+    if free_mb is None:
+        return None
+    if free_mb < VRAM_GUARD_MIN_FREE_MB:
+        return "disable (ADAPTIVE_ENABLE_VRAM_GUARD=0)"
+    return "keep enabled"
+
+
+def read_telemetry(since: float) -> List[dict]:
+    if not TELEMETRY_PATH.exists():
         return []
     records = []
-    with path.open(encoding="utf-8") as fh:
+    with TELEMETRY_PATH.open(encoding="utf-8") as fh:
         for line in fh:
             record = json.loads(line)
             if record.get("finished_at", 0) >= since:
@@ -112,25 +134,30 @@ def read_telemetry(path: Path, since: float) -> List[dict]:
     return records
 
 
-def cmd_reference(args) -> int:
-    prompts = load_prompts(args.per_workload)
-    results = run_prompts(args.port, args.model, prompts, args.max_tokens)
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Saved {len(results)} reference outputs to {out}")
+def write_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def cmd_reference(lane_name: str, per_workload: int, max_tokens: int) -> int:
+    lane = LANES[lane_name]
+    prompts = load_prompts(per_workload)
+    results = run_prompts(lane, prompts, max_tokens)
+    write_json(lane["outputs"], results)
+    print(f"Saved {len(results)} reference outputs to {lane['outputs']}")
     return 0 if all(r["ok"] for r in results) else 1
 
 
-def cmd_adaptive(args) -> int:
+def cmd_adaptive(per_workload: int, max_tokens: int) -> int:
+    lane = LANES["adaptive"]
     reference = {
         (r["workload"], r["sample_id"]): r
-        for r in json.loads(Path(args.reference).read_text(encoding="utf-8"))
+        for r in json.loads(REFERENCE_OUTPUTS.read_text(encoding="utf-8"))
     }
     idle_free_mb = gpu_free_mb()
     started = time.time()
-    prompts = load_prompts(args.per_workload)
-    results = run_prompts(args.port, args.model, prompts, args.max_tokens)
+    prompts = load_prompts(per_workload)
+    results = run_prompts(lane, prompts, max_tokens)
     time.sleep(2)  # let the scheduler free finished requests and flush telemetry
 
     mismatches = []
@@ -139,7 +166,7 @@ def cmd_adaptive(args) -> int:
         if r["ok"] and ref and ref.get("ok") and ref["content"] != r["content"]:
             mismatches.append(r["sample_id"])
 
-    telemetry = read_telemetry(Path(args.telemetry), started)
+    telemetry = read_telemetry(started)
     k_values = sorted({k for t in telemetry for k in t.get("tree_budgets", [])})
 
     checks = {
@@ -150,15 +177,12 @@ def cmd_adaptive(args) -> int:
     }
     summary = {
         "task": "M2-02 checklist 4 — Lane 3 smoke test",
-        "port": args.port,
-        "model": args.model,
+        "port": lane["port"],
+        "model": lane["model"],
         "num_requests": len(results),
-        "max_tokens": args.max_tokens,
+        "max_tokens": max_tokens,
         "gpu_free_mb_after_server_load": idle_free_mb,
-        "vram_guard_recommendation": (
-            None if idle_free_mb is None
-            else ("disable (ADAPTIVE_ENABLE_VRAM_GUARD=0)" if idle_free_mb < 1500 else "keep enabled")
-        ),
+        "vram_guard_recommendation": vram_guard_recommendation(idle_free_mb),
         "distinct_k_values": k_values,
         "mismatched_samples": mismatches,
         "checks": checks,
@@ -166,9 +190,7 @@ def cmd_adaptive(args) -> int:
         "requests": results,
         "telemetry": telemetry,
     }
-    out = Path(args.summary)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json(SUMMARY_PATH, summary)
     print(json.dumps({k: summary[k] for k in ("checks", "passed", "distinct_k_values",
                                               "gpu_free_mb_after_server_load",
                                               "vram_guard_recommendation")}, indent=2))
@@ -178,18 +200,16 @@ def cmd_adaptive(args) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name in ("reference", "adaptive"):
-        p = sub.add_parser(name)
-        p.add_argument("--port", type=int, required=True)
-        p.add_argument("--model", required=True)
+    ref = sub.add_parser("reference", help="collect reference outputs from lane 1 or lane 2")
+    ref.add_argument("--lane", choices=["vanilla", "static"], required=True)
+    ada = sub.add_parser("adaptive", help="run lane 3 and check it against the Vanilla reference")
+    for p in (ref, ada):
         p.add_argument("--per-workload", type=int, default=5, help="prompts per workload (W1, W3)")
         p.add_argument("--max-tokens", type=int, default=256)
-    sub.choices["reference"].add_argument("--out", required=True)
-    sub.choices["adaptive"].add_argument("--reference", required=True)
-    sub.choices["adaptive"].add_argument("--telemetry", required=True)
-    sub.choices["adaptive"].add_argument("--summary", required=True)
     args = parser.parse_args(argv)
-    return cmd_reference(args) if args.cmd == "reference" else cmd_adaptive(args)
+    if args.cmd == "reference":
+        return cmd_reference(args.lane, args.per_workload, args.max_tokens)
+    return cmd_adaptive(args.per_workload, args.max_tokens)
 
 
 if __name__ == "__main__":
