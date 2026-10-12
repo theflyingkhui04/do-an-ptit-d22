@@ -119,6 +119,10 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         try:
             import torch
 
+            # With the single-GPU "uni" executor the worker shares this process, so
+            # CUDA is already initialized. Never create a new context just to read VRAM.
+            if not torch.cuda.is_initialized():
+                return None
             free_bytes, _ = torch.cuda.mem_get_info()
             return free_bytes / (1024 * 1024)
         except Exception:

@@ -200,6 +200,36 @@ def test_per_request_disabled_keeps_batch_placeholders(scheduler_module, monkeyp
     assert len(bad.spec_token_ids) == 3
 
 
+def _fake_torch(initialized, free_bytes=2 * 1024 * 1024 * 1024):
+    calls = []
+
+    def mem_get_info():
+        calls.append("mem_get_info")
+        return free_bytes, 16 * 1024 * 1024 * 1024
+
+    cuda = SimpleNamespace(is_initialized=lambda: initialized, mem_get_info=mem_get_info)
+    return types.SimpleNamespace(cuda=cuda), calls
+
+
+def test_free_vram_read_when_cuda_initialized(scheduler_module, monkeypatch, tmp_path):
+    fake_torch, calls = _fake_torch(initialized=True)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    sched = build(scheduler_module, monkeypatch, tmp_path, ADAPTIVE_ENABLE_VRAM_GUARD="1")
+
+    assert sched._free_vram_mb() == pytest.approx(2048.0)
+    assert calls == ["mem_get_info"]
+
+
+def test_free_vram_not_read_without_cuda_context(scheduler_module, monkeypatch, tmp_path):
+    # Reading VRAM would create a new CUDA context (~300 MB) in this process.
+    fake_torch, calls = _fake_torch(initialized=False)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    sched = build(scheduler_module, monkeypatch, tmp_path, ADAPTIVE_ENABLE_VRAM_GUARD="1")
+
+    assert sched._free_vram_mb() is None
+    assert calls == []
+
+
 def test_missing_dynamic_lookup_still_schedules(scheduler_module, monkeypatch, tmp_path):
     monkeypatch.setenv("ADAPTIVE_ENABLE_VRAM_GUARD", "0")
     sched = scheduler_module.AdaptiveAsyncScheduler(dynamic=False)

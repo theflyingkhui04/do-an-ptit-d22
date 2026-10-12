@@ -119,7 +119,7 @@ start_lane3() {
     echo $pid > "$PID_FILE_LANE3"
     echo "    Tiến trình chạy nền với PID: ${pid}"
 
-    wait_for_health 8003 360 "$log_file"
+    wait_for_health 8003 600 "$log_file"
 }
 
 show_status() {
