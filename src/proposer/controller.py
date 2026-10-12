@@ -96,8 +96,13 @@ class BudgetController:
         self,
         batch_size: int = 1,
         free_vram_mb: float = 16000.0,
+        kv_cache_usage_pct: float = 0.0,
     ) -> BudgetDecision:
-        """Selects optimal budget k* in candidate_budgets based on VRAM, alpha, and cost model."""
+        """Selects optimal budget k* in candidate_budgets based on VRAM, alpha, and cost model.
+
+        kv_cache_usage_pct is accepted for interface parity with AdaptiveDraftController
+        and is not used by the v0 base controller.
+        """
         alpha = self.alpha_ema
 
         # 1. Memory Pressure Rule (Chống OOM)
@@ -191,7 +196,7 @@ class AdaptiveDraftController(BudgetController):
     - 10-step rolling window tracking raw acceptance samples
     - Unbiased EMA warm-up correction for fast reaction to low acceptance rate
     - Modular budget rules (co giãn k in {0, 2, 3, 4})
-    - Memory pressure rule hook for KV-cache and VRAM Peak monitoring
+    - Memory pressure rule (KV-cache usage + VRAM guard) with cooldown and hysteresis
     - Self-diagnostic window statistics (mean, variance, min, max, is_warmed_up)
     """
 
@@ -207,6 +212,10 @@ class AdaptiveDraftController(BudgetController):
         min_free_vram_mb: float = 1500.0,
         probe_interval: int = 5,
         probe_k: int = 2,
+        kv_cache_high_pct: float = 90.0,
+        kv_cache_recover_pct: float = 80.0,
+        memory_cooldown_steps: int = 3,
+        enable_vram_guard: bool = True,
     ):
         super().__init__(
             window_size=window_size,
@@ -218,10 +227,26 @@ class AdaptiveDraftController(BudgetController):
             cost_profile=cost_profile,
             min_free_vram_mb=min_free_vram_mb,
         )
+        if kv_cache_recover_pct > kv_cache_high_pct:
+            raise ValueError(
+                f"kv_cache_recover_pct ({kv_cache_recover_pct}) must be <= "
+                f"kv_cache_high_pct ({kv_cache_high_pct})"
+            )
+        if memory_cooldown_steps < 1:
+            raise ValueError("memory_cooldown_steps must be >= 1")
+
         self.step_count = 0
         self.probe_interval = probe_interval
         self.probe_k = probe_k
         self.consecutive_fallback_steps = 0
+        self.kv_cache_high_pct = kv_cache_high_pct
+        self.kv_cache_recover_pct = kv_cache_recover_pct
+        self.memory_cooldown_steps = memory_cooldown_steps
+        self.enable_vram_guard = enable_vram_guard
+
+        # Hysteresis state: steps spent at k=0 since the last memory trigger
+        self._memory_pressure_active = False
+        self._memory_pressure_steps = 0
 
     def update(self, num_accepted: int, num_drafted: int) -> float:
         """Updates rolling window and EMA telemetry from the latest step verification."""
@@ -285,17 +310,56 @@ class AdaptiveDraftController(BudgetController):
         free_vram_mb: float,
         kv_cache_usage_pct: float = 0.0,
     ) -> Optional[Tuple[int, str]]:
-        """Hook for memory pressure checks (VRAM Peak / KV-cache).
+        """Memory pressure rule with hysteresis, evaluated once per decode step.
 
-        Returns (k, reason) if memory pressure triggers a rollback to k=0, else None.
-        Dương will extend this rule with KV-cache and VRAM peak checks.
+        - Trigger: KV-cache usage > kv_cache_high_pct, or (VRAM guard enabled)
+          free VRAM < min_free_vram_mb -> force k=0 and (re)start cooldown.
+        - Hold: k=0 for at least memory_cooldown_steps steps (trigger step included).
+        - Release: after cooldown, only when KV-cache usage < kv_cache_recover_pct
+          and free VRAM is back above the minimum; Budget Rule then takes over.
+
+        kv_cache_usage_pct is in percent (0-100), e.g. 100 * scheduler.get_kv_cache_usage().
+        Returns (k, reason) while memory pressure holds k=0, else None.
         """
-        if free_vram_mb < self.min_free_vram_mb:
-            return (
-                0,
-                f"VRAM pressure: free {free_vram_mb:.1f}MB < min {self.min_free_vram_mb:.1f}MB",
+        vram_low = self.enable_vram_guard and free_vram_mb < self.min_free_vram_mb
+        kv_high = kv_cache_usage_pct > self.kv_cache_high_pct
+
+        if kv_high or vram_low:
+            self._memory_pressure_active = True
+            self._memory_pressure_steps = 1
+            if kv_high:
+                reason = (
+                    f"KV-cache pressure: usage {kv_cache_usage_pct:.1f}% > "
+                    f"high {self.kv_cache_high_pct:.1f}%"
+                )
+            else:
+                reason = (
+                    f"VRAM pressure: free {free_vram_mb:.1f}MB < "
+                    f"min {self.min_free_vram_mb:.1f}MB"
+                )
+            return (0, reason)
+
+        if not self._memory_pressure_active:
+            return None
+
+        cooldown_done = self._memory_pressure_steps >= self.memory_cooldown_steps
+        if cooldown_done and kv_cache_usage_pct < self.kv_cache_recover_pct:
+            self._memory_pressure_active = False
+            self._memory_pressure_steps = 0
+            return None
+
+        self._memory_pressure_steps += 1
+        if not cooldown_done:
+            reason = (
+                f"Memory pressure cooldown: step {self._memory_pressure_steps}/"
+                f"{self.memory_cooldown_steps}"
             )
-        return None
+        else:
+            reason = (
+                f"Memory pressure hold: KV-cache {kv_cache_usage_pct:.1f}% >= "
+                f"recover {self.kv_cache_recover_pct:.1f}%"
+            )
+        return (0, reason)
 
     def apply_budget_rule(self, alpha: float) -> Tuple[int, str]:
         """Core budget rule adapting k in {0, 2, 3, 4} based on empirical alpha thresholds.
@@ -378,6 +442,8 @@ class AdaptiveDraftController(BudgetController):
             self.initial_alpha = initial_alpha
         self.step_count = 0
         self.consecutive_fallback_steps = 0
+        self._memory_pressure_active = False
+        self._memory_pressure_steps = 0
 
     def get_stats(self) -> dict:
         """Exports runtime telemetry matching Interface A contract plus adaptive diagnostics."""
@@ -386,6 +452,7 @@ class AdaptiveDraftController(BudgetController):
         base_stats["is_warmed_up"] = self.step_count >= self.window_size
         base_stats["step_count"] = self.step_count
         base_stats["consecutive_fallback_steps"] = self.consecutive_fallback_steps
+        base_stats["memory_pressure_active"] = self._memory_pressure_active
         return base_stats
 
 
