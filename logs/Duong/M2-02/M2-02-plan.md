@@ -17,8 +17,8 @@
 | T6 | `AdaptiveBudgetPlanner` (R8–R12) — TDD | Dương | T4 | ✅ 18 test |
 | T7 | `AdaptiveAsyncScheduler` glue + test với vLLM giả | Dương | T6 | ✅ 10 test |
 | T8 | `launch_lane3_adaptive.sh`, `switch_lane.sh lane3`, `smoke_lane3_adaptive.py` | Dương | T7 | ✅ viết xong, `bash -n` OK |
-| T9 | **Smoke test trên T4** (nghiệm thu C4) | Dương | T8 | ⏳ cần GPU — hướng dẫn trong README |
-| T5 | Commit + push + PR vào `develop` | Dương; review: Khôi | T9 | ⏳ sau T9 (xin phép từng bước) |
+| T9 | **Smoke test trên T4** (nghiệm thu C4) | Dương | T8 | ✅ 12/10 `passed: true` (`eb97aac`) |
+| T5 | Commit + push + PR vào `develop` | Dương; review: Khôi | T9 | 🟡 Đã commit + push nhánh; còn merge `develop` (`061e9c2`) và mở PR |
 
 Điểm đồng bộ: **T9** (kết quả smoke quyết định cờ VRAM / dự phòng) và **T5** (Khôi
 review PR vì `controller.py`, `adapter.py` do Khôi làm Lead).

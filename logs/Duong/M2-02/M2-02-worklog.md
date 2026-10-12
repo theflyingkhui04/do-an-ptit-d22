@@ -222,3 +222,81 @@ guard; `reset`; `get_stats`; validate tham số; adapter bỏ qua draft khi áp 
 - **Chưa kiểm chứng (cần T4):** vLLM thật nạp được `--scheduler-cls`; K=0 trong
   `dynamic_sd_lookup`; cắt placeholder theo request dưới async; free VRAM idle. Các
   điểm này được smoke test bao phủ, có cờ dự phòng không cần sửa code (README).
+
+---
+
+## 9. Kết quả smoke test Làn 3 trên Colab T4 (12/10, nghiệm thu checklist 4)
+
+- **Môi trường:** Colab T4 (sm_75), vLLM 0.30.0, nhánh `feat/m2-02-memory-pressure-rule` @ `1a7fa02`.
+- **Bằng chứng (commit `eb97aac`):**
+  `experiments/results/m2_02_lane3_smoke_summary.json`,
+  `experiments/runs/m2_02/{smoke_vanilla_outputs,smoke_static_outputs}.json`,
+  `experiments/runs/m2_02/lane3_telemetry.jsonl`,
+  `experiments/runs/m2_02/{vanilla,static,adaptive}.server.log`.
+- **Cách chạy:** 10 request (5 W1 + 5 W3 v2, frozen), temperature 0, `max_tokens=256`,
+  gửi tuần tự từng request (c=1), lần lượt trên Làn 1 → Làn 2 → Làn 3.
+
+### 9.1. Nghiệm thu C4 — **ĐẠT (`passed: true`)**
+
+| Tiêu chí C4 | Kết quả |
+|---|---|
+| Server Làn 3 khởi động với `--scheduler-cls` | ✅ log: `Using custom scheduler class src.server.adaptive_scheduler.AdaptiveAsyncScheduler` |
+| 10 request hoàn tất, không crash | ✅ 10/10 |
+| Telemetry 1 dòng/request | ✅ 10/10 |
+| ≥ 2 giá trị k khác nhau | ✅ `[0, 2, 3, 4]` |
+| Output temp=0 khớp Vanilla | ✅ 10/10 (Làn 2 lệch Vanilla 2 mẫu W3 — sai số fp16 của speculative decoding, đáng ghi cho M2-03) |
+| Free VRAM sau khi nạp model | 3142 MB → **giữ** VRAM guard (quyết định B8-4: không cần tắt) |
+
+### 9.2. Hành vi controller (từ telemetry)
+
+| Workload | k chiếm ưu thế | mean k | τ (mean_accept_len) | α_ema cuối |
+|---|---|---|---|---|
+| W1 (5 mẫu) | k=4 (48/55 bước), k=3 lúc khởi động | 3.87 | 3.79 | 1.00 |
+| W3 (5 mẫu) | k=0 (~60%), k=2 do probing (~33%) | 0.66–1.17 | 1.15–1.58 | 0.51–0.94 |
+
+Controller phản ứng đúng thiết kế: W1 (entropy thấp) nháp sâu, W3 (entropy cao) ngắt
+về k=0 và định kỳ thử lại k=2. Memory Pressure Rule không kích hoạt (KV usage thấp ở c=1).
+
+### 9.3. ⚠️ Rủi ro cho Cổng M2 — Làn 3 chậm hơn trên W3
+
+Độ trễ trung bình (c=1, 256 token, bỏ request khởi động đầu tiên):
+
+| | Vanilla | Static | Adaptive |
+|---|---|---|---|
+| W1 | 7.71 s | 5.95 s (**1.29×**) | 5.79 s (**1.33×**) |
+| W3 | 6.73 s | 7.82 s (0.86×) | 8.59 s (**0.78×**) |
+
+Tiêu chí Cổng M2 "W3 Adaptive ≥ 1.00×" **chưa đạt** trong smoke test. Đây không phải
+benchmark (c=1, 5 mẫu) nên chỉ là tín hiệu, cần M2-04 đo chính thức. Giả thuyết có căn cứ:
+
+1. **K=0 không miễn phí:** vLLM vẫn chạy 1 lượt forward của draft model mỗi bước để giữ
+   KV cache của draft đồng bộ (`vllm/v1/spec_decode/llm_base_proposer.py:620`), nên k=0
+   vẫn chậm hơn Vanilla thật.
+2. **CUDA graph bị hạ cấp:** log Làn 3 xác nhận `Overriding cudagraph_mode from
+   FULL_AND_PIECEWISE to PIECEWISE` (do bật dynamic SD); Làn 1/2 dùng FULL.
+3. **Probing dày:** `probe_interval=5` làm ~33% bước W3 chạy k=2 với α thấp.
+
+Đề xuất cho M2-04 / Khôi (chưa làm): đo riêng chi phí bước k=0 so với Vanilla; thử
+`probe_interval` lớn hơn (ví dụ 20); cân nhắc bảng `num_speculative_tokens_per_batch_size`
+nhiều tầng để vLLM chụp CUDA graph cho nhiều K.
+
+### 9.4. Vấn đề nhỏ phát hiện khi chạy
+
+- **`switch_lane.sh` (sửa ở `993a9a2`):** (a) báo "vLLM đã dừng" giả vì `pgrep -f vllm`
+  chạy trước khi launcher gọi `vllm serve` → nay theo dõi PID launcher; (b) không tắt
+  `VLLM::EngineCore` (chữ hoa) → Làn 2 lỗi khởi động vì VRAM còn bị giữ → nay tắt và
+  chờ GPU nhả bộ nhớ; (c) timeout 300 s quá ngắn khi tải model lần đầu (179 s) → mặc định 900 s.
+- **Log `AdaptiveAsyncScheduler ready` không xuất hiện:** logger của module `src.*`
+  không nằm trong cấu hình logging của vLLM. Không ảnh hưởng chức năng; nên sửa để dễ debug.
+- **Telemetry chưa có `memory_pressure_active`:** `AdaptiveProposerAdapter.get_telemetry`
+  chỉ chọn một số trường. Nên bổ sung để M2-04 thấy khi nào Memory Pressure kích hoạt.
+
+### 9.5. Trạng thái checklist M2-02 phần Dương
+
+| Checklist | Trạng thái |
+|---|---|
+| 3. Memory Pressure Rule | ✅ Code + 13 test; đã chạy trong Làn 3 không lỗi |
+| 4. Launcher Làn 3 (port 8003) + telemetry hook | ✅ Smoke test T4 đạt C4 |
+
+Còn lại: merge `develop` mới (`061e9c2`) vào nhánh, mở PR vào `develop`, Khôi review,
+rồi mới tick checklist trên Trello (thao tác Trello cần xin phép).

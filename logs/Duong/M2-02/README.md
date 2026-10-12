@@ -11,7 +11,7 @@ telemetry hook). Khôi giao Dương quyết toàn bộ thiết kế phần này 
 | [M2-02-proposal.md](M2-02-proposal.md) | Vấn đề, hiện trạng, phương án, rủi ro, tiêu chí nghiệm thu | Đã duyệt |
 | [M2-02-openspec.md](M2-02-openspec.md) | Part A/B: Memory Pressure Rule (R1–R7). Part C: Làn 3 (R8–R12, C4 nghiệm thu) | Đã duyệt |
 | [M2-02-plan.md](M2-02-plan.md) | Code plan T0–T9, DoD | Cập nhật 12/10 |
-| [M2-02-worklog.md](M2-02-worklog.md) | Nhật ký: 4 câu hỏi với Khôi, xác minh vLLM v0.30.0, test | Cập nhật 12/10 |
+| [M2-02-worklog.md](M2-02-worklog.md) | Nhật ký: 4 câu hỏi với Khôi, xác minh vLLM v0.30.0, test, **kết quả smoke T4 (mục 9)** | Cập nhật 13/10 |
 
 Worklog phần của Khôi (Lead): [logs/Khoi/M2-02/](../../Khoi/M2-02/).
 
@@ -19,10 +19,10 @@ Worklog phần của Khôi (Lead): [logs/Khoi/M2-02/](../../Khoi/M2-02/).
 
 | Checklist | Hạng mục | Trạng thái | Bằng chứng |
 |---|---|---|---|
-| 3 | Memory Pressure Rule (KV-cache + VRAM, cooldown, hysteresis) | Code + test xong, đã gộp với probing của Khôi (`c9ee178`); chưa commit/PR | [controller.py](../../../src/proposer/controller.py), [test_memory_pressure_rule.py](../../../tests/test_memory_pressure_rule.py) |
-| 4 | Tầng tích hợp vLLM (`AdaptiveAsyncScheduler` + `AdaptiveBudgetPlanner`) | Code + unit/glue test xong (vLLM giả); **chờ smoke test Colab** | [budget_planner.py](../../../src/server/budget_planner.py), [adaptive_scheduler.py](../../../src/server/adaptive_scheduler.py), [test_budget_planner.py](../../../tests/test_budget_planner.py), [test_adaptive_scheduler_glue.py](../../../tests/test_adaptive_scheduler_glue.py) |
-| 4 | Launcher `launch_lane3_adaptive.sh` (port 8003) + `switch_lane.sh lane3` | Viết xong, qua `bash -n`; **chờ chạy trên T4** | [launch_lane3_adaptive.sh](../../../scripts/launch_lane3_adaptive.sh), [switch_lane.sh](../../../scripts/switch_lane.sh) |
-| 4 | Smoke test 10 request | Script xong; **chờ chạy trên T4** | [smoke_lane3_adaptive.py](../../../scripts/smoke_lane3_adaptive.py) |
+| 3 | Memory Pressure Rule (KV-cache + VRAM, cooldown, hysteresis) | ✅ Code + 13 test, chạy trong Làn 3 không lỗi; đã push (`609d7a0`), chưa PR | [controller.py](../../../src/proposer/controller.py), [test_memory_pressure_rule.py](../../../tests/test_memory_pressure_rule.py) |
+| 4 | Tầng tích hợp vLLM (`AdaptiveAsyncScheduler` + `AdaptiveBudgetPlanner`) | ✅ 28 test local + chạy thật trên T4 (vLLM nạp `--scheduler-cls`) | [budget_planner.py](../../../src/server/budget_planner.py), [adaptive_scheduler.py](../../../src/server/adaptive_scheduler.py), [test_budget_planner.py](../../../tests/test_budget_planner.py), [test_adaptive_scheduler_glue.py](../../../tests/test_adaptive_scheduler_glue.py) |
+| 4 | Launcher `launch_lane3_adaptive.sh` (port 8003) + `switch_lane.sh lane3` | ✅ Chạy trên T4; `switch_lane.sh` đã sửa 3 lỗi phát hiện khi chạy (`993a9a2`) | [launch_lane3_adaptive.sh](../../../scripts/launch_lane3_adaptive.sh), [switch_lane.sh](../../../scripts/switch_lane.sh) |
+| 4 | Smoke test 10 request | ✅ **ĐẠT (`passed: true`)** — 10/10 ok, k ∈ {0,2,3,4}, output khớp Vanilla 10/10 | [m2_02_lane3_smoke_summary.json](../../../experiments/results/m2_02_lane3_smoke_summary.json), [experiments/runs/m2_02/](../../../experiments/runs/m2_02/) |
 
 ## Kiểm thử đã chạy (local, không GPU)
 
@@ -32,6 +32,11 @@ python -m pytest tests -q
 ```
 
 Kết quả 12/10/2026: **177 passed**.
+
+## Kết quả smoke test T4 (12/10) — tóm tắt
+
+- Checklist 4 **đạt** toàn bộ tiêu chí C4. Free VRAM sau khi nạp model 3142 MB → giữ VRAM guard.
+- ⚠️ **Rủi ro Cổng M2:** độ trễ c=1 cho thấy W1 Adaptive 1.33× (Static 1.29×) nhưng **W3 Adaptive 0.78×** (Static 0.86×), chưa đạt "W3 ≥ 1.00×". Giả thuyết và đề xuất: [worklog mục 9.3](M2-02-worklog.md).
 
 ## Chạy smoke test trên Colab / Kaggle T4 (bước còn lại của checklist 4)
 
