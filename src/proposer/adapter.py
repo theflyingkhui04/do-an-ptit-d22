@@ -63,6 +63,7 @@ class AdaptiveProposerAdapter:
         draft_generator: Callable[[int], List[int]],
         batch_size: int = 1,
         free_vram_mb: float = 16000.0,
+        kv_cache_usage_pct: float = 0.0,
     ) -> ProposalOutput:
         """Executes one adaptive speculative proposal step.
         
@@ -74,6 +75,7 @@ class AdaptiveProposerAdapter:
         decision: BudgetDecision = controller.select_budget(
             batch_size=batch_size,
             free_vram_mb=free_vram_mb,
+            kv_cache_usage_pct=kv_cache_usage_pct,
         )
 
         if decision.k == 0:

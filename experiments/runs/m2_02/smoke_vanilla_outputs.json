@@ -1,0 +1,82 @@
+[
+  {
+    "workload": "w1",
+    "sample_id": "m0_04_001",
+    "content": "```json\n{\n  \"schema_version\": \"invoice_extraction.v1\",\n  \"document_type\": \"retail_receipt\",\n  \"source\": {\n    \"sample_id\": \"m0_04_001\",\n    \"img_id\": \"mcocr_public_145013tlipr.jpg\",\n    \"image_path\": \"data/processed/m0_04_mcocr_devset/images/mcocr_public_145013tlipr.jpg\",\n    \"raw_text\": \"MINIMART ANAN\\nChợ Sủi Phú Thị Gia Lâm\\nNgày: 10/08/2020 - 17:12\\nTổng tiền\\n42,000\"\n  },\n  \"seller\": {\n    \"name\": \"MINIMART ANAN\",\n    \"address\": \"Chợ Sủi Phú Thị Gia Lâm\",\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"buyer\": {\n    \"name\": null,\n    \"address\": null,\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"invoice\": {\n    \"invoice_number\": null,\n    \"invoice_series",
+    "completion_tokens": 256,
+    "latency_s": 10.01,
+    "ok": true
+  },
+  {
+    "workload": "w1",
+    "sample_id": "m0_04_002",
+    "content": "```json\n{\n  \"schema_version\": \"invoice_extraction.v1\",\n  \"document_type\": \"retail_receipt\",\n  \"source\": {\n    \"sample_id\": \"m0_04_002\",\n    \"img_id\": \"mcocr_public_145014phmqt.jpg\",\n    \"image_path\": \"data/processed/m0_04_mcocr_devset/images/mcocr_public_145014phmqt.jpg\",\n    \"raw_text\": \"MINIMART ANAN\\nChợ Sủi Phú Thị Gia Lâm\\nNgày: 12/08/2020 - 10:46\\nTổng tiền\\n116,010\"\n  },\n  \"seller\": {\n    \"name\": \"MINIMART ANAN\",\n    \"address\": \"Chợ Sủi Phú Thị Gia Lâm\",\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"buyer\": {\n    \"name\": null,\n    \"address\": null,\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"invoice\": {\n    \"invoice_number\": null,\n    \"invoice",
+    "completion_tokens": 256,
+    "latency_s": 7.555,
+    "ok": true
+  },
+  {
+    "workload": "w1",
+    "sample_id": "m0_04_003",
+    "content": "```json\n{\n  \"schema_version\": \"invoice_extraction.v1\",\n  \"document_type\": \"retail_receipt\",\n  \"source\": {\n    \"sample_id\": \"m0_04_003\",\n    \"img_id\": \"mcocr_public_145014cbkkn.jpg\",\n    \"image_path\": \"data/processed/m0_04_mcocr_devset/images/mcocr_public_145014cbkkn.jpg\",\n    \"raw_text\": \"MINIMART ANAN\\nChợ Sủi Phú Thị Gia Lâm\\nNgày: 12/08/2020 - 13:17\\nTổng cộng\\n142,500\"\n  },\n  \"seller\": {\n    \"name\": \"MINIMART ANAN\",\n    \"address\": \"Chợ Sủi Phú Thị Gia Lâm\",\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"buyer\": {\n    \"name\": null,\n    \"address\": null,\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"invoice\": {\n    \"invoice_number\": null,\n    \"invoice",
+    "completion_tokens": 256,
+    "latency_s": 7.733,
+    "ok": true
+  },
+  {
+    "workload": "w1",
+    "sample_id": "m0_04_004",
+    "content": "```json\n{\n  \"schema_version\": \"invoice_extraction.v1\",\n  \"document_type\": \"retail_receipt\",\n  \"source\": {\n    \"sample_id\": \"m0_04_004\",\n    \"img_id\": \"mcocr_public_145014dhiru.jpg\",\n    \"image_path\": \"data/processed/m0_04_mcocr_devset/images/mcocr_public_145014dhiru.jpg\",\n    \"raw_text\": \"MINIMART ANAN\\nChợ Sủi Phú Thị Gia Lâm\\nNgày: 12/08/2020-12:03\\nTổng tiền\\n47,000\"\n  },\n  \"seller\": {\n    \"name\": \"MINIMART ANAN\",\n    \"address\": \"Chợ Sủi Phú Thị Gia Lâm\",\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"buyer\": {\n    \"name\": null,\n    \"address\": null,\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"invoice\": {\n    \"invoice_number\": null,\n    \"invoice_series\":",
+    "completion_tokens": 256,
+    "latency_s": 7.91,
+    "ok": true
+  },
+  {
+    "workload": "w1",
+    "sample_id": "m0_04_005",
+    "content": "```json\n{\n  \"schema_version\": \"invoice_extraction.v1\",\n  \"document_type\": \"retail_receipt\",\n  \"source\": {\n    \"sample_id\": \"m0_04_005\",\n    \"img_id\": \"mcocr_public_145013bvmvl.jpg\",\n    \"image_path\": \"data/processed/m0_04_mcocr_devset/images/mcocr_public_145013bvmvl.jpg\",\n    \"raw_text\": \"MINIMART ANAN\\nChợ Sủi Phú Thị Gia Lâm\\nNgày: 16/08/2020 21:18\\nTổng tiền\\n227,040\"\n  },\n  \"seller\": {\n    \"name\": \"MINIMART ANAN\",\n    \"address\": \"Chợ Sủi Phú Thị Gia Lâm\",\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"buyer\": {\n    \"name\": null,\n    \"address\": null,\n    \"tax_code\": null,\n    \"phone\": null\n  },\n  \"invoice\": {\n    \"invoice_number\": null,\n    \"invoice_series",
+    "completion_tokens": 256,
+    "latency_s": 7.635,
+    "ok": true
+  },
+  {
+    "workload": "w3",
+    "sample_id": "w3_business_v2_001",
+    "content": "Đánh giá dashboard VAT cho tháng 09/2026, chúng ta có thể nhận thấy một số xu hướng và khả năng hợp lý:\n\n1. **Doanh thu tăng 12% so với tháng trước**:\n   - **Khả năng hợp lý**: Có thể do tăng trưởng trong nhu cầu sản phẩm hoặc dịch vụ, hoặc do tăng giá bán.\n   - **Giới hạn**: Cần kiểm tra xem liệu tăng trưởng này có liên quan đến một sự kiện cụ thể nào không, như việc mở rộng thị trường mới hoặc tăng cường quảng cáo.\n\n2. **Số hóa đơn tăng 4%**:\n   - **Khả năng hợp lý**: Có thể do tăng cường hoạt động kinh doanh hoặc do tăng trưởng trong nhu cầu sản phẩm/dịch vụ.\n   - **Giới hạn**: Cần kiểm tra xem liệu tăng số hóa đơn có liên quan đến việc mở rộng sản xuất hoặc dịch vụ hay không.\n\n3. **VAT đầu ra tăng 7%**:\n   - **Khả năng hợp lý**: Có thể do tăng trưởng trong doanh thu hoặc do tăng giá bán.\n   - **Giới hạn**: Cần kiểm tra xem liệu VAT đầu ra tăng này có liên",
+    "completion_tokens": 256,
+    "latency_s": 7.03,
+    "ok": true
+  },
+  {
+    "workload": "w3",
+    "sample_id": "w3_business_v2_002",
+    "content": "Mức tập trung doanh thu của ba nhà bán lớn nhất lên đến 68% cho thấy thị trường có độ tập trung cao. Trong đó, nhà bán đứng đầu chiếm 41% doanh thu nhưng chỉ có 17% số lượng hóa đơn. Điều này cho thấy:\n\n1. **Ý nghĩa của mức tập trung:**\n   - **Doanh thu cao:** Ba nhà bán lớn nhất đóng góp đáng kể vào tổng doanh thu, thể hiện sức mạnh và vị thế của họ trong thị trường.\n   - **Số lượng hóa đơn thấp:** Tuy chiếm nhiều doanh thu, nhưng số lượng hóa đơn của họ thấp, cho thấy họ có thể đang bán sản phẩm với giá cao hơn hoặc bán cho ít khách hàng hơn.\n\n2. **Các rủi ro cần xem xét:**\n   - **Rủi ro về sự phụ thuộc:** Rất dễ bị ảnh hưởng bởi biến động của ba nhà bán này. Nếu một trong số họ gặp khó khăn, doanh thu của toàn bộ thị trường có thể bị ảnh hưởng.\n   - **Rủi ro về cạnh tranhtrong thị trường:** Sự tập trung cao có thể dẫn đến cạnh tranh",
+    "completion_tokens": 256,
+    "latency_s": 6.76,
+    "ok": true
+  },
+  {
+    "workload": "w3",
+    "sample_id": "w3_business_v2_003",
+    "content": "Trong tháng gần đây, nhóm mặt hàng có thuế suất 10% đã tăng tỷ trọng doanh thu rõ rệt, trong khi nhóm mặt hàng có thuế suất 5% giảm. Điều này cho thấy có sự thay đổi trong cơ cấu mặt hàng bán ra của công ty.\n\nNhận xét về thay đổi này:\n1. Tăng tỷ trọng doanh thu của nhóm mặt hàng 10% có thể do nhu cầu thị trường tăng hoặc do công ty tăng cường quảng bá và bán hàng cho nhóm mặt hàng này.\n2. Giảm tỷ trọng doanh thu của nhóm mặt hàng 5% có thể do nhu cầu thị trường giảm hoặc do công ty giảm cường độ bán hàng cho nhóm mặt hàng này.\n\nẢnh hưởng có thể có tới VAT:\n1. Tăng tỷ trọng doanh thu của nhóm mặt hàng 10% có thể dẫn đến tăng thu nhập chịu thuế VAT, do thuế suất cao hơn so với nhóm mặt hàng 5%.\n2. Giảm tỷ trọng doanh thu của nhóm mặt hàng 5% có thể dẫn đến giảm thu nhập chịu thuế VAT, do thuế suất thấp hơn so với nhóm mặt hàng 10%.\n\nCách kiểm tra xem đây là thay",
+    "completion_tokens": 256,
+    "latency_s": 6.644,
+    "ok": true
+  },
+  {
+    "workload": "w3",
+    "sample_id": "w3_business_v2_004",
+    "content": "Quan sát từ dữ liệu:\n1. Doanh thu của công ty đã tăng 18% so với cùng kỳ.\n2. Số lượng hóa đơn đã tăng 5% so với cùng kỳ.\n3. Giá trị VAT trung bình trên mỗi hóa đơn đã giảm.\n\nGiả thuyết nghiệp vụ:\n1. Giả thuyết 1: Có nhiều hóa đơn nhỏ hơn với VAT thấp hơn so với trước đây, dẫn đến tổng VAT trung bình giảm.\n2. Giả thuyết 2: Công ty đã áp dụng chính sách giảm VAT cho một số sản phẩm hoặc dịch vụ, làm giảm tổng VAT trung bình trên mỗi hóa đơn.\n3. Giả thuyết 3: Công ty đã tăng cường sử dụng các phương thức thanh toán không cần hóa đơn, dẫn đến giảm số hóa đơn nhưng vẫn duy trì doanh thu.\n\nDữ liệu cần kiểm tra:\n1. Phân tích chi tiết về số lượng và giá trị của các hóa đơn mới so với trước đây.\n2. Xem xét chính sách VAT hiện tại và so sánh với chính sách trước đây.\n3. Thu thập dữ liệu về các phương thức thanh toán được sử dụng và tỷ lệ sử dụng các phương thức thanh toán không cần hóa đơn.\n\nB",
+    "completion_tokens": 256,
+    "latency_s": 6.592,
+    "ok": true
+  },
+  {
+    "workload": "w3",
+    "sample_id": "w3_business_v2_005",
+    "content": "Trong tình huống này, chúng ta cần phân tích rủi ro và các giải thích hợp lý về tình trạng doanh thu cao nhưng số lượng buyer ít và doanh thu chủ yếu từ vài hóa đơn giá trị lớn.\n\n**Phân tích Rủi Ro:**\n1. **Rủi ro về Diversification:** Doanh thu phụ thuộc quá nhiều vào một số khách hàng lớn, làm giảm khả năng chống chịu trước các biến động trong thị trường hoặc doanh nghiệp của khách hàng lớn.\n2. **Rủi ro về Thanh toán:** Với số lượng khách hàng ít, rủi ro về thanh toán có thể cao, đặc biệt nếu một khách hàng lớn không thanh toán đúng hạn.\n3. **Rủi ro về Quản lý Khách hàng:** Cần quản lý chặt chẽ mối quan hệ với khách hàng lớn để tránh mất doanh thu.\n\n**Giải Thích Hợp Lý:**\n1. **Khách hàng Chuyên Nghiệp:** Có thể doanh nghiệp chỉ phục vụ khách hàng chuyên nghiệp hoặc doanh nghiệp lớn.\n2. **Thị Trường Đặc Biệt:** Có thể thị trường mục tiêu của doanh nghiệp rất hạn chế.\n3. **Chi",
+    "completion_tokens": 256,
+    "latency_s": 6.623,
+    "ok": true
+  }
+]
