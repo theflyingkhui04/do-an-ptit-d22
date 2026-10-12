@@ -10,6 +10,10 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 LOG_DIR="$PROJECT_ROOT/logs"
+
+# Thời gian chờ server sẵn sàng (giây). Lần đầu trên runtime Colab mới phải tải model
+# từ HuggingFace (~3 phút) + torch.compile, nên mặc định 900 s; ghi đè: HEALTH_TIMEOUT=1200
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-900}"
 mkdir -p "$LOG_DIR"
 
 PID_FILE_LANE1="/tmp/vllm_lane1.pid"
@@ -27,19 +31,52 @@ stop_all() {
     # 2. Dừng theo tên tiến trình
     pkill -f "vllm.entrypoints" 2>/dev/null || true
     pkill -f "vllm serve" 2>/dev/null || true
+    # Tiến trình con giữ model + KV cache tự đổi tên thành "VLLM::EngineCore"
+    # (chữ hoa), nên hai mẫu trên không bắt được nó.
+    pkill -f "EngineCore" 2>/dev/null || true
 
     # 3. Dọn dẹp file PID
     rm -f "$PID_FILE_LANE1" "$PID_FILE_LANE2" "$PID_FILE_LANE3"
 
-    # Chờ GPU thu hồi bộ nhớ hoàn toàn
-    sleep 3
+    # 4. Chờ GPU thu hồi bộ nhớ thật sự trước khi khởi động làn mới
+    wait_for_gpu_release 60
     echo "    Đã dọn dẹp xong tiến trình cũ."
+}
+
+wait_for_gpu_release() {
+    local timeout="$1"
+    local elapsed=0
+    local used=""
+
+    if ! command -v nvidia-smi &> /dev/null; then
+        sleep 3
+        return 0
+    fi
+
+    while [ $elapsed -lt $timeout ]; do
+        used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d ' ')
+        if [ -n "$used" ] && [ "$used" -lt 1000 ]; then
+            echo "    GPU đã giải phóng (${used} MiB đang dùng)."
+            return 0
+        fi
+        # Sau 15 s vẫn chưa nhả bộ nhớ thì buộc dừng mọi tiến trình vLLM còn sót.
+        if [ $elapsed -ge 15 ]; then
+            pkill -9 -f "EngineCore|vllm" 2>/dev/null || true
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+
+    echo "[CẢNH BÁO] GPU vẫn còn ${used} MiB sau ${timeout}s. Tiến trình đang giữ GPU:"
+    nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv 2>/dev/null || true
+    return 0
 }
 
 wait_for_health() {
     local port="$1"
     local timeout="$2"
     local log_file="$3"
+    local launcher_pid="${4:-}"
     local elapsed=0
     local url="http://127.0.0.1:${port}/health"
 
@@ -54,8 +91,16 @@ wait_for_health() {
             return 0
         fi
 
-        # Kiểm tra xem tiến trình vLLM có bị dừng đột ngột không
-        if ! pgrep -f "vllm" > /dev/null; then
+        # Kiểm tra xem tiến trình vLLM có bị dừng đột ngột không. Theo dõi PID của
+        # launcher (sống cùng vLLM): pgrep -f "vllm" báo chết giả khi launcher chưa
+        # kịp gọi "vllm serve" ở lần kiểm tra đầu tiên.
+        local alive=0
+        if [ -n "$launcher_pid" ]; then
+            kill -0 "$launcher_pid" 2>/dev/null && alive=1
+        else
+            pgrep -f "vllm" > /dev/null && alive=1
+        fi
+        if [ "$alive" -eq 0 ]; then
             echo ""
             echo "[LỖI] Tiến trình vLLM đã dừng đột ngột trước khi hoàn tất khởi động!"
             echo "--- 20 DÒNG LOG CUỐI CÙNG TỪ ${log_file} ---"
@@ -89,7 +134,7 @@ start_lane1() {
     echo $pid > "$PID_FILE_LANE1"
     echo "    Tiến trình chạy nền với PID: ${pid}"
 
-    wait_for_health 8001 300 "$log_file"
+    wait_for_health 8001 "$HEALTH_TIMEOUT" "$log_file" "$pid"
 }
 
 start_lane2() {
@@ -104,7 +149,7 @@ start_lane2() {
     echo $pid > "$PID_FILE_LANE2"
     echo "    Tiến trình chạy nền với PID: ${pid}"
 
-    wait_for_health 8002 360 "$log_file"
+    wait_for_health 8002 "$HEALTH_TIMEOUT" "$log_file" "$pid"
 }
 
 start_lane3() {
@@ -119,7 +164,7 @@ start_lane3() {
     echo $pid > "$PID_FILE_LANE3"
     echo "    Tiến trình chạy nền với PID: ${pid}"
 
-    wait_for_health 8003 600 "$log_file"
+    wait_for_health 8003 "$HEALTH_TIMEOUT" "$log_file" "$pid"
 }
 
 show_status() {
