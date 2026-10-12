@@ -14,6 +14,7 @@ mkdir -p "$LOG_DIR"
 
 PID_FILE_LANE1="/tmp/vllm_lane1.pid"
 PID_FILE_LANE2="/tmp/vllm_lane2.pid"
+PID_FILE_LANE3="/tmp/vllm_lane3.pid"
 
 stop_all() {
     echo "==> Đang dừng tất cả tiến trình vLLM và giải phóng GPU VRAM..."
@@ -21,13 +22,14 @@ stop_all() {
     # 1. Giải phóng theo cổng mạng
     fuser -k 8001/tcp 2>/dev/null || true
     fuser -k 8002/tcp 2>/dev/null || true
+    fuser -k 8003/tcp 2>/dev/null || true
 
     # 2. Dừng theo tên tiến trình
     pkill -f "vllm.entrypoints" 2>/dev/null || true
     pkill -f "vllm serve" 2>/dev/null || true
 
     # 3. Dọn dẹp file PID
-    rm -f "$PID_FILE_LANE1" "$PID_FILE_LANE2"
+    rm -f "$PID_FILE_LANE1" "$PID_FILE_LANE2" "$PID_FILE_LANE3"
 
     # Chờ GPU thu hồi bộ nhớ hoàn toàn
     sleep 3
@@ -105,11 +107,27 @@ start_lane2() {
     wait_for_health 8002 360 "$log_file"
 }
 
+start_lane3() {
+    stop_all
+    local log_file="$LOG_DIR/vllm_lane3.log"
+    echo "==> Đang khởi chạy Làn 3: Adaptive Draft (Cổng 8003)..."
+    echo "    Log được ghi vào: ${log_file}"
+
+    chmod +x "$PROJECT_ROOT/scripts/launch_lane3_adaptive.sh"
+    nohup "$PROJECT_ROOT/scripts/launch_lane3_adaptive.sh" > "$log_file" 2>&1 &
+    local pid=$!
+    echo $pid > "$PID_FILE_LANE3"
+    echo "    Tiến trình chạy nền với PID: ${pid}"
+
+    wait_for_health 8003 360 "$log_file"
+}
+
 show_status() {
     echo "================ TRẠNG THÁI HỆ THỐNG PHỤC VỤ ================"
-    local lane1_status lane2_status
+    local lane1_status lane2_status lane3_status
     lane1_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null || echo "000")
     lane2_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8002/health 2>/dev/null || echo "000")
+    lane3_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8003/health 2>/dev/null || echo "000")
 
     if [ "$lane1_status" = "200" ]; then
         echo "Làn 1 (Vanilla - Cổng 8001): ĐANG CHẠY (ONLINE)"
@@ -121,6 +139,12 @@ show_status() {
         echo "Làn 2 (Static Draft - Cổng 8002): ĐANG CHẠY (ONLINE)"
     else
         echo "Làn 2 (Static Draft - Cổng 8002): TẮT (OFFLINE)"
+    fi
+
+    if [ "$lane3_status" = "200" ]; then
+        echo "Làn 3 (Adaptive Draft - Cổng 8003): ĐANG CHẠY (ONLINE)"
+    else
+        echo "Làn 3 (Adaptive Draft - Cổng 8003): TẮT (OFFLINE)"
     fi
 
     echo "------------------------------------------------------------"
@@ -138,6 +162,9 @@ case "$1" in
     lane2|2)
         start_lane2
         ;;
+    lane3|3)
+        start_lane3
+        ;;
     stop)
         stop_all
         echo "Đã dừng toàn bộ dịch vụ vLLM."
@@ -146,9 +173,10 @@ case "$1" in
         show_status
         ;;
     *)
-        echo "Cách sử dụng: $0 {lane1|lane2|stop|status}"
+        echo "Cách sử dụng: $0 {lane1|lane2|lane3|stop|status}"
         echo "  - lane1 : Dừng server cũ, bật Làn 1 (Vanilla) trên cổng 8001 và chờ sẵn sàng."
         echo "  - lane2 : Dừng server cũ, bật Làn 2 (Static Draft) trên cổng 8002 và chờ sẵn sàng."
+        echo "  - lane3 : Dừng server cũ, bật Làn 3 (Adaptive Draft) trên cổng 8003 và chờ sẵn sàng."
         echo "  - stop  : Dừng toàn bộ server vLLM và giải phóng GPU VRAM."
         echo "  - status: Kiểm tra cổng nào đang mở và dung lượng VRAM hiện tại."
         exit 1
