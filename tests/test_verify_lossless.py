@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import json
 import sys
 import tempfile
@@ -11,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import verify_lossless as v  # noqa: E402
+from experiments import lossless_verifier as shared_verifier  # noqa: E402
 
 
 def result(lane="vanilla", ids=None, prompt_ids=None, *, content="same", ok=True):
@@ -35,6 +37,37 @@ class ComparatorTests(unittest.TestCase):
         self.assertEqual(got["first_mismatch"]["position_zero_based"], 1)
         self.assertEqual(got["first_mismatch"]["vanilla_token_id"], 202)
         self.assertEqual(got["first_mismatch"]["adaptive_token_id"], 404)
+
+    def test_compare_pair_delegates_to_shared_verifier(self):
+        """The harness must delegate token comparisons without changing JSON contract."""
+        vanilla = result("vanilla", ids=[101, 202, 303])
+        adaptive = result("adaptive", ids=[101, 404, 303])
+        original = shared_verifier.verify_token_sequence
+
+        # Patch the module attribute; the implementation must look up the
+        # function as shared_verifier.verify_token_sequence(...).
+        with patch.object(shared_verifier, "verify_token_sequence", wraps=original) as spy:
+            compared = v.compare_pair(vanilla, adaptive)
+
+        # Before integration, compare_pair used its own comparison loop.
+        # This assertion guards against reintroducing that duplication.
+        spy.assert_called_once()
+
+        # Accept both positional and keyword arguments for the two sequences.
+        bound = inspect.signature(original).bind_partial(
+            *spy.call_args.args, **spy.call_args.kwargs
+        )
+        self.assertEqual(bound.arguments["vanilla_tokens"], vanilla["token_ids"])
+        self.assertEqual(bound.arguments["adaptive_tokens"], adaptive["token_ids"])
+
+        # The public canonical summary shape must not drift.
+        self.assertFalse(compared["passed"])
+        self.assertIn("generated_token_ids_mismatch", compared["failures"])
+        self.assertEqual(compared["first_mismatch"], {
+            "position_zero_based": 1,
+            "vanilla_token_id": 202,
+            "adaptive_token_id": 404,
+        })
 
     def test_length_mismatch_fails(self):
         got = v.compare_pair(result(), result("adaptive", ids=[101, 202]))

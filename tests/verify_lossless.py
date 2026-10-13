@@ -41,6 +41,8 @@ from experiments.workload_adapter import (  # noqa: E402
     verify_workload_integrity,
 )
 
+from experiments import lossless_verifier as shared_verifier
+
 RUN_ROOT = ROOT / "experiments/runs/m2_03"
 SUMMARY_PATH = ROOT / "experiments/results/m2_lossless_verification_summary.json"
 EXPECTED_TOTAL = 54
@@ -287,18 +289,30 @@ def compare_pair(reference: dict, adaptive: dict) -> dict:
         failures.append("prompt_token_ids_mismatch")
 
     first_mismatch = None
+
     if ref_ids is not None and ada_ids is not None:
-        for index in range(max(len(ref_ids), len(ada_ids))):
-            left = ref_ids[index] if index < len(ref_ids) else None
-            right = ada_ids[index] if index < len(ada_ids) else None
-            if left != right:
-                first_mismatch = {
-                    "position_zero_based": index,
-                    "vanilla_token_id": left,
-                    "adaptive_token_id": right,
-                }
-                failures.append("generated_token_ids_mismatch")
-                break
+        verification = shared_verifier.verify_token_sequence(
+            vanilla_tokens=ref_ids,
+            adaptive_tokens=ada_ids,
+            prompt_id=adaptive.get("sample_id", ""),
+            workload=adaptive.get("workload", "W1"),
+        )
+
+        if not verification.is_match:
+            discrepancy = verification.first_discrepancy
+
+            if discrepancy is None:
+                raise VerificationError(
+                    "Shared verifier reported mismatch without discrepancy"
+                )
+
+            first_mismatch = {
+                "position_zero_based": discrepancy.index,
+                "vanilla_token_id": discrepancy.expected_token_id,
+                "adaptive_token_id": discrepancy.actual_token_id,
+            }
+
+            failures.append("generated_token_ids_mismatch")
 
     if (reference.get("finish_reason") not in ("stop", "length")
             or adaptive.get("finish_reason") not in ("stop", "length")):
