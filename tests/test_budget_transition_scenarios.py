@@ -201,3 +201,51 @@ def test_vram_pressure_overrides_high_alpha():
 
     assert telemetry["tree_budgets"] == [0]
     assert adapter.active_request_count == 0
+
+
+def test_smoke_ten_requests_state_transitions():
+    """Verify state transitions across 10 requests (5 W1 + 5 W3) with probe_interval=20.
+
+    Checklist 5: Ensure controller smoothly transitions among k in {0, 2, 3, 4}
+    without crashes, and verifies telemetry generation.
+    """
+    from src.server.budget_planner import AdaptiveBudgetPlanner
+
+    adapter = AdaptiveProposerAdapter()
+    planner = AdaptiveBudgetPlanner(adapter=adapter)
+
+    # 10 synthetic requests: 5 W1 (high acceptance) and 5 W3 (low acceptance)
+    all_k_observed = set()
+
+    # Pass 1: 5 requests with W1 profile (high alpha -> k transitions to 3, 4)
+    for i in range(5):
+        req_id = f"smoke_w1_{i:03d}"
+        for step in range(25):
+            plan = planner.plan_step(decode_req_ids=[req_id], batch_size=1, kv_usage=0.20, free_vram_mb=4000.0)
+            k = plan.per_request_k[req_id]
+            all_k_observed.add(k)
+            # High acceptance verification: accept all k tokens
+            planner.record_verification(req_id, num_drafted=k, num_accepted=k)
+        telemetry = planner.finish_request(req_id)
+        assert telemetry is not None
+        assert telemetry["mean_accept_len"] >= 2.0
+        assert set(telemetry["tree_budgets"]).issubset({2, 3, 4})
+
+    # Pass 2: 5 requests with W3 profile (low alpha -> fallback to k=0, probes k=2 at step 20)
+    for i in range(5):
+        req_id = f"smoke_w3_{i:03d}"
+        for step in range(25):
+            plan = planner.plan_step(decode_req_ids=[req_id], batch_size=1, kv_usage=0.20, free_vram_mb=4000.0)
+            k = plan.per_request_k[req_id]
+            all_k_observed.add(k)
+            # Low acceptance verification: 0 tokens accepted
+            planner.record_verification(req_id, num_drafted=k, num_accepted=0)
+        telemetry = planner.finish_request(req_id)
+        assert telemetry is not None
+        # With probe_interval=20, step 20 should trigger periodic probe k=2
+        assert 0 in telemetry["tree_budgets"]
+        assert 2 in telemetry["tree_budgets"]
+
+    # All candidate k in {0, 2, 3, 4} must be observed across the 10 requests
+    assert all_k_observed == {0, 2, 3, 4}
+

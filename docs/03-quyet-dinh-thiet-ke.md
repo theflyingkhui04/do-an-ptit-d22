@@ -72,6 +72,21 @@ Ghi lại các quyết định lớn và **lý do** — để bảo vệ trướ
   - *Triệt tiêu rủi ro:* Huấn luyện mô hình luôn tiềm ẩn rủi ro hội tụ và tương thích kernel vLLM trên GPU Turing sm_75. Phân tách hai luồng giúp bảo toàn tuyệt đối hạn nộp đồ án.
   - *Tính độc lập kiến trúc:* Bộ điều khiển `AdaptiveDraftController` và adapter hoàn toàn training-free và độc lập với mô hình nháp. Khi checkpoint EAGLE-3.1 hoàn tất, việc tích hợp chỉ là thay đổi cấu hình launcher mà không cần sửa đổi thuật toán điều khiển.
 
+## QĐ-13 — Bộ điều khiển Thích ứng Làn 3 & Cơ chế An toàn (Memory Pressure & Periodic Probing)
+- **Quyết định:**
+  1. **Tích hợp Serving Engine V1 (vLLM v0.30.0):**
+     - Kế thừa `AsyncScheduler` qua lớp tùy biến `AdaptiveAsyncScheduler` (nạp qua cờ `--scheduler-cls`) và kích hoạt Dynamic Speculative Decoding (`num_speculative_tokens_per_batch_size`).
+     - Tầng `AdaptiveBudgetPlanner` chuyển quyết định per-request (`k_i`) sang batch level (`K = max(k_i)`), đồng thời cắt placeholder nháp (`spec_token_ids`) cho từng request để tương thích với async scheduling.
+  2. **Memory Pressure Rule (Ngắt nhị phân chống OOM):**
+     - Giám sát 2 điều kiện OR: Tỉ lệ chiếm dụng KV-cache > 90% (trích xuất từ `vllm:kv_cache_usage_perc`) HOẶC VRAM trống < 1500 MB (kèm cờ `enable_vram_guard`).
+     - Máy trạng thái Cooldown & Hysteresis: Ép `k = 0` ngay khi chạm ngưỡng, giữ tối thiểu 3 bước liên tiếp (`memory_cooldown_steps = 3`), và chỉ giải phóng phục hồi khi KV-cache giảm sâu dưới 80% (`kv_cache_recover_pct = 80.0`).
+  3. **Thoát bẫy bế tắc (Deadlock) bằng Periodic Probing:**
+     - Khi `alpha < 0.65`, hệ thống fallback về `k = 0`. Để tránh đóng băng `alpha` vĩnh viễn (do `k = 0` không sinh token nháp nên không có phản hồi verify), controller tự động phát động 1 bước thăm dò nháp nhỏ `k = 2` sau mỗi `probe_interval` bước fallback.
+     - Giá trị `probe_interval` được điều chỉnh từ 5 lên 20: Dữ liệu smoke test T4 cho thấy `probe_interval = 5` làm ~33% bước trên W3 bị ép nháp vô ích, kéo độ trễ Làn 3 xuống 0.78x. Việc nâng lên 20 bước giúp giảm tần suất probing xuống dưới 5%, triệt tiêu overhead trên workload khó mà vẫn giữ nguyên khả năng tự phục hồi.
+- **Lý do & Giá trị:**
+  - Bảo đảm an toàn tuyệt đối trước nguy cơ OOM khi tải cao hoặc context dài.
+  - Phục hồi động sau vùng ngữ cảnh khó mà không cần can thiệp thủ công từ bên ngoài.
+
 ---
 
 ## Câu hỏi còn mở (phải đóng, kèm hạn)

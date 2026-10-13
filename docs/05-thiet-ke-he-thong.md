@@ -70,19 +70,27 @@ free_vram_mb = get_available_vram()                  # VRAM vật lý còn trố
 kv_cache_usage_pct = get_kv_cache_usage_percentage() # vllm:kv_cache_usage_perc (0.0 .. 100.0)
 
 # 2. Memory Pressure Rule (Ngắt nhị phân chống OOM)
-# Lưu ý phần cứng T4: vLLM pre-allocate 85% VRAM lúc khởi động, nên free_vram lúc rảnh có thể < 1500 MB.
-# Source-of-truth chuẩn là kv_cache_usage_pct trích xuất từ /metrics:
-if kv_cache_usage_pct > 90.0 or (is_vram_check_enabled and free_vram_mb < 1500.0):
-    k = 0  # Ép k = 0 (Vanilla), kích hoạt cooldown 3 bước, chỉ phục hồi khi KV < 80%
-    return k, "Memory pressure fallback"
+# Giám sát 2 điều kiện: KV-cache > 90.0% HOẶC free VRAM < 1500 MB (kèm cờ enable_vram_guard).
+# Áp dụng máy trạng thái Cooldown & Hysteresis:
+# - Kích hoạt: Ép k = 0 ngay lập tức, đếm bước cooldown.
+# - Cooldown: Giữ tối thiểu 3 bước liên tiếp (memory_cooldown_steps = 3).
+# - Hysteresis: Sau cooldown, chỉ khôi phục khi KV-cache giảm sâu dưới 80.0% (kv_cache_recover_pct)
+#   nhằm triệt tiêu hiện tượng ping-pong dao động quanh ngưỡng.
+if is_memory_pressure_active(kv_cache_usage_pct, free_vram_mb):
+    return 0, "Memory pressure fallback (cooldown/hysteresis active)"
 
-# 3. Safety Fallback Gate & Periodic Probing (Chống tăng tốc âm & bẫy deadlock)
+# 3. Safety Fallback Gate & Periodic Probing (Chống tăng tốc âm & giải phóng Deadlock)
+# Khi chất lượng nháp kém (alpha < 0.65), chuyển về Vanilla (k = 0) để không lãng phí GPU.
+# Để tránh bẫy "đóng băng alpha" (vì k = 0 thì không có token nháp để verify -> alpha không cập nhật),
+# cơ chế Periodic Probing định kỳ phát động 1 bước thăm dò với k = 2 sau mỗi probe_interval bước:
 if alpha_ema < 0.65:
     consecutive_fallback_steps += 1
-    if consecutive_fallback_steps >= 5:
-        # Periodic Probing: Cứ sau 5 bước fallback, thử nháp k=2 một lần để đo lại alpha
+    if consecutive_fallback_steps >= 20:
+        # Periodic Probing (probe_interval = 20, probe_k = 2):
+        # Thiết lập probe_interval = 20 (thay vì 5) giúp giảm tần suất thăm dò trên workload W3 khó đoán
+        # từ ~33% xuống dưới 5% số bước giải mã, triệt tiêu độ trễ dư thừa mà vẫn đảm bảo thoát Deadlock.
         consecutive_fallback_steps = 0
-        return 2, "Periodic probe (k=2) after 5 fallback steps"
+        return 2, "Periodic probe (k=2) after 20 fallback steps"
     return 0, "Low acceptance fallback (alpha < 0.65)"
 
 consecutive_fallback_steps = 0  # Reset bộ đếm khi alpha phục hồi >= 0.65
@@ -95,6 +103,11 @@ k = select_budget_argmax(alpha_ema, batch_size, cost_profile)
 
 * **Tử số:** Lợi ích kỳ vọng (số token dự kiến được sinh E[tau]) tính theo tỉ lệ trúng: `E[tau] = 1 + sum_(i=1..k) alpha^i`.
 * **Mẫu số:** Chi phí thời gian `C(k, B)` lấy trực tiếp từ bảng đo thực nghiệm phần cứng, không dùng hằng số lý thuyết.
+* **Tích hợp tầng Serving (vLLM v0.30.0 V1 Engine):**
+  Lớp `AdaptiveAsyncScheduler` (kế thừa `vllm.v1.core.sched.async_scheduler.AsyncScheduler`) được nạp trực tiếp qua cờ `--scheduler-cls`. Tại mỗi chu kỳ scheduling:
+  - `AdaptiveBudgetPlanner` chạy `select_budget` cho từng request để xác định mảng `k_i`.
+  - Batch K được gán bằng `max(k_i)` qua bảng tra cứu `dynamic_sd_lookup` của vLLM.
+  - Từng request được cắt placeholder nháp (`spec_token_ids`) khớp đúng ngân sách `k_i` riêng biệt trước khi chuyển sang runner.
 
 ---
 
@@ -153,17 +166,25 @@ Content-Type: application/json
 
 ---
 
-## 4. Cấu trúc Module Mã nguồn dự kiến
+## 4. Cấu trúc Module Mã nguồn Hiện thực (Cập nhật sau M2)
 
 ```text
 src/
-├── server/               # Khởi tạo vLLM, quản lý chế độ phục vụ, phơi API & /metrics
-├── proposer/             # Module điều khiển cây nháp thích ứng (Adaptive Proposer)
-│   ├── profiler.py       # HardwareProfiler: Đo phần cứng lúc bật máy → Bảng C(N, B)
-│   ├── telemetry.py      # TelemetryCollector: Theo dõi α trượt, VRAM, batch
-│   ├── controller.py     # BudgetController: Giải thuật chọn ngân sách N*
-│   └── adapter.py        # Lớp adapter tích hợp vào custom_class của vLLM
-└── pipeline/             # Pipeline xử lý hóa đơn tiếng Việt MC-OCR (3 nodes)
+├── server/                       # Tích hợp vLLM v0.30.0 V1 Engine
+│   ├── adaptive_scheduler.py     # AdaptiveAsyncScheduler: Lớp scheduler kế thừa AsyncScheduler
+│   └── budget_planner.py         # AdaptiveBudgetPlanner: Chuyển quyết định per-request sang batch plan
+├── proposer/                     # Module điều khiển cây nháp thích ứng (Adaptive Proposer)
+│   ├── controller.py             # BudgetController & AdaptiveDraftController (Budget Rule + Memory Pressure)
+│   └── adapter.py                # AdaptiveProposerAdapter: Quản lý session per-request & Giao diện A telemetry
+├── pipeline/                     # Pipeline xử lý hóa đơn tiếng Việt MC-OCR (3 nodes)
+│   ├── extractor.py              # Node 1: Schema normalization
+│   └── validation.py             # Data contract validation
+scripts/
+├── launch_lane1_vanilla.sh       # Khởi động Làn 1 (cổng 8001)
+├── launch_lane2_static.sh        # Khởi động Làn 2 (cổng 8002, K=4 cố định)
+├── launch_lane3_adaptive.sh      # Khởi động Làn 3 (cổng 8003, Adaptive Scheduler)
+├── switch_lane.sh                # Chuyển đổi an toàn giữa 3 làn trên 1 GPU T4 duy nhất
+└── smoke_lane3_adaptive.py       # Kịch bản kiểm chứng 10 requests tự động so sánh output
 ```
 
 ---

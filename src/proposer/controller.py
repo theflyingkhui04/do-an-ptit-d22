@@ -210,7 +210,7 @@ class AdaptiveDraftController(BudgetController):
         candidate_budgets: Optional[List[int]] = None,
         cost_profile: Optional[CostProfile] = None,
         min_free_vram_mb: float = 1500.0,
-        probe_interval: int = 5,
+        probe_interval: int = 20,
         probe_k: int = 2,
         kv_cache_high_pct: float = 90.0,
         kv_cache_recover_pct: float = 80.0,

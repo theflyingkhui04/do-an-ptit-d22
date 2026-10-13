@@ -186,6 +186,17 @@ Nhóm đã đối chiếu phản hồi kỹ thuật từ Dương và chốt các
 3. `tests/test_budget_transition_scenarios.py`: 5/5 tests PASS.
 4. `tests/test_budget_fallback_recovery.py`: 8/8 tests PASS (cập nhật test `test_adapter_periodic_probing_triggers_and_recovers` chứng minh cơ chế probing giải phóng bế tắc).
 
-*Ghi chú:* Toàn bộ thay đổi mã nguồn và tài liệu được lưu giữ trong working directory (chưa chạy `git commit`), sẵn sàng để Team Lead xem xét `git diff` trước khi commit.
+### 5.5. Nghiệm Thu Checklist 5: Kiểm Chứng Chuyển Trạng Thái k & Cập Nhật Chương 3 (13/10)
+- **Tối ưu hóa tham số `probe_interval = 20`:**
+  - Căn cứ phát hiện của Dương trong smoke test Colab T4: `probe_interval = 5` làm ~33% bước trên W3 bị ép nháp thăm dò vô ích kéo độ trễ Làn 3 xuống 0.78x.
+  - Khôi (Lead) quyết định nâng `probe_interval` từ 5 lên 20 trong `src/proposer/controller.py`. Tần suất probing giảm xuống < 5%, triệt tiêu overhead trên W3 mà vẫn bảo toàn cơ chế thoát Deadlock.
+- **Kiểm chứng chuyển trạng thái k trên 10 request:**
+  - Bổ sung test `test_smoke_ten_requests_state_transitions` trong `tests/test_budget_transition_scenarios.py` mô phỏng 10 request (5 W1 + 5 W3) qua `AdaptiveBudgetPlanner`.
+  - Kết quả: Bộ điều khiển chuyển đổi linh hoạt qua toàn bộ tập ngân sách `k in {0, 2, 3, 4}`, 10/10 telemetry được ghi nhận đầy đủ, không gây crash engine. Toàn bộ **84 tests liên quan đến M2-02 đều PASS 100%**.
+- **Cập nhật tài liệu Chương 3:**
+  - Cập nhật [`docs/05-thiet-ke-he-thong.md`](../../../docs/05-thiet-ke-he-thong.md): Bổ sung chi tiết thuật toán Memory Pressure Rule (KV-cache 90%/80%, Cooldown 3 bước, Hysteresis), cơ chế Periodic Probing (`probe_interval = 20`, `probe_k = 2`), và cấu trúc tầng serving vLLM v0.30.0 (`AdaptiveAsyncScheduler`).
+  - Cập nhật [`docs/03-quyet-dinh-thiet-ke.md`](../../../docs/03-quyet-dinh-thiet-ke.md): Bổ sung QĐ-13 (Quyết định thiết kế Bộ điều khiển Thích ứng Làn 3 & Cơ chế An toàn).
+- **Kết luận:** Hoàn thành 5/5 checklist của thẻ M2-02 trên Trello, sẵn sàng đóng thẻ và chuyển giao sang M2-03 (Lossless Verification) và M2-04 (Concurrency Sweep 3 Làn).
+
 
 
