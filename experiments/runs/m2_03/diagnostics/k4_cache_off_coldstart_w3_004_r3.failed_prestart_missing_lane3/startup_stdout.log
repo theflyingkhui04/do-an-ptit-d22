@@ -1,0 +1,6 @@
+Cách sử dụng: /root/do-an-ptit-d22/scripts/switch_lane_r3_cache_off_diag.sh {lane1|lane2|lane3|stop|status}
+  - lane1 : Dừng server cũ, bật Làn 1 (Vanilla) trên cổng 8001 và chờ sẵn sàng.
+  - lane2 : Dừng server cũ, bật Làn 2 (Static Draft) trên cổng 8002 và chờ sẵn sàng.
+  - lane3 : Dừng server cũ, bật Làn 3 (Adaptive Draft) trên cổng 8003 và chờ sẵn sàng.
+  - stop  : Dừng toàn bộ server vLLM và giải phóng GPU VRAM.
+  - status: Kiểm tra cổng nào đang mở và dung lượng VRAM hiện tại.

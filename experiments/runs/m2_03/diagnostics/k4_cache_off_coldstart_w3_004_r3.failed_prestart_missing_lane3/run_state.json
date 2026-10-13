@@ -1,0 +1,8 @@
+{
+  "status": "FAILED_OR_INTERRUPTED",
+  "started_utc": "2026-10-13T07:32:04.961804+00:00",
+  "replication": "R3",
+  "cache_condition": "off",
+  "reason": "RuntimeError: STOP: server start failed: exit=1",
+  "finished_utc": "2026-10-13T07:32:04.968176+00:00"
+}

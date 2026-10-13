@@ -1,0 +1,64 @@
+{
+  "run_id": "m2-03-20261013-r03",
+  "stage": "vanilla_reference",
+  "complete": true,
+  "plan_sha256": "57a485d3d89f242124f6b63d6639252ffd3d26ee48fd11d881dfc87080395fc6",
+  "sources": {
+    "W1": {
+      "file": "experiments/configs/w1/node1_chat_requests.jsonl",
+      "dataset_version": "w1.m1_03.v1",
+      "manifest_file": "experiments/configs/w1/package_manifest.json",
+      "file_sha256": "0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360",
+      "manifest_package_sha256_claim": "e7cba647035f8834920d523ce8f6a70ef68896069ee71d3a862fac2fc42eff66",
+      "sample_count": 30
+    },
+    "W2": {
+      "file": "experiments/configs/w2_v2/chat_requests.jsonl",
+      "dataset_version": "w2.m1_03.v2",
+      "manifest_file": "experiments/configs/w2_v2/package_manifest.json",
+      "file_sha256": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c",
+      "manifest_package_sha256_claim": "529f159c6837a9e2e326f70e0420eb80a1d0788f58d42a74734efee675fe7d9f",
+      "sample_count": 12
+    },
+    "W3": {
+      "file": "experiments/configs/w3_v2/chat_requests.jsonl",
+      "dataset_version": "w3.m1_03.v2",
+      "manifest_file": "experiments/configs/w3_v2/package_manifest.json",
+      "file_sha256": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+      "manifest_package_sha256_claim": "657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689",
+      "sample_count": 12
+    }
+  },
+  "expected_prompts": 54,
+  "runtime": {
+    "git_sha": "6c5adda05a562eebfc7182ead3e7d6377737c380",
+    "verification_script_sha256": "27b5570839b571c491422124333ee91d59f9502cde0ae49570f35c9da17280fa",
+    "workload_adapter_sha256": "c456590e543dbeb349fd013e901e22f1ac3afaa7f91e1f75621bd898cfb8c75c",
+    "launcher_sha256": {
+      "scripts/launch_lane1_vanilla.sh": "c9e00bcca1a03d25a257f0e1377cbd39395c27f51ef389d96913b8ad64da3a5d",
+      "scripts/launch_lane3_adaptive.sh": "952d797c8be2407c2563f04817d27100e621f88a79a912764509b86acb803c0b"
+    },
+    "implementation_sha256": {
+      "src/server/adaptive_scheduler.py": "9c5006d4ba5484a87147dd20ddfd7fb46576cd786f8c1b41e89f9c050a0c0121",
+      "src/server/budget_planner.py": "01bab9decb7bbb8a4e6d3044dbe8024f7dd0381bd0031da7394b11243aad6e32",
+      "src/proposer/controller.py": "b2666223a5b4f22cddb15b422b49c7b70b12cbabbc5b8f4c76e4debaca221df4",
+      "scripts/switch_lane.sh": "41b2c8f962c9e5f7653d54ae4376d978d4f829ea33c0fed573e73116b10ccb92"
+    },
+    "vllm_python_package_version": "0.30.0",
+    "torch_python_package_version": "2.13.0",
+    "torch_runtime_version": "2.13.0+cu130",
+    "torch_cuda_version": "13.0",
+    "gpu_name": "Tesla T4",
+    "driver_version": "580.82.07",
+    "timestamp_utc": "2026-10-13T04:17:12.703449+00:00"
+  },
+  "server": {
+    "url": "http://127.0.0.1:8001",
+    "served_model": "qwen2.5-7b-vanilla",
+    "model_root": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+  },
+  "started_at_utc": "2026-10-13T04:17:12.709574+00:00",
+  "failed_requests": 0,
+  "reference_jsonl_sha256": "248bbb600d6e7e378501b7b0f08ae3561e2ef6f2ee953469e9efe07aeca02803",
+  "finished_at_utc": "2026-10-13T04:29:55.464714+00:00"
+}

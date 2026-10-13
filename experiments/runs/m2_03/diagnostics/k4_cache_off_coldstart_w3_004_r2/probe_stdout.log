@@ -1,0 +1,22 @@
+SERVER: http://127.0.0.1:8003 qwen2.5-7b-adaptive
+SAMPLE: w3_business_v2_004
+INPUT_SHA256: 57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b
+VANILLA_SHA256: 248bbb600d6e7e378501b7b0f08ae3561e2ef6f2ee953469e9efe07aeca02803
+GENERATION: {'max_tokens': 768, 'seed': 42, 'temperature': 0.0}
+
+RUN: 1
+HTTP: 200 ID: chatcmpl-af42f9e46b79bdc0
+TOKEN_COUNT: 284
+MATCH_VANILLA: True
+FIRST_MISMATCH: None
+PER_STEP_ACCEPTED: [1, 0, 3, 1, 2, 0, 2, 0, 2, 0, 2, 0, 1, 1, 1, 0]
+
+RUN: 2
+HTTP: 200 ID: chatcmpl-ac369dbf06b27dce
+TOKEN_COUNT: 284
+MATCH_VANILLA: True
+FIRST_MISMATCH: None
+PER_STEP_ACCEPTED: [1, 0, 3, 1, 2, 0, 2, 0, 2, 0, 2, 0, 1, 1, 1, 0]
+
+SAVED: /root/do-an-ptit-d22/experiments/runs/m2_03/diagnostics/k4_cache_off_coldstart_w3_004_r2/probes.jsonl
+NEXT: analyze all-output diagnostic artifacts

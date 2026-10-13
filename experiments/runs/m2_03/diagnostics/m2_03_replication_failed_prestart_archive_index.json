@@ -1,0 +1,60 @@
+{
+  "kind": "failed_prestart_recovery",
+  "reason": "runner omitted required switch_lane positional argument lane3",
+  "archived_utc": "2026-10-13T07:38:38.382429+00:00",
+  "archived_without_overwrite": true,
+  "cells": [
+    {
+      "original_path": "experiments/runs/m2_03/diagnostics/k4_cache_on_coldstart_w3_004_r2",
+      "archive_path": "experiments/runs/m2_03/diagnostics/k4_cache_on_coldstart_w3_004_r2.failed_prestart_missing_lane3",
+      "failure_status": "FAILED_OR_INTERRUPTED",
+      "failure_reason": "RuntimeError: STOP: server start failed: exit=1",
+      "files_sha256": {
+        "manifest.json": "a97d44708b29402911a4d8c65664351bbb75eee3a433f36276d5da13fb449b4d",
+        "pre_restart_lane3.log": "4be5064c2de599fb3dc36c68355a17b88af04f667b041e5087d58e58166ff074",
+        "run_state.json": "69e4b0cafb2bc5ec28df062e640cccf9a658d4437a867854057109a397b40701",
+        "server_lane3.log": "4be5064c2de599fb3dc36c68355a17b88af04f667b041e5087d58e58166ff074",
+        "startup_stdout.log": "06d9635bc047f7ea747f771cf15bbfcc00670d0557388334bf70f5b2a4e7438f"
+      }
+    },
+    {
+      "original_path": "experiments/runs/m2_03/diagnostics/k4_cache_off_coldstart_w3_004_r2",
+      "archive_path": "experiments/runs/m2_03/diagnostics/k4_cache_off_coldstart_w3_004_r2.failed_prestart_missing_lane3",
+      "failure_status": "FAILED_OR_INTERRUPTED",
+      "failure_reason": "RuntimeError: STOP: server start failed: exit=1",
+      "files_sha256": {
+        "manifest.json": "2442de15f890ccc708020e67e668483da267001a7759361c3d7905056d1fd286",
+        "pre_restart_lane3.log": "4be5064c2de599fb3dc36c68355a17b88af04f667b041e5087d58e58166ff074",
+        "run_state.json": "6b62a44a2f1740b3b37860ad19415bfce86e36c24fb5bfb88cf9db92c8caca5f",
+        "server_lane3.log": "4be5064c2de599fb3dc36c68355a17b88af04f667b041e5087d58e58166ff074",
+        "startup_stdout.log": "4ac224f0a1f9c836f803ee099f5a5574105ccb330dd3d203d32bf28fa4044bef"
+      }
+    },
+    {
+      "original_path": "experiments/runs/m2_03/diagnostics/k4_cache_off_coldstart_w3_004_r3",
+      "archive_path": "experiments/runs/m2_03/diagnostics/k4_cache_off_coldstart_w3_004_r3.failed_prestart_missing_lane3",
+      "failure_status": "FAILED_OR_INTERRUPTED",
+      "failure_reason": "RuntimeError: STOP: server start failed: exit=1",
+      "files_sha256": {
+        "manifest.json": "3a29b3f736731bdb46d6dfb22c44459e80ed635e3fc6cbc467997c15afcc53c3",
+        "pre_restart_lane3.log": "4be5064c2de599fb3dc36c68355a17b88af04f667b041e5087d58e58166ff074",
+        "run_state.json": "4c53c9dbb2829e1b827f36c6d3d0c592c7e385a14f1623ad17d614653b8d0ed3",
+        "server_lane3.log": "4be5064c2de599fb3dc36c68355a17b88af04f667b041e5087d58e58166ff074",
+        "startup_stdout.log": "1478c37026e0b0d619f333f2a6d1d3bf213137cd91bc730bc8ddcc261560742e"
+      }
+    },
+    {
+      "original_path": "experiments/runs/m2_03/diagnostics/k4_cache_on_coldstart_w3_004_r3",
+      "archive_path": "experiments/runs/m2_03/diagnostics/k4_cache_on_coldstart_w3_004_r3.failed_prestart_missing_lane3",
+      "failure_status": "FAILED_OR_INTERRUPTED",
+      "failure_reason": "RuntimeError: STOP: server start failed: exit=1",
+      "files_sha256": {
+        "manifest.json": "cb51c8e3e5fe19862b7606bf38f406371305cdf10f9c240889681007a006d850",
+        "pre_restart_lane3.log": "4be5064c2de599fb3dc36c68355a17b88af04f667b041e5087d58e58166ff074",
+        "run_state.json": "3f16d8c24fa69add1c7ca684863d825a2a9e83ee3e0abede02061f3183ae896f",
+        "server_lane3.log": "4be5064c2de599fb3dc36c68355a17b88af04f667b041e5087d58e58166ff074",
+        "startup_stdout.log": "d3021c3c6d722d504f6c3873ad35f59280bf9133396ba8c553ca508d9cad430d"
+      }
+    }
+  ]
+}

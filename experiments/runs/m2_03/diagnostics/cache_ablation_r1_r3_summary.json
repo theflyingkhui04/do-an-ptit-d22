@@ -1,0 +1,196 @@
+{
+  "created_utc": "2026-10-13T07:53:50.824247+00:00",
+  "task": "M2-03",
+  "kind": "diagnostic_only",
+  "canonical_result_not_overridden": "r03: 44/54 exact token matches (FAIL)",
+  "all_cells_validated": true,
+  "note": "Repeated ON/OFF patterns support a cache-associated effect, not causal proof of a KV-cache correctness bug.",
+  "cells": [
+    {
+      "replication": "R1",
+      "cache": "on",
+      "directory": "experiments/runs/m2_03/diagnostics/k4_all_output_coldstart_w3_004",
+      "state": "VALIDATED",
+      "outcomes": [
+        {
+          "attempt": 1,
+          "engine_id": "chatcmpl-bba0df646b6a75bb-857b57b3",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        },
+        {
+          "attempt": 2,
+          "engine_id": "chatcmpl-806e036ec26d365c-aac45141",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 285,
+          "match_vanilla": false,
+          "first_mismatch": 200,
+          "token_200": 128585,
+          "trace_reconstruction": true
+        }
+      ],
+      "two_runs_equal": false
+    },
+    {
+      "replication": "R1",
+      "cache": "off",
+      "directory": "experiments/runs/m2_03/diagnostics/k4_no_prefix_coldstart_w3_004",
+      "state": "VALIDATED",
+      "outcomes": [
+        {
+          "attempt": 1,
+          "engine_id": "chatcmpl-9052411c81333d0e-85385aab",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        },
+        {
+          "attempt": 2,
+          "engine_id": "chatcmpl-b1cdd2db1e73f9bb-b9941d72",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        }
+      ],
+      "two_runs_equal": true
+    },
+    {
+      "replication": "R2",
+      "cache": "on",
+      "directory": "experiments/runs/m2_03/diagnostics/k4_cache_on_coldstart_w3_004_r2",
+      "state": "VALIDATED",
+      "outcomes": [
+        {
+          "attempt": 1,
+          "engine_id": "chatcmpl-82f51eebce4b8173-a4bf15d7",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        },
+        {
+          "attempt": 2,
+          "engine_id": "chatcmpl-ac799e017b5013bb-b806653b",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 285,
+          "match_vanilla": false,
+          "first_mismatch": 200,
+          "token_200": 128585,
+          "trace_reconstruction": true
+        }
+      ],
+      "two_runs_equal": false
+    },
+    {
+      "replication": "R2",
+      "cache": "off",
+      "directory": "experiments/runs/m2_03/diagnostics/k4_cache_off_coldstart_w3_004_r2",
+      "state": "VALIDATED",
+      "outcomes": [
+        {
+          "attempt": 1,
+          "engine_id": "chatcmpl-af42f9e46b79bdc0-8cc773f7",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        },
+        {
+          "attempt": 2,
+          "engine_id": "chatcmpl-ac369dbf06b27dce-b43d87cb",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        }
+      ],
+      "two_runs_equal": true
+    },
+    {
+      "replication": "R3",
+      "cache": "on",
+      "directory": "experiments/runs/m2_03/diagnostics/k4_cache_on_coldstart_w3_004_r3",
+      "state": "VALIDATED",
+      "outcomes": [
+        {
+          "attempt": 1,
+          "engine_id": "chatcmpl-a28ea5cf02c044d8-974af8fd",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        },
+        {
+          "attempt": 2,
+          "engine_id": "chatcmpl-be73a507dce9c809-9b332a19",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 285,
+          "match_vanilla": false,
+          "first_mismatch": 200,
+          "token_200": 128585,
+          "trace_reconstruction": true
+        }
+      ],
+      "two_runs_equal": false
+    },
+    {
+      "replication": "R3",
+      "cache": "off",
+      "directory": "experiments/runs/m2_03/diagnostics/k4_cache_off_coldstart_w3_004_r3",
+      "state": "VALIDATED",
+      "outcomes": [
+        {
+          "attempt": 1,
+          "engine_id": "chatcmpl-ae3f58a28f08d346-94bac3cd",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        },
+        {
+          "attempt": 2,
+          "engine_id": "chatcmpl-b99225e10594397b-8077d823",
+          "events": 268,
+          "spec_steps": 16,
+          "tokens": 284,
+          "match_vanilla": true,
+          "first_mismatch": null,
+          "token_200": 128371,
+          "trace_reconstruction": true
+        }
+      ],
+      "two_runs_equal": true
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "task": "M2-03",
+  "purpose": "Locate first output divergence at token index 200",
+  "lane": "adaptive",
+  "max_k": 4,
+  "min_batch_k": 0,
+  "spec_metrics": "detailed",
+  "sample_id": "w3_business_v2_004",
+  "request_count": 2,
+  "mode": "all_output_trace",
+  "canonical_benchmark": false
+}

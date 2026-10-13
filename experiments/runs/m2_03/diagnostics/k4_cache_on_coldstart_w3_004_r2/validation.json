@@ -1,0 +1,32 @@
+{
+  "validated_utc": "2026-10-13T07:41:11.036221+00:00",
+  "trace_integrity": "PASS",
+  "outcomes": [
+    {
+      "attempt": 1,
+      "engine_id": "chatcmpl-82f51eebce4b8173-a4bf15d7",
+      "events": 268,
+      "spec_steps": 16,
+      "tokens": 284,
+      "match_vanilla": true,
+      "first_mismatch": null,
+      "token_200": 128371,
+      "trace_reconstruction": true
+    },
+    {
+      "attempt": 2,
+      "engine_id": "chatcmpl-ac799e017b5013bb-b806653b",
+      "events": 268,
+      "spec_steps": 16,
+      "tokens": 285,
+      "match_vanilla": false,
+      "first_mismatch": 200,
+      "token_200": 128585,
+      "trace_reconstruction": true
+    }
+  ],
+  "two_runs_equal": false,
+  "all_output_records": 536,
+  "spec_trace_records": 32,
+  "telemetry_records": 2
+}

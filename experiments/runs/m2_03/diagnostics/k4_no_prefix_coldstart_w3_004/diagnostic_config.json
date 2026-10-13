@@ -1,0 +1,16 @@
+{
+  "task": "M2-03",
+  "type": "controlled_ablation",
+  "hypothesis": "Prefix caching may contribute to output divergence",
+  "sample_id": "w3_business_v2_004",
+  "max_k": 4,
+  "min_batch_k": 0,
+  "prefix_caching": false,
+  "sampling": {
+    "temperature": 0.0,
+    "seed": 42,
+    "max_tokens": 768
+  },
+  "request_count": 2,
+  "canonical_benchmark": false
+}

@@ -1,0 +1,34 @@
+{
+  "task": "M2-03",
+  "kind": "diagnostic_ablation_replication",
+  "canonical_benchmark": false,
+  "replication": "R3",
+  "cache_condition": "off",
+  "cold_start": true,
+  "request_count": 2,
+  "concurrency": 1,
+  "sample_id": "w3_business_v2_004",
+  "generation": {
+    "max_tokens": 768,
+    "seed": 42,
+    "temperature": 0.0
+  },
+  "max_k": 4,
+  "min_batch_k": 0,
+  "expected_prefix_caching": false,
+  "output_directory": "experiments/runs/m2_03/diagnostics/k4_cache_off_coldstart_w3_004_r3",
+  "git_sha": "6c5adda05a562eebfc7182ead3e7d6377737c380",
+  "git_status_short_before": "M experiments/runs/m2_02/lane3_telemetry.jsonl\n M scripts/launch_lane1_vanilla.sh\n?? experiments/results/m2_lossless_verification_summary.json\n?? experiments/runs/m2_03/\n?? logs/vllm_lane1.log\n?? logs/vllm_lane3.log\n?? scripts/analyze_m2_03_trace.py\n?? scripts/launch_lane3_adaptive_all_output_diag.sh\n?? scripts/launch_lane3_adaptive_detailed_diag.sh\n?? scripts/launch_lane3_adaptive_no_prefix_diag.sh\n?? scripts/launch_lane3_adaptive_r2_cache_off_diag.sh\n?? scripts/launch_lane3_adaptive_r2_cache_on_diag.sh\n?? scripts/launch_lane3_adaptive_r3_cache_off_diag.sh\n?? scripts/launch_lane3_adaptive_r3_cache_on_diag.sh\n?? scripts/launch_lane3_adaptive_trace_diag.sh\n?? scripts/m2_03_all_output_two_probes.py\n?? scripts/m2_03_archive_failed_prestarts.py\n?? scripts/m2_03_cache_replication.py\n?? scripts/m2_03_cache_replication_v2.py\n?? scripts/m2_03_no_prefix_two_probes.py\n?? scripts/m2_03_r2_cache_off_two_probes.py\n?? scripts/m2_03_r2_cache_on_two_probes.py\n?? scripts/m2_03_r3_cache_off_two_probes.py\n?? scripts/m2_03_r3_cache_on_two_probes.py\n?? scripts/m2_03_trace_two_probes.py\n?? scripts/prepare_trace_launchers.py\n?? scripts/switch_lane_all_output_diag.sh\n?? scripts/switch_lane_detailed_diag.sh\n?? scripts/switch_lane_no_prefix_diag.sh\n?? scripts/switch_lane_r2_cache_off_diag.sh\n?? scripts/switch_lane_r2_cache_on_diag.sh\n?? scripts/switch_lane_r3_cache_off_diag.sh\n?? scripts/switch_lane_r3_cache_on_diag.sh\n?? scripts/switch_lane_trace_diag.sh\n?? src/server/adaptive_scheduler_all_output_trace_diag.py\n?? src/server/adaptive_scheduler_trace_diag.py\n?? tests/test_m2_03_cache_replication_offline.py\n?? tests/test_m2_03_cache_replication_v2_offline.py\n?? tests/test_m2_03_failed_prestart_archive_offline.py\n?? tests/test_trace_diag_mock.py\n?? tests/test_verify_lossless.py\n?? tests/verify_lossless.py",
+  "sha256": {
+    "experiments/configs/w3_v2/chat_requests.jsonl": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+    "experiments/runs/m2_03/m2-03-20261013-r03/vanilla.jsonl": "248bbb600d6e7e378501b7b0f08ae3561e2ef6f2ee953469e9efe07aeca02803",
+    "src/server/adaptive_scheduler.py": "9c5006d4ba5484a87147dd20ddfd7fb46576cd786f8c1b41e89f9c050a0c0121",
+    "src/server/adaptive_scheduler_trace_diag.py": "7ac86514a8d623188915764f2cdb4229cd90c1df476255b7def14cdbcdd3b08c",
+    "src/server/adaptive_scheduler_all_output_trace_diag.py": "194478131c579234b752fb14a467a7c13f5cecc71dbc614640a891bff642f905",
+    "scripts/launch_lane3_adaptive_r3_cache_off_diag.sh": "b69559f27032ff0a47a602028c1c7f2629e39a9657619e909945c8d866d5705e",
+    "scripts/switch_lane_r3_cache_off_diag.sh": "0c1ddd0bd36298345bf294465efe4eaf953f12bf3b4a4e4a842c9bb5ab53dafd",
+    "scripts/m2_03_r3_cache_off_two_probes.py": "095c685552f97d01f3868e82c2c83b65cba33ea779c05d54aa0894289d3bb2a0"
+  },
+  "nvidia_smi": "Tesla T4, 580.82.07, 15360 MiB",
+  "started_utc": "2026-10-13T07:46:35.579744+00:00"
+}
