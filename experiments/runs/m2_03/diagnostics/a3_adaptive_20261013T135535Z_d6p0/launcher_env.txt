@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=0
+PYTHONPATH=/kaggle/working/do-an-ptit-d22:/kaggle/lib/kagglegym:/kaggle/lib

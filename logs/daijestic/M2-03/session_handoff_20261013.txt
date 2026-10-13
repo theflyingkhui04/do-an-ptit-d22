@@ -1,0 +1,100 @@
+M2-03 SESSION HANDOFF
+Generated UTC: 2026-10-13T15:13:30+00:00
+
+=== SCIENTIFIC STATE ===
+Canonical run: m2-03-20261013-r03
+Canonical token gate: FAIL
+Exact matches: 44/54
+Do NOT overwrite or regenerate canonical evidence to obtain PASS.
+
+Current focused diagnostic:
+  sample = W3 / w3_business_v2_004
+  Vanilla token[200] = 128371
+  Adaptive attempt 1 = MATCH
+  Adaptive attempt 2 = FAIL at generated index 200
+  Adaptive token[200] = 128585
+  Vanilla raw logits showed 128371/128585 tied at observed precision
+
+Current instrumentation state:
+  Vanilla A3 raw target-logits capture = PASS
+  Adaptive A3 capture = NOT YET WORKING
+  v6 unconditional hook was installed in vllm/v1/worker/gpu/model_runner.py
+  Current next hypothesis to VERIFY:
+    Adaptive draft_model may actually execute vllm/v1/worker/gpu_model_runner.py
+    instead of vllm/v1/worker/gpu/model_runner.py.
+  This hypothesis is NOT yet accepted as scientific root cause.
+
+=== GIT ===
+feat/m2-03-lossless-verification
+31e4fb06b3b1a3e6fbbf69fb0084f5aba3d42f54
+ A logs/daijestic/M2-03/M2-03_worklogs.md
+?? README_v5.md
+?? README_v6.md
+?? experiments/m2_03_target_logits_probe.py
+?? experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T131746Z_AvTg/
+?? experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T133404Z_ahSG/
+?? experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T134711Z_g1Gg/
+?? experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T135224Z_OOvX/
+?? experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T135535Z_d6p0/
+?? experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T135755Z_TquT/
+?? experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T140916Z_JrFA/
+?? experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T142128Z_ULOH/
+?? experiments/runs/m2_03/diagnostics/a3_smoke_vanilla_20261013T122946Z_4gPT/
+?? experiments/runs/m2_03/diagnostics/a3_vanilla_20261013T125113Z_7nwv/
+?? logs/daijestic/M2-03/session_handoff_20261013.txt
+?? m2_03_a3_config_fallback_v5.zip
+?? m2_03_a3_guarded_v2.zip
+?? m2_03_a3_unconditional_hook_v6.zip
+?? m2_03_a3_warmup_guard_v3.zip
+?? scripts/m2_03_compare_target_logits.py
+?? scripts/m2_03_install_a3_hook_v6.py
+?? scripts/m2_03_launch_adaptive_a3_v6.sh
+?? scripts/m2_03_run_adaptive_a3_two_requests_v6.py
+?? tests/test_m2_03_target_logits_probe.py
+
+=== RUNTIME ===
+torch: 2.13.0+cu130
+CUDA: 13.0
+vLLM: 0.30.0
+CUDA available: True
+GPU count: 2
+GPU 0: Tesla T4
+
+=== A3 CONFIG ===
+{
+  "lane": "adaptive",
+  "target": 200,
+  "git_sha": "31e4fb06b3b1a3e6fbbf69fb0084f5aba3d42f54",
+  "output_dir": "/kaggle/working/do-an-ptit-d22/experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T142128Z_ULOH/probe"
+}
+
+=== V6 HOOK STATUS ===
+VLLM_VERSION: 0.30.0
+VLLM_MODEL_RUNNER: /kaggle/working/do-an-ptit-d22/.venv/lib/python3.13/site-packages/vllm/v1/worker/gpu/model_runner.py
+SHA256: da2891758f1d42febdd458ab778e1ee1c32ecd6a9922d99ab358f10aca206b6e
+GUARDED_HOOK_COUNT: 0
+UNCONDITIONAL_HOOK_COUNT: 1
+HOOK_STATUS: ALREADY_INSTALLED
+
+=== VLLM RUNNER SOURCES ===
+v1/worker/gpu/model_runner.py
+  exists: True
+  sha256: da2891758f1d42febdd458ab778e1ee1c32ecd6a9922d99ab358f10aca206b6e
+  capture_target_logits: True
+  compute_logits(sample_hidden_states): True
+v1/worker/gpu_model_runner.py
+  exists: True
+  sha256: 87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51
+  capture_target_logits: False
+  compute_logits(sample_hidden_states): True
+
+=== CURRENT A3 DIAGNOSTIC DIR ===
+/kaggle/working/do-an-ptit-d22/experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T142128Z_ULOH
+/kaggle/working/do-an-ptit-d22/experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T142128Z_ULOH/adaptive_attempt1.json 8857 bytes
+/kaggle/working/do-an-ptit-d22/experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T142128Z_ULOH/adaptive_attempt2.json 8875 bytes
+/kaggle/working/do-an-ptit-d22/experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T142128Z_ULOH/lane3_telemetry.jsonl 2198 bytes
+/kaggle/working/do-an-ptit-d22/experiments/runs/m2_03/diagnostics/a3_adaptive_20261013T142128Z_ULOH/server.log 35159 bytes
+
+=== RUNNING VLLM ===
+66335 /kaggle/working/do-an-ptit-d22/.venv/bin/python /kaggle/working/do-an-ptit-d22/.venv/bin/vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --host 127.0.0.1 --port 8003 --served-model-name qwen2.5-7b-adaptive --generation-config vllm --quantization awq --dtype half --gpu-memory-utilization 0.85 --max-model-len 4096 --max-num-seqs 32 --speculative-config {"method":"draft_model","model":"Qwen/Qwen2.5-0.5B-Instruct","num_speculative_tokens":4,"num_speculative_tokens_per_batch_size":[[1,32,4]],"use_heterogeneous_vocab":true,"draft_sample_method":"greedy"} --scheduler-cls src.server.adaptive_scheduler.AdaptiveAsyncScheduler --per-request-spec-decode-metrics summary
+66480 VLLM::EngineCore
