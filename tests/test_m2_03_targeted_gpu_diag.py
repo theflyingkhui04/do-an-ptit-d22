@@ -257,11 +257,34 @@ def test_adaptive_kv_recompute_refills_prefix_then_restores_decode_budget(tmp_pa
     scheduler.running = [request]
     o.kv_recompute_before_schedule(config, scheduler)
     assert scheduler.max_num_scheduled_tokens == 1024
+
+    # The completed request is legitimately removed before the next scheduler
+    # cycle. The proven control disarms and all later cycles are no-ops.
+    del scheduler.requests[request.request_id]
+    scheduler.running = []
+    o.kv_recompute_before_schedule(config, scheduler)
+    assert scheduler._m203_kv_recompute["phase"] == "complete"
+    o.kv_recompute_before_schedule(config, scheduler)
+
     events = {e["kind"]: e for e in
               (c.load(p) for p in (capture / "events").glob("*.json"))}
     assert set(events) == {"kv_recompute_started", "kv_recompute_ready"}
     assert events["kv_recompute_ready"]["recomputed_tokens"] == 64
     assert events["kv_recompute_ready"]["budget_restored"] is True
+
+
+def test_kv_recompute_missing_active_request_still_fails_closed(tmp_path):
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    scheduler = NS(requests={}, running=[], max_num_scheduled_tokens=1024,
+                   _m203_kv_recompute={
+                       "phase": "refill", "request_id": "api-active",
+                       "recomputed_tokens": 64, "original_budget": 1024,
+                   })
+    config = {"lane": "adaptive", "directory": str(capture),
+              "diagnostic_control": {"adaptive_kv_recompute_output_count": 60}}
+    with pytest.raises(c.Invalid, match="KV recompute request disappeared"):
+        o.kv_recompute_before_schedule(config, scheduler)
 
 
 def test_kv_recompute_hook_runs_before_scheduler_step_mutation():

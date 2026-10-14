@@ -201,14 +201,20 @@ def kv_recompute_before_schedule(config, scheduler):
 
     state = getattr(scheduler, "_m203_kv_recompute", None)
     if state is not None:
-        need(state["request_id"] in scheduler.requests,
-             "KV recompute request disappeared")
+        need(state["phase"] in ("refill", "ready", "complete"),
+             "KV recompute lifecycle invalid")
+        if state["phase"] == "complete":
+            return
+        if state["request_id"] not in scheduler.requests:
+            need(state["phase"] == "ready",
+                 "KV recompute request disappeared")
+            state["phase"] = "complete"
+            return
         request = scheduler.requests[state["request_id"]]
         if state["phase"] == "refill":
             need(request.num_computed_tokens == state["recomputed_tokens"],
                  "KV recompute did not stop before boundary token")
             scheduler.max_num_scheduled_tokens = state["original_budget"]
-            state["phase"] = "ready"
             event(config["directory"], "kv_recompute_ready",
                   request_id=request.request_id,
                   output_count=len(request._output_token_ids),
@@ -217,6 +223,7 @@ def kv_recompute_before_schedule(config, scheduler):
                   num_computed_tokens=request.num_computed_tokens,
                   budget_restored=(scheduler.max_num_scheduled_tokens
                                    == state["original_budget"]))
+            state["phase"] = "ready"
         return
 
     matches = [request for request in scheduler.running
