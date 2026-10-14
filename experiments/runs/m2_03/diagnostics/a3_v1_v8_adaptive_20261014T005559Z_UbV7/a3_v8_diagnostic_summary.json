@@ -1,0 +1,25 @@
+{
+  "task": "M2-03",
+  "result_kind": "DIAGNOSTIC_NOT_CANONICAL_GATE",
+  "canonical_r03_unchanged": true,
+  "canonical_exact_matches_original": "44/54 FAIL",
+  "attempts": [
+    {
+      "attempt": 1,
+      "request_id": "chatcmpl-bdefac201f86a887",
+      "output_tokens": 284,
+      "first_mismatch": null,
+      "token_200": 128371,
+      "status": "EXACT_MATCH"
+    },
+    {
+      "attempt": 2,
+      "request_id": "chatcmpl-8f05a00205ef8b69",
+      "output_tokens": 285,
+      "first_mismatch": 200,
+      "token_200": 128585,
+      "status": "TARGET_200_EVIDENCE_INVALID",
+      "reason": "InvalidEvidence: Expected one Adaptive record for request chatcmpl-8f05a00205ef8b69, got 0"
+    }
+  ]
+}
