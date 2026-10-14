@@ -392,10 +392,20 @@ def collect_runtime() -> dict:
         # Validate the actual imported build and CUDA runtime instead.
         "torch_runtime_version": torch.__version__,
         "torch_cuda_version": torch.version.cuda,
-        "gpu_name": tool_output(["nvidia-smi", "--query-gpu=name",
+        "gpu_name": tool_output(["nvidia-smi", "-i", "0", "--query-gpu=name",
                                  "--format=csv,noheader"]),
-        "driver_version": tool_output(["nvidia-smi", "--query-gpu=driver_version",
+        "driver_version": tool_output(["nvidia-smi", "-i", "0", "--query-gpu=driver_version",
                                       "--format=csv,noheader"]),
+        "selected_gpu_uuid": tool_output([
+            "nvidia-smi", "-i", "0",
+            "--query-gpu=uuid", "--format=csv,noheader",
+        ]),
+        "physical_gpu_inventory": tool_output([
+            "nvidia-smi", "--query-gpu=index,name,uuid",
+            "--format=csv,noheader",
+        ]),
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "cuda_device_count": torch.cuda.device_count(),
         "timestamp_utc": utc_now(),
     }
     if info["vllm_python_package_version"] != EXPECTED_VLLM:
@@ -410,6 +420,10 @@ def collect_runtime() -> dict:
         )
     if info["gpu_name"] != "Tesla T4":
         raise VerificationError(f"Expected Tesla T4, got {info['gpu_name']!r}")
+    if info["cuda_visible_devices"] != "0":
+        raise VerificationError("Expected CUDA_VISIBLE_DEVICES=0")
+    if info["cuda_device_count"] != 1:
+        raise VerificationError("Expected exactly one CUDA-visible GPU")
     return info
 
 
