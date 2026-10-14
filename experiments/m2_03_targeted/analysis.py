@@ -27,8 +27,9 @@ def provenance(root, lanes=LANES):
     need(installed["patched_sha256"] == expected, "observer source provenance drift")
     policy = config["policy"]
     control = policy.get("diagnostic_control", {})
-    need(set(control) <= {"vanilla_cudagraph_mode"}
-         and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE"),
+    need(set(control) <= {"vanilla_cudagraph_mode", "adaptive_kv_recompute_output_count"}
+         and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE")
+         and control.get("adaptive_kv_recompute_output_count") in (None, TARGET),
          "diagnostic control unreviewed")
     need(preflight["models"] == policy["models"] and all(preflight["runtime"][k] == v for k, v in policy["runtime"].items()), "model/runtime policy mismatch")
     need(preflight["runtime"]["vllm"] == "0.30.0" and preflight["runtime"]["gpu"] == "Tesla T4", "wrong pinned runtime")
@@ -52,6 +53,9 @@ def provenance(root, lanes=LANES):
                 "cudagraph_mode": expected_mode,
             }, "cudagraph control value drift")
         need(all(env[k] == v for k, v in policy["adaptive_env"].items()), "adaptive environment drift")
+        observer = load(root / lane / "observer.json")
+        need(observer.get("diagnostic_control", {}) == control,
+             "observer diagnostic control drift")
         if lane == "adaptive":
             spec = decode(argv[argv.index("--speculative-config") + 1])
             need(spec == {"method": "draft_model", "model": policy["models"]["draft"]["snapshot"],
@@ -146,7 +150,9 @@ def capture(directory, lane, execution, request_id, prompt, ids):
             processed = vector(root, scores["processed"])
             need(len(raw) == len(processed), "vocabulary shape drift")
             hits.append({"record": rec["key"], "row": row, "scores": scores,
-                         "selected_token": selected[j], "prefix_sha256": fingerprint(prefix)})
+                         "selected_token": selected[j], "prefix_sha256": fingerprint(prefix),
+                         "decoding_path": rec["decoding_path"],
+                         "active_query_token_count": len(rec["active_query"])})
     need(len(hits) == 1, "missing/ambiguous selected boundary capture")
     matching = [e for e in errors if e.get("request_id") == next(r["request_id"] for r in records if r["key"] == hits[0]["record"])]
     before = [e for e in matching if e["kind"] == "account_before" and e["output_count"] <= TARGET < e["output_count"] + len(e["output_token_ids"])]
@@ -207,7 +213,7 @@ def compare(root):
     try:
         config = load(root / "run.json")
         execution = provenance(root)
-        rows = {}
+        rows, recompute_proofs = {}, {}
         for lane in LANES:
             directory = root / lane
             verify_shutdown(directory)
@@ -215,6 +221,20 @@ def compare(root):
             need(not any(e["kind"] == "observer_error" for e in events)
                  and "M203_TARGETED_OBSERVER_ERROR_UNSAVED" not in (directory / "server.log").read_text(errors="replace")
                  and not list((directory / "capture").rglob("*.pending-*")), "observer error/incomplete write")
+            recomputes = [e for e in events if e["kind"] == "kv_recompute_ready"]
+            expected_recomputes = int(
+                lane == "adaptive"
+                and config["policy"].get("diagnostic_control", {}).get(
+                    "adaptive_kv_recompute_output_count") == TARGET)
+            need(len(recomputes) == expected_recomputes, "KV recompute control missing/ambiguous")
+            if recomputes:
+                proof = recomputes[0]
+                need(proof["output_count"] == TARGET
+                     and proof["recomputed_tokens"] == proof["total_tokens"] - 1
+                     and proof["num_computed_tokens"] == proof["recomputed_tokens"]
+                     and proof["budget_restored"] is True,
+                     "KV recompute control proof invalid")
+                recompute_proofs[lane] = proof
             request_id, prompt, ids, finish = response(directory, lane)
             rows[lane] = {"request_id": request_id, "prompt": prompt, "ids": ids, "finish_reason": finish}
         v, a = rows["vanilla"], rows["adaptive"]
@@ -233,6 +253,15 @@ def compare(root):
             return report
         captures = {k: capture(root / k, k, execution, r["request_id"], r["prompt"], r["ids"]) for k, r in rows.items()}
         need(captures["vanilla"]["prefix_sha256"] == captures["adaptive"]["prefix_sha256"], "lane conditioning prefixes differ")
+        if config["policy"].get("diagnostic_control", {}).get(
+                "adaptive_kv_recompute_output_count") == TARGET:
+            proof = recompute_proofs["adaptive"]
+            need(proof["total_tokens"] == len(a["prompt"]) + TARGET
+                 and proof["request_id"].startswith(a["request_id"])
+                 and captures["adaptive"]["decoding_path"] == "ordinary"
+                 and captures["adaptive"]["active_query_token_count"] == 1,
+                 "KV recompute did not preserve one-token boundary forward")
+            report["kv_recompute_proof"] = proof
         report.update(state="NOT_REPRODUCED" if d is None else "REPRODUCED", captures=captures,
                       historical_token_pair_reproduced=(v["ids"][TARGET], a["ids"][TARGET]) == (51, 79759))
         report["processed_argmax_equal"] = captures["vanilla"]["scores"]["processed"]["top1_id"] == captures["adaptive"]["scores"]["processed"]["top1_id"]

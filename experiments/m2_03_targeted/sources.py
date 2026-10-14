@@ -10,7 +10,8 @@ from .common import ROOT, decode, need, sha
 
 MANIFEST = ROOT / "experiments/m2_03_targeted/upstream.json"
 FIXTURE = ROOT / "tests/fixtures/m203_v030_sources.json.gz"
-IMPORT = "from experiments.m2_03_targeted.observer import observe as _m203_observe\n"
+IMPORT = ("from experiments.m2_03_targeted.observer import observe as _m203_observe, "
+          "control as _m203_control\n")
 
 # Exact insertion anchors from official v0.30.0. Whole-file SHA pin is mandatory.
 INSERTIONS = {
@@ -29,6 +30,8 @@ INSERTIONS = {
          '        _m203_observe("verify_scores", target_logits, sampling_metadata, metadata)\n'),
     ],
     "v1/core/sched/scheduler.py": [
+        ("        self.current_step += 1\n",
+         '        _m203_control("before_schedule", self)\n'),
         ("            # Check for stop and update request status.\n",
          '            _m203_observe("account_before", request, new_token_ids, scheduler_output, output_is_stale)\n'),
         ("            elif request.pooling_params and pooler_output is not None:\n",
@@ -50,7 +53,8 @@ class StripObserver(ast.NodeTransformer):
         return None if node.module == "experiments.m2_03_targeted.observer" else node
 
     def visit_Expr(self, node):
-        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == "_m203_observe":
+        if (isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+                and node.value.func.id in ("_m203_observe", "_m203_control")):
             return None
         return node
 

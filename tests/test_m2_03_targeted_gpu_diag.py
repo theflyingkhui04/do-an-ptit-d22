@@ -143,7 +143,7 @@ def synthetic_shutdown(directory, code=0):
     put("server_exit.json", dict(code=code, process=identity, observed_ns=60))
 
 
-def run_fixture(tmp_path, different=True):
+def run_fixture(tmp_path, different=True, adaptive_ordinary=False):
     policy = c.load(c.ROOT / "experiments/m2_03_targeted/runtime_policy.example.json")
     # Explicit synthetic metadata, not values collected from a Kaggle session.
     policy["runtime"].update(python="3.13.0", torch="2.13.0+cu130", cuda="13.0", driver="580.178.04")
@@ -155,9 +155,15 @@ def run_fixture(tmp_path, different=True):
            historical_checkpoint_sha=c.HISTORICAL, historical_execution_sha=c.HISTORICAL_EXECUTION,
            request_sha256=c.REQUEST_HASH, diagnostic_execution_sha="d" * 40, policy=policy))
     forward_fixture(tmp_path / "vanilla", "vanilla", 2, ordinary=True)
-    forward_fixture(tmp_path / "adaptive", "adaptive", 3 if different else 2)
+    forward_fixture(tmp_path / "adaptive", "adaptive", 3 if different else 2,
+                    ordinary=adaptive_ordinary)
     launch = {}
     for lane in c.LANES:
+        c.save(tmp_path / lane / "observer.json", {
+            "lane": lane, "directory": str(tmp_path / lane / "capture"),
+            "execution_sha": "d" * 40,
+            "diagnostic_control": policy.get("diagnostic_control", {}),
+        })
         argv, env = e.launch_args(tmp_path, lane)
         launch[lane] = argv
         recorded = {k: env[k] for k in env if k.startswith(("ADAPTIVE_", "M203_TARGETED_"))
@@ -190,7 +196,10 @@ def test_piecewise_control_changes_only_vanilla_target_launch(tmp_path):
         "vanilla_cudagraph_mode": "PIECEWISE",
     }
     (root / "run.json").write_bytes(c.encoded(run))
-
+    for lane in c.LANES:
+        observer = c.load(root / lane / "observer.json")
+        observer["diagnostic_control"] = run["policy"]["diagnostic_control"]
+        (root / lane / "observer.json").write_bytes(c.encoded(observer))
     vanilla, _ = e.launch_args(root, "vanilla")
     adaptive, _ = e.launch_args(root, "adaptive")
     assert c.decode(vanilla[vanilla.index("--compilation-config") + 1]) == {
@@ -213,6 +222,86 @@ def test_piecewise_control_changes_only_vanilla_target_launch(tmp_path):
     assert report["diagnostic_control"] == {
         "vanilla_cudagraph_mode": "PIECEWISE",
     }
+
+
+def test_adaptive_kv_recompute_refills_prefix_then_restores_decode_budget(tmp_path):
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    request = NS(request_id="api-1234abcd", num_prompt_tokens=5,
+                 _output_token_ids=[2] * 60, spec_token_ids=[3, 4],
+                 num_computed_tokens=67)
+
+    class Scheduler:
+        running = [request]
+        requests = {request.request_id: request}
+        max_num_scheduled_tokens = 1024
+        scheduler_config = NS(max_num_batched_tokens=1024)
+
+        def reset_prefix_cache(self, reset_running_requests=False):
+            assert reset_running_requests is True
+            self.running = []
+            request.num_computed_tokens = 0
+            request.spec_token_ids = []
+            return True
+
+    scheduler = Scheduler()
+    config = {"lane": "adaptive", "directory": str(capture),
+              "diagnostic_control": {"adaptive_kv_recompute_output_count": 60}}
+    o.kv_recompute_before_schedule(config, scheduler)
+    assert scheduler.max_num_scheduled_tokens == 64
+    assert request.num_computed_tokens == 0 and request.spec_token_ids == []
+
+    # Simulate the one controlled chunk. The next schedule restores the normal
+    # budget and leaves exactly one conditioning token for ordinary decoding.
+    request.num_computed_tokens = 64
+    scheduler.running = [request]
+    o.kv_recompute_before_schedule(config, scheduler)
+    assert scheduler.max_num_scheduled_tokens == 1024
+    events = {e["kind"]: e for e in
+              (c.load(p) for p in (capture / "events").glob("*.json"))}
+    assert set(events) == {"kv_recompute_started", "kv_recompute_ready"}
+    assert events["kv_recompute_ready"]["recomputed_tokens"] == 64
+    assert events["kv_recompute_ready"]["budget_restored"] is True
+
+
+def test_kv_recompute_hook_runs_before_scheduler_step_mutation():
+    patched = s.transform("v1/core/sched/scheduler.py",
+                          s.fixture_sources()["v1/core/sched/scheduler.py"].encode()).decode()
+    node = next(n for n in ast.walk(ast.parse(patched))
+                if isinstance(n, ast.FunctionDef) and n.name == "schedule")
+    calls = [n for n in ast.walk(node) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Name) and n.func.id == "_m203_control"]
+    increments = [n for n in ast.walk(node) if isinstance(n, ast.AugAssign)
+                  and isinstance(n.target, ast.Attribute)
+                  and n.target.attr == "current_step"]
+    assert len(calls) == len(increments) == 1
+    assert calls[0].lineno < increments[0].lineno
+
+
+def test_kv_recompute_evidence_is_required_and_preserves_boundary_shape(tmp_path):
+    root = run_fixture(tmp_path, adaptive_ordinary=True)
+    run = c.load(root / "run.json")
+    run["policy"]["diagnostic_control"] = {
+        "adaptive_kv_recompute_output_count": 60,
+    }
+    (root / "run.json").write_bytes(c.encoded(run))
+    for lane in c.LANES:
+        observer = c.load(root / lane / "observer.json")
+        observer["diagnostic_control"] = run["policy"]["diagnostic_control"]
+        (root / lane / "observer.json").write_bytes(c.encoded(observer))
+
+    missing = a.compare(root)
+    assert missing["state"] == "INVALID_CAPTURE"
+    assert "KV recompute control missing" in missing["reason"]
+
+    c.event(root / "adaptive/capture", "kv_recompute_ready",
+            request_id="api-1234abcd", output_count=60,
+            total_tokens=65, recomputed_tokens=64,
+            num_computed_tokens=64, budget_restored=True)
+    report = a.compare(root)
+    assert report["state"] == "REPRODUCED", report
+    assert report["captures"]["adaptive"]["decoding_path"] == "ordinary"
+    assert report["captures"]["adaptive"]["active_query_token_count"] == 1
 
 
 def test_rejected_candidate_not_mistaken_for_selected_row(tmp_path):

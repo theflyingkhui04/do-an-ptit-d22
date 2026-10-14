@@ -133,7 +133,8 @@ def init_run(root, execution, policy_path):
         directory = root / lane
         (directory / "capture").mkdir(parents=True)
         save(directory / "observer.json", {"lane": lane, "directory": str(directory / "capture"),
-                                            "execution_sha": execution})
+                                            "execution_sha": execution,
+                                            "diagnostic_control": policy.get("diagnostic_control", {})})
     return root
 
 
@@ -291,8 +292,9 @@ def launch_args(root, lane):
             "--gpu-memory-utilization", "0.85", "--max-model-len", "4096", "--max-num-seqs", "32",
             "--no-enable-prefix-caching"]
     control = config["policy"].get("diagnostic_control", {})
-    need(set(control) <= {"vanilla_cudagraph_mode"}
-         and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE"),
+    need(set(control) <= {"vanilla_cudagraph_mode", "adaptive_kv_recompute_output_count"}
+         and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE")
+         and control.get("adaptive_kv_recompute_output_count") in (None, 60),
          "diagnostic control unreviewed")
     if lane == "vanilla" and control.get("vanilla_cudagraph_mode"):
         argv += ["--compilation-config", encoded({

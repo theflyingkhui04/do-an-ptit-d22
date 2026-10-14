@@ -1,8 +1,14 @@
-"""Read-only observer called by exact-source insertions, never by old hooks.
+"""Observer and explicit diagnostic control called by exact-source insertions.
 
-Copies add synchronization/timing overhead. No inference tensor is written,
-no sampler is re-executed, and exceptions never propagate into inference.
-Every observer error invalidates capture, even if HTTP succeeds.
+Copies add synchronization/timing overhead. No inference tensor is written and
+no sampler is re-executed. Observer errors are recorded without reaching
+inference; diagnostic-control errors stop the server. Every observer error
+invalidates capture, even if HTTP succeeds.
+
+The optional KV-recompute control is intentionally mutating and fail-closed. It
+preempts one Adaptive request at the reviewed boundary, recomputes all but the
+last conditioning token, then restores the scheduler budget so the captured
+target row retains the original one-token ordinary-decode shape.
 """
 from __future__ import annotations
 
@@ -184,6 +190,74 @@ def accounting(config, stage, request, output, scheduled, stale):
           invalid_spec_tokens=(getattr(scheduled, 'num_invalid_spec_tokens', None) or {}).get(request.request_id, 0),
           scheduled_tokens=scheduled.num_scheduled_tokens.get(request.request_id),
           scheduled_spec_token_ids=list(scheduled.scheduled_spec_decode_tokens.get(request.request_id, [])))
+
+
+def kv_recompute_before_schedule(config, scheduler):
+    target = config.get("diagnostic_control", {}).get(
+        "adaptive_kv_recompute_output_count")
+    if target is None or config["lane"] != "adaptive":
+        return
+    need(target == 60, "unreviewed KV recompute boundary")
+
+    state = getattr(scheduler, "_m203_kv_recompute", None)
+    if state is not None:
+        need(state["request_id"] in scheduler.requests,
+             "KV recompute request disappeared")
+        request = scheduler.requests[state["request_id"]]
+        if state["phase"] == "refill":
+            need(request.num_computed_tokens == state["recomputed_tokens"],
+                 "KV recompute did not stop before boundary token")
+            scheduler.max_num_scheduled_tokens = state["original_budget"]
+            state["phase"] = "ready"
+            event(config["directory"], "kv_recompute_ready",
+                  request_id=request.request_id,
+                  output_count=len(request._output_token_ids),
+                  total_tokens=state["total_tokens"],
+                  recomputed_tokens=state["recomputed_tokens"],
+                  num_computed_tokens=request.num_computed_tokens,
+                  budget_restored=(scheduler.max_num_scheduled_tokens
+                                   == state["original_budget"]))
+        return
+
+    matches = [request for request in scheduler.running
+               if len(request._output_token_ids) == target]
+    if not matches:
+        return
+    need(len(scheduler.running) == len(matches) == 1,
+         "KV recompute requires one boundary request")
+    request = matches[0]
+    total = request.num_prompt_tokens + len(request._output_token_ids)
+    recomputed = total - 1
+    original_budget = scheduler.max_num_scheduled_tokens
+    need(recomputed > 0 and original_budget >= recomputed
+         and scheduler.scheduler_config.max_num_batched_tokens >= recomputed,
+         "KV recompute chunk cannot preserve ordinary boundary shape")
+    scheduler.max_num_scheduled_tokens = recomputed
+    event(config["directory"], "kv_recompute_started",
+          request_id=request.request_id, output_count=target,
+          total_tokens=total, recomputed_tokens=recomputed,
+          original_budget=original_budget)
+    need(scheduler.reset_prefix_cache(reset_running_requests=True) is True,
+         "KV recompute reset failed")
+    need(request.num_computed_tokens == 0 and not request.spec_token_ids,
+         "KV recompute did not clear target state")
+    scheduler._m203_kv_recompute = {
+        "phase": "refill", "request_id": request.request_id,
+        "total_tokens": total, "recomputed_tokens": recomputed,
+        "original_budget": original_budget,
+    }
+
+
+def control(stage, *args):
+    config_path = os.environ.get("M203_TARGETED_CONFIG")
+    if not config_path:
+        return
+    config = load(config_path)
+    if not config.get("diagnostic_control", {}).get(
+            "adaptive_kv_recompute_output_count"):
+        return
+    need(stage == "before_schedule", "unknown diagnostic control stage")
+    kv_recompute_before_schedule(config, *args)
 
 
 def observe(stage, *args):
