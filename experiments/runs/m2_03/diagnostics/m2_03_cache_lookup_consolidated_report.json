@@ -1,0 +1,71 @@
+{
+  "task": "M2-03",
+  "result_kind": "DIAGNOSTIC_NOT_CANONICAL",
+  "sample_id": "w3_business_v2_004",
+  "git_checkpoint": "1066bcd",
+  "conditions": {
+    "ON": [
+      {
+        "attempt": 1,
+        "http_request_id": "chatcmpl-b147da97a7349214",
+        "engine_request_id": "chatcmpl-b147da97a7349214-8d7f428b",
+        "output_tokens": 284,
+        "token_200": 128371,
+        "cached_prefix_tokens": 0,
+        "shared_prefix_boundary": 0,
+        "exact_match": true,
+        "first_mismatch": null,
+        "prompt_hash": "a143ef320f66f9b6137753ad65a736e81f97fb163dfad6f4815f725ae9efa216"
+      },
+      {
+        "attempt": 2,
+        "http_request_id": "chatcmpl-b8725891180beac8",
+        "engine_request_id": "chatcmpl-b8725891180beac8-8e2bbd62",
+        "output_tokens": 285,
+        "token_200": 128585,
+        "cached_prefix_tokens": 160,
+        "shared_prefix_boundary": 0,
+        "exact_match": false,
+        "first_mismatch": 200,
+        "prompt_hash": "a143ef320f66f9b6137753ad65a736e81f97fb163dfad6f4815f725ae9efa216"
+      }
+    ],
+    "OFF": [
+      {
+        "attempt": 1,
+        "http_request_id": "chatcmpl-8351ef4d4d6c08c3",
+        "engine_request_id": "chatcmpl-8351ef4d4d6c08c3-a48b623e",
+        "output_tokens": 284,
+        "token_200": 128371,
+        "cached_prefix_tokens": 0,
+        "shared_prefix_boundary": 0,
+        "exact_match": true,
+        "first_mismatch": null,
+        "prompt_hash": "a143ef320f66f9b6137753ad65a736e81f97fb163dfad6f4815f725ae9efa216"
+      },
+      {
+        "attempt": 2,
+        "http_request_id": "chatcmpl-9e2636b49110372e",
+        "engine_request_id": "chatcmpl-9e2636b49110372e-a72aa474",
+        "output_tokens": 284,
+        "token_200": 128371,
+        "cached_prefix_tokens": 0,
+        "shared_prefix_boundary": 0,
+        "exact_match": true,
+        "first_mismatch": null,
+        "prompt_hash": "a143ef320f66f9b6137753ad65a736e81f97fb163dfad6f4815f725ae9efa216"
+      }
+    ]
+  },
+  "limitations": [
+    "Cache lookup does not verify KV tensor equality.",
+    "Only one frozen sample was tested.",
+    "Numerical execution differences remain unresolved.",
+    "Canonical r03 remains 44/54 FAIL."
+  ],
+  "canonical": {
+    "exact_matches": 44,
+    "valid_pairs": 54,
+    "truncated_pairs": 7
+  }
+}
