@@ -1,0 +1,30 @@
+{
+  "result_kind": "DIAGNOSTIC_NOT_CANONICAL",
+  "condition": "cache_off",
+  "sample_id": "w3_business_v2_004",
+  "attempt": 2,
+  "http_request_id": "chatcmpl-9e2636b49110372e",
+  "engine_request_ids": [
+    "chatcmpl-9e2636b49110372e-a72aa474"
+  ],
+  "output_tokens": 284,
+  "token_200": 128371,
+  "exact_vs_vanilla": true,
+  "first_mismatch_vs_vanilla": null,
+  "exact_vs_attempt1": true,
+  "first_mismatch_vs_attempt1": null,
+  "new_probe_record_count": 1,
+  "matched_probe_record_count": 1,
+  "cached_prefix_tokens": [
+    0
+  ],
+  "shared_prefix_boundaries": [
+    0
+  ],
+  "cache_enabled": [
+    false
+  ],
+  "prompt_hashes": [
+    "a143ef320f66f9b6137753ad65a736e81f97fb163dfad6f4815f725ae9efa216"
+  ]
+}

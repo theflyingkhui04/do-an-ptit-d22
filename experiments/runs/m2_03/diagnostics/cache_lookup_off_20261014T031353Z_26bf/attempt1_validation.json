@@ -1,0 +1,24 @@
+{
+  "condition": "cache_off",
+  "attempt": 1,
+  "result_kind": "DIAGNOSTIC_NOT_CANONICAL",
+  "http_id": "chatcmpl-8351ef4d4d6c08c3",
+  "engine_ids": [
+    "chatcmpl-8351ef4d4d6c08c3-a48b623e"
+  ],
+  "output_tokens": 284,
+  "token_200": 128371,
+  "exact_vs_vanilla": true,
+  "first_mismatch": null,
+  "total_probe_records": 1,
+  "matched_probe_records": 1,
+  "cached_prefix_tokens": [
+    0
+  ],
+  "cache_enabled": [
+    false
+  ],
+  "prompt_hashes": [
+    "a143ef320f66f9b6137753ad65a736e81f97fb163dfad6f4815f725ae9efa216"
+  ]
+}
