@@ -1,0 +1,638 @@
+"""M2-03: fail-closed greedy token-ID verification, Vanilla vs Adaptive.
+
+Run from repository root, on the canonical Tesla T4 / vLLM 0.30.0 runtime:
+
+    bash scripts/switch_lane.sh lane1
+    python tests/verify_lossless.py reference --run-id m2-03-20261013-r01
+    bash scripts/switch_lane.sh lane3
+    python tests/verify_lossless.py verify --run-id m2-03-20261013-r01
+
+The two stages are intentionally sequential (one T4 cannot host both lanes).
+The PASS value concerns only the empirical token-ID gate, not logits / a
+mathematical proof of losslessness. Do not change frozen workload inputs.
+"""
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import importlib.metadata
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import requests
+import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from experiments.workload_adapter import (  # noqa: E402
+    load_workload_rows,
+    validate_manifest_consistency,
+    validate_workload_label,
+    verify_workload_integrity,
+)
+
+from experiments import lossless_verifier as shared_verifier
+
+RUN_ROOT = ROOT / "experiments/runs/m2_03_cacheoff"
+SUMMARY_PATH = ROOT / "experiments/results/m2_lossless_cacheoff_summary.json"
+EXPECTED_TOTAL = 54
+MIN_PROMPTS = 50
+EXPECTED_VLLM = "0.30.0"
+EXPECTED_TORCH = "2.13.0+cu130"
+RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+# These are exact frozen request-artifact SHA-256 digests on `develop`.
+# Updating them means a deliberate protocol/source revision, not a silent fix.
+WORKLOADS = {
+    "W1": {
+        "file": "experiments/configs/w1/node1_chat_requests.jsonl",
+        "dataset_version": "w1.m1_03.v1",
+        "sample_count": 30,
+        "sha256": "0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360",
+    },
+    "W2": {
+        "file": "experiments/configs/w2_v2/chat_requests.jsonl",
+        "dataset_version": "w2.m1_03.v2",
+        "sample_count": 12,
+        "sha256": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c",
+    },
+    "W3": {
+        "file": "experiments/configs/w3_v2/chat_requests.jsonl",
+        "dataset_version": "w3.m1_03.v2",
+        "sample_count": 12,
+        "sha256": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+    },
+}
+LANES = {
+    "vanilla": {"port": 8001, "model": "qwen2.5-7b-vanilla"},
+    "adaptive": {"port": 8003, "model": "qwen2.5-7b-adaptive"},
+}
+LAUNCHER_PATHS = [
+    ROOT / "scripts/m2_03_vanilla_v1_cacheoff.sh",
+    ROOT / "scripts/m2_03_adaptive_v1_cacheoff.sh",
+]
+IMPLEMENTATION_PATHS = [
+    ROOT / "src/server/adaptive_scheduler.py",
+    ROOT / "src/server/budget_planner.py",
+    ROOT / "src/proposer/controller.py",
+    ROOT / "scripts/switch_lane.sh",
+]
+
+
+class VerificationError(RuntimeError):
+    """An invalid or incomplete test is a failure, never an implicit pass."""
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    return sha256_bytes(path.read_bytes())
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def fingerprint(value: Any) -> str:
+    return sha256_bytes(canonical_json(value).encode("utf-8"))
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def atomic_json(path: Path, obj: Any) -> None:
+    """Write a complete JSON document; never leave a partially-written summary."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + f".tmp.{os.getpid()}")
+    try:
+        with temp.open("w", encoding="utf-8") as handle:
+            json.dump(obj, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def load_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise VerificationError(f"Cannot read valid JSON {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise VerificationError(f"Expected JSON object in {path}")
+    return value
+
+
+def load_jsonl(path: Path) -> list[dict]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        records = [json.loads(line) for line in lines if line.strip()]
+    except (OSError, json.JSONDecodeError) as exc:
+        raise VerificationError(f"Cannot read valid JSONL {path}: {exc}") from exc
+    if not all(isinstance(r, dict) for r in records):
+        raise VerificationError(f"JSONL contains non-object record: {path}")
+    return records
+
+
+def load_plan() -> dict:
+    """Verify full frozen packages before selecting ALL 54 distinct records."""
+    prompts: list[dict] = []
+    sources: dict[str, dict] = {}
+    seen_ids: set[tuple[str, str]] = set()
+    seen_messages: set[str] = set()
+
+    for workload, spec in WORKLOADS.items():
+        path = ROOT / spec["file"]
+        integrity = verify_workload_integrity(path)
+        rows = load_workload_rows(path)
+        validate_manifest_consistency(integrity, rows)
+        validate_workload_label(workload, integrity.manifest["workload_id"])
+
+        if integrity.actual_sha256 != spec["sha256"]:
+            raise VerificationError(f"{workload}: frozen SHA-256 changed")
+        if integrity.manifest["dataset_version"] != spec["dataset_version"]:
+            raise VerificationError(f"{workload}: dataset version changed")
+        if len(rows) != spec["sample_count"]:
+            raise VerificationError(f"{workload}: expected {spec['sample_count']} rows")
+
+        sources[workload] = {
+            "file": spec["file"],
+            "dataset_version": spec["dataset_version"],
+            "manifest_file": str(integrity.manifest_path.relative_to(ROOT)),
+            "file_sha256": integrity.actual_sha256,
+            "manifest_package_sha256_claim": integrity.manifest_package_sha256,
+            "sample_count": len(rows),
+        }
+        for row in rows:
+            canonical_request = row["request"]
+            if canonical_request["temperature"] != 0.0:
+                raise VerificationError(f"{workload}/{row['sample_id']}: non-greedy request")
+            identity = (workload, row["sample_id"])
+            if identity in seen_ids:
+                raise VerificationError(f"duplicate sample identity: {identity}")
+            seen_ids.add(identity)
+            message_hash = fingerprint(canonical_request["messages"])
+            if message_hash in seen_messages:
+                raise VerificationError(f"duplicate prompt/messages across frozen inputs: {identity}")
+            seen_messages.add(message_hash)
+            prompts.append({
+                "workload": workload,
+                "sample_id": row["sample_id"],
+                "dataset_version": row["dataset_version"],
+                "prompt_version": row["prompt_version"],
+                "canonical_request": canonical_request,
+                "request_sha256": fingerprint(canonical_request),
+            })
+
+    if len(prompts) != EXPECTED_TOTAL or len(prompts) < MIN_PROMPTS:
+        raise VerificationError(f"Expected {EXPECTED_TOTAL} prompts, got {len(prompts)}")
+
+    plan_descriptor = {
+        "sources": sources,
+        "prompts": [{k: p[k] for k in ("workload", "sample_id", "dataset_version",
+                                          "prompt_version", "request_sha256")}
+                    for p in prompts],
+    }
+    return {
+        "prompts": prompts,
+        "sources": sources,
+        "plan_sha256": fingerprint(plan_descriptor),
+    }
+
+
+def make_payload(prompt: dict, lane: str) -> dict:
+    """Replay frozen generation semantics; change only model alias + audit flag."""
+    payload = copy.deepcopy(prompt["canonical_request"])
+    payload["model"] = LANES[lane]["model"]
+    payload["return_token_ids"] = True
+    return payload
+
+
+def validate_token_ids(value: Any, field: str) -> list[int]:
+    if (not isinstance(value, list) or not value
+            or any(type(token) is not int or token < 0 for token in value)):
+        raise VerificationError(f"{field} must be a non-empty list of non-negative int token IDs")
+    return value
+
+
+def parse_completion(body: Any, lane: str) -> dict:
+    if not isinstance(body, dict):
+        raise VerificationError("Response must be a JSON object")
+    if body.get("model") != LANES[lane]["model"]:
+        raise VerificationError(f"Response model mismatch for {lane}: {body.get('model')!r}")
+    choices = body.get("choices")
+    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+        raise VerificationError("Expected exactly one completion choice")
+    choice = choices[0]
+    if choice.get("finish_reason") not in ("stop", "length"):
+        raise VerificationError(f"Invalid final finish_reason: {choice.get('finish_reason')!r}")
+    token_ids = validate_token_ids(choice.get("token_ids"), "choices[0].token_ids")
+    prompt_ids = validate_token_ids(body.get("prompt_token_ids"), "prompt_token_ids")
+    usage = body.get("usage")
+    if not isinstance(usage, dict) or type(usage.get("completion_tokens")) is not int:
+        raise VerificationError("Missing/invalid usage.completion_tokens")
+    if usage["completion_tokens"] != len(token_ids):
+        raise VerificationError("usage.completion_tokens disagrees with returned token_ids length")
+    if not isinstance(body.get("id"), str) or not body["id"]:
+        raise VerificationError("Missing response.id")
+    return {
+        "response_id": body["id"],
+        "token_ids": token_ids,
+        "prompt_token_ids": prompt_ids,
+        "completion_tokens_reported": usage["completion_tokens"],
+        "finish_reason": choice["finish_reason"],
+        "content": choice.get("message", {}).get("content") if isinstance(choice.get("message"), dict) else None,
+    }
+
+
+def compare_pair(reference: dict, adaptive: dict) -> dict:
+    """Pure fail-closed comparator; text equality is NOT a pass condition."""
+    failures: list[str] = []
+    fields = ("workload", "sample_id", "dataset_version", "prompt_version", "request_sha256")
+    for field in fields:
+        if reference.get(field) is None or reference.get(field) != adaptive.get(field):
+            failures.append(f"identity_mismatch:{field}")
+
+    if reference.get("lane") != "vanilla" or adaptive.get("lane") != "adaptive":
+        failures.append("lane_identity_mismatch")
+    if reference.get("ok") is not True or adaptive.get("ok") is not True:
+        failures.append("request_or_response_failed")
+
+    ref_ids = ada_ids = ref_prompt = ada_prompt = None
+    for entry, name in ((reference, "vanilla"), (adaptive, "adaptive")):
+        try:
+            out_ids = validate_token_ids(entry.get("token_ids"), f"{name}.token_ids")
+            in_ids = validate_token_ids(entry.get("prompt_token_ids"), f"{name}.prompt_token_ids")
+            if name == "vanilla":
+                ref_ids, ref_prompt = out_ids, in_ids
+            else:
+                ada_ids, ada_prompt = out_ids, in_ids
+        except VerificationError as exc:
+            failures.append(str(exc))
+
+    if ref_prompt is not None and ada_prompt is not None and ref_prompt != ada_prompt:
+        failures.append("prompt_token_ids_mismatch")
+
+    first_mismatch = None
+
+    if ref_ids is not None and ada_ids is not None:
+        verification = shared_verifier.verify_token_sequence(
+            vanilla_tokens=ref_ids,
+            adaptive_tokens=ada_ids,
+            prompt_id=adaptive.get("sample_id", ""),
+            workload=adaptive.get("workload", "W1"),
+        )
+
+        if not verification.is_match:
+            discrepancy = verification.first_discrepancy
+
+            if discrepancy is None:
+                raise VerificationError(
+                    "Shared verifier reported mismatch without discrepancy"
+                )
+
+            first_mismatch = {
+                "position_zero_based": discrepancy.index,
+                "vanilla_token_id": discrepancy.expected_token_id,
+                "adaptive_token_id": discrepancy.actual_token_id,
+            }
+
+            failures.append("generated_token_ids_mismatch")
+
+    if (reference.get("finish_reason") not in ("stop", "length")
+            or adaptive.get("finish_reason") not in ("stop", "length")):
+        failures.append("invalid_finish_reason")
+    elif reference["finish_reason"] != adaptive["finish_reason"]:
+        failures.append("finish_reason_mismatch")
+
+    return {
+        "workload": adaptive.get("workload"),
+        "sample_id": adaptive.get("sample_id"),
+        "passed": not failures,
+        "failures": failures,
+        "first_mismatch": first_mismatch,
+        "vanilla_token_count": len(ref_ids) if ref_ids is not None else None,
+        "adaptive_token_count": len(ada_ids) if ada_ids is not None else None,
+        "finish_reason_vanilla": reference.get("finish_reason"),
+        "finish_reason_adaptive": adaptive.get("finish_reason"),
+        "truncated": (reference.get("finish_reason") == "length"
+                      or adaptive.get("finish_reason") == "length"),
+        "content_equal_diagnostic_only": reference.get("content") == adaptive.get("content"),
+    }
+
+
+def index_records(records: list[dict], expected_keys: set[tuple[str, str]]) -> dict[tuple[str, str], dict]:
+    index: dict[tuple[str, str], dict] = {}
+    for record in records:
+        key = (record.get("workload"), record.get("sample_id"))
+        if not all(isinstance(item, str) and item for item in key):
+            raise VerificationError(f"Invalid record identity: {key!r}")
+        if key in index:
+            raise VerificationError(f"Duplicate response record: {key!r}")
+        if key not in expected_keys:
+            raise VerificationError(f"Extra/unexpected response record: {key!r}")
+        index[key] = record
+    if set(index) != expected_keys:
+        missing = sorted(expected_keys - set(index))
+        raise VerificationError(f"Missing {len(missing)} response record(s): {missing[:5]}")
+    return index
+
+
+def get_git_sha() -> str:
+    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                            text=True, capture_output=True, check=False)
+    if result.returncode or not re.fullmatch(r"[0-9a-f]{40}", result.stdout.strip()):
+        raise VerificationError("Cannot determine Git HEAD; run inside the checkout")
+    return result.stdout.strip()
+
+
+def tool_output(argv: list[str]) -> str | None:
+    try:
+        proc = subprocess.run(argv, text=True, capture_output=True, timeout=15,
+                              check=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def installed_version(package: str) -> str | None:
+    try:
+        return importlib.metadata.version(package)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def collect_runtime() -> dict:
+    info = {
+        "git_sha": get_git_sha(),
+        "verification_script_sha256": sha256_file(Path(__file__)),
+        "workload_adapter_sha256": sha256_file(ROOT / "experiments/workload_adapter.py"),
+        "launcher_sha256": {str(p.relative_to(ROOT)): sha256_file(p)
+                            for p in LAUNCHER_PATHS},
+        "implementation_sha256": {str(p.relative_to(ROOT)): sha256_file(p)
+                                  for p in IMPLEMENTATION_PATHS},
+        "vllm_python_package_version": installed_version("vllm"),
+        "torch_python_package_version": installed_version("torch"),
+        # PyTorch distribution metadata may omit the CUDA local-version suffix.
+        # Validate the actual imported build and CUDA runtime instead.
+        "torch_runtime_version": torch.__version__,
+        "torch_cuda_version": torch.version.cuda,
+        "gpu_name": tool_output(["nvidia-smi", "--query-gpu=name",
+                                 "--format=csv,noheader"]),
+        "driver_version": tool_output(["nvidia-smi", "--query-gpu=driver_version",
+                                      "--format=csv,noheader"]),
+        "timestamp_utc": utc_now(),
+    }
+    if info["vllm_python_package_version"] != EXPECTED_VLLM:
+        raise VerificationError("Expected installed vLLM 0.30.0, got "
+                                f"{info['vllm_python_package_version']!r}")
+    if (info["torch_runtime_version"] != EXPECTED_TORCH
+            or info["torch_cuda_version"] != "13.0"):
+        raise VerificationError(
+            "Expected PyTorch runtime " + EXPECTED_TORCH
+            + " / CUDA 13.0, got " + repr(info["torch_runtime_version"])
+            + " / CUDA " + repr(info["torch_cuda_version"])
+        )
+    if info["gpu_name"] != "Tesla T4":
+        raise VerificationError(f"Expected Tesla T4, got {info['gpu_name']!r}")
+    return info
+
+
+def base_url(lane: str) -> str:
+    return f"http://127.0.0.1:{LANES[lane]['port']}"
+
+
+def probe_server(session: requests.Session, lane: str) -> dict:
+    endpoint = base_url(lane)
+    health = session.get(endpoint + "/health", timeout=(10, 30))
+    health.raise_for_status()
+    models_resp = session.get(endpoint + "/v1/models", timeout=(10, 30))
+    models_resp.raise_for_status()
+    body = models_resp.json()
+    models = body.get("data", [])
+    if not isinstance(models, list):
+        raise VerificationError(f"Invalid /v1/models response from {endpoint}")
+    matching = [m for m in models if isinstance(m, dict)
+                and m.get("id") == LANES[lane]["model"]]
+    if len(matching) != 1:
+        raise VerificationError(f"Server at {endpoint} does not serve {LANES[lane]['model']}")
+    return {"url": endpoint, "served_model": LANES[lane]["model"],
+            "model_root": matching[0].get("root")}
+
+
+def request_one(session: requests.Session, prompt: dict, lane: str) -> dict:
+    entry = {
+        k: prompt[k] for k in ("workload", "sample_id", "dataset_version",
+                                "prompt_version", "request_sha256")
+    }
+    entry.update({"lane": lane, "ok": False, "request_timestamp_utc": utc_now()})
+    payload = make_payload(prompt, lane)
+    start = time.perf_counter()
+    try:
+        resp = session.post(base_url(lane) + "/v1/chat/completions",
+                            json=payload, timeout=(10, 600))
+        entry["http_status"] = resp.status_code
+        resp.raise_for_status()
+        entry.update(parse_completion(resp.json(), lane))
+        entry["ok"] = True
+    except (requests.RequestException, ValueError, VerificationError, KeyError, TypeError) as exc:
+        entry["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        entry["latency_s"] = round(time.perf_counter() - start, 3)
+    return entry
+
+
+def run_requests(session: requests.Session, prompts: list[dict], lane: str,
+                 jsonl_path: Path) -> list[dict]:
+    """Create a new journal; flush after each request for interruption evidence."""
+    records = []
+    with jsonl_path.open("x", encoding="utf-8") as handle:
+        for i, prompt in enumerate(prompts, start=1):
+            result = request_one(session, prompt, lane)
+            records.append(result)
+            handle.write(canonical_json(result) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+            print(f"[{lane} {i:02d}/{len(prompts)}] "
+                  f"{prompt['workload']}/{prompt['sample_id']} "
+                  f"{'OK' if result['ok'] else 'FAIL'}", flush=True)
+    return records
+
+
+def ensure_same_provenance(reference: dict, current: dict, plan_hash: str) -> None:
+    if reference.get("plan_sha256") != plan_hash:
+        raise VerificationError("Frozen workload plan differs between stages")
+    old = reference.get("runtime", {})
+    # Different timestamps and GPU driver may be recorded, but Git code, launch
+    # scripts and local vLLM installation must be the same.
+    for name in ("git_sha", "verification_script_sha256", "workload_adapter_sha256",
+                 "launcher_sha256", "implementation_sha256", "vllm_python_package_version",
+                 "torch_python_package_version", "torch_runtime_version",
+                 "torch_cuda_version", "gpu_name", "driver_version"):
+        if old.get(name) is None or old[name] != current.get(name):
+            raise VerificationError(f"Runtime provenance changed: {name}")
+
+
+def reference_stage(run_id: str) -> int:
+    plan = load_plan()
+    runtime = collect_runtime()
+    session = requests.Session()
+    server = probe_server(session, "vanilla")
+    run_dir = RUN_ROOT / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+    meta_path = run_dir / "reference_meta.json"
+    meta = {
+        "run_id": run_id, "stage": "vanilla_reference", "complete": False,
+        "plan_sha256": plan["plan_sha256"], "sources": plan["sources"],
+        "expected_prompts": len(plan["prompts"]), "runtime": runtime,
+        "server": server, "started_at_utc": utc_now(),
+    }
+    atomic_json(meta_path, meta)
+    try:
+        records = run_requests(session, plan["prompts"], "vanilla", run_dir / "vanilla.jsonl")
+        expected = {(p["workload"], p["sample_id"]) for p in plan["prompts"]}
+        index_records(records, expected)
+        meta["failed_requests"] = sum(r["ok"] is not True for r in records)
+        meta["reference_jsonl_sha256"] = sha256_file(run_dir / "vanilla.jsonl")
+        meta["complete"] = meta["failed_requests"] == 0
+        meta["finished_at_utc"] = utc_now()
+        atomic_json(meta_path, meta)
+    finally:
+        session.close()
+    print(f"Reference {'PASS' if meta['complete'] else 'FAIL'}: {run_dir}")
+    return 0 if meta["complete"] else 1
+
+
+def verify_stage(run_id: str) -> int:
+    run_dir = RUN_ROOT / run_id
+    # Reject reusing a run ID before opening a session, contacting a server,
+    # or entering the try/finally block that writes canonical summaries.
+    # Preserve both failed and successful Adaptive evidence without exception.
+    existing_evidence = [
+        path.name
+        for path in (run_dir / "adaptive.jsonl", run_dir / "summary.json")
+        if path.exists()
+    ]
+    if existing_evidence:
+        print(
+            f"REFUSING_REUSED_RUN_ID: {run_id}; existing evidence: "
+            + ", ".join(existing_evidence),
+            file=sys.stderr,
+        )
+        return 1
+
+    summary: dict[str, Any] = {
+        "task": "M2-03", "run_id": run_id,
+        "gate": "greedy_exact_output_token_ids",
+        "temperature": 0.0, "expected_prompts": EXPECTED_TOTAL,
+        "token_id_gate_passed": False,
+        "task_done": False,  # logits and Chapter 4 still require their own evidence
+        "logits_status": "PM_DECISION_REQUIRED",
+        "finished_at_utc": None,
+    }
+    session = requests.Session()
+    try:
+        plan = load_plan()
+        summary["plan_sha256"] = plan["plan_sha256"]
+        summary["sources"] = plan["sources"]
+        reference_meta = load_json(run_dir / "reference_meta.json")
+        if reference_meta.get("run_id") != run_id or reference_meta.get("complete") is not True:
+            raise VerificationError("Vanilla reference is missing or incomplete")
+        runtime = collect_runtime()
+        ensure_same_provenance(reference_meta, runtime, plan["plan_sha256"])
+        vanilla_path = run_dir / "vanilla.jsonl"
+        if sha256_file(vanilla_path) != reference_meta.get("reference_jsonl_sha256"):
+            raise VerificationError("Vanilla reference JSONL hash mismatch")
+        reference_records = load_jsonl(vanilla_path)
+        expected = {(p["workload"], p["sample_id"]) for p in plan["prompts"]}
+        refs = index_records(reference_records, expected)
+        if any(r.get("ok") is not True for r in refs.values()):
+            raise VerificationError("Vanilla reference contains failed response")
+
+        adaptive_server = probe_server(session, "adaptive")
+        old_root = reference_meta.get("server", {}).get("model_root")
+        new_root = adaptive_server.get("model_root")
+        if old_root is not None and new_root is not None and old_root != new_root:
+            raise VerificationError("Target model_root differs across lanes")
+        summary["runtime"] = runtime
+        summary["server"] = {"vanilla": reference_meta["server"],
+                             "adaptive": adaptive_server}
+
+        # Never reuse old Adaptive responses when comparing new data.
+        results = run_requests(session, plan["prompts"], "adaptive", run_dir / "adaptive.jsonl")
+        adaptive = index_records(results, expected)
+        comparisons = [compare_pair(refs[(p["workload"], p["sample_id"])],
+                                    adaptive[(p["workload"], p["sample_id"])])
+                       for p in plan["prompts"]]
+        valid_pairs = sum(refs[(p["workload"], p["sample_id"])].get("ok") is True
+                          and adaptive[(p["workload"], p["sample_id"])].get("ok") is True
+                          for p in plan["prompts"])
+        matched = sum(r["passed"] for r in comparisons)
+        summary.update({
+            "valid_pairs": valid_pairs,
+            "exact_sequence_matches": matched,
+            "exact_sequence_match_rate": matched / len(plan["prompts"]),
+            "truncated_pairs": sum(r["truncated"] for r in comparisons),
+            "full_completion_verified": not any(r["truncated"] for r in comparisons),
+            "comparisons": comparisons,
+            "vanilla_jsonl_sha256": sha256_file(vanilla_path),
+            "adaptive_jsonl_sha256": sha256_file(run_dir / "adaptive.jsonl"),
+        })
+        summary["token_id_gate_passed"] = (
+            len(comparisons) == EXPECTED_TOTAL
+            and len(comparisons) >= MIN_PROMPTS
+            and valid_pairs == len(plan["prompts"])
+            and matched == len(plan["prompts"])
+        )
+    except (VerificationError, OSError, requests.RequestException, ValueError, KeyError,
+            TypeError) as exc:
+        summary["fatal_error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        session.close()
+        summary["finished_at_utc"] = utc_now()
+        # A canonical latest-run summary is always overwritten with this run's
+        # result, including a FAIL, so an old PASS is never reused silently.
+        atomic_json(SUMMARY_PATH, summary)
+        if run_dir.is_dir():
+            atomic_json(run_dir / "summary.json", summary)
+    status = "PASS" if summary["token_id_gate_passed"] else "FAIL"
+    print(f"M2-03 TOKEN-ID GATE: {status} ({SUMMARY_PATH})")
+    if summary.get("fatal_error"):
+        print(summary["fatal_error"], file=sys.stderr)
+    return 0 if summary["token_id_gate_passed"] else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    for command in ("reference", "verify"):
+        p = sub.add_parser(command)
+        p.add_argument("--run-id", required=True,
+                       help="Safe, unique ID; use the SAME ID for both stages")
+    args = parser.parse_args(argv)
+    if not RUN_ID_PATTERN.fullmatch(args.run_id):
+        parser.error("Invalid --run-id: allowed letters, digits, '_' and '-'")
+    try:
+        return reference_stage(args.run_id) if args.cmd == "reference" else verify_stage(args.run_id)
+    except (VerificationError, OSError, requests.RequestException, ValueError) as exc:
+        print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
