@@ -1,0 +1,69 @@
+{
+  "result_kind": "RECOVERED_REFERENCE_TARGETED_DIAGNOSTIC",
+  "canonical": false,
+  "vanilla_execution_git_sha": "496aea16d557a037e4ab31558066114c17cf50d4",
+  "adaptive_execution_git_sha": "f6956a8c0a8dc7420684321bf66dcc30483b6850",
+  "vanilla_runtime_metadata_reconstructed": true,
+  "inference_source_equivalence_checked": true,
+  "adaptive_runtime": {
+    "git_sha": "f6956a8c0a8dc7420684321bf66dcc30483b6850",
+    "verification_script_sha256": "950aa925fa038134ca9b7d3df1090c315fa83cd5cb040a7be9b24f23a93a720d",
+    "workload_adapter_sha256": "c456590e543dbeb349fd013e901e22f1ac3afaa7f91e1f75621bd898cfb8c75c",
+    "launcher_sha256": {
+      "scripts/m2_03_vanilla_v1_cacheoff.sh": "d110887acbd613caf1f19fc25e42c48ed5a5daabea1cc460dd67b21d68d2c93f",
+      "scripts/m2_03_adaptive_v1_cacheoff.sh": "06a4b6ef7b683bbe63d8140f8ae6a213b8d22bc669c8cb973d232c1b2523f8a4"
+    },
+    "implementation_sha256": {
+      "src/server/adaptive_scheduler.py": "9c5006d4ba5484a87147dd20ddfd7fb46576cd786f8c1b41e89f9c050a0c0121",
+      "src/server/budget_planner.py": "01bab9decb7bbb8a4e6d3044dbe8024f7dd0381bd0031da7394b11243aad6e32",
+      "src/proposer/controller.py": "b2666223a5b4f22cddb15b422b49c7b70b12cbabbc5b8f4c76e4debaca221df4",
+      "scripts/switch_lane.sh": "41b2c8f962c9e5f7653d54ae4376d978d4f829ea33c0fed573e73116b10ccb92"
+    },
+    "vllm_python_package_version": "0.30.0",
+    "torch_python_package_version": "2.13.0+cu130",
+    "torch_runtime_version": "2.13.0+cu130",
+    "torch_cuda_version": "13.0",
+    "gpu_name": "Tesla T4",
+    "driver_version": "580.178.04",
+    "selected_gpu_uuid": "GPU-7b8f951f-938d-5faa-d370-bd6d6609812f",
+    "physical_gpu_inventory": "0, Tesla T4, GPU-7b8f951f-938d-5faa-d370-bd6d6609812f\n1, Tesla T4, GPU-beeed6c3-ed38-1596-583b-93ab7215c08b",
+    "cuda_visible_devices": "0",
+    "cuda_device_count": 1,
+    "timestamp_utc": "2026-10-14T04:21:27.817578+00:00"
+  },
+  "adaptive_server": {
+    "url": "http://127.0.0.1:8003",
+    "served_model": "qwen2.5-7b-adaptive",
+    "model_root": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+  },
+  "vanilla_journal_sha256": "7288d7a26f546aa2ada9489f2af6fe973ccd045712b2c8ac2dca49b241946117",
+  "comparisons": [
+    {
+      "workload": "W1",
+      "sample_id": "m0_04_007",
+      "passed": true,
+      "failures": [],
+      "first_mismatch": null,
+      "vanilla_token_count": 654,
+      "adaptive_token_count": 654,
+      "finish_reason_vanilla": "stop",
+      "finish_reason_adaptive": "stop",
+      "truncated": false,
+      "content_equal_diagnostic_only": true
+    },
+    {
+      "workload": "W3",
+      "sample_id": "w3_business_v2_004",
+      "passed": true,
+      "failures": [],
+      "first_mismatch": null,
+      "vanilla_token_count": 284,
+      "adaptive_token_count": 284,
+      "finish_reason_vanilla": "stop",
+      "finish_reason_adaptive": "stop",
+      "truncated": false,
+      "content_equal_diagnostic_only": true
+    }
+  ],
+  "all_passed": true
+}
