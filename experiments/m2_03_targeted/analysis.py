@@ -26,6 +26,10 @@ def provenance(root, lanes=LANES):
     expected = {k: sha(sources.transform(k, v.encode())) for k, v in sources.fixture_sources().items() if k in sources.INSERTIONS}
     need(installed["patched_sha256"] == expected, "observer source provenance drift")
     policy = config["policy"]
+    control = policy.get("diagnostic_control", {})
+    need(set(control) <= {"vanilla_cudagraph_mode"}
+         and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE"),
+         "diagnostic control unreviewed")
     need(preflight["models"] == policy["models"] and all(preflight["runtime"][k] == v for k, v in policy["runtime"].items()), "model/runtime policy mismatch")
     need(preflight["runtime"]["vllm"] == "0.30.0" and preflight["runtime"]["gpu"] == "Tesla T4", "wrong pinned runtime")
     for lane in lanes:
@@ -40,6 +44,13 @@ def provenance(root, lanes=LANES):
             need(argv.count(flag) == 1 and argv[argv.index(flag) + 1] == value, "launcher setting drift: " + flag)
         need("--no-enable-prefix-caching" in argv and env["VLLM_USE_V2_MODEL_RUNNER"] == "0"
              and env["CUDA_VISIBLE_DEVICES"] == "0", "cache/runner/GPU policy drift")
+        expected_mode = control.get("vanilla_cudagraph_mode") if lane == "vanilla" else None
+        need(argv.count("--compilation-config") == int(expected_mode is not None),
+             "cudagraph control presence drift")
+        if expected_mode is not None:
+            need(decode(argv[argv.index("--compilation-config") + 1]) == {
+                "cudagraph_mode": expected_mode,
+            }, "cudagraph control value drift")
         need(all(env[k] == v for k, v in policy["adaptive_env"].items()), "adaptive environment drift")
         if lane == "adaptive":
             spec = decode(argv[argv.index("--speculative-config") + 1])
@@ -190,6 +201,7 @@ def validate_lane(root, lane):
 def compare(root):
     root = Path(root)
     report = {"result_kind": "DIAGNOSTIC_NOT_CANONICAL_GATE", "case": CASE, "target": TARGET,
+              "diagnostic_control": load(root / "run.json")["policy"].get("diagnostic_control", {}),
               "same_internal_state_proven": False, "same_kv_state_proven": False,
               "runtime_probe_changes_timing": True, "historical_gate": "47/54 FAIL"}
     try:

@@ -183,6 +183,38 @@ def test_two_lane_capture_states_and_read_only_tensors(tmp_path, different, stat
     assert a.capture(root / 'vanilla', 'vanilla', 'd'*40, 'api', prompt, ids)['selection_role'] == 'ordinary'
 
 
+def test_piecewise_control_changes_only_vanilla_target_launch(tmp_path):
+    root = run_fixture(tmp_path)
+    run = c.load(root / "run.json")
+    run["policy"]["diagnostic_control"] = {
+        "vanilla_cudagraph_mode": "PIECEWISE",
+    }
+    (root / "run.json").write_bytes(c.encoded(run))
+
+    vanilla, _ = e.launch_args(root, "vanilla")
+    adaptive, _ = e.launch_args(root, "adaptive")
+    assert c.decode(vanilla[vanilla.index("--compilation-config") + 1]) == {
+        "cudagraph_mode": "PIECEWISE",
+    }
+    assert "--compilation-config" not in adaptive
+    assert "--speculative-config" in adaptive
+
+    launchers = {"vanilla": vanilla, "adaptive": adaptive}
+    for lane, argv in launchers.items():
+        launch = c.load(root / lane / "launch.json")
+        launch["argv"] = argv
+        (root / lane / "launch.json").write_bytes(c.encoded(launch))
+        synthetic_shutdown(root / lane)
+    preflight = c.load(root / "preflight.json")
+    preflight["launcher_argv"] = launchers
+    (root / "preflight.json").write_bytes(c.encoded(preflight))
+
+    report = a.compare(root)
+    assert report["diagnostic_control"] == {
+        "vanilla_cudagraph_mode": "PIECEWISE",
+    }
+
+
 def test_rejected_candidate_not_mistaken_for_selected_row(tmp_path):
     ids, prompt, *_ = forward_fixture(tmp_path / "adaptive", "adaptive", 2, selected=False)
     with pytest.raises(c.Invalid, match="selected boundary capture"):

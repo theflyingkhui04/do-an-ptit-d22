@@ -290,6 +290,14 @@ def launch_args(root, lane):
             "--generation-config", "vllm", "--quantization", "awq", "--dtype", "half",
             "--gpu-memory-utilization", "0.85", "--max-model-len", "4096", "--max-num-seqs", "32",
             "--no-enable-prefix-caching"]
+    control = config["policy"].get("diagnostic_control", {})
+    need(set(control) <= {"vanilla_cudagraph_mode"}
+         and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE"),
+         "diagnostic control unreviewed")
+    if lane == "vanilla" and control.get("vanilla_cudagraph_mode"):
+        argv += ["--compilation-config", encoded({
+            "cudagraph_mode": control["vanilla_cudagraph_mode"],
+        }).decode().strip()]
     if lane == "adaptive":
         spec = {"method": "draft_model", "model": models["draft"]["snapshot"], "num_speculative_tokens": 4,
                 "num_speculative_tokens_per_batch_size": [[1, 32, 4]], "use_heterogeneous_vocab": True,
