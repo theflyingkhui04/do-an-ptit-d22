@@ -1,0 +1,32 @@
+{
+  "runtime": {
+    "python": "REVIEW_REQUIRED_EXACT_VERSION",
+    "vllm": "0.30.0",
+    "torch": "REVIEW_REQUIRED_EXACT_TORCH_BUILD",
+    "cuda": "REVIEW_REQUIRED_EXACT_TORCH_CUDA",
+    "gpu": "Tesla T4",
+    "driver": "REVIEW_REQUIRED_EXACT_DRIVER"
+  },
+  "runtime_environment": "REVIEW_REQUIRED_RUNTIME_CONTROLS_OBJECT",
+  "models": {
+    "target": {
+      "id": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "revision": "REVIEW_REQUIRED_FULL_MODEL_COMMIT",
+      "snapshot": "/REVIEW_REQUIRED/snapshots/REVIEW_REQUIRED_FULL_MODEL_COMMIT",
+      "file_sha256": {}
+    },
+    "draft": {
+      "id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "revision": "REVIEW_REQUIRED_FULL_MODEL_COMMIT",
+      "snapshot": "/REVIEW_REQUIRED/snapshots/REVIEW_REQUIRED_FULL_MODEL_COMMIT",
+      "file_sha256": {}
+    }
+  },
+  "adaptive_env": {
+    "ADAPTIVE_MAX_K": "4",
+    "ADAPTIVE_MIN_BATCH_K": "0",
+    "ADAPTIVE_PER_REQUEST": "1",
+    "ADAPTIVE_ENABLE_VRAM_GUARD": "REVIEW_REQUIRED_HISTORICAL_EFFECTIVE_VALUE",
+    "ADAPTIVE_CONTROLLER_KWARGS": "REVIEW_REQUIRED_EXACT_VALUE"
+  }
+}

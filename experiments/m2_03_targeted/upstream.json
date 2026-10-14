@@ -1,0 +1,12 @@
+{
+  "tag": "v0.30.0",
+  "upstream": "https://github.com/vllm-project/vllm/tree/v0.30.0",
+  "license": "Apache-2.0; SPDX headers retained in source fixture",
+  "sha256": {
+    "v1/worker/gpu_model_runner.py": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
+    "v1/sample/sampler.py": "f95805b2c6d06218c724826aa5f881a606e8d0a534a566aee7c85948520dd216",
+    "v1/sample/rejection_sampler.py": "0bb9d224887ccb1355e16199005cc23a4afc6fa75156eca419851b7247d99750",
+    "v1/core/sched/scheduler.py": "c1db45f3bbad3a875dd8638331b8870c4380ac1ab4734265ba5c863833a82884",
+    "v1/core/sched/async_scheduler.py": "e586a0ef3c6778be56a93e7f9bb712d4de9de6e7d7fe7e3e1d51dae83ecfc508"
+  }
+}
