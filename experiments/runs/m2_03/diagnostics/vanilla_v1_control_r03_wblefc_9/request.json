@@ -1,0 +1,17 @@
+{
+  "model": "qwen2.5-7b-vanilla",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are Node 3 business-analysis writer in the MC-OCR VAT analytics pipeline.\nWrite concise Vietnamese analytical prose that directly answers the business scenario.\nUse only facts supplied by the user; separate observations from hypotheses and recommendations when relevant.\nPrefer grounded, cautious reasoning and explicitly note important uncertainty or missing data.\nDo not discuss the thesis, benchmark design, speculative decoding, or model performance unless the business scenario explicitly contains such information.\nDo not return JSON unless the user explicitly asks for JSON."
+    },
+    {
+      "role": "user",
+      "content": "Doanh thu tăng 18%, số hóa đơn tăng 5%, nhưng VAT bình quân trên mỗi hóa đơn giảm. Hãy nêu ít nhất ba giả thuyết nghiệp vụ hợp lý, phân biệt điều gì là quan sát và điều gì mới là giả thuyết, rồi đề xuất dữ liệu cần kiểm tra để xác nhận."
+    }
+  ],
+  "temperature": 0.0,
+  "max_tokens": 768,
+  "seed": 42,
+  "return_token_ids": true
+}

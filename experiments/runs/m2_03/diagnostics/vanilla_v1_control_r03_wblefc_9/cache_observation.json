@@ -1,0 +1,6 @@
+{
+  "repeat": "r03",
+  "observed_prefix_cache_hit_rates_percent": [],
+  "zero_hit_observed": false,
+  "note": "Server-level cache metric, not proof of KV-cache tensor equivalence."
+}

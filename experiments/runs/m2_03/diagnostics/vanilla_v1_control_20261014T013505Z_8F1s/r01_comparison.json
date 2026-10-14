@@ -1,0 +1,11 @@
+{
+  "result_kind": "DIAGNOSTIC_NOT_CANONICAL",
+  "condition": "vanilla_v1_r01_first_request",
+  "sample_id": "w3_business_v2_004",
+  "output_tokens": 284,
+  "token_200": 128371,
+  "exact_vs_vanilla_v2": true,
+  "first_mismatch_vs_vanilla_v2": null,
+  "exact_vs_adaptive_v1": false,
+  "first_mismatch_vs_adaptive_v1": 200
+}

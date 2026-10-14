@@ -1,0 +1,13 @@
+{
+  "result_kind": "DIAGNOSTIC_NOT_CANONICAL",
+  "repeat": "r03",
+  "sample_id": "w3_business_v2_004",
+  "timestamp_utc": "2026-10-14T02:01:02.228741+00:00",
+  "request_id": "chatcmpl-af9bd949ee8f4b80",
+  "output_tokens": 284,
+  "token_200": 128371,
+  "exact_vs_vanilla_v2": true,
+  "first_mismatch_vs_vanilla_v2": null,
+  "exact_vs_adaptive_v1_attempt2": false,
+  "first_mismatch_vs_adaptive_v1_attempt2": 200
+}
