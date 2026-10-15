@@ -6,6 +6,7 @@ import copy
 import ast
 from contextlib import redirect_stderr
 import json
+import inspect
 import numpy as np
 import signal
 import time
@@ -17,6 +18,417 @@ import pytest
 import torch
 
 from experiments.m2_03_targeted import analysis as a, common as c, execution as e, observer as o, sources as s
+
+
+def transition_fixture():
+    """Two consecutive ordinary forwards; current follows a speculative correction."""
+    prompt, ids = [0] * 5, [1] * 370
+    def record(step, index):
+        position = len(prompt) + index - 1
+        return dict(key=f"f{step}", previous_key=f"f{step-1}", forward_sequence=step,
+                    scheduler_step=step + 10, request_id="api-1234abcd", lane="adaptive",
+                    execution_sha="d" * 40, prompt_token_ids=prompt,
+                    schema="m203.targeted.transition.v1", prefix_cache_enabled=False,
+                    async_scheduling=True, draft_count=0, decoding_path="ordinary",
+                    rows=o.map_rows(5, [position], [0], 0, [], [0]),
+                    active_query=[[position, 1]], selected=[1], accepted_drafts=0,
+                    rejected_drafts=0, spec_target_rows=[], spec_bonus_rows=[0], scores={},
+                    preparation=dict(key=f"f{step}", request_id="api-1234abcd",
+                        active_query=[[position, 1]],
+                        scheduled_tokens=1, scheduled_draft_count=0,
+                        prev_req_id_to_index={"api-1234abcd": 0}, prev_positions=[0],
+                        prev_num_draft_tokens=[0], valid_sampled_token_count_gpu=[1],
+                        correction_enabled=True, cpu_num_computed_tokens=[position],
+                        gpu_num_computed_tokens_before=[position-1],
+                        gpu_num_computed_tokens_after=[position],
+                        query_start_loc=[0, 1], seq_lens=[position+1],
+                        groups=[dict(request_id="api-1234abcd", row_index=0,
+                            block_table=[2] * 24, slot_mapping=[32 + position % 16],
+                            block_size=16, kv_cache_block_size=16, blocks_per_kv_block=1,
+                            dcp_world_size=1, pcp_world_size=1)]))
+    previous, current = record(1, 367), record(2, 368)
+    for r in (previous, current):
+        r['rows'][0]['role'] = 'ordinary'
+    return previous, current, prompt, ids
+
+
+def test_r13_targets_are_independent():
+    assert c.RECONSTRUCTION_TARGET == 60
+    assert c.OBSERVATION_TARGET == 368
+    config = dict(lane="adaptive", observation_target=368,
+                  reconstruction_target=60,
+                  diagnostic_control={"adaptive_kv_recompute_output_count": 60})
+    assert o.kv_recompute_target(config) == 60
+    assert o.observation_target(config) == 368
+
+
+def test_r13_initialized_run_preserves_r12_controls(tmp_path, monkeypatch):
+    policy_path = 'experiments/m2_03_targeted/runtime_policy.kaggle_t4_index60.json'
+    monkeypatch.setattr(e, 'verify_execution', lambda execution: None)
+    monkeypatch.setattr(e, 'blob', lambda path, execution: (c.ROOT / path).read_bytes())
+    root = e.init_run(tmp_path / 'r13', 'd' * 40, policy_path)
+    run = c.load(root / 'run.json')
+    assert run['target'] == run['observation_target'] == 368
+    assert run['reconstruction_target'] == 60
+    for lane, mode in [('vanilla', 'PIECEWISE'), ('adaptive', 'NONE')]:
+        observer = c.load(root / lane / 'observer.json')
+        assert observer['observation_target'] == 368
+        assert observer['reconstruction_target'] == 60
+        assert o.kv_recompute_target(observer) == 60
+        argv, _ = e.launch_args(root, lane)
+        assert c.decode(argv[argv.index('--compilation-config') + 1]) == dict(cudagraph_mode=mode)
+
+
+def test_r13_preparation_hook_owners_and_order():
+    tree = ast.parse(s.transform('v1/worker/gpu_model_runner.py',
+                                s.fixture_sources()['v1/worker/gpu_model_runner.py'].encode()))
+    for method, hook, operation in [('_prepare_inputs', 'correction_before', 'update_num_computed_tokens_for_batch_change'),
+                                     ('execute_model', 'prepared', '_model_forward')]:
+        owner = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == method)
+        hooks = [n for n in ast.walk(owner) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name) and n.func.id == '_m203_observe'
+                 and n.args[0].value == hook]
+        operations = [n for n in ast.walk(owner) if isinstance(n, ast.Call)
+                      and ((isinstance(n.func, ast.Name) and n.func.id == operation)
+                           or (isinstance(n.func, ast.Attribute) and n.func.attr == operation))]
+        assert len(hooks) == len(operations) == 1
+        assert hooks[0].lineno < operations[0].lineno
+        assert all(not (isinstance(n, ast.Name) and 'cudagraph' in n.id) for n in ast.walk(hooks[0]))
+
+
+def test_r13_valid_predecessor_linkage():
+    previous, current, prompt, ids = transition_fixture()
+    a.validate_transition(previous, current, prompt, ids)
+
+
+def test_r13_pre_forward_hooks_do_not_materialize_device_data():
+    # CPU-native NumPy .tolist() remains allowed; all GPU reads must use the
+    # single clone helper, whose complete body is checked separately.
+    for function in (o.correction_before, o.prepared):
+        tree = ast.parse(inspect.getsource(function))
+        for call in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
+            if isinstance(call.func, ast.Name):
+                assert call.func.id not in ('ints', 'snapshot', 'materialize_preparation')
+            if isinstance(call.func, ast.Attribute):
+                assert call.func.attr not in ('cpu', 'numpy', 'item', 'synchronize', 'wait', 'to')
+                if call.func.attr == 'tolist':
+                    expression = ast.unparse(call.func.value)
+                    assert '.np[' in expression or 'num_computed_tokens_cpu[' in expression
+    tree = ast.parse(inspect.getsource(o.device_snapshot))
+    assert [n.func.attr for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)] == ['clone', 'detach']
+
+
+def test_r13_device_snapshots_owned_and_deferred_until_end(tmp_path):
+    phase, calls = {'selected': False}, []
+
+    class DeviceTensor:
+        """CPU-backed CUDA sentinel: any early host read is an error."""
+        def __init__(self, value): self.value = value
+        def __getitem__(self, key): return DeviceTensor(self.value[key])
+        def detach(self): return self
+        def clone(self):
+            calls.append('clone')
+            return DeviceTensor(self.value.clone())
+        def cpu(self):
+            assert phase['selected'], 'host materialization before selection'
+            calls.append('cpu')
+            return self.value
+        def tolist(self): raise AssertionError('direct device tolist')
+        def numpy(self): raise AssertionError('direct device numpy')
+        def item(self): raise AssertionError('direct device item')
+        def __bool__(self): raise AssertionError('device scalar truth test')
+
+    rid = 'api-1234abcd'
+    config = dict(lane='adaptive', directory=str(tmp_path), observation_target=368)
+    before = torch.tensor([371])
+    valid = torch.tensor([1])
+    positions, inputs, seq = torch.tensor([372]), torch.tensor([1]), torch.tensor([373])
+    blocks, slots = torch.tensor([[2] * 24]), torch.tensor([36])
+    table = NS(num_blocks_per_row=np.array([24]), get_device_tensor=lambda n: DeviceTensor(blocks),
+               block_size=16, kv_cache_block_size=16, blocks_per_kv_block=1,
+               dcp_world_size=1, pcp_world_size=1)
+    runner = NS(input_batch=NS(num_reqs=1, req_ids=[rid], num_computed_tokens_cpu=np.array([372]),
+                              prev_req_id_to_index={rid: 0}, block_table=NS(block_tables=[table])),
+                requests={rid: NS(prompt_token_ids=[0]*5)}, use_async_spec_decode=True,
+                prev_positions=NS(np=np.array([0]), gpu=DeviceTensor(torch.tensor([0]))),
+                prev_num_draft_tokens=NS(np=np.array([0]), gpu=DeviceTensor(torch.tensor([0]))),
+                valid_sampled_token_count_gpu=DeviceTensor(valid), num_computed_tokens=DeviceTensor(before),
+                query_start_loc=NS(gpu=DeviceTensor(torch.tensor([0, 1]))), seq_lens=DeviceTensor(seq))
+    scheduled = NS(num_scheduled_tokens={rid: 1}, total_num_scheduled_tokens=1,
+                   scheduled_spec_decode_tokens={}, _m203_kv_recompute_provenance=dict(scheduler_step=2))
+    o.correction_before(config, runner, scheduled)
+    before[0] = 372
+    o.prepared(config, runner, scheduled, DeviceTensor(inputs), DeviceTensor(positions), {0: DeviceTensor(slots)})
+    prep = o._local.preparation
+    assert calls and set(calls) == {'clone'}
+    # Destroy every inference buffer after snapshotting. Finalization must use
+    # owned storage for every evidence field, including nested KV metadata.
+    before.fill_(999)
+    valid.fill_(999)
+    positions.fill_(999)
+    inputs.fill_(999)
+    seq.fill_(999)
+    blocks.fill_(999)
+    slots.fill_(999)
+    runner.prev_positions.gpu.value.fill_(999)
+    runner.prev_num_draft_tokens.gpu.value.fill_(999)
+    runner.query_start_loc.gpu.value.fill_(999)
+    record = dict(preparation=prep, active_query=[[372, 1]], rows=[dict(generated_index=367)],
+                  draft_count=0, scores={}, key=prep['key'])
+    o._local.ctx = (config, record)
+    phase['selected'] = True
+    o.end(config, runner, NS(sampled_token_ids=torch.tensor([[1]])))
+    materialized = o._local.transition_previous['preparation']
+    assert materialized['gpu_num_computed_tokens_before'] == [371]
+    assert materialized['gpu_num_computed_tokens_after'] == [372]
+    assert materialized['prev_positions'] == [0]
+    assert materialized['prev_num_draft_tokens'] == [0]
+    assert materialized['valid_sampled_token_count_gpu'] == [1]
+    assert materialized['active_query'] == [[372, 1]]
+    assert materialized['seq_lens'] == [373] and materialized['query_start_loc'] == [0, 1]
+    assert materialized['groups'][0]['block_table'] == [2] * 24
+    assert materialized['groups'][0]['slot_mapping'] == [36]
+    assert calls.count('cpu') == calls.count('clone')
+    assert o._local.preparation is None
+
+
+@pytest.mark.parametrize('layout', [dict(blocks_per_kv_block=2, kv_cache_block_size=32),
+                                   dict(dcp_world_size=2), dict(pcp_world_size=2)])
+def test_r13_simple_slot_formula_rejects_unsupported_layout(layout):
+    previous, current, prompt, ids = transition_fixture()
+    current['preparation']['groups'][0].update(layout)
+    with pytest.raises(c.Invalid, match='block size/parallel'):
+        a.validate_transition(previous, current, prompt, ids)
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda p, r: r.update(previous_key="wrong"),
+    lambda p, r: r.update(forward_sequence=4),
+    lambda p, r: r['preparation'].update(valid_sampled_token_count_gpu=None),
+    lambda p, r: r['preparation'].update(prev_num_draft_tokens=[2],
+                                        valid_sampled_token_count_gpu=[3]),
+    lambda p, r: r['preparation'].update(gpu_num_computed_tokens_after=[999]),
+    lambda p, r: r['preparation'].update(seq_lens=[999]),
+    lambda p, r: r['preparation'].update(query_start_loc=[0, 2]),
+    lambda p, r: r['preparation'].update(key="other"),
+    lambda p, r: r['preparation']['groups'][0].update(request_id="other"),
+    lambda p, r: r['preparation']['groups'][0].update(slot_mapping=[999]),
+    lambda p, r: r['rows'][0].update(flat_index=1),
+    lambda p, r: r.update(selected=[2]),
+])
+def test_r13_broken_causal_chain_fails(mutation):
+    previous, current, prompt, ids = transition_fixture()
+    mutation(previous, current)
+    with pytest.raises(c.Invalid):
+        a.validate_transition(previous, current, prompt, ids)
+
+
+def observed_transition_fixture(tmp_path, monkeypatch, *, lane='adaptive', boundary_token=1):
+    """Exercise real observer stages with CPU tensors, including owned copies."""
+    directory = tmp_path / lane
+    cap = directory / 'capture'
+    cap.mkdir(parents=True)
+    config = dict(lane=lane, execution_sha='d' * 40, directory=str(cap),
+                  observation_target=368, reconstruction_target=60)
+    c.save(directory / 'observer.json', config)
+    monkeypatch.setenv('M203_TARGETED_CONFIG', str(directory / 'observer.json'))
+    prompt, ids = [0] * 5, [1] * 370
+    ids[368] = boundary_token
+    rid = 'api-1234abcd'
+    table = NS(num_blocks_per_row=np.array([24]), block_size=16, kv_cache_block_size=16,
+               blocks_per_kv_block=1, dcp_world_size=1, pcp_world_size=1,
+               get_device_tensor=lambda n: torch.tensor([[2] * 24]))
+    batch = NS(num_reqs=1, req_ids=[rid], has_structured_output_reqs=False,
+               prev_req_id_to_index={rid: 0}, block_table=NS(block_tables=[table]))
+    runner = NS(input_batch=batch, uses_mrope=False, enable_prompt_embeds=False,
+                cache_config=NS(enable_prefix_caching=False),
+                vllm_config=NS(parallel_config=NS(tensor_parallel_size=1, pipeline_parallel_size=1,
+                                                 data_parallel_size=1, decode_context_parallel_size=1)),
+                requests={rid: NS(prompt_token_ids=prompt)},
+                query_start_loc=NS(np=np.array([0, 1]), gpu=torch.tensor([0, 1])),
+                use_async_scheduling=True, use_async_spec_decode=lane == 'adaptive',
+                prev_positions=NS(np=np.array([0]), gpu=torch.tensor([0])),
+                prev_num_draft_tokens=NS(np=np.array([0]), gpu=torch.tensor([0])),
+                valid_sampled_token_count_gpu=torch.tensor([1]) if lane == 'adaptive' else None,
+                discard_request_mask=NS(np=[False]))
+    for step, index in enumerate([366, 367, 368], 1):
+        position = len(prompt) + index - 1
+        batch.num_computed_tokens_cpu = np.array([position])
+        runner.num_computed_tokens = torch.tensor([position - 1])
+        scheduled = NS(total_num_scheduled_tokens=1, num_scheduled_tokens={rid: 1},
+                       scheduled_spec_decode_tokens={},
+                       _m203_kv_recompute_provenance=dict(state='POST_READY', scheduler_step=step))
+        o.observe('correction_before', runner, scheduled)
+        # Simulate inference's update; the observer must retain the earlier value.
+        runner.num_computed_tokens[0] = position
+        runner.positions = torch.tensor([position])
+        runner.input_ids = NS(gpu=torch.tensor([1]))
+        runner.seq_lens = torch.tensor([position + 1])
+        o.observe('prepared', runner, scheduled, runner.input_ids.gpu, runner.positions,
+                  {0: torch.tensor([32 + position % 16])})
+        raw = torch.tensor([[0., 3., 2., 1.]])
+        token = ids[index]
+        raw[0, token] = 4
+        unchanged = raw.clone()
+        o.observe('begin', runner, scheduled, raw, None, None)
+        o.observe('sample_scores', raw, NS(all_greedy=True))
+        output = NS(sampled_token_ids=torch.tensor([[token]]))
+        o.observe('end', runner, output)
+        assert torch.equal(raw, unchanged)
+        request = NS(request_id=rid, _output_token_ids=ids[:index], num_computed_tokens=position + 2,
+                     num_in_flight_tokens=1, num_output_placeholders=2)
+        o.observe('account_before', request, [token], scheduled, False)
+        request._output_token_ids.append(token)
+        request.num_output_placeholders -= 1
+        o.observe('account_after', request, [token], scheduled, False)
+        if index < 368:
+            assert not list(cap.glob('*.forward.json'))
+            assert not list(cap.glob('*.f32'))
+    (directory / 'server.log').write_text('')
+    return directory, prompt, ids
+
+
+def test_r13_observer_captures_exact_pair_and_links_api(tmp_path, monkeypatch):
+    directory, prompt, ids = observed_transition_fixture(tmp_path, monkeypatch)
+    proof = a.capture(directory, 'adaptive', 'd' * 40, 'api', prompt, ids)
+    records = sorted([c.load(p) for p in (directory / 'capture').glob('*.forward.json')],
+                     key=lambda r: r['forward_sequence'])
+    assert [r['forward_sequence'] for r in records] == [2, 3]
+    assert len(list((directory / 'capture').glob('*.f32'))) == 2
+    assert proof['row']['generated_index'] == 368
+    assert proof['accounting'][proof['record']]['emitted_span'] == [368, 369]
+    assert records[1]['preparation']['gpu_num_computed_tokens_before'] == [371]
+
+
+@pytest.mark.parametrize('problem', ['predecessor', 'correction', 'position', 'slot',
+                                    'scheduler', 'api', 'logits', 'extra', 'missing_inputs'])
+def test_r13_capture_fail_closed(tmp_path, monkeypatch, problem):
+    directory, prompt, ids = observed_transition_fixture(tmp_path, monkeypatch)
+    cap = directory / 'capture'
+    paths = sorted(cap.glob('*.forward.json'), key=lambda p: c.load(p)['forward_sequence'])
+    record = c.load(paths[1])
+    if problem == 'predecessor': record['previous_key'] = 'wrong'
+    if problem == 'correction': record['preparation']['gpu_num_computed_tokens_after'] = [999]
+    if problem == 'position': record['active_query'][0][0] -= 1
+    if problem == 'slot': record['preparation']['groups'][0]['slot_mapping'] = [999]
+    if problem == 'logits': record['scores']['0']['processed']['source_row'] = 1
+    if problem == 'missing_inputs': del record['preparation']['valid_sampled_token_count_gpu']
+    paths[1].write_bytes(c.encoded(record))
+    if problem == 'extra': c.save(cap / 'extra.forward.json', c.load(paths[0]))
+    if problem == 'api': ids[368] = 2
+    if problem == 'scheduler':
+        path = next(p for p in (cap / 'events').glob('*.json')
+                    if c.load(p).get('scheduler_step') == 3 and c.load(p)['kind'] == 'account_after')
+        value = c.load(path)
+        value['output_token_ids'] = [2]
+        path.write_bytes(c.encoded(value))
+    with pytest.raises((c.Invalid, KeyError)):
+        a.capture(directory, 'adaptive', 'd' * 40, 'api', prompt, ids)
+
+
+def test_r13_previous_drafts_correct_current_ordinary_forward():
+    previous, current, prompt, ids = transition_fixture()
+    previous.update(draft_count=2, decoding_path='speculative', selected=[1, 1],
+                    accepted_drafts=1, rejected_drafts=1, spec_target_rows=[0, 1], spec_bonus_rows=[2],
+                    active_query=[[370, 1], [371, 1], [372, 2]],
+                    rows=o.map_rows(5, [370, 371, 372], [0, 1, 2], 2, [0, 1], [2]))
+    previous['preparation'].update(scheduled_tokens=3, scheduled_draft_count=2,
+        active_query=previous['active_query'],
+        cpu_num_computed_tokens=[370], gpu_num_computed_tokens_before=[369],
+        gpu_num_computed_tokens_after=[370], query_start_loc=[0, 3], seq_lens=[373])
+    previous['preparation']['groups'][0]['slot_mapping'] = [34, 35, 36]
+    current['preparation'].update(prev_num_draft_tokens=[2], valid_sampled_token_count_gpu=[2],
+                                  cpu_num_computed_tokens=[373], gpu_num_computed_tokens_before=[370])
+    a.validate_transition(previous, current, prompt, ids)
+    current['preparation']['valid_sampled_token_count_gpu'] = [3]
+    with pytest.raises(c.Invalid, match='correction'):
+        a.validate_transition(previous, current, prompt, ids)
+
+
+def test_r13_discarded_reconstruction_refill_still_recorded(tmp_path):
+    rid = 'api-1234abcd'
+    config = dict(lane='adaptive', directory=str(tmp_path), execution_sha='d' * 40,
+                  observation_target=368, reconstruction_target=60,
+                  diagnostic_control={'adaptive_kv_recompute_output_count': 60})
+    c.event(tmp_path, 'kv_recompute_started', request_id=rid, output_count=60,
+            total_tokens=249, recomputed_tokens=248)
+    runner = NS(input_batch=NS(num_reqs=1, req_ids=[rid], has_structured_output_reqs=False),
+                uses_mrope=False, enable_prompt_embeds=False,
+                cache_config=NS(enable_prefix_caching=False),
+                vllm_config=NS(parallel_config=NS(tensor_parallel_size=1, pipeline_parallel_size=1,
+                                                 data_parallel_size=1, decode_context_parallel_size=1)),
+                requests={rid: NS(prompt_token_ids=[0]*189)},
+                query_start_loc=NS(np=np.array([0, 248])), positions=torch.arange(248),
+                input_ids=NS(gpu=torch.zeros(248, dtype=torch.int64)),
+                discard_request_mask=NS(np=[True]))
+    scheduled = NS(total_num_scheduled_tokens=248, num_scheduled_tokens={rid: 248})
+    o._local.preparation = None
+    o.begin(config, runner, scheduled, torch.zeros((1, 4)), None, None)
+    events = [c.load(p) for p in (tmp_path / 'events').glob('*.json')]
+    assert sum(ev['kind'] == 'kv_recompute_refill_skipped' for ev in events) == 1
+    assert not list(tmp_path.glob('*.forward.json')) and not list(tmp_path.glob('*.f32'))
+
+
+def test_r13_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch):
+    root = run_fixture(tmp_path / 'run', different=False)
+    control = dict(vanilla_cudagraph_mode='PIECEWISE', adaptive_cudagraph_mode='NONE',
+                   vanilla_kv_recompute_output_count=60, adaptive_kv_recompute_output_count=60)
+    set_cudagraph_control(root, control)
+    run = c.load(root / 'run.json')
+    run.update(target=368, observation_target=368, reconstruction_target=60)
+    (root / 'run.json').write_bytes(c.encoded(run))
+    for lane in c.LANES:
+        directory = root / lane
+        # Replace only synthetic fixture captures, never preserved run evidence.
+        for path in (directory / 'capture').rglob('*'):
+            if path.is_file(): path.unlink()
+        observed, prompt, ids = observed_transition_fixture(tmp_path / 'observed', monkeypatch,
+            lane=lane, boundary_token=1 if lane == 'vanilla' else 2)
+        for source in (observed / 'capture').rglob('*'):
+            if source.is_file():
+                destination = directory / 'capture' / source.relative_to(observed / 'capture')
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(source.read_bytes())
+        observer = c.load(observed / 'observer.json')
+        observer.update(directory=str(directory / 'capture'), diagnostic_control=control)
+        (directory / 'observer.json').write_bytes(c.encoded(observer))
+        c.event(directory / 'capture', 'kv_recompute_started', request_id='api-1234abcd',
+                output_count=60, total_tokens=65, recomputed_tokens=64)
+        start_path = next(p for p in (directory / 'capture/events').glob('*.json')
+                          if c.load(p)['kind'] == 'kv_recompute_started')
+        c.event(directory / 'capture', 'kv_recompute_refill_skipped', request_id='api-1234abcd',
+                output_count=60, total_tokens=65, recomputed_tokens=64, scheduled_tokens=64,
+                active_query_token_count=64, query_start_position=0, query_end_position=63,
+                row_generated_index=59, decoding_path='ordinary', started_event_sha256=c.file_sha(start_path))
+        c.event(directory / 'capture', 'kv_recompute_ready', request_id='api-1234abcd',
+                output_count=60, total_tokens=65, recomputed_tokens=64, num_computed_tokens=64,
+                budget_restored=True)
+        ready = a.ready_proof(directory, lane, 'api', len(prompt))
+        for path in (directory / 'capture').glob('*.forward.json'):
+            record = c.load(path)
+            record['kv_recompute_scheduler_provenance'] = dict(state='POST_READY', control_epoch=1,
+                                                               scheduler_step=record['scheduler_step'], **ready)
+            path.write_bytes(c.encoded(record))
+        body = c.load(directory / 'response.json')
+        body.update(prompt_token_ids=prompt)
+        body['choices'][0].update(token_ids=ids, finish_reason='stop')
+        body['usage']['completion_tokens'] = len(ids)
+        (directory / 'response.json').write_bytes(c.encoded(body))
+        synthetic_shutdown(directory)
+    report = a.compare(root)
+    assert report['state'] == 'REPRODUCED', report
+    assert report['target'] == report['first_divergence'] == report['observation_target'] == 368
+    assert report['reconstruction_target'] == 60
+    assert report['full_completion_verified'] is True
+    assert a.validate_lane(root, 'adaptive')['lane_valid'] is True
+    path = next(p for p in (root / 'adaptive/capture').glob('*.forward.json')
+                if c.load(p)['forward_sequence'] == 3)
+    record = c.load(path)
+    del record['preparation']['valid_sampled_token_count_gpu']
+    path.write_bytes(c.encoded(record))
+    report = a.compare(root)
+    assert report['state'] == 'INVALID_CAPTURE', report
 
 
 @pytest.mark.parametrize("name", list(s.manifest()["sha256"]))

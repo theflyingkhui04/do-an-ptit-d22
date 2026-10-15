@@ -16,6 +16,10 @@ IMPORT = ("from experiments.m2_03_targeted.observer import observe as _m203_obse
 # Exact insertion anchors from official v0.30.0. Whole-file SHA pin is mandatory.
 INSERTIONS = {
     "v1/worker/gpu_model_runner.py": [
+        ("        # Update num_computed_tokens on GPU. In async spec decode,\n",
+         '        _m203_observe("correction_before", self, scheduler_output)\n'),
+        ("            model_output = self._model_forward(\n",
+         '            _m203_observe("prepared", self, scheduler_output, input_ids, positions, slot_mappings_by_group)\n'),
         ("        # Apply structured output bitmasks if present.\n",
          '        _m203_observe("begin", self, scheduler_output, logits, spec_decode_metadata, grammar_output)\n'),
         ("        self._update_states_after_model_execute(\n",

@@ -4,22 +4,193 @@ import re
 import sys
 from pathlib import Path
 
-from .common import CASE, TARGET, LANES, REQUEST_HASH, HISTORICAL, HISTORICAL_EXECUTION, Invalid, decode, fingerprint, load, need, sha
-from .observer import map_rows, score_stats, valid_selected
+from .common import CASE, TARGET, RECONSTRUCTION_TARGET, OBSERVATION_TARGET, LANES, REQUEST_HASH, HISTORICAL, HISTORICAL_EXECUTION, Invalid, decode, fingerprint, load, need, sha
+from .observer import map_rows, score_stats, valid_selected, observation_target
 from . import sources
 from .lifecycle import verify_shutdown
 
 STATES = ("REPRODUCED", "NOT_REPRODUCED", "BOUNDARY_NOT_COVERED", "INVALID_CAPTURE")
 
 
+def validate_transition(previous, current, prompt, ids):
+    """Validate owned snapshots; never infer equality from optimistic CPU state."""
+    need(current['previous_key'] == previous['key']
+         and current['forward_sequence'] == previous['forward_sequence'] + 1
+         and current['scheduler_step'] > previous['scheduler_step']
+         and current['request_id'] == previous['request_id'], 'ambiguous predecessor linkage')
+
+    def integer_list(value, size=None, minimum=0):
+        need(isinstance(value, list) and bool(value)
+             and all(type(x) is int and x >= minimum for x in value)
+             and (size is None or len(value) == size), 'invalid preparation integer vector')
+        return value
+
+    for record in (previous, current):
+        prep = record['preparation']
+        need(prep['key'] == record['key'] and prep['request_id'] == record['request_id'],
+             'preparation/forward linkage mismatch')
+        query = record['active_query']
+        need(prep['active_query'] == list(map(list, query)), 'prepared model input linkage mismatch')
+        need(bool(query) and all(isinstance(x, (list, tuple)) and len(x) == 2
+                                 and all(type(v) is int and v >= 0 for v in x) for x in query),
+             'invalid active query')
+        count = prep['scheduled_tokens']
+        need(type(count) is int and count == len(query)
+             and prep['scheduled_draft_count'] == record['draft_count'], 'scheduled span mismatch')
+        after = integer_list(prep['gpu_num_computed_tokens_after'], 1)[0]
+        cpu = integer_list(prep['cpu_num_computed_tokens'], 1)[0]
+        before = integer_list(prep['gpu_num_computed_tokens_before'])
+        prev = integer_list(prep['prev_positions'], 1, -1)[0]
+        drafts = integer_list(prep['prev_num_draft_tokens'])
+        mapping = prep['prev_req_id_to_index']
+        need(isinstance(mapping, dict) and prev == mapping.get(record['request_id'], -1),
+             'previous request-row mapping mismatch')
+        valid = prep['valid_sampled_token_count_gpu']
+        if record['lane'] == 'adaptive':
+            integer_list(valid)
+        need(type(prep['correction_enabled']) is bool, 'unknown correction branch')
+        if prep['correction_enabled']:
+            integer_list(valid)
+            j = max(prev, 0)
+            need(j < len(before) and j < len(drafts) and j < len(valid), 'correction gather out of bounds')
+            expected = before[j] + valid[j] if prev >= 0 and drafts[j] > 0 else cpu
+        else:
+            need(record['lane'] == 'vanilla', 'adaptive correction inputs/branch missing')
+            expected = cpu
+        need(after == expected, 'incorrect GPU correction accounting')
+        need([p for p, _ in query] == list(range(after, after + count))
+             and integer_list(prep['query_start_loc'], 2) == [0, count]
+             and integer_list(prep['seq_lens'], 1) == [after + count],
+             'position/seq_len/query span mismatch')
+        rows = record['rows']
+        expected_rows = map_rows(len(prompt), [p for p, _ in query],
+                                 [r['flat_index'] for r in rows], record['draft_count'],
+                                 record['spec_target_rows'], record['spec_bonus_rows'])
+        need(record['decoding_path'] in ('ordinary', 'speculative'), 'unknown decoding path')
+        if record['decoding_path'] == 'ordinary':
+            need(record['draft_count'] == 0 and len(rows) == 1, 'ordinary row mismatch')
+            expected_rows[0]['role'] = 'ordinary'
+        need(rows == expected_rows, 'logits-row mapping mismatch')
+        selected = valid_selected(record['selected'])
+        need(0 < len(selected) <= len(rows)
+             and record['accepted_drafts'] == len(selected) - 1
+             and record['rejected_drafts'] == record['draft_count'] - len(selected) + 1,
+             'selected verification accounting mismatch')
+        start = rows[0]['generated_index']
+        need(start >= 0 and selected == ids[start:start + len(selected)], 'selected/API linkage mismatch')
+        prefix = prompt + ids[:start + len(selected) - 1]
+        last = rows[len(selected) - 1]['position']
+        need(all(p < len(prefix) and prefix[p] == token for p, token in query if p <= last),
+             'model query/API conditioning mismatch')
+        groups = prep['groups']
+        need(isinstance(groups, list) and bool(groups), 'missing active block/slot data')
+        for group in groups:
+            need(group['request_id'] == record['request_id'] and group['row_index'] == 0,
+                 'block/slot active request linkage mismatch')
+            size, kv_size, split = group['block_size'], group['kv_cache_block_size'], group['blocks_per_kv_block']
+            need(all(type(x) is int and x > 0 for x in (size, kv_size, split))
+                 and split == 1 and kv_size == size
+                 and group['dcp_world_size'] == group['pcp_world_size'] == 1,
+                 'unsupported block size/parallel metadata')
+            table = integer_list(group['block_table'])
+            slots = integer_list(group['slot_mapping'], count)
+            need(all(p // size < len(table) for p, _ in query), 'active block missing')
+            need(slots == [table[p // size] * size + p % size for p, _ in query],
+                 'incorrect slot mapping linkage')
+
+    prep = current['preparation']
+    previous_start = previous['rows'][0]['generated_index']
+    current_start = current['rows'][0]['generated_index']
+    need(current_start == previous_start + len(previous['selected']), 'predecessor emitted span discontinuity')
+    need(prep['prev_positions'] == [0] and prep['prev_req_id_to_index'] == {current['request_id']: 0},
+         'predecessor request-row linkage mismatch')
+    need(prep['gpu_num_computed_tokens_before'] == previous['preparation']['gpu_num_computed_tokens_after'],
+         'previous GPU count snapshot mismatch')
+    if current['lane'] == 'adaptive':
+        need(prep['prev_num_draft_tokens'] == [previous['draft_count']]
+             and prep['valid_sampled_token_count_gpu'] == [len(previous['selected'])],
+             'previous selected/count correction linkage mismatch')
+    need(current_start <= OBSERVATION_TARGET < current_start + len(current['selected']),
+         'current forward does not cover observation target')
+
+
+def capture_transition(directory, lane, execution, request_id, prompt, ids):
+    root = directory / 'capture'
+    events = [load(p) for p in (root / 'events').glob('*.json')]
+    need(not any(e['kind'] == 'observer_error' for e in events)
+         and 'M203_TARGETED_OBSERVER_ERROR_UNSAVED' not in (directory / 'server.log').read_text(errors='replace')
+         and not list(root.rglob('*.pending-*')), 'observer error/incomplete capture')
+    refill = refill_proof(directory, lane, request_id, len(prompt))
+    ready = ready_proof(directory, lane, request_id, len(prompt))
+    records = [load(p) for p in root.glob('*.forward.json')]
+    need(len(records) == 2 and len({r['key'] for r in records}) == 2, 'expected exactly predecessor/current forwards')
+    records.sort(key=lambda r: r['forward_sequence'])
+    previous, current = records
+    accounting = {}
+    for record in records:
+        need(record['schema'] == 'm203.targeted.transition.v1' and record['lane'] == lane
+             and record['execution_sha'] == execution and record['prompt_token_ids'] == prompt
+             and record['prefix_cache_enabled'] is False and record['async_scheduling'] is True,
+             'transition provenance drift')
+        need(re.fullmatch(re.escape(request_id) + r'(?:-[0-9a-f]{8})?', record['request_id']),
+             'transition request linkage mismatch')
+        need(record['preparation']['scheduler_step'] == record['scheduler_step']
+             and record['preparation']['forward_sequence'] == record['forward_sequence'],
+             'preparation sequence linkage mismatch')
+        if ready is not None:
+            need(scheduler_provenance(record, ready) == 'POST_READY', 'transition precedes reconstruction')
+        matching = [ev for ev in events if ev.get('request_id') == record['request_id']
+                    and ev.get('scheduler_step') == record['scheduler_step']]
+        before = [ev for ev in matching if ev['kind'] == 'account_before']
+        after = [ev for ev in matching if ev['kind'] == 'account_after']
+        need(len(before) == len(after) == 1, 'ambiguous scheduler/forward linkage')
+        b, a = before[0], after[0]
+        start = record['rows'][0]['generated_index']
+        selected = record['selected']
+        for ev in (b, a):
+            need(ev['stale'] is False and ev['invalid_spec_tokens'] == 0
+                 and ev['scheduled_tokens'] == record['preparation']['scheduled_tokens']
+                 and len(ev['scheduled_spec_token_ids']) == record['draft_count'],
+                 'scheduler/current forward mismatch')
+        need(b['output_count'] == start and b['output_token_ids'] == selected
+             and a['output_count'] == start + len(selected) and a['output_token_ids'] == selected
+             and selected == ids[start:a['output_count']], 'scheduler/API emitted span mismatch')
+        need(a['num_output_placeholders'] == b['num_output_placeholders'] - len(selected),
+             'scheduler placeholder accounting mismatch')
+        accounting[record['key']] = dict(before=b, after=a, emitted_span=[start, a['output_count']])
+    validate_transition(previous, current, prompt, ids)
+    j = OBSERVATION_TARGET - current['rows'][0]['generated_index']
+    row = current['rows'][j]
+    scores = current['scores'][str(j)]
+    need(set(current['scores']) == {str(j)} and not previous['scores']
+         and set(scores) == {'raw', 'processed'}, 'unexpected/missing boundary scores')
+    need(scores['raw']['capture_point'] == 'runner_pre_grammar' and scores['raw']['source_row'] == j,
+         'raw logits-row linkage mismatch')
+    verify = row['role'] == 'draft_verification'
+    need(scores['processed']['capture_point'] == ('rejection_pre_acceptance' if verify else 'sampler_pre_greedy')
+         and scores['processed']['source_row'] == (j if verify else 0), 'processed logits-row linkage mismatch')
+    need(len(vector(root, scores['raw'])) == len(vector(root, scores['processed'])), 'vocabulary shape drift')
+    return dict(record=current['key'], predecessor=previous['key'], row=row, scores=scores,
+                selected_token=current['selected'][j], prefix_sha256=fingerprint(prompt + ids[:OBSERVATION_TARGET]),
+                decoding_path=current['decoding_path'], active_query=current['active_query'],
+                active_query_token_count=len(current['active_query']), accounting=accounting,
+                preparation={r['key']: r['preparation'] for r in records},
+                kv_recompute_ready=ready, kv_recompute_refill_skipped=refill)
+
+
 def provenance(root, lanes=LANES):
     config = load(root / "run.json")
     execution = config["diagnostic_execution_sha"]
     need(re.fullmatch(r"[0-9a-f]{40}", execution) and execution != HISTORICAL_EXECUTION, "execution SHA invalid/conflated")
-    need(config["schema"] == "m203.targeted.run.v1" and config["case"] == CASE and config["target"] == TARGET
+    need(config["schema"] == "m203.targeted.run.v1" and config["case"] == CASE
+         and config["target"] == observation_target(config)
          and config["historical_checkpoint_sha"] == HISTORICAL
          and config["historical_execution_sha"] == HISTORICAL_EXECUTION
          and config["request_sha256"] == REQUEST_HASH, "run provenance drift")
+    if 'observation_target' in config:
+        need(config['observation_target'] == OBSERVATION_TARGET
+             and config['reconstruction_target'] == RECONSTRUCTION_TARGET,
+             'observation/reconstruction target drift')
     preflight, installed = load(root / "preflight.json"), load(root / "installed.json")
     need(preflight["execution_sha"] == execution and preflight["runtime"] == installed["runtime"], "runtime provenance drift")
     need(preflight["source_base_sha256"] == sources.manifest()["sha256"], "base source provenance drift")
@@ -27,6 +198,10 @@ def provenance(root, lanes=LANES):
     need(installed["patched_sha256"] == expected, "observer source provenance drift")
     policy = config["policy"]
     control = policy.get("diagnostic_control", {})
+    if 'observation_target' in config:
+        need(control == {'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE',
+                         'vanilla_kv_recompute_output_count': RECONSTRUCTION_TARGET,
+                         'adaptive_kv_recompute_output_count': RECONSTRUCTION_TARGET}, 'r12 controls changed')
     need(set(control) <= {"vanilla_cudagraph_mode", "adaptive_cudagraph_mode",
                           "vanilla_kv_recompute_output_count", "adaptive_kv_recompute_output_count"}
          and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE")
@@ -57,6 +232,10 @@ def provenance(root, lanes=LANES):
             }, "cudagraph control value drift")
         need(all(env[k] == v for k, v in policy["adaptive_env"].items()), "adaptive environment drift")
         observer = load(root / lane / "observer.json")
+        if 'observation_target' in config:
+            need(observer.get('observation_target') == OBSERVATION_TARGET
+                 and observer.get('reconstruction_target') == RECONSTRUCTION_TARGET,
+                 'observer target drift')
         need(observer.get("diagnostic_control", {}) == control,
              "observer diagnostic control drift")
         if lane == "adaptive":
@@ -199,6 +378,8 @@ def scheduler_provenance(record, ready):
 
 
 def capture(directory, lane, execution, request_id, prompt, ids):
+    if (directory / 'observer.json').is_file() and observation_target(load(directory / 'observer.json')) == OBSERVATION_TARGET:
+        return capture_transition(directory, lane, execution, request_id, prompt, ids)
     root = directory / "capture"
     errors = [load(p) for p in sorted((root / "events").glob("*.json"))]
     need(not any(e["kind"] == "observer_error" for e in errors), "observer error present")
@@ -327,7 +508,8 @@ def validate_lane(root, lane):
     directory = root / lane
     shutdown = verify_shutdown(directory)
     request_id, prompt, ids, finish = response(directory, lane)
-    need(len(ids) > TARGET, "lane terminated before target; stop, do not send next lane")
+    target = observation_target(load(directory / 'observer.json'))
+    need(len(ids) > target, "lane terminated before target; stop, do not send next lane")
     proof = capture(directory, lane, execution, request_id, prompt, ids)
     return {"lane_valid": True, "execution_sha": execution, "request_id": request_id,
             "response_sha256": sha((directory / "response.json").read_bytes()),
@@ -336,10 +518,13 @@ def validate_lane(root, lane):
 
 def compare(root):
     root = Path(root)
-    report = {"result_kind": "DIAGNOSTIC_NOT_CANONICAL_GATE", "case": CASE, "target": TARGET,
+    target = observation_target(load(root / 'run.json'))
+    report = {"result_kind": "DIAGNOSTIC_NOT_CANONICAL_GATE", "case": CASE, "target": target,
               "diagnostic_control": load(root / "run.json")["policy"].get("diagnostic_control", {}),
               "same_internal_state_proven": False, "same_kv_state_proven": False,
               "runtime_probe_changes_timing": True, "historical_gate": "47/54 FAIL"}
+    if target == OBSERVATION_TARGET:
+        report.update(observation_target=target, reconstruction_target=RECONSTRUCTION_TARGET)
     try:
         config = load(root / "run.json")
         execution = provenance(root)
@@ -376,14 +561,17 @@ def compare(root):
                       truncated_lanes=[k for k, r in rows.items() if r["finish_reason"] == "length"],
                       exact_output_token_ids_equal=d is None,
                       finish_reasons_equal=v["finish_reason"] == a["finish_reason"])
-        if min(len(v["ids"]), len(a["ids"])) <= TARGET or (d is not None and d != TARGET):
+        captures = ({k: capture(root / k, k, execution, r['request_id'], r['prompt'], r['ids'])
+                     for k, r in rows.items()} if target == OBSERVATION_TARGET else None)
+        if min(len(v["ids"]), len(a["ids"])) <= target or (d is not None and d != target):
             report.update(state="BOUNDARY_NOT_COVERED", reason="new divergence/termination outside target boundary")
             return report
-        captures = {k: capture(root / k, k, execution, r["request_id"], r["prompt"], r["ids"]) for k, r in rows.items()}
+        if captures is None:
+            captures = {k: capture(root / k, k, execution, r["request_id"], r["prompt"], r["ids"]) for k, r in rows.items()}
         need(captures["vanilla"]["prefix_sha256"] == captures["adaptive"]["prefix_sha256"], "lane conditioning prefixes differ")
         for lane, row in rows.items():
             if kv_recompute_target(config["policy"].get(
-                    "diagnostic_control", {}), lane) == TARGET:
+                    "diagnostic_control", {}), lane) == TARGET and target == TARGET:
                 proof = recompute_proofs[lane]
                 need(proof["total_tokens"] == len(row["prompt"]) + TARGET
                      and proof["request_id"].startswith(row["request_id"])

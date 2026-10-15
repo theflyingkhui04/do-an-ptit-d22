@@ -23,6 +23,7 @@ from . import sources
 from .analysis import compare, response, validate_lane
 from .lifecycle import response_receipt, started_process, verify_shutdown
 from .common import (CASE, HISTORICAL, HISTORICAL_EXECUTION, LANES, REQUEST_HASH, ROOT,
+                     RECONSTRUCTION_TARGET, OBSERVATION_TARGET,
                      Invalid, blob, checkpoint, claim_request, decode, encoded, event,
                      file_sha, frozen_request, git, isolated, load, need, save, sha,
                      verify_checkpoint, write_new, reviewed_policy)
@@ -121,6 +122,10 @@ def init_run(root, execution, policy_path):
     need((ROOT / policy_path).read_bytes() == policy_raw, "runtime policy not committed/exact")
     policy = decode(policy_raw)
     reviewed_policy(policy)
+    need(policy.get('diagnostic_control') == {
+        'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE',
+        'vanilla_kv_recompute_output_count': RECONSTRUCTION_TARGET,
+        'adaptive_kv_recompute_output_count': RECONSTRUCTION_TARGET}, 'r13 requires unchanged r12 controls')
     frozen_request()
     root.mkdir(parents=True, exist_ok=False)
     save(root / "run.json", {"schema": "m203.targeted.run.v1", "case": CASE,
@@ -128,12 +133,16 @@ def init_run(root, execution, policy_path):
                             "historical_execution_sha": HISTORICAL_EXECUTION,
                             "diagnostic_execution_sha": execution, "policy": policy,
                             "policy_path": policy_path, "policy_sha256": sha(policy_raw),
-                            "request_sha256": REQUEST_HASH, "target": 60})
+                            "request_sha256": REQUEST_HASH, "target": OBSERVATION_TARGET,
+                            "reconstruction_target": RECONSTRUCTION_TARGET,
+                            "observation_target": OBSERVATION_TARGET})
     for lane in LANES:
         directory = root / lane
         (directory / "capture").mkdir(parents=True)
         save(directory / "observer.json", {"lane": lane, "directory": str(directory / "capture"),
                                             "execution_sha": execution,
+                                            "reconstruction_target": RECONSTRUCTION_TARGET,
+                                            "observation_target": OBSERVATION_TARGET,
                                             "diagnostic_control": policy.get("diagnostic_control", {})})
     return root
 
