@@ -16,6 +16,7 @@
   },
   "diagnostic_control": {
     "vanilla_cudagraph_mode": "PIECEWISE",
+    "adaptive_cudagraph_mode": "NONE",
     "vanilla_kv_recompute_output_count": 60,
     "adaptive_kv_recompute_output_count": 60
   },

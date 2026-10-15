@@ -328,27 +328,17 @@ def test_two_lane_capture_states_and_read_only_tensors(tmp_path, different, stat
     assert a.capture(root / 'vanilla', 'vanilla', 'd'*40, 'api', prompt, ids)['selection_role'] == 'ordinary'
 
 
-def test_piecewise_control_changes_only_vanilla_target_launch(tmp_path):
-    root = run_fixture(tmp_path)
+def set_cudagraph_control(root, control):
     run = c.load(root / "run.json")
-    run["policy"]["diagnostic_control"] = {
-        "vanilla_cudagraph_mode": "PIECEWISE",
-    }
+    run["policy"]["diagnostic_control"] = control
     (root / "run.json").write_bytes(c.encoded(run))
+    launchers = {}
     for lane in c.LANES:
         observer = c.load(root / lane / "observer.json")
-        observer["diagnostic_control"] = run["policy"]["diagnostic_control"]
+        observer["diagnostic_control"] = control
         (root / lane / "observer.json").write_bytes(c.encoded(observer))
-    vanilla, _ = e.launch_args(root, "vanilla")
-    adaptive, _ = e.launch_args(root, "adaptive")
-    assert c.decode(vanilla[vanilla.index("--compilation-config") + 1]) == {
-        "cudagraph_mode": "PIECEWISE",
-    }
-    assert "--compilation-config" not in adaptive
-    assert "--speculative-config" in adaptive
-
-    launchers = {"vanilla": vanilla, "adaptive": adaptive}
-    for lane, argv in launchers.items():
+        argv, _ = e.launch_args(root, lane)
+        launchers[lane] = argv
         launch = c.load(root / lane / "launch.json")
         launch["argv"] = argv
         (root / lane / "launch.json").write_bytes(c.encoded(launch))
@@ -356,11 +346,60 @@ def test_piecewise_control_changes_only_vanilla_target_launch(tmp_path):
     preflight = c.load(root / "preflight.json")
     preflight["launcher_argv"] = launchers
     (root / "preflight.json").write_bytes(c.encoded(preflight))
+    return launchers
+
+
+def test_lane_specific_cudagraph_control_preserves_speculative_launch(tmp_path):
+    root = run_fixture(tmp_path)
+    control = {
+        "vanilla_cudagraph_mode": "PIECEWISE",
+        "adaptive_cudagraph_mode": "NONE",
+    }
+    launchers = set_cudagraph_control(root, control)
+    vanilla, adaptive = launchers["vanilla"], launchers["adaptive"]
+    assert c.decode(vanilla[vanilla.index("--compilation-config") + 1]) == {
+        "cudagraph_mode": "PIECEWISE",
+    }
+    assert c.decode(adaptive[adaptive.index("--compilation-config") + 1]) == {
+        "cudagraph_mode": "NONE",
+    }
+    assert "--speculative-config" in adaptive
+    assert adaptive[adaptive.index("--scheduler-cls") + 1] == (
+        "src.server.adaptive_scheduler.AdaptiveAsyncScheduler")
 
     report = a.compare(root)
-    assert report["diagnostic_control"] == {
-        "vanilla_cudagraph_mode": "PIECEWISE",
-    }
+    assert report["diagnostic_control"] == control
+
+
+def test_unreviewed_adaptive_cudagraph_mode_rejected(tmp_path):
+    root = run_fixture(tmp_path)
+    run = c.load(root / "run.json")
+    run["policy"]["diagnostic_control"] = {"adaptive_cudagraph_mode": "PIECEWISE"}
+    (root / "run.json").write_bytes(c.encoded(run))
+    with pytest.raises(c.Invalid, match="diagnostic control unreviewed"):
+        e.launch_args(root, "adaptive")
+
+
+@pytest.mark.parametrize("problem", ["missing", "wrong"])
+def test_adaptive_cudagraph_argv_must_match_reviewed_control(tmp_path, problem):
+    root = run_fixture(tmp_path)
+    control = {"vanilla_cudagraph_mode": "PIECEWISE",
+               "adaptive_cudagraph_mode": "NONE"}
+    launchers = set_cudagraph_control(root, control)
+    adaptive = launchers["adaptive"]
+    index = adaptive.index("--compilation-config")
+    if problem == "missing":
+        del adaptive[index:index + 2]
+    else:
+        adaptive[index + 1] = c.encoded({"cudagraph_mode": "PIECEWISE"}).decode().strip()
+    launch = c.load(root / "adaptive/launch.json")
+    launch["argv"] = adaptive
+    (root / "adaptive/launch.json").write_bytes(c.encoded(launch))
+    preflight = c.load(root / "preflight.json")
+    preflight["launcher_argv"]["adaptive"] = adaptive
+    (root / "preflight.json").write_bytes(c.encoded(preflight))
+    with pytest.raises(c.Invalid, match="cudagraph control"):
+        a.provenance(root)
 
 
 @pytest.mark.parametrize("key", [

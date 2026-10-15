@@ -27,9 +27,10 @@ def provenance(root, lanes=LANES):
     need(installed["patched_sha256"] == expected, "observer source provenance drift")
     policy = config["policy"]
     control = policy.get("diagnostic_control", {})
-    need(set(control) <= {"vanilla_cudagraph_mode", "vanilla_kv_recompute_output_count",
-                          "adaptive_kv_recompute_output_count"}
+    need(set(control) <= {"vanilla_cudagraph_mode", "adaptive_cudagraph_mode",
+                          "vanilla_kv_recompute_output_count", "adaptive_kv_recompute_output_count"}
          and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE")
+         and control.get("adaptive_cudagraph_mode") in (None, "NONE")
          and control.get("vanilla_kv_recompute_output_count") in (None, TARGET)
          and control.get("adaptive_kv_recompute_output_count") in (None, TARGET),
          "diagnostic control unreviewed")
@@ -47,7 +48,7 @@ def provenance(root, lanes=LANES):
             need(argv.count(flag) == 1 and argv[argv.index(flag) + 1] == value, "launcher setting drift: " + flag)
         need("--no-enable-prefix-caching" in argv and env["VLLM_USE_V2_MODEL_RUNNER"] == "0"
              and env["CUDA_VISIBLE_DEVICES"] == "0", "cache/runner/GPU policy drift")
-        expected_mode = control.get("vanilla_cudagraph_mode") if lane == "vanilla" else None
+        expected_mode = control.get(f"{lane}_cudagraph_mode")
         need(argv.count("--compilation-config") == int(expected_mode is not None),
              "cudagraph control presence drift")
         if expected_mode is not None:
