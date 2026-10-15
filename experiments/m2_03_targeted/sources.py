@@ -32,6 +32,8 @@ INSERTIONS = {
     "v1/core/sched/scheduler.py": [
         ("        self.current_step += 1\n",
          '        _m203_control("before_schedule", self)\n'),
+        ("        return scheduler_output\n",
+         '        _m203_control("after_schedule", self, scheduler_output)\n'),
         ("            # Check for stop and update request status.\n",
          '            _m203_observe("account_before", request, new_token_ids, scheduler_output, output_is_stale)\n'),
         ("            elif request.pooling_params and pooler_output is not None:\n",

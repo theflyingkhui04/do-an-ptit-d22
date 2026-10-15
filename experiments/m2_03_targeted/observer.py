@@ -20,7 +20,7 @@ import sys
 import threading
 import uuid
 
-from .common import WINDOW, event, load, need, save, sha, write_new
+from .common import WINDOW, encoded, event, load, need, save, sha, write_new
 
 _local = threading.local()
 
@@ -159,6 +159,7 @@ def begin(config, runner, scheduled, logits, spec, grammar):
     if bool(getattr(getattr(runner, "discard_request_mask", None), "np", [False])[0]):
         skip_controlled_kv_refill(config, ids[0], scheduled, query, rows, n)
         return
+    dispatch = getattr(scheduled, "_m203_kv_recompute_provenance", None)
     key = uuid.uuid4().hex
     capture = {"schema": "m203.targeted.forward.v1", "key": key, "lane": config["lane"],
                "execution_sha": config["execution_sha"], "request_id": ids[0], "prompt_token_ids": prompt,
@@ -167,6 +168,7 @@ def begin(config, runner, scheduled, logits, spec, grammar):
                "spec_target_rows": targets, "spec_bonus_rows": bonus,
                "async_scheduling": bool(runner.use_async_scheduling), "prefix_cache_enabled": False,
                "same_internal_state_proven": False, "runtime_probe_changes_timing": True,
+               "kv_recompute_scheduler_provenance": dispatch,
                "scores": {}, "selected": None}
     for r in rows:
         if r["generated_index"] in WINDOW:
@@ -255,14 +257,24 @@ def kv_recompute_before_schedule(config, scheduler):
             need(request.num_computed_tokens == state["recomputed_tokens"],
                  "KV recompute did not stop before boundary token")
             scheduler.max_num_scheduled_tokens = state["original_budget"]
-            event(config["directory"], "kv_recompute_ready",
-                  request_id=request.request_id,
-                  output_count=len(request._output_token_ids),
-                  total_tokens=state["total_tokens"],
-                  recomputed_tokens=state["recomputed_tokens"],
-                  num_computed_tokens=request.num_computed_tokens,
-                  budget_restored=(scheduler.max_num_scheduled_tokens
-                                   == state["original_budget"]))
+            ready = {
+                "kind": "kv_recompute_ready",
+                "request_id": request.request_id,
+                "output_count": len(request._output_token_ids),
+                "total_tokens": state["total_tokens"],
+                "recomputed_tokens": state["recomputed_tokens"],
+                "num_computed_tokens": request.num_computed_tokens,
+                "budget_restored": (scheduler.max_num_scheduled_tokens
+                                    == state["original_budget"]),
+            }
+            raw = encoded(ready)
+            write_new(Path(config["directory"]) / "events" /
+                      (uuid.uuid4().hex + ".json"), raw)
+            state["ready"] = {
+                "kv_recompute_ready_event_sha256": sha(raw),
+                **{key: value for key, value in ready.items()
+                   if key != "kind"},
+            }
             state["phase"] = "ready"
         return
 
@@ -290,9 +302,35 @@ def kv_recompute_before_schedule(config, scheduler):
          "KV recompute did not clear target state")
     scheduler._m203_kv_recompute = {
         "phase": "refill", "request_id": request.request_id,
+        "control_epoch": 1,
         "total_tokens": total, "recomputed_tokens": recomputed,
         "original_budget": original_budget,
     }
+
+
+def kv_recompute_after_schedule(config, scheduler, scheduled):
+    """Stamp the batch at dispatch; later callback timing cannot change it."""
+    target = config.get("diagnostic_control", {}).get(
+        "adaptive_kv_recompute_output_count")
+    if target is None or config["lane"] != "adaptive":
+        return
+    need(target == 60, "unreviewed KV recompute boundary")
+    state = getattr(scheduler, "_m203_kv_recompute", None)
+    provenance = {
+        "state": "PRE_READY",
+        "scheduler_step": scheduler.current_step,
+        "control_epoch": None if state is None else state["control_epoch"],
+    }
+    if state is not None and state["phase"] in ("ready", "complete"):
+        ready = state.get("ready")
+        need(isinstance(ready, dict), "ready scheduler provenance missing")
+        provenance = {
+            "state": "POST_READY",
+            "scheduler_step": scheduler.current_step,
+            "control_epoch": state["control_epoch"],
+            **ready,
+        }
+    scheduled._m203_kv_recompute_provenance = provenance
 
 
 def control(stage, *args):
@@ -303,8 +341,12 @@ def control(stage, *args):
     if not config.get("diagnostic_control", {}).get(
             "adaptive_kv_recompute_output_count"):
         return
-    need(stage == "before_schedule", "unknown diagnostic control stage")
-    kv_recompute_before_schedule(config, *args)
+    need(stage in ("before_schedule", "after_schedule"),
+         "unknown diagnostic control stage")
+    if stage == "before_schedule":
+        kv_recompute_before_schedule(config, *args)
+    else:
+        kv_recompute_after_schedule(config, *args)
 
 
 def observe(stage, *args):

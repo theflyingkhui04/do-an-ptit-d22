@@ -136,6 +136,62 @@ def refill_proof(directory, lane, request_id, prompt_len):
     return proof
 
 
+def ready_proof(directory, lane, request_id, prompt_len):
+    """Return the one content-addressed ready event required by KV control."""
+    root = directory / "capture"
+    paths = sorted((root / "events").glob("*.json"))
+    events = [(p, load(p)) for p in paths]
+    ready = [(p, e) for p, e in events if e["kind"] == "kv_recompute_ready"]
+    observer_path = directory / "observer.json"
+    control = (load(observer_path).get("diagnostic_control", {})
+               if observer_path.is_file() else {})
+    expected = (lane == "adaptive"
+                and control.get("adaptive_kv_recompute_output_count") == TARGET)
+    need(len(ready) == int(expected), "KV recompute ready event missing/ambiguous")
+    if not expected:
+        return None
+    path, proof = ready[0]
+    need(re.fullmatch(re.escape(request_id) + r"(?:-[0-9a-f]{8})?",
+                      proof["request_id"])
+         and proof["output_count"] == TARGET
+         and proof["total_tokens"] == prompt_len + TARGET
+         and proof["recomputed_tokens"] == proof["total_tokens"] - 1
+         and proof["num_computed_tokens"] == proof["recomputed_tokens"]
+         and proof["budget_restored"] is True,
+         "KV recompute ready event invalid")
+    return {
+        "kv_recompute_ready_event_sha256": sha(path.read_bytes()),
+        "request_id": proof["request_id"],
+        "output_count": proof["output_count"],
+        "total_tokens": proof["total_tokens"],
+        "recomputed_tokens": proof["recomputed_tokens"],
+        "num_computed_tokens": proof["num_computed_tokens"],
+        "budget_restored": True,
+    }
+
+
+def scheduler_provenance(record, ready):
+    """Validate the scheduler-time epoch carried by this exact forward."""
+    proof = record.get("kv_recompute_scheduler_provenance")
+    need(isinstance(proof, dict), "boundary scheduler provenance missing")
+    need(type(proof.get("scheduler_step")) is int
+         and proof["scheduler_step"] >= 0,
+         "boundary scheduler step invalid")
+    state = proof.get("state")
+    need(state in ("PRE_READY", "POST_READY"),
+         "boundary scheduler provenance state invalid")
+    if state == "PRE_READY":
+        need(set(proof) == {"state", "scheduler_step", "control_epoch"}
+             and proof["control_epoch"] in (None, 1),
+             "pre-ready scheduler provenance invalid")
+        return state
+    need(ready is not None and proof.get("control_epoch") == 1
+         and {key: proof.get(key) for key in ready} == ready
+         and set(proof) == {"state", "scheduler_step", "control_epoch", *ready},
+         "ready-event scheduler provenance mismatch")
+    return state
+
+
 def capture(directory, lane, execution, request_id, prompt, ids):
     root = directory / "capture"
     errors = [load(p) for p in sorted((root / "events").glob("*.json"))]
@@ -143,6 +199,7 @@ def capture(directory, lane, execution, request_id, prompt, ids):
     need("M203_TARGETED_OBSERVER_ERROR_UNSAVED" not in (directory / "server.log").read_text(errors="replace"), "observer error unsaved")
     need(not list(root.rglob("*.pending-*")), "incomplete capture write")
     refill = refill_proof(directory, lane, request_id, len(prompt))
+    ready = ready_proof(directory, lane, request_id, len(prompt))
     records = [load(p) for p in sorted(root.glob("*.forward.json"))]
     hits = []
     for rec in records:
@@ -187,14 +244,38 @@ def capture(directory, lane, execution, request_id, prompt, ids):
             raw = vector(root, scores["raw"])
             processed = vector(root, scores["processed"])
             need(len(raw) == len(processed), "vocabulary shape drift")
+            dispatch_state = (scheduler_provenance(rec, ready)
+                              if ready is not None else None)
             hits.append({"record": rec["key"], "row": row, "scores": scores,
                          "selected_token": selected[j], "prefix_sha256": fingerprint(prefix),
                          "decoding_path": rec["decoding_path"],
-                         "active_query_token_count": len(rec["active_query"])})
-    need(len(hits) == 1, "missing/ambiguous selected boundary capture")
+                         "active_query_token_count": len(rec["active_query"]),
+                         "scheduler_provenance_state": dispatch_state})
+    if ready is None:
+        need(len(hits) == 1, "missing/ambiguous selected boundary capture")
+        selected_hit = hits[0]
+    else:
+        post_ready = [hit for hit in hits
+                      if hit["scheduler_provenance_state"] == "POST_READY"]
+        need(len(post_ready) == 1,
+             "missing/ambiguous post-recompute selected boundary capture")
+        selected_hit = post_ready[0]
+        selected_hit["kv_recompute_ready"] = ready
+        selected_hit["excluded_pre_ready_boundary_records"] = [
+            hit["record"] for hit in hits
+            if hit["scheduler_provenance_state"] == "PRE_READY"]
+    hits = [selected_hit]
     matching = [e for e in errors if e.get("request_id") == next(r["request_id"] for r in records if r["key"] == hits[0]["record"])]
-    before = [e for e in matching if e["kind"] == "account_before" and e["output_count"] <= TARGET < e["output_count"] + len(e["output_token_ids"])]
-    after = [e for e in matching if e["kind"] == "account_after" and e["output_count"] - len(e["output_token_ids"]) <= TARGET < e["output_count"]]
+    boundary_accounting = [e for e in matching if e["kind"] in ("account_before", "account_after")
+                           and (e["output_count"] <= TARGET < e["output_count"] + len(e["output_token_ids"])
+                                if e["kind"] == "account_before" else
+                                e["output_count"] - len(e["output_token_ids"]) <= TARGET < e["output_count"])]
+    need(all(type(e.get("stale")) is bool for e in boundary_accounting),
+         "invalid accounting stale flag")
+    before = [e for e in boundary_accounting
+              if e["kind"] == "account_before" and not e["stale"]]
+    after = [e for e in boundary_accounting
+             if e["kind"] == "account_after" and not e["stale"]]
     need(len(before) == len(after) == 1, "missing/ambiguous verification accounting")
     b, a = before[0], after[0]
     need(not b["stale"] and not a["stale"], "stale output at boundary")

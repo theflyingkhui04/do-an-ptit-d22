@@ -126,6 +126,136 @@ def forward_fixture(directory, lane, token, *, selected=True, ordinary=False):
     return ids, prompt, config, runner, scheduled, raw, spec
 
 
+def ordinary_forward_capture(directory, config, token, *, vocabulary_size=None,
+                             async_scheduling=True, scheduled=None):
+    """Record one async ordinary boundary forward without HTTP/accounting."""
+    cap = directory / "capture"
+    before = set(cap.glob("*.forward.json"))
+    prompt = [0] * 5
+    runner = NS(
+        input_batch=NS(num_reqs=1, req_ids=["api-1234abcd"],
+                       has_structured_output_reqs=False),
+        uses_mrope=False, enable_prompt_embeds=False,
+        cache_config=NS(enable_prefix_caching=False),
+        vllm_config=NS(parallel_config=NS(
+            tensor_parallel_size=1, pipeline_parallel_size=1,
+            data_parallel_size=1, decode_context_parallel_size=1)),
+        requests={"api-1234abcd": NS(prompt_token_ids=prompt)},
+        query_start_loc=NS(np=[0, 1]), positions=torch.tensor([64]),
+        input_ids=NS(gpu=torch.tensor([1])),
+        use_async_scheduling=async_scheduling,
+        discard_request_mask=NS(np=[False]))
+    if scheduled is None:
+        scheduled = NS(total_num_scheduled_tokens=1,
+                       num_scheduled_tokens={"api-1234abcd": 1},
+                       scheduled_spec_decode_tokens={"api-1234abcd": []})
+    vocabulary_size = vocabulary_size or token + 1
+    assert vocabulary_size > token
+    raw = torch.zeros((1, vocabulary_size), dtype=torch.float16)
+    raw[0, token] = 3
+    o.begin(config, runner, scheduled, raw, None, None)
+    o.processed("sample_scores", raw.float(), NS(all_greedy=True))
+    o.end(config, runner, NS(sampled_token_ids=torch.tensor([[token]])))
+    created = set(cap.glob("*.forward.json")) - before
+    assert len(created) == 1
+    return created.pop()
+
+
+def kv_ready_boundary_fixture(tmp_path):
+    """A PRE_READY dispatch completes after ready; only B is POST_READY."""
+    root = run_fixture(tmp_path, adaptive_ordinary=True)
+    run = c.load(root / "run.json")
+    control = {"adaptive_kv_recompute_output_count": 60}
+    run["policy"]["diagnostic_control"] = control
+    (root / "run.json").write_bytes(c.encoded(run))
+    for lane in c.LANES:
+        observer = c.load(root / lane / "observer.json")
+        observer["diagnostic_control"] = control
+        (root / lane / "observer.json").write_bytes(c.encoded(observer))
+
+    vanilla = root / "vanilla"
+    for path in list((vanilla / "capture").glob("*.forward.json")) + list((vanilla / "capture").glob("*.f32")):
+        path.unlink()
+    ordinary_forward_capture(vanilla, c.load(vanilla / "observer.json"), 2,
+                             vocabulary_size=79760, async_scheduling=False)
+
+    directory = root / "adaptive"
+    capture = directory / "capture"
+    for path in list(capture.glob("*.forward.json")) + list(capture.glob("*.f32")):
+        path.unlink()
+    for path in (capture / "events").glob("*.json"):
+        path.unlink()
+
+    body = c.load(directory / "response.json")
+    body["choices"][0]["token_ids"][60] = 79759
+    (directory / "response.json").write_bytes(c.encoded(body))
+    synthetic_shutdown(directory)
+    observer = c.load(directory / "observer.json")
+
+    request = NS(request_id="api-1234abcd", num_prompt_tokens=5,
+                 _output_token_ids=[1] * 60, spec_token_ids=[3, 4],
+                 num_computed_tokens=67)
+
+    class Scheduler:
+        running = [request]
+        requests = {request.request_id: request}
+        max_num_scheduled_tokens = 1024
+        scheduler_config = NS(max_num_batched_tokens=1024)
+        current_step = 9
+
+        def reset_prefix_cache(self, reset_running_requests=False):
+            assert reset_running_requests is True
+            self.running = []
+            request.num_computed_tokens = 0
+            request.spec_token_ids = []
+            return True
+
+    scheduler = Scheduler()
+    scheduled_a = NS(total_num_scheduled_tokens=1,
+                     num_scheduled_tokens={"api-1234abcd": 1},
+                     scheduled_spec_decode_tokens={"api-1234abcd": []})
+    o.kv_recompute_after_schedule(observer, scheduler, scheduled_a)
+    assert scheduled_a._m203_kv_recompute_provenance["state"] == "PRE_READY"
+
+    o.kv_recompute_before_schedule(observer, scheduler)
+    refill_scheduled = NS(total_num_scheduled_tokens=64,
+                          num_scheduled_tokens={"api-1234abcd": 64})
+    o.skip_controlled_kv_refill(
+        observer, "api-1234abcd", refill_scheduled,
+        [(i, 0) for i in range(64)],
+        [{"role": "ordinary", "generated_index": 59}], 0)
+    request.num_computed_tokens = 64
+    scheduler.running = [request]
+    scheduler.current_step += 1
+    o.kv_recompute_before_schedule(observer, scheduler)
+    scheduled_b = NS(total_num_scheduled_tokens=1,
+                     num_scheduled_tokens={"api-1234abcd": 1},
+                     scheduled_spec_decode_tokens={"api-1234abcd": []})
+    o.kv_recompute_after_schedule(observer, scheduler, scheduled_b)
+    assert scheduled_b._m203_kv_recompute_provenance["state"] == "POST_READY"
+
+    # A was dispatched before ready but its observer callback arrives after
+    # ready. Its scheduler-time provenance must remain PRE_READY.
+    pre_ready = ordinary_forward_capture(
+        directory, observer, 79759, vocabulary_size=79760,
+        scheduled=scheduled_a)
+    post_ready = ordinary_forward_capture(
+        directory, observer, 79759, vocabulary_size=79760,
+        scheduled=scheduled_b)
+
+    scheduled = NS(num_scheduled_tokens={"api-1234abcd": 1},
+                   scheduled_spec_decode_tokens={"api-1234abcd": []})
+    request._output_token_ids = body["choices"][0]["token_ids"][:60]
+    request.num_computed_tokens = 65
+    request.num_in_flight_tokens = 1
+    request.num_output_placeholders = 1
+    o.accounting(observer, "account_before", request, [79759], scheduled, False)
+    request._output_token_ids.append(79759)
+    request.num_output_placeholders = 0
+    o.accounting(observer, "account_after", request, [79759], scheduled, False)
+    return root, pre_ready, post_ready
+
+
 def synthetic_shutdown(directory, code=0):
     """Arrange new lifecycle schema in SYNTHETIC fixtures, not historical data."""
     from experiments.m2_03_targeted.lifecycle import response_receipt
@@ -297,73 +427,91 @@ def test_kv_recompute_hook_runs_before_scheduler_step_mutation():
     increments = [n for n in ast.walk(node) if isinstance(n, ast.AugAssign)
                   and isinstance(n.target, ast.Attribute)
                   and n.target.attr == "current_step"]
-    assert len(calls) == len(increments) == 1
-    assert calls[0].lineno < increments[0].lineno
+    returns = [n for n in ast.walk(node) if isinstance(n, ast.Return)
+               and isinstance(n.value, ast.Name)
+               and n.value.id == "scheduler_output"]
+    by_stage = {call.args[0].value: call for call in calls}
+    assert set(by_stage) == {"before_schedule", "after_schedule"}
+    assert len(increments) == len(returns) == 1
+    assert by_stage["before_schedule"].lineno < increments[0].lineno
+    assert by_stage["after_schedule"].lineno < returns[0].lineno
 
 
 def test_kv_recompute_evidence_is_required_and_preserves_boundary_shape(tmp_path):
-    root = run_fixture(tmp_path, adaptive_ordinary=True)
-    run = c.load(root / "run.json")
-    run["policy"]["diagnostic_control"] = {
-        "adaptive_kv_recompute_output_count": 60,
-    }
-    (root / "run.json").write_bytes(c.encoded(run))
-    for lane in c.LANES:
-        observer = c.load(root / lane / "observer.json")
-        observer["diagnostic_control"] = run["policy"]["diagnostic_control"]
-        (root / lane / "observer.json").write_bytes(c.encoded(observer))
-
-    missing = a.compare(root)
-    assert missing["state"] == "INVALID_CAPTURE"
-    assert "KV recompute control missing" in missing["reason"]
-
-    capture = root / "adaptive/capture"
-    c.event(capture, "kv_recompute_ready",
-            request_id="api-1234abcd", output_count=60,
-            total_tokens=65, recomputed_tokens=64,
-            num_computed_tokens=64, budget_restored=True)
-    missing_refill = a.compare(root)
-    assert missing_refill["state"] == "INVALID_CAPTURE"
-    assert "discarded refill proof missing" in missing_refill["reason"]
-
-    c.event(capture, "kv_recompute_started",
-            request_id="api-1234abcd", output_count=60,
-            total_tokens=65, recomputed_tokens=64, original_budget=1024)
-    runner = NS(
-        input_batch=NS(num_reqs=1, req_ids=["api-1234abcd"],
-                       has_structured_output_reqs=False),
-        uses_mrope=False, enable_prompt_embeds=False,
-        cache_config=NS(enable_prefix_caching=False),
-        vllm_config=NS(parallel_config=NS(
-            tensor_parallel_size=1, pipeline_parallel_size=1,
-            data_parallel_size=1, decode_context_parallel_size=1)),
-        requests={"api-1234abcd": NS(prompt_token_ids=[0] * 5)},
-        query_start_loc=NS(np=[0, 64]), positions=torch.arange(64),
-        input_ids=NS(gpu=torch.zeros(64, dtype=torch.int64)),
-        use_async_scheduling=True, discard_request_mask=NS(np=[True]))
-    scheduled = NS(total_num_scheduled_tokens=64,
-                   num_scheduled_tokens={"api-1234abcd": 64},
-                   scheduled_spec_decode_tokens={"api-1234abcd": []})
-    observer = c.load(root / "adaptive/observer.json")
-    existing_forwards = set(capture.glob("*.forward.json"))
-    o.begin(observer, runner, scheduled,
-            torch.tensor([[0., 1., 3., 2.]], dtype=torch.float16), None, None)
-    assert set(capture.glob("*.forward.json")) == existing_forwards
-
+    root, pre_ready, post_ready = kv_ready_boundary_fixture(tmp_path)
     report = a.compare(root)
     assert report["state"] == "REPRODUCED", report
-    assert report["captures"]["adaptive"]["decoding_path"] == "ordinary"
-    assert report["captures"]["adaptive"]["active_query_token_count"] == 1
-    assert report["captures"]["adaptive"]["kv_recompute_refill_skipped"][
-        "row_generated_index"] == 59
+    proof = report["captures"]["adaptive"]
+    assert proof["record"] == c.load(post_ready)["key"]
+    assert proof["excluded_pre_ready_boundary_records"] == [c.load(pre_ready)["key"]]
+    assert proof["selected_token"] == 79759
+    assert proof["decoding_path"] == "ordinary"
+    assert proof["active_query_token_count"] == 1
+    assert proof["kv_recompute_refill_skipped"]["row_generated_index"] == 59
+    assert proof["kv_recompute_ready"]["output_count"] == 60
+    assert c.load(pre_ready)["kv_recompute_scheduler_provenance"]["state"] == "PRE_READY"
+    post_provenance = c.load(post_ready)["kv_recompute_scheduler_provenance"]
+    assert post_provenance["state"] == "POST_READY"
+    capture = root / "adaptive/capture"
+    ready_path = next(path for path in (capture / "events").glob("*.json")
+                      if c.load(path)["kind"] == "kv_recompute_ready")
+    assert post_provenance["kv_recompute_ready_event_sha256"] == c.file_sha(ready_path)
 
-    proof = next(c.load(p) for p in (capture / "events").glob("*.json")
-                 if c.load(p)["kind"] == "kv_recompute_refill_skipped")
+    refill = next(c.load(path) for path in (capture / "events").glob("*.json")
+                  if c.load(path)["kind"] == "kv_recompute_refill_skipped")
     c.event(capture, "kv_recompute_refill_skipped",
-            **{k: v for k, v in proof.items() if k != "kind"})
-    duplicate = a.compare(root)
-    assert duplicate["state"] == "INVALID_CAPTURE"
-    assert "discarded refill proof missing/ambiguous" in duplicate["reason"]
+            **{key: value for key, value in refill.items() if key != "kind"})
+    duplicate_refill = a.compare(root)
+    assert duplicate_refill["state"] == "INVALID_CAPTURE"
+    assert "discarded refill proof missing/ambiguous" in duplicate_refill["reason"]
+
+
+def test_two_post_ready_boundaries_are_invalid(tmp_path):
+    root, _, post_ready = kv_ready_boundary_fixture(tmp_path)
+    directory = root / "adaptive"
+    scheduled = NS(total_num_scheduled_tokens=1,
+                   num_scheduled_tokens={"api-1234abcd": 1},
+                   scheduled_spec_decode_tokens={"api-1234abcd": []},
+                   _m203_kv_recompute_provenance=c.load(post_ready)[
+                       "kv_recompute_scheduler_provenance"])
+    ordinary_forward_capture(directory, c.load(directory / "observer.json"),
+                             79759, vocabulary_size=79760,
+                             scheduled=scheduled)
+    report = a.compare(root)
+    assert report["state"] == "INVALID_CAPTURE"
+    assert "post-recompute selected boundary" in report["reason"]
+
+
+def test_no_post_ready_boundary_is_invalid(tmp_path):
+    root, _, post_ready = kv_ready_boundary_fixture(tmp_path)
+    post_ready.unlink()
+    report = a.compare(root)
+    assert report["state"] == "INVALID_CAPTURE"
+    assert "post-recompute selected boundary" in report["reason"]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("kv_recompute_ready_event_sha256", "0" * 64),
+    ("request_id", "api-wrong-request"),
+])
+def test_wrong_ready_event_link_is_invalid(tmp_path, field, value):
+    root, _, post_ready = kv_ready_boundary_fixture(tmp_path)
+    record = c.load(post_ready)
+    record["kv_recompute_scheduler_provenance"][field] = value
+    post_ready.write_bytes(c.encoded(record))
+    report = a.compare(root)
+    assert report["state"] == "INVALID_CAPTURE"
+    assert "ready-event scheduler provenance mismatch" in report["reason"]
+
+
+def test_missing_scheduler_provenance_is_invalid(tmp_path):
+    root, _, post_ready = kv_ready_boundary_fixture(tmp_path)
+    record = c.load(post_ready)
+    record.pop("kv_recompute_scheduler_provenance")
+    post_ready.write_bytes(c.encoded(record))
+    report = a.compare(root)
+    assert report["state"] == "INVALID_CAPTURE"
+    assert "scheduler provenance missing" in report["reason"]
 
 
 def test_rejected_candidate_not_mistaken_for_selected_row(tmp_path):
