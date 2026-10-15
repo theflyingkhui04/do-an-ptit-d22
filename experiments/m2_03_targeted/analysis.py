@@ -27,8 +27,10 @@ def provenance(root, lanes=LANES):
     need(installed["patched_sha256"] == expected, "observer source provenance drift")
     policy = config["policy"]
     control = policy.get("diagnostic_control", {})
-    need(set(control) <= {"vanilla_cudagraph_mode", "adaptive_kv_recompute_output_count"}
+    need(set(control) <= {"vanilla_cudagraph_mode", "vanilla_kv_recompute_output_count",
+                          "adaptive_kv_recompute_output_count"}
          and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE")
+         and control.get("vanilla_kv_recompute_output_count") in (None, TARGET)
          and control.get("adaptive_kv_recompute_output_count") in (None, TARGET),
          "diagnostic control unreviewed")
     need(preflight["models"] == policy["models"] and all(preflight["runtime"][k] == v for k, v in policy["runtime"].items()), "model/runtime policy mismatch")
@@ -99,6 +101,11 @@ def vector(root, descriptor):
     return values
 
 
+def kv_recompute_target(control, lane):
+    need(lane in LANES, "unknown diagnostic lane")
+    return control.get(f"{lane}_kv_recompute_output_count")
+
+
 def refill_proof(directory, lane, request_id, prompt_len):
     """Validate the durable proof for the one controlled discarded refill."""
     root = directory / "capture"
@@ -109,8 +116,7 @@ def refill_proof(directory, lane, request_id, prompt_len):
     observer_path = directory / "observer.json"
     control = (load(observer_path).get("diagnostic_control", {})
                if observer_path.is_file() else {})
-    expected = (lane == "adaptive"
-                and control.get("adaptive_kv_recompute_output_count") == TARGET)
+    expected = kv_recompute_target(control, lane) == TARGET
     need(len(starts) == len(skipped) == int(expected),
          "controlled discarded refill proof missing/ambiguous")
     if not expected:
@@ -145,8 +151,7 @@ def ready_proof(directory, lane, request_id, prompt_len):
     observer_path = directory / "observer.json"
     control = (load(observer_path).get("diagnostic_control", {})
                if observer_path.is_file() else {})
-    expected = (lane == "adaptive"
-                and control.get("adaptive_kv_recompute_output_count") == TARGET)
+    expected = kv_recompute_target(control, lane) == TARGET
     need(len(ready) == int(expected), "KV recompute ready event missing/ambiguous")
     if not expected:
         return None
@@ -249,6 +254,7 @@ def capture(directory, lane, execution, request_id, prompt, ids):
             hits.append({"record": rec["key"], "row": row, "scores": scores,
                          "selected_token": selected[j], "prefix_sha256": fingerprint(prefix),
                          "decoding_path": rec["decoding_path"],
+                         "active_query": rec["active_query"],
                          "active_query_token_count": len(rec["active_query"]),
                          "scheduler_provenance_state": dispatch_state})
     if ready is None:
@@ -343,10 +349,8 @@ def compare(root):
                  and "M203_TARGETED_OBSERVER_ERROR_UNSAVED" not in (directory / "server.log").read_text(errors="replace")
                  and not list((directory / "capture").rglob("*.pending-*")), "observer error/incomplete write")
             recomputes = [e for e in events if e["kind"] == "kv_recompute_ready"]
-            expected_recomputes = int(
-                lane == "adaptive"
-                and config["policy"].get("diagnostic_control", {}).get(
-                    "adaptive_kv_recompute_output_count") == TARGET)
+            expected_recomputes = int(kv_recompute_target(
+                config["policy"].get("diagnostic_control", {}), lane) == TARGET)
             need(len(recomputes) == expected_recomputes, "KV recompute control missing/ambiguous")
             if recomputes:
                 proof = recomputes[0]
@@ -374,15 +378,24 @@ def compare(root):
             return report
         captures = {k: capture(root / k, k, execution, r["request_id"], r["prompt"], r["ids"]) for k, r in rows.items()}
         need(captures["vanilla"]["prefix_sha256"] == captures["adaptive"]["prefix_sha256"], "lane conditioning prefixes differ")
-        if config["policy"].get("diagnostic_control", {}).get(
-                "adaptive_kv_recompute_output_count") == TARGET:
-            proof = recompute_proofs["adaptive"]
-            need(proof["total_tokens"] == len(a["prompt"]) + TARGET
-                 and proof["request_id"].startswith(a["request_id"])
-                 and captures["adaptive"]["decoding_path"] == "ordinary"
-                 and captures["adaptive"]["active_query_token_count"] == 1,
-                 "KV recompute did not preserve one-token boundary forward")
-            report["kv_recompute_proof"] = proof
+        for lane, row in rows.items():
+            if kv_recompute_target(config["policy"].get(
+                    "diagnostic_control", {}), lane) == TARGET:
+                proof = recompute_proofs[lane]
+                need(proof["total_tokens"] == len(row["prompt"]) + TARGET
+                     and proof["request_id"].startswith(row["request_id"])
+                     and captures[lane]["decoding_path"] == "ordinary"
+                     and captures[lane]["active_query_token_count"] == 1
+                     and captures[lane]["active_query"] == [[
+                         len(row["prompt"]) + TARGET - 1,
+                         row["ids"][TARGET - 1],
+                     ]],
+                     "KV recompute did not preserve one-token boundary forward")
+        if recompute_proofs:
+            report["kv_recompute_proofs"] = {
+                lane: captures[lane]["kv_recompute_ready"]
+                for lane in recompute_proofs
+            }
         report.update(state="NOT_REPRODUCED" if d is None else "REPRODUCED", captures=captures,
                       historical_token_pair_reproduced=(v["ids"][TARGET], a["ids"][TARGET]) == (51, 79759))
         report["processed_argmax_equal"] = captures["vanilla"]["scores"]["processed"]["top1_id"] == captures["adaptive"]["scores"]["processed"]["top1_id"]

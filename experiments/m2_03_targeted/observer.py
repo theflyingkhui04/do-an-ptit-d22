@@ -81,12 +81,17 @@ def snapshot(tensor, root, name):
             "source_dtype": dtype, **stats}
 
 
+def kv_recompute_target(config):
+    """Return the reviewed lane-local KV control boundary, if enabled."""
+    lane = config.get("lane")
+    need(lane in ("vanilla", "adaptive"), "unknown diagnostic lane")
+    return config.get("diagnostic_control", {}).get(
+        f"{lane}_kv_recompute_output_count")
+
+
 def skip_controlled_kv_refill(config, request_id, scheduled, query, rows, draft_count):
     """Skip only the proven all-but-last KV-recompute refill forward."""
-    control = config.get("diagnostic_control", {})
-    need(config["lane"] == "adaptive"
-         and control.get("adaptive_kv_recompute_output_count") == 60,
-         "discarded sampler output")
+    need(kv_recompute_target(config) == 60, "discarded sampler output")
     event_paths = sorted((Path(config["directory"]) / "events").glob("*.json"))
     events = [(p, load(p)) for p in event_paths]
     started = [(p, value) for p, value in events
@@ -235,9 +240,8 @@ def accounting(config, stage, request, output, scheduled, stale):
 
 
 def kv_recompute_before_schedule(config, scheduler):
-    target = config.get("diagnostic_control", {}).get(
-        "adaptive_kv_recompute_output_count")
-    if target is None or config["lane"] != "adaptive":
+    target = kv_recompute_target(config)
+    if target is None:
         return
     need(target == 60, "unreviewed KV recompute boundary")
 
@@ -310,9 +314,8 @@ def kv_recompute_before_schedule(config, scheduler):
 
 def kv_recompute_after_schedule(config, scheduler, scheduled):
     """Stamp the batch at dispatch; later callback timing cannot change it."""
-    target = config.get("diagnostic_control", {}).get(
-        "adaptive_kv_recompute_output_count")
-    if target is None or config["lane"] != "adaptive":
+    target = kv_recompute_target(config)
+    if target is None:
         return
     need(target == 60, "unreviewed KV recompute boundary")
     state = getattr(scheduler, "_m203_kv_recompute", None)
@@ -338,8 +341,7 @@ def control(stage, *args):
     if not config_path:
         return
     config = load(config_path)
-    if not config.get("diagnostic_control", {}).get(
-            "adaptive_kv_recompute_output_count"):
+    if kv_recompute_target(config) is None:
         return
     need(stage in ("before_schedule", "after_schedule"),
          "unknown diagnostic control stage")
