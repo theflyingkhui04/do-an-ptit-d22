@@ -238,3 +238,119 @@ def test_missing_dynamic_lookup_still_schedules(scheduler_module, monkeypatch, t
     out = run_step(sched)
 
     assert out.num_spec_tokens_to_schedule == 4
+
+
+def r14_request(output_count=367, placeholders=1, in_flight=1, drafts=None):
+    """Pinned Request properties, including optimistic async accounting."""
+    class Request(SimpleNamespace):
+        @property
+        def num_tokens(self): return self.num_prompt_tokens + self.num_output_tokens
+        @property
+        def num_tokens_with_spec(self): return self.num_tokens + len(self.spec_token_ids)
+    return Request(request_id='r14-request', status='RUNNING', is_prefill_chunk=False,
+                   num_prompt_tokens=189, num_output_tokens=output_count,
+                   output_token_ids=[1] * output_count,
+                   num_output_placeholders=placeholders, num_in_flight_tokens=in_flight,
+                   num_computed_tokens=189 + output_count + placeholders - 1,
+                   num_stale_output_tokens=0, spec_token_ids=[-1, -1] if drafts is None else drafts,
+                   cache_marker=object())
+
+
+def r14_scheduler(scheduler_module, monkeypatch, tmp_path, *, enabled=True, request=None):
+    from experiments.m2_03_targeted.common import save
+    config = tmp_path / 'observer.json'
+    save(config, dict(lane='adaptive', directory=str(tmp_path / 'capture'),
+                      observation_target=368, r14_single_token_boundary=368,
+                      execution_sha='d' * 40))
+    monkeypatch.setenv('M203_TARGETED_CONFIG', str(config))
+    if enabled: monkeypatch.setenv('M203_R14_SINGLE_TOKEN_BOUNDARY', '368')
+    else: monkeypatch.delenv('M203_R14_SINGLE_TOKEN_BOUNDARY', raising=False)
+    scheduler = build(scheduler_module, monkeypatch, tmp_path)
+    scheduler.current_step = 255
+    scheduler.num_sampled_tokens_per_step = 1
+    request = request or r14_request()
+    add_running(scheduler, request)
+    consumed = []
+    def parent(self, *args, **kwargs):
+        # This is the expression in the hash-pinned upstream schedule method.
+        consumed.append((list(request.spec_token_ids), request.num_tokens_with_spec
+                         + request.num_output_placeholders - request.num_computed_tokens,
+                         dict(vars(request))))
+        return SimpleNamespace(num_scheduled_tokens={request.request_id: consumed[-1][1]})
+    monkeypatch.setattr(FakeAsyncScheduler, 'schedule', parent)
+    return scheduler, request, consumed
+
+
+def test_r14_disabled_leaves_parent_behavior_unchanged(scheduler_module, monkeypatch, tmp_path):
+    scheduler, request, consumed = r14_scheduler(scheduler_module, monkeypatch, tmp_path, enabled=False)
+    scheduler.schedule()
+    assert consumed[0][:2] == ([-1, -1], 3)
+    assert not hasattr(scheduler, '_m203_r14')
+    assert not list((tmp_path / 'capture').rglob('*.json'))
+
+
+def test_r14_non_target_leaves_drafts_unchanged(scheduler_module, monkeypatch, tmp_path):
+    request = r14_request(output_count=366)
+    scheduler, request, consumed = r14_scheduler(scheduler_module, monkeypatch, tmp_path, request=request)
+    scheduler.schedule()
+    assert consumed[0][:2] == ([-1, -1], 3)
+
+
+@pytest.mark.parametrize('outputs,pending', [(367, 1), (368, 0)])
+def test_r14_target_cleared_before_parent_with_history_unchanged(scheduler_module, monkeypatch, tmp_path, outputs, pending):
+    request = r14_request(output_count=outputs, placeholders=pending, in_flight=pending)
+    scheduler, request, consumed = r14_scheduler(scheduler_module, monkeypatch, tmp_path, request=request)
+    original = dict(vars(request))
+    old_drafts = request.spec_token_ids
+    scheduler.schedule()
+    assert consumed[0][:2] == ([], 1)
+    assert {k: v for k, v in consumed[0][2].items() if k != 'spec_token_ids'} == {
+        k: v for k, v in original.items() if k != 'spec_token_ids'}
+    assert old_drafts == [-1, -1]  # Do not clear vLLM's shared placeholder list.
+    assert consumed[0][2]['cache_marker'] is original['cache_marker']
+
+
+def test_r14_at_most_once(scheduler_module, monkeypatch, tmp_path):
+    from experiments.m2_03_targeted.common import load
+    scheduler, request, consumed = r14_scheduler(scheduler_module, monkeypatch, tmp_path)
+    scheduler.schedule()
+    request.spec_token_ids = [-1, -1]  # A later plan must not be suppressed again.
+    scheduler.schedule()
+    assert [x[:2] for x in consumed] == [([], 1), ([-1, -1], 3)]
+    events = [load(p) for p in (tmp_path / 'capture/events').glob('*.json')]
+    assert [e['kind'] for e in events].count('r14_current_drafts_suppressed') == 1
+    proof = next(e for e in events if e['kind'] == 'r14_current_drafts_suppressed')
+    assert proof['target_generated_index'] == 368 and proof['pre_control_draft_count'] == 2
+    assert proof['scheduler_step'] == 256 and proof['request_id'] == request.request_id
+    assert proof['control_enabled'] is True and proof['fire_count'] == 1
+
+
+@pytest.mark.parametrize('updates', [dict(num_in_flight_tokens=3), dict(num_output_placeholders=2),
+                                   dict(num_computed_tokens=557), dict(num_stale_output_tokens=1),
+                                   dict(num_output_tokens=True), dict(num_in_flight_tokens=None),
+                                   dict(num_computed_tokens=0), dict(is_prefill_chunk=True)])
+def test_r14_ambiguous_accounting_stops_before_parent(scheduler_module, monkeypatch, tmp_path, updates):
+    from experiments.m2_03_targeted.common import Invalid
+    request = r14_request()
+    request.__dict__.update(updates)
+    scheduler, request, consumed = r14_scheduler(scheduler_module, monkeypatch, tmp_path, request=request)
+    with pytest.raises(Invalid): scheduler.schedule()
+    assert consumed == [] and request.spec_token_ids == [-1, -1]
+
+
+def test_r14_invalid_gate_stops_before_parent(scheduler_module, monkeypatch, tmp_path):
+    from experiments.m2_03_targeted.common import Invalid
+    scheduler, request, consumed = r14_scheduler(scheduler_module, monkeypatch, tmp_path)
+    monkeypatch.setenv('M203_R14_SINGLE_TOKEN_BOUNDARY', '60')
+    with pytest.raises(Invalid, match='gate'): scheduler.schedule()
+    assert not consumed and request.spec_token_ids == [-1, -1]
+
+
+def test_r14_has_no_gpu_operations():
+    import ast
+    import inspect
+    from experiments.m2_03_targeted.observer import r14_before_schedule
+    tree = ast.parse(inspect.getsource(r14_before_schedule))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            assert node.attr not in ('cpu', 'cuda', 'tolist', 'numpy', 'item', 'synchronize', 'clone')

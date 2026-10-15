@@ -207,6 +207,77 @@ def kv_recompute_target(config):
         f"{lane}_kv_recompute_output_count")
 
 
+def r14_before_schedule(scheduler):
+    """Suppress current drafts only at a CPU-proven, single-token boundary.
+
+    v0.30.0 schedules W + P - C tokens, W = L + O + D. Decode maintains
+    C = L + O + P - 1. For P == I == 0 or 1, pending output is absent or
+    exactly one non-speculative token; hence the next generated index O + P
+    is exact. Clearing D then yields one query token, without changing C/P/I
+    or the previous GPU speculative correction inputs. Larger pending spans
+    can still reject drafts, so their optimistic O + P cannot identify 368.
+    """
+    need(os.environ.get('M203_R14_SINGLE_TOKEN_BOUNDARY') == str(OBSERVATION_TARGET),
+         'R14 gate must explicitly name boundary 368')
+    config_path = os.environ.get('M203_TARGETED_CONFIG')
+    need(bool(config_path), 'R14 requires the existing targeted capture config')
+    config = load(config_path)
+    need(config.get('lane') == 'adaptive' and type(config.get('r14_single_token_boundary')) is int
+         and config['r14_single_token_boundary'] == OBSERVATION_TARGET
+         and observation_target(config) == OBSERVATION_TARGET, 'R14 config/gate mismatch')
+    running = [r for r in scheduler.running
+               if not r.request_id.startswith(('_warmup_', '_v2_mixed_warmup'))]
+    if not running:
+        return
+    need(len(running) == 1, 'R14 requires exactly one target request')
+    request = running[0]
+    need(scheduler.requests.get(request.request_id) is request, 'R14 request mapping mismatch')
+    state = getattr(scheduler, '_m203_r14', None)
+    if state is None:
+        state = dict(request_id=request.request_id, fired=False)
+        event(config['directory'], 'r14_control_enabled', control_enabled=True,
+              request_id=request.request_id, target_generated_index=OBSERVATION_TARGET,
+              execution_sha=config['execution_sha'])
+        scheduler._m203_r14 = state
+    need(state['request_id'] == request.request_id, 'R14 target request changed')
+    if state['fired']:
+        return
+    counters = {name: getattr(request, name, None) for name in (
+        'num_prompt_tokens', 'num_output_tokens', 'num_output_placeholders',
+        'num_computed_tokens', 'num_in_flight_tokens', 'num_stale_output_tokens')}
+    need(all(type(v) is int and v >= 0 for v in counters.values()), 'R14 malformed accounting')
+    L, O, P, C, I = (counters[k] for k in ('num_prompt_tokens', 'num_output_tokens',
+                                        'num_output_placeholders', 'num_computed_tokens', 'num_in_flight_tokens'))
+    need(type(request.is_prefill_chunk) is bool, 'R14 unknown prefill state')
+    if request.is_prefill_chunk or C < L:
+        need(O + P < OBSERVATION_TARGET, 'R14 boundary cannot be proven during refill/prefill')
+        return  # Includes the unchanged reconstruction/refill at output 60.
+    drafts = request.spec_token_ids
+    need(isinstance(drafts, list) and len(drafts) <= 4
+         and all(type(t) is int and t >= -1 for t in drafts), 'R14 malformed drafts')
+    need(request.num_tokens == L + O and request.num_tokens_with_spec == L + O + len(drafts)
+         and len(request.output_token_ids) == O and C == L + O + P - 1,
+         'R14 decode accounting invariant not proven')
+    if O + P < OBSERVATION_TARGET:
+        return
+    need(O + P == OBSERVATION_TARGET and P == I and P <= 1
+         and counters['num_stale_output_tokens'] == 0 and str(request.status) == 'RUNNING'
+         and scheduler.num_sampled_tokens_per_step == 1,
+         'R14 boundary ambiguous/missed or pending speculative accounting')
+    need(bool(drafts), 'R14 boundary already ordinary; intervention not reproduced')
+    step = scheduler.current_step
+    need(type(step) is int and step >= 0, 'R14 invalid scheduler step')
+    # Publish before mutation; I/O failure must stop without consuming drafts.
+    event(config['directory'], 'r14_current_drafts_suppressed', control_enabled=True,
+          request_id=request.request_id, target_generated_index=OBSERVATION_TARGET,
+          pre_control_draft_count=len(drafts), post_control_draft_count=0,
+          num_tokens=request.num_tokens, num_tokens_with_spec=request.num_tokens_with_spec,
+          **counters, scheduler_step=step + 1, fire_count=1,
+          execution_sha=config['execution_sha'])
+    request.spec_token_ids = []  # Never mutate the shared placeholder list.
+    state['fired'] = True
+
+
 def skip_controlled_kv_refill(config, request_id, scheduled, query, rows, draft_count):
     """Skip only the proven all-but-last KV-recompute refill forward."""
     need(kv_recompute_target(config) == 60, "discarded sampler output")

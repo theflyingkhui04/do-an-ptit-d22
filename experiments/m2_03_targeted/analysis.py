@@ -159,6 +159,31 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
              'scheduler placeholder accounting mismatch')
         accounting[record['key']] = dict(before=b, after=a, emitted_span=[start, a['output_count']])
     validate_transition(previous, current, prompt, ids)
+    config = load(directory / 'observer.json')
+    if config.get('r14_single_token_boundary') is not None:
+        need(config['r14_single_token_boundary'] == OBSERVATION_TARGET and lane == 'adaptive',
+             'R14 observer gate mismatch')
+        enabled = [ev for ev in events if ev['kind'] == 'r14_control_enabled']
+        fired = [ev for ev in events if ev['kind'] == 'r14_current_drafts_suppressed']
+        need(len(enabled) == len(fired) == 1, 'R14 control missing/repeated')
+        proof = fired[0]
+        need(all(ev['control_enabled'] is True and ev['execution_sha'] == execution
+                 and ev['request_id'] == current['request_id']
+                 and ev['target_generated_index'] == OBSERVATION_TARGET for ev in enabled + fired),
+             'R14 control provenance mismatch')
+        need(proof['fire_count'] == 1 and proof['pre_control_draft_count'] in range(1, 5)
+             and proof['post_control_draft_count'] == 0
+             and proof['scheduler_step'] == current['scheduler_step']
+             and proof['num_output_placeholders'] == proof['num_in_flight_tokens'] in (0, 1)
+             and proof['num_output_tokens'] + proof['num_output_placeholders'] == OBSERVATION_TARGET
+             and proof['num_prompt_tokens'] == len(prompt)
+             and proof['num_computed_tokens'] == len(prompt) + OBSERVATION_TARGET - 1
+             and proof['num_tokens'] == len(prompt) + proof['num_output_tokens']
+             and proof['num_tokens_with_spec'] == proof['num_tokens'] + proof['pre_control_draft_count']
+             and proof['num_stale_output_tokens'] == 0
+             and current['preparation']['cpu_num_computed_tokens'] == [proof['num_computed_tokens']]
+             and current['draft_count'] == 0 and current['decoding_path'] == 'ordinary'
+             and current['preparation']['scheduled_tokens'] == 1, 'R14 ordinary boundary/control mismatch')
     j = OBSERVATION_TARGET - current['rows'][0]['generated_index']
     row = current['rows'][j]
     scores = current['scores'][str(j)]
@@ -198,6 +223,8 @@ def provenance(root, lanes=LANES):
     need(installed["patched_sha256"] == expected, "observer source provenance drift")
     policy = config["policy"]
     control = policy.get("diagnostic_control", {})
+    r14 = config.get('r14_single_token_boundary')
+    need(r14 is None or type(r14) is int and r14 == OBSERVATION_TARGET, 'R14 run gate drift')
     if 'observation_target' in config:
         need(control == {'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE',
                          'vanilla_kv_recompute_output_count': RECONSTRUCTION_TARGET,
@@ -232,6 +259,10 @@ def provenance(root, lanes=LANES):
             }, "cudagraph control value drift")
         need(all(env[k] == v for k, v in policy["adaptive_env"].items()), "adaptive environment drift")
         observer = load(root / lane / "observer.json")
+        expected_r14 = r14 if lane == 'adaptive' else None
+        need(observer.get('r14_single_token_boundary') == expected_r14
+             and env.get('M203_R14_SINGLE_TOKEN_BOUNDARY') == (None if expected_r14 is None else str(expected_r14)),
+             'R14 launch/observer gate drift')
         if 'observation_target' in config:
             need(observer.get('observation_target') == OBSERVATION_TARGET
                  and observer.get('reconstruction_target') == RECONSTRUCTION_TARGET,

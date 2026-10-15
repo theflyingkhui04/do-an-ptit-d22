@@ -62,20 +62,26 @@ def test_r13_targets_are_independent():
     assert o.observation_target(config) == 368
 
 
-def test_r13_initialized_run_preserves_r12_controls(tmp_path, monkeypatch):
+@pytest.mark.parametrize('r14', [False, True])
+def test_r13_r14_initialized_run_preserves_r12_controls(tmp_path, monkeypatch, r14):
     policy_path = 'experiments/m2_03_targeted/runtime_policy.kaggle_t4_index60.json'
     monkeypatch.setattr(e, 'verify_execution', lambda execution: None)
     monkeypatch.setattr(e, 'blob', lambda path, execution: (c.ROOT / path).read_bytes())
-    root = e.init_run(tmp_path / 'r13', 'd' * 40, policy_path)
+    root = e.init_run(tmp_path / 'r13', 'd' * 40, policy_path, r14_single_token_boundary=r14)
     run = c.load(root / 'run.json')
     assert run['target'] == run['observation_target'] == 368
     assert run['reconstruction_target'] == 60
+    assert run.get('r14_single_token_boundary') == (368 if r14 else None)
+    monkeypatch.setenv('M203_R14_SINGLE_TOKEN_BOUNDARY', 'stale-inherited-gate')
     for lane, mode in [('vanilla', 'PIECEWISE'), ('adaptive', 'NONE')]:
         observer = c.load(root / lane / 'observer.json')
         assert observer['observation_target'] == 368
         assert observer['reconstruction_target'] == 60
         assert o.kv_recompute_target(observer) == 60
-        argv, _ = e.launch_args(root, lane)
+        argv, env = e.launch_args(root, lane)
+        expected = 368 if r14 and lane == 'adaptive' else None
+        assert observer.get('r14_single_token_boundary') == expected
+        assert env.get('M203_R14_SINGLE_TOKEN_BOUNDARY') == (str(expected) if expected else None)
         assert c.decode(argv[argv.index('--compilation-config') + 1]) == dict(cudagraph_mode=mode)
 
 
@@ -370,13 +376,15 @@ def test_r13_discarded_reconstruction_refill_still_recorded(tmp_path):
     assert not list(tmp_path.glob('*.forward.json')) and not list(tmp_path.glob('*.f32'))
 
 
-def test_r13_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch):
+@pytest.mark.parametrize('r14', [False, True])
+def test_r13_r14_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch, r14):
     root = run_fixture(tmp_path / 'run', different=False)
     control = dict(vanilla_cudagraph_mode='PIECEWISE', adaptive_cudagraph_mode='NONE',
                    vanilla_kv_recompute_output_count=60, adaptive_kv_recompute_output_count=60)
     set_cudagraph_control(root, control)
     run = c.load(root / 'run.json')
     run.update(target=368, observation_target=368, reconstruction_target=60)
+    if r14: run['r14_single_token_boundary'] = 368
     (root / 'run.json').write_bytes(c.encoded(run))
     for lane in c.LANES:
         directory = root / lane
@@ -392,6 +400,19 @@ def test_r13_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch):
                 destination.write_bytes(source.read_bytes())
         observer = c.load(observed / 'observer.json')
         observer.update(directory=str(directory / 'capture'), diagnostic_control=control)
+        if r14 and lane == 'adaptive':
+            observer['r14_single_token_boundary'] = 368
+            launch = c.load(directory / 'launch.json')
+            launch['environment']['M203_R14_SINGLE_TOKEN_BOUNDARY'] = '368'
+            (directory / 'launch.json').write_bytes(c.encoded(launch))
+            c.event(directory / 'capture', 'r14_control_enabled', request_id='api-1234abcd',
+                    target_generated_index=368, control_enabled=True, execution_sha='d'*40)
+            c.event(directory / 'capture', 'r14_current_drafts_suppressed', request_id='api-1234abcd',
+                    target_generated_index=368, control_enabled=True, execution_sha='d'*40,
+                    fire_count=1, pre_control_draft_count=2, post_control_draft_count=0, scheduler_step=3,
+                    num_prompt_tokens=5, num_output_tokens=367, num_output_placeholders=1,
+                    num_in_flight_tokens=1, num_computed_tokens=372, num_tokens=372,
+                    num_tokens_with_spec=374, num_stale_output_tokens=0)
         (directory / 'observer.json').write_bytes(c.encoded(observer))
         c.event(directory / 'capture', 'kv_recompute_started', request_id='api-1234abcd',
                 output_count=60, total_tokens=65, recomputed_tokens=64)
@@ -422,6 +443,17 @@ def test_r13_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch):
     assert report['reconstruction_target'] == 60
     assert report['full_completion_verified'] is True
     assert a.validate_lane(root, 'adaptive')['lane_valid'] is True
+    if r14:
+        event_path = next(p for p in (root / 'adaptive/capture/events').glob('*.json')
+                          if c.load(p)['kind'] == 'r14_current_drafts_suppressed')
+        original = event_path.read_bytes()
+        event_path.unlink()
+        assert a.compare(root)['state'] == 'INVALID_CAPTURE'  # Missing intervention proof.
+        event_path.write_bytes(original)
+        duplicate = event_path.with_name('duplicate-r14.json')
+        duplicate.write_bytes(original)
+        assert a.compare(root)['state'] == 'INVALID_CAPTURE'  # More than one firing.
+        duplicate.unlink()
     path = next(p for p in (root / 'adaptive/capture').glob('*.forward.json')
                 if c.load(p)['forward_sequence'] == 3)
     record = c.load(path)

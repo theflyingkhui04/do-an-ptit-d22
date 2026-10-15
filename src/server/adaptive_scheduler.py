@@ -68,6 +68,9 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             # Never take the engine down over a planning error: keep the previous K.
             logger.exception("AdaptiveAsyncScheduler: planning failed, keeping previous K")
             self._plan = StepPlan(batch_k=self._plan.batch_k, per_request_k={})
+        if os.environ.get("M203_R14_SINGLE_TOKEN_BOUNDARY") is not None:
+            from experiments.m2_03_targeted.observer import r14_before_schedule
+            r14_before_schedule(self)  # Fail closed outside the planner's fallback.
         return super().schedule(*args, **kwargs)
 
     def _update_after_schedule(self, scheduler_output) -> None:

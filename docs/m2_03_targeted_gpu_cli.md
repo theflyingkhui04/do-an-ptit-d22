@@ -337,6 +337,54 @@ from different internal state. No target-logits requirement is declared PASS her
 
 ## Windows offline validation before commit
 
+### R14: suppress only the current drafts at generated index 368
+
+R14 is disabled by default. Use the existing `init` stage with
+`--r14-single-token-boundary` to record the opt-in in `run.json` and Adaptive's
+observer config. `launch_args` sets `M203_R14_SINGLE_TOKEN_BOUNDARY=368` only for
+Adaptive, stripping inherited values for both lanes. The existing r12 runtime
+policy, Vanilla PIECEWISE / Adaptive NONE, reconstruction at 60, models and
+request remain unchanged. No new harness, tunnel or GPU synchronization is added.
+
+Pinned vLLM 0.30.0 invariant, immediately before `super().schedule()`:
+let `L` be prompt length, `O` committed output count, `P` output placeholders,
+`C` computed tokens, `I` in-flight tokens, and `D` current drafts. Request's
+`num_tokens=L+O`, `num_tokens_with_spec=L+O+D`; upstream schedules
+`Q=L+O+D+P-C`. Decode maintains `C=L+O+P-1`. The boundary is exact only when
+`O+P=368`, `P=I` is 0 or 1, there is no stale output, and the request is running
+with one ordinary sampled token per step. Pending input of length 1 has no
+speculative draft rows, hence exactly one output; pending speculative work is
+ambiguous and stops the control. Plain `len(output_token_ids)==368` is insufficient.
+
+R13's predecessor is ordinary: GPU/CPU computed counts progress 555 -> 556,
+valid sampled count is 1, and previous draft count is 0. The supported pending
+case is `O=367, P=I=1, C=556` for prompt length 189; the drained case is
+`O=368, P=I=0, C=556`. Replacing only `request.spec_token_ids` with a new empty
+list reduces Q from 3 to 1. Upstream naturally selects the ordinary path and
+accounts for one token. Existing next-step planning continues normally. Do not
+clear the shared placeholder list in place, reset KV/controller/counters, or
+rewrite SchedulerOutput, positions, lengths, logits or sampled output.
+
+`r14_control_enabled` and exactly one `r14_current_drafts_suppressed` event record
+the request, execution SHA, target, original draft count, accounting invariant,
+upcoming scheduler step and fire count. The analyzer requires these events to
+link to the captured ordinary one-token forward. Missing/repeated/ambiguous
+intervention evidence is INVALID_CAPTURE. The control adds only CPU bookkeeping
+and diagnostic event writes; it never reads a GPU tensor.
+
+For the one next T4 experiment, use a fresh run directory and the reviewed R14
+execution SHA with the existing tunnel and terminal stages, starting with:
+
+```bash
+python -B scripts/m2_03_gpu_diag.py init --run /tmp/m2-03-r14-UNIQUE --execution-sha REVIEWED_R14_SHA --policy experiments/m2_03_targeted/runtime_policy.kaggle_t4_index60.json --r14-single-token-boundary
+```
+
+Then follow the existing preflight/install/Vanilla/Adaptive/stop/validate/checkpoint
+sequence for this one pair. Compare the emitted prefix through 367 and index-368
+raw logits against preserved r13. A restored boundary argmax supports a current
+shape effect; a persistent split is compatible with inherited KV differences.
+Neither result establishes a production fix or replaces the canonical gate.
+
 ```powershell
 python -B -m pytest -q tests/test_lossless_verifier.py tests/test_verify_lossless.py tests/test_verify_lossless_evidence_guard.py tests/test_m2_03_evidence_analyzer.py tests/test_m2_03_targeted_gpu_diag.py -p no:cacheprovider
 python -B scripts/m2_03_gpu_diag.py --help

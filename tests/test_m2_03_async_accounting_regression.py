@@ -1,6 +1,6 @@
 """M2-03 offline regression: pinned vLLM 0.30.0 async accounting.
 
-Exercises the REAL method bodies (read from installed vLLM and repository source)
+Exercises the REAL method bodies (installed or hash-pinned vendored vLLM source)
 inside a small, GPU-free state fixture. This is NOT an APC/KV-tensor test and
 is NOT a replacement for GPU integration or the canonical 54-prompt gate.
 """
@@ -16,6 +16,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from experiments.m2_03_targeted import sources
+from experiments.m2_03_targeted.common import sha
+
 ROOT = Path(__file__).resolve().parents[1]
 VLLM_ROOT = ROOT / ".venv/lib/python3.13/site-packages/vllm/v1/core/sched"
 BASE_SOURCE = VLLM_ROOT / "scheduler.py"
@@ -25,9 +28,13 @@ ADAPTIVE_SOURCE = ROOT / "src/server/adaptive_scheduler.py"
 
 def _read_method(path: Path, class_name: str, method_name: str) -> str:
     """Extract an unchanged method body from the installed pinned source."""
-    if not path.is_file():
-        pytest.fail(f"Pinned source missing: {path}")
-    source = path.read_text(encoding="utf-8")
+    if path in (BASE_SOURCE, ASYNC_SOURCE):
+        name = 'v1/core/sched/' + path.name
+        source = (path.read_text(encoding='utf-8') if path.is_file()
+                  else sources.fixture_sources()[name])
+        assert sha(source.encode()) == sources.manifest()['sha256'][name], 'pinned source drift'
+    else:
+        source = path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(path))
     classes = [node for node in tree.body
                if isinstance(node, ast.ClassDef) and node.name == class_name]
@@ -48,12 +55,10 @@ def _read_method(path: Path, class_name: str, method_name: str) -> str:
 @pytest.fixture(scope="module")
 def scheduler_class():
     """Use production methods, substituting ONLY their expensive dependencies."""
-    try:
-        installed = importlib.metadata.version("vllm")
-    except importlib.metadata.PackageNotFoundError:
-        pytest.fail("vLLM 0.30.0 is required in the active Python environment")
-    if installed != "0.30.0":
-        pytest.fail(f"Wrong vLLM version: {installed}; expected 0.30.0")
+    if BASE_SOURCE.is_file() or ASYNC_SOURCE.is_file():
+        assert importlib.metadata.version('vllm') == '0.30.0', 'wrong installed vLLM version'
+    else:
+        assert sources.manifest()['tag'] == 'v0.30.0'  # No vLLM/CUDA install on Windows.
 
     specs = (
         ("Scheduler", None, BASE_SOURCE,
@@ -162,6 +167,32 @@ def test_trim_next_step_does_not_rewrite_current_step_accounting(scheduler_class
     assert req_a.num_output_placeholders == 6  # 3 prior + 1 bonus + 2 drafts
     assert req_b.num_output_placeholders == 5  # 0 prior + 1 bonus + 4 drafts
     assert scheduler.kv_cache_manager.calls == []  # Schedule does not cache.
+
+
+def test_r14_one_token_query_preserves_real_async_accounting(scheduler_class):
+    scheduler = _make_scheduler(scheduler_class)
+    request = scheduler.requests['A']
+    request._all_token_ids = list(range(377))  # prompt 10 + committed output 367
+    request.num_computed_tokens = 377
+    request.num_output_placeholders = request.num_in_flight_tokens = 1
+    request.spec_token_ids = [11, 12]
+    # The R14 helper is tested in scheduler glue; here consume its result using
+    # the pinned schedule expression and REAL base/async/adaptive updates.
+    request.spec_token_ids = []
+    query = request.num_tokens + len(request.spec_token_ids) + request.num_output_placeholders - request.num_computed_tokens
+    assert query == 1
+    output = SimpleNamespace(num_scheduled_tokens={'A': query}, scheduled_spec_decode_tokens={},
+                             num_spec_tokens_to_schedule=4, pending_structured_output_tokens=False,
+                             has_structured_output_requests=False)
+    scheduler._update_after_schedule(output)
+    assert request.num_computed_tokens == 378
+    assert request.num_in_flight_tokens == request.num_output_placeholders == 2
+    assert request.spec_token_ids == [-1, -1]  # Normal next-step Adaptive plan survives.
+    assert output.scheduled_spec_decode_tokens == {}
+    request.num_in_flight_tokens -= 1  # update_from_output's ordinary-step share
+    scheduler._update_request_with_output(request, [100], is_stale=False)
+    assert request.num_output_placeholders == request.num_in_flight_tokens == 1
+    assert scheduler.kv_cache_manager.calls == [('A', 377)]
 
 
 def test_preempted_stale_output_does_not_decrement_or_cache(scheduler_class):

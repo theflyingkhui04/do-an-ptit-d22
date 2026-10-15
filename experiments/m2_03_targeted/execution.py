@@ -115,7 +115,7 @@ def free_port(port):
         need(s.connect_ex(("127.0.0.1", port)) != 0, "port occupied: " + str(port))
 
 
-def init_run(root, execution, policy_path):
+def init_run(root, execution, policy_path, *, r14_single_token_boundary=False):
     verify_execution(execution)
     root = isolated(root)
     policy_raw = blob(policy_path, execution)
@@ -128,6 +128,7 @@ def init_run(root, execution, policy_path):
         'adaptive_kv_recompute_output_count': RECONSTRUCTION_TARGET}, 'r13 requires unchanged r12 controls')
     frozen_request()
     root.mkdir(parents=True, exist_ok=False)
+    r14 = {'r14_single_token_boundary': OBSERVATION_TARGET} if r14_single_token_boundary else {}
     save(root / "run.json", {"schema": "m203.targeted.run.v1", "case": CASE,
                             "historical_checkpoint_sha": HISTORICAL,
                             "historical_execution_sha": HISTORICAL_EXECUTION,
@@ -135,7 +136,7 @@ def init_run(root, execution, policy_path):
                             "policy_path": policy_path, "policy_sha256": sha(policy_raw),
                             "request_sha256": REQUEST_HASH, "target": OBSERVATION_TARGET,
                             "reconstruction_target": RECONSTRUCTION_TARGET,
-                            "observation_target": OBSERVATION_TARGET})
+                            "observation_target": OBSERVATION_TARGET, **r14})
     for lane in LANES:
         directory = root / lane
         (directory / "capture").mkdir(parents=True)
@@ -143,6 +144,7 @@ def init_run(root, execution, policy_path):
                                             "execution_sha": execution,
                                             "reconstruction_target": RECONSTRUCTION_TARGET,
                                             "observation_target": OBSERVATION_TARGET,
+                                            **(r14 if lane == 'adaptive' else {}),
                                             "diagnostic_control": policy.get("diagnostic_control", {})})
     return root
 
@@ -320,6 +322,7 @@ def launch_args(root, lane):
         argv += ["--speculative-config", encoded(spec).decode().strip(), "--scheduler-cls",
                  "src.server.adaptive_scheduler.AdaptiveAsyncScheduler", "--per-request-spec-decode-metrics", "summary"]
     env = os.environ.copy()
+    env.pop('M203_R14_SINGLE_TOKEN_BOUNDARY', None)
     # Remove stale old diagnostic controls; never consult old /tmp state.
     for k in list(env):
         if k.startswith(("M203_A3_", "ADAPTIVE_")):
@@ -336,6 +339,10 @@ def launch_args(root, lane):
     if adaptive["ADAPTIVE_CONTROLLER_KWARGS"]:
         need(isinstance(decode(adaptive["ADAPTIVE_CONTROLLER_KWARGS"]), dict), "controller settings unreviewed")
     env.update(adaptive)
+    r14 = config.get('r14_single_token_boundary')
+    need(r14 is None or type(r14) is int and r14 == OBSERVATION_TARGET, 'unreviewed R14 boundary')
+    if r14 is not None and lane == 'adaptive':
+        env['M203_R14_SINGLE_TOKEN_BOUNDARY'] = str(r14)
     env["ADAPTIVE_TELEMETRY_PATH"] = str(root / lane / "adaptive_telemetry.jsonl")
     return argv, env
 
@@ -359,7 +366,7 @@ def serve(root, lane):
     need(argv == load(root / "preflight.json")["launcher_argv"][lane], "launcher drift")
     directory = root / lane
     save(directory / "launch.json", {"argv": argv, "execution_sha": config["diagnostic_execution_sha"],
-                                    "environment": {k: env[k] for k in env if k.startswith(("ADAPTIVE_", "M203_TARGETED_"))
+                                    "environment": {k: env[k] for k in env if k.startswith(("ADAPTIVE_", "M203_TARGETED_", "M203_R14_"))
                                                     or k in ("VLLM_USE_V2_MODEL_RUNNER", "CUDA_VISIBLE_DEVICES", "CUDA_DEVICE_ORDER")}})
     with (directory / "server.log").open("xb") as log:
         child = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -522,6 +529,8 @@ def main(argv=None):
     p.add_argument("--run", type=Path, required=True)
     p.add_argument("--execution-sha", required=True)
     p.add_argument("--policy", required=True)
+    p.add_argument('--r14-single-token-boundary', action='store_true',
+                   help='diagnostic only: suppress Adaptive current drafts at proven generated index 368')
     for stage in ("preflight", "install-observer", "restore-observer", "restoration-status", "serve", "request", "stop", "abort", "validate-lane", "checkpoint"):
         p = sub.add_parser(stage)
         p.add_argument("--run", type=Path, required=True)
@@ -547,7 +556,8 @@ def main(argv=None):
         elif args.stage == "import-checkpoint":
             result = {"snapshot": str(import_checkpoint(args.evidence_sha, args.bundle_path, args.descriptor_path, args.output))}
         elif args.stage == "init":
-            result = {"run": str(init_run(args.run, args.execution_sha, args.policy))}
+            result = {"run": str(init_run(args.run, args.execution_sha, args.policy,
+                                        r14_single_token_boundary=args.r14_single_token_boundary))}
         elif args.stage in ("verify-checkpoint", "export", "compare"):
             checked = verify_checkpoint(args.snapshot)
             if args.stage == "export":
