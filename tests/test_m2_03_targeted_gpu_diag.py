@@ -163,7 +163,8 @@ def ordinary_forward_capture(directory, config, token, *, vocabulary_size=None,
     return created.pop()
 
 
-def kv_ready_boundary_fixture(tmp_path):
+def kv_ready_boundary_fixture(tmp_path, *, vanilla_pre_token=None,
+                              vanilla_post_token=None):
     """Both lanes recompute 248 tokens and select one POST_READY boundary."""
     root = run_fixture(tmp_path, adaptive_ordinary=True)
     run = c.load(root / "run.json")
@@ -179,6 +180,12 @@ def kv_ready_boundary_fixture(tmp_path):
     prompt = [0] * 189
     boundaries = {}
     for lane, token in (("vanilla", 51), ("adaptive", 79759)):
+        pre_token = (vanilla_pre_token
+                     if lane == "vanilla" and vanilla_pre_token is not None
+                     else token)
+        post_token = (vanilla_post_token
+                      if lane == "vanilla" and vanilla_post_token is not None
+                      else token)
         directory = root / lane
         capture = directory / "capture"
         for path in list(capture.glob("*.forward.json")) + list(capture.glob("*.f32")):
@@ -189,7 +196,7 @@ def kv_ready_boundary_fixture(tmp_path):
         body = c.load(directory / "response.json")
         body["prompt_token_ids"] = prompt
         body["choices"][0]["token_ids"][59] = 382
-        body["choices"][0]["token_ids"][60] = token
+        body["choices"][0]["token_ids"][60] = post_token
         (directory / "response.json").write_bytes(c.encoded(body))
         synthetic_shutdown(directory)
         observer = c.load(directory / "observer.json")
@@ -239,10 +246,10 @@ def kv_ready_boundary_fixture(tmp_path):
 
         # A was dispatched before ready but its callback arrives after ready.
         pre_ready = ordinary_forward_capture(
-            directory, observer, token, vocabulary_size=79760,
+            directory, observer, pre_token, vocabulary_size=79760,
             scheduled=scheduled_a, prompt=prompt, query_token=382)
         post_ready = ordinary_forward_capture(
-            directory, observer, token, vocabulary_size=79760,
+            directory, observer, post_token, vocabulary_size=79760,
             scheduled=scheduled_b, prompt=prompt, query_token=382)
 
         scheduled = NS(num_scheduled_tokens={request.request_id: 1},
@@ -250,10 +257,10 @@ def kv_ready_boundary_fixture(tmp_path):
         request.num_computed_tokens = 249
         request.num_in_flight_tokens = 1
         request.num_output_placeholders = 1
-        o.accounting(observer, "account_before", request, [token], scheduled, False)
-        request._output_token_ids.append(token)
+        o.accounting(observer, "account_before", request, [post_token], scheduled, False)
+        request._output_token_ids.append(post_token)
         request.num_output_placeholders = 0
-        o.accounting(observer, "account_after", request, [token], scheduled, False)
+        o.accounting(observer, "account_after", request, [post_token], scheduled, False)
         boundaries[lane] = (pre_ready, post_ready)
     return root, boundaries
 
@@ -478,6 +485,56 @@ def test_kv_recompute_evidence_is_required_and_preserves_boundary_shape(tmp_path
         ready_path = next(path for path in (capture / "events").glob("*.json")
                           if c.load(path)["kind"] == "kv_recompute_ready")
         assert post_provenance["kv_recompute_ready_event_sha256"] == c.file_sha(ready_path)
+
+
+def test_pre_ready_stale_token_is_retained_but_post_ready_is_scientific_boundary(tmp_path):
+    root, boundaries = kv_ready_boundary_fixture(
+        tmp_path, vanilla_pre_token=51, vanilla_post_token=79759)
+    report = a.compare(root)
+    assert report["state"] == "NOT_REPRODUCED", report
+    pre_ready, post_ready = boundaries["vanilla"]
+    proof = report["captures"]["vanilla"]
+    assert c.load(pre_ready)["selected"] == [51]
+    assert proof["record"] == c.load(post_ready)["key"]
+    assert proof["selected_token"] == 79759
+    assert proof["excluded_pre_ready_boundary_records"] == [
+        c.load(pre_ready)["key"]]
+    assert proof["accounting"]["after"]["output_token_ids"] == [79759]
+
+
+def test_post_ready_token_mismatch_with_api_is_invalid(tmp_path):
+    root, boundaries = kv_ready_boundary_fixture(
+        tmp_path, vanilla_pre_token=51, vanilla_post_token=79759)
+    post_ready = boundaries["vanilla"][1]
+    record = c.load(post_ready)
+    record["selected"] = [51]
+    post_ready.write_bytes(c.encoded(record))
+    report = a.compare(root)
+    assert report["state"] == "INVALID_CAPTURE"
+    assert "sampler/API token mismatch" in report["reason"]
+
+
+def test_pre_ready_score_corruption_is_invalid(tmp_path):
+    root, boundaries = kv_ready_boundary_fixture(
+        tmp_path, vanilla_pre_token=51, vanilla_post_token=79759)
+    pre_ready = boundaries["vanilla"][0]
+    record = c.load(pre_ready)
+    record["scores"]["0"]["raw"]["sha256"] = "0" * 64
+    pre_ready.write_bytes(c.encoded(record))
+    report = a.compare(root)
+    assert report["state"] == "INVALID_CAPTURE"
+    assert "score checksum/size mismatch" in report["reason"]
+
+
+def test_generic_boundary_token_mismatch_with_api_remains_invalid(tmp_path):
+    root = run_fixture(tmp_path)
+    record_path = next((root / "vanilla/capture").glob("*.forward.json"))
+    record = c.load(record_path)
+    record["selected"] = [3]
+    record_path.write_bytes(c.encoded(record))
+    report = a.compare(root)
+    assert report["state"] == "INVALID_CAPTURE"
+    assert "sampler/API token mismatch" in report["reason"]
 
 
 @pytest.mark.parametrize("lane", ["vanilla", "adaptive"])

@@ -230,9 +230,13 @@ def capture(directory, lane, execution, request_id, prompt, ids):
                  "capture position mapping mismatch")
             if row["generated_index"] != TARGET or j >= len(selected):
                 continue  # A rejected speculative candidate is not an emitted row.
-            need(selected[j] == ids[TARGET], "sampler/API token mismatch")
+            dispatch_state = (scheduler_provenance(rec, ready)
+                              if ready is not None else None)
             base = rows[0]["generated_index"]
-            need(base >= 0 and selected[:j] == ids[base:TARGET], "earlier accepted prefix mismatch")
+            need(base >= 0, "negative selected boundary base")
+            if dispatch_state != "PRE_READY":
+                need(selected[j] == ids[TARGET], "sampler/API token mismatch")
+                need(selected[:j] == ids[base:TARGET], "earlier accepted prefix mismatch")
             prefix = prompt + ids[:TARGET]
             pairs = [(p, t) for p, t in rec["active_query"] if p <= row["position"]]
             need(pairs and len({p for p, _ in pairs}) == len(pairs), "ambiguous active query")
@@ -249,8 +253,6 @@ def capture(directory, lane, execution, request_id, prompt, ids):
             raw = vector(root, scores["raw"])
             processed = vector(root, scores["processed"])
             need(len(raw) == len(processed), "vocabulary shape drift")
-            dispatch_state = (scheduler_provenance(rec, ready)
-                              if ready is not None else None)
             hits.append({"record": rec["key"], "row": row, "scores": scores,
                          "selected_token": selected[j], "prefix_sha256": fingerprint(prefix),
                          "decoding_path": rec["decoding_path"],
