@@ -63,15 +63,18 @@ def test_r13_targets_are_independent():
 
 
 @pytest.mark.parametrize('r14', [False, True])
-def test_r13_r14_initialized_run_preserves_r12_controls(tmp_path, monkeypatch, r14):
+@pytest.mark.parametrize('r15', [False, True])
+def test_r13_r14_initialized_run_preserves_r12_controls(tmp_path, monkeypatch, r14, r15):
     policy_path = 'experiments/m2_03_targeted/runtime_policy.kaggle_t4_index60.json'
     monkeypatch.setattr(e, 'verify_execution', lambda execution: None)
     monkeypatch.setattr(e, 'blob', lambda path, execution: (c.ROOT / path).read_bytes())
-    root = e.init_run(tmp_path / 'r13', 'd' * 40, policy_path, r14_single_token_boundary=r14)
+    root = e.init_run(tmp_path / 'r13', 'd' * 40, policy_path,
+                      r14_single_token_boundary=r14, r15_attention_dispatch=r15)
     run = c.load(root / 'run.json')
     assert run['target'] == run['observation_target'] == 368
     assert run['reconstruction_target'] == 60
     assert run.get('r14_single_token_boundary') == (368 if r14 else None)
+    assert run.get('r15_attention_dispatch', False) is r15
     monkeypatch.setenv('M203_R14_SINGLE_TOKEN_BOUNDARY', 'stale-inherited-gate')
     for lane, mode in [('vanilla', 'PIECEWISE'), ('adaptive', 'NONE')]:
         observer = c.load(root / lane / 'observer.json')
@@ -81,6 +84,7 @@ def test_r13_r14_initialized_run_preserves_r12_controls(tmp_path, monkeypatch, r
         argv, env = e.launch_args(root, lane)
         expected = 368 if r14 and lane == 'adaptive' else None
         assert observer.get('r14_single_token_boundary') == expected
+        assert observer.get('r15_attention_dispatch', False) is (r15 and lane == 'adaptive')
         assert env.get('M203_R14_SINGLE_TOKEN_BOUNDARY') == (str(expected) if expected else None)
         assert c.decode(argv[argv.index('--compilation-config') + 1]) == dict(cudagraph_mode=mode)
 
@@ -230,13 +234,16 @@ def test_r13_broken_causal_chain_fails(mutation):
         a.validate_transition(previous, current, prompt, ids)
 
 
-def observed_transition_fixture(tmp_path, monkeypatch, *, lane='adaptive', boundary_token=1):
+def observed_transition_fixture(tmp_path, monkeypatch, *, lane='adaptive', boundary_token=1,
+                                r15=False):
     """Exercise real observer stages with CPU tensors, including owned copies."""
     directory = tmp_path / lane
     cap = directory / 'capture'
     cap.mkdir(parents=True)
     config = dict(lane=lane, execution_sha='d' * 40, directory=str(cap),
                   observation_target=368, reconstruction_target=60)
+    if r15:
+        config['r15_attention_dispatch'] = True
     c.save(directory / 'observer.json', config)
     monkeypatch.setenv('M203_TARGETED_CONFIG', str(directory / 'observer.json'))
     prompt, ids = [0] * 5, [1] * 370
@@ -248,6 +255,7 @@ def observed_transition_fixture(tmp_path, monkeypatch, *, lane='adaptive', bound
     batch = NS(num_reqs=1, req_ids=[rid], has_structured_output_reqs=False,
                prev_req_id_to_index={rid: 0}, block_table=NS(block_tables=[table]))
     runner = NS(input_batch=batch, uses_mrope=False, enable_prompt_embeds=False,
+                model_config=NS(hf_config=NS(num_hidden_layers=2)),
                 cache_config=NS(enable_prefix_caching=False),
                 vllm_config=NS(parallel_config=NS(tensor_parallel_size=1, pipeline_parallel_size=1,
                                                  data_parallel_size=1, decode_context_parallel_size=1)),
@@ -273,11 +281,18 @@ def observed_transition_fixture(tmp_path, monkeypatch, *, lane='adaptive', bound
         runner.seq_lens = torch.tensor([position + 1])
         o.observe('prepared', runner, scheduled, runner.input_ids.gpu, runner.positions,
                   {0: torch.tensor([32 + position % 16])})
+        if r15:
+            assert o._local.attention_capture is not None
+            for use_3d in (True, False):
+                o.observe('attention_dispatch', *dispatch_values(use_3d))
+            assert not any(c.load(p)['kind'] == 'attention_dispatch' for p in (cap / 'events').glob('*.json'))
         raw = torch.tensor([[0., 3., 2., 1.]])
         token = ids[index]
         raw[0, token] = 4
         unchanged = raw.clone()
         o.observe('begin', runner, scheduled, raw, None, None)
+        assert getattr(o._local, 'attention_capture', None) is None
+        o.observe('attention_dispatch', *dispatch_values(True))  # Drafter must be ignored.
         o.observe('sample_scores', raw, NS(all_greedy=True))
         output = NS(sampled_token_ids=torch.tensor([[token]]))
         o.observe('end', runner, output)
@@ -377,13 +392,15 @@ def test_r13_discarded_reconstruction_refill_still_recorded(tmp_path):
 
 
 @pytest.mark.parametrize('r14', [False, True])
-def test_r13_r14_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch, r14):
+@pytest.mark.parametrize('r15', [False, True])
+def test_r13_r14_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch, r14, r15):
     root = run_fixture(tmp_path / 'run', different=False)
     control = dict(vanilla_cudagraph_mode='PIECEWISE', adaptive_cudagraph_mode='NONE',
                    vanilla_kv_recompute_output_count=60, adaptive_kv_recompute_output_count=60)
     set_cudagraph_control(root, control)
     run = c.load(root / 'run.json')
     run.update(target=368, observation_target=368, reconstruction_target=60)
+    if r15: run['r15_attention_dispatch'] = True
     if r14: run['r14_single_token_boundary'] = 368
     (root / 'run.json').write_bytes(c.encoded(run))
     for lane in c.LANES:
@@ -392,7 +409,7 @@ def test_r13_r14_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch, r1
         for path in (directory / 'capture').rglob('*'):
             if path.is_file(): path.unlink()
         observed, prompt, ids = observed_transition_fixture(tmp_path / 'observed', monkeypatch,
-            lane=lane, boundary_token=1 if lane == 'vanilla' else 2)
+            lane=lane, boundary_token=1 if lane == 'vanilla' else 2, r15=r15 and lane == 'adaptive')
         for source in (observed / 'capture').rglob('*'):
             if source.is_file():
                 destination = directory / 'capture' / source.relative_to(observed / 'capture')
@@ -443,6 +460,14 @@ def test_r13_r14_two_lane_full_analysis_and_corruption(tmp_path, monkeypatch, r1
     assert report['reconstruction_target'] == 60
     assert report['full_completion_verified'] is True
     assert a.validate_lane(root, 'adaptive')['lane_valid'] is True
+    if r15:
+        assert report['captures']['adaptive']['attention_dispatch']['mode'] == 'MIXED'
+        event_path = next(p for p in (root / 'adaptive/capture/events').glob('*.json')
+                          if c.load(p)['kind'] == 'attention_dispatch')
+        original = event_path.read_bytes()
+        event_path.unlink()
+        assert a.compare(root)['state'] == 'INVALID_CAPTURE'
+        event_path.write_bytes(original)
     if r14:
         event_path = next(p for p in (root / 'adaptive/capture/events').glob('*.json')
                           if c.load(p)['kind'] == 'r14_current_drafts_suppressed')
@@ -479,7 +504,7 @@ def test_previous_hook_not_accepted(tmp_path):
         p = tmp_path / name
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(text.encode())
-    assert len(s.verify_installed(tmp_path)) == 5
+    assert len(s.verify_installed(tmp_path)) == len(s.manifest()['sha256'])
     p = tmp_path / "v1/worker/gpu_model_runner.py"
     p.write_bytes(p.read_bytes() + b'\n# prior v7/v8 hook\n')
     with pytest.raises(c.Invalid, match="installed source mismatch"):
@@ -1548,7 +1573,7 @@ def test_partial_install_recovers_exact_sources_without_resume(tmp_path, monkeyp
     assert before == {name: (package / name).read_bytes() for name in originals}
     e.restore(tmp_path)
     assert {name: (package / name).read_bytes() for name in originals} == originals
-    assert len(s.verify_installed(package)) == 5
+    assert len(s.verify_installed(package)) == len(s.manifest()['sha256'])
 
 
 @pytest.mark.parametrize("drafts", [0, 1, 2, 4])
@@ -1706,7 +1731,7 @@ def test_partial_restore_has_durable_status_and_explicit_recovery(tmp_path, monk
     e.restore(root)  # Explicit operator recovery, not an inference retry.
     assert e.restoration_status(root)['state'] == 'RESTORED'
     assert e.restoration_status(root)['inference_allowed'] is False
-    assert len(s.verify_installed(package)) == 5
+    assert len(s.verify_installed(package)) == len(s.manifest()['sha256'])
 
 
 def test_correct_source_row_wrong_emitted_index_is_invalid(tmp_path):
@@ -1774,7 +1799,7 @@ def test_restore_crash_after_last_replacement_still_requires_explicit_recovery(t
         with pytest.raises(c.Invalid): e.serve(root, lane)
     e.restore(root)
     assert e.restoration_status(root)['state'] == 'RESTORED'
-    assert len(s.verify_installed(package)) == 5
+    assert len(s.verify_installed(package)) == len(s.manifest()['sha256'])
     with pytest.raises(c.Invalid): e.request(root, 'vanilla')
 
 
@@ -1928,3 +1953,188 @@ def test_observer_hook_owner_and_order_on_exact_pinned_source(name, method, sequ
         calls.setdefault(key, []).append(n.lineno)
     assert all(len(calls[key]) == 1 for key in sequence)
     assert [calls[key][0] for key in sequence] == sorted(calls[key][0] for key in sequence)
+
+
+def dispatch_values(use_3d=True):
+    return (1, 32, 16, 1, True, True, True, not use_3d, use_3d,
+            (1, 4, 16) if use_3d else (1, 4), 16 if use_3d else 32, 16, 2, 16,
+            16 if use_3d else 1)
+
+
+def test_r15_exact_source_hook_placement_and_roundtrip():
+    name = s.ATTENTION_SOURCE
+    raw = s.fixture_sources()[name].encode()
+    assert c.sha(raw) == '65d0fbcf33d00789df8ca688c0a1c908e710cfaef53471178747ecae11f05829'
+    patched = s.transform(name, raw)
+    tree = ast.parse(patched)
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'unified_attention')
+    hook = next(i for i, n in enumerate(fn.body) if isinstance(n, ast.Expr)
+                and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
+                and n.value.func.id == '_m203_observe')
+    launch = fn.body[hook + 1].value.func
+    assert isinstance(launch, ast.Subscript) and launch.value.id == 'kernel_unified_attention'
+    assert sum(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+               and n.func.id == '_m203_observe' for n in ast.walk(tree)) == 1
+    assert ast.dump(s.StripObserver().visit(ast.parse(patched))) == ast.dump(ast.parse(raw))
+    assert b'launch_kwargs["num_stages"]' in patched[:patched.index(b'    _m203_observe(')]
+    for anchor, _ in s.INSERTIONS[name]:
+        assert raw.decode().count(anchor) == 1
+    with pytest.raises(c.Invalid, match='hash drift'):
+        s.transform(name, raw + b'\n')
+    comparisons = [n for n in ast.walk(fn.body[hook]) if isinstance(n, ast.Compare)]
+    assert len(comparisons) == 3 and all(isinstance(n.ops[0], ast.IsNot) for n in comparisons)
+
+
+class AttentionSentinel:
+    """Shape metadata is allowed; tensor contents and truthiness are forbidden."""
+    dtype = 'half'
+
+    def __init__(self, shape): self.shape = shape
+    def __len__(self): return self.shape[0]
+    def element_size(self): return 2
+    def stride(self, i): return 1 if i == 2 else 128
+    def __bool__(self): raise AssertionError('tensor truthiness')
+    def __getattr__(self, name): raise AssertionError('tensor access: ' + name)
+
+
+@pytest.mark.parametrize('change,expected', [
+    ({}, True), ({'max_seqlen_q': 3}, False),
+    ({'softmax_segm_output': None}, False), ({'softmax_segm_max': None}, False),
+    ({'softmax_segm_expsum': None}, False), ({'seq_threshold_3D': None}, False),
+    ({'num_par_softmax_segments': None}, False), ({'seq_threshold_3D': 1}, True),
+    ({'seq_threshold_3D': 0}, False), ({'batch_invariant': True}, False),
+    ({'batch_invariant': False}, True),
+])
+def test_r15_actual_pinned_wrapper_predicate_without_tensor_access(monkeypatch, change, expected):
+    text = s.transform(s.ATTENTION_SOURCE, s.fixture_sources()[s.ATTENTION_SOURCE].encode()).decode()
+    tree = ast.parse(text)
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef)
+             and n.name in ('unified_attention', '_get_tile_size', '_is_gemma3_attention')]
+    launches, reductions = [], []
+    class Kernel:
+        def __init__(self, sink): self.sink = sink
+        def __getitem__(self, grid):
+            def launch(**kw): self.sink.append((grid, kw))
+            return launch
+    namespace = dict(torch=NS(Tensor=AttentionSentinel), Any=object,
+        KVQuantMode=NS(NONE=0, INT4_PER_TOKEN_HEAD=4, INT8_PER_TOKEN_HEAD=2, FP8_PER_TOKEN_HEAD=3),
+        current_platform=NS(fp8_dtype=lambda: 'fp8', is_device_capability_family=lambda n: False),
+        triton=NS(next_power_of_2=lambda n: 1 << (n-1).bit_length()),
+        is_batch_invariant=change.get('batch_invariant', False),
+        kernel_unified_attention=Kernel(launches), reduce_segments=Kernel(reductions),
+        _m203_observe=o.observe)
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), '<pinned-attention>', 'exec'), namespace)
+    o._local.attention_capture = dict(key='boundary', calls=[])
+    monkeypatch.setenv('M203_TARGETED_CONFIG', 'must-not-be-read')
+    monkeypatch.setattr(o, 'load', lambda _: pytest.fail('pre-launch config I/O'))
+    sentinel = AttentionSentinel
+    q = change.get('max_seqlen_q', 1)
+    args = dict(q=sentinel((q, 28, 128)), k=sentinel((40, 16, 4, 128)),
+        v=sentinel((40, 16, 4, 128)), out=sentinel((q, 28, 128)),
+        cu_seqlens_q=sentinel((2,)), max_seqlen_q=q, seqused_k=sentinel((1,)),
+        max_seqlen_k=556+q, softmax_scale=1.0, causal=True, window_size=(-1, -1),
+        block_table=sentinel((1, 40)), softcap=0., q_descale=None, k_descale=None, v_descale=None,
+        seq_threshold_3D=32, num_par_softmax_segments=16,
+        softmax_segm_output=sentinel((32,)), softmax_segm_max=sentinel((32,)),
+        softmax_segm_expsum=sentinel((32,)))
+    args.update({k: v for k, v in change.items() if k != 'batch_invariant'})
+    namespace['unified_attention'](**args)
+    capture = o._local.attention_capture
+    o._local.attention_capture = None
+    assert len(capture['calls']) == len(launches) == 1
+    call = capture['calls'][0]
+    assert call['use_3d'] is expected
+    assert launches[0][1]['IS_3D'] is expected
+    assert call['grid'] == list(launches[0][0])
+    assert call['tile_size'] == launches[0][1]['TILE_SIZE']
+    assert bool(reductions) is expected
+    assert launches[0][1]['query_ptr'] is args['q']
+    assert launches[0][1]['key_cache_ptr'] is args['k']
+    assert launches[0][1]['value_cache_ptr'] is args['v']
+    current = dict(key='boundary', request_id='request', execution_sha='d'*40,
+                   lane='adaptive', scheduler_step=1, forward_sequence=1)
+    event = dict(current, kind='attention_dispatch', generated_index=368,
+                 expected_calls=1, calls=capture['calls'])
+    current['preparation'] = dict(scheduled_tokens=q, groups=[dict(kv_cache_block_size=16)],
+        attention_dispatch=dict(capture, expected_calls=1))
+    proof = a.attention_dispatch_proof([event], current, True)
+    assert proof['mode'] == ('3D' if expected else '2D')
+
+
+def test_r15_lifecycle_deferred_boundary_event_and_mixed_pattern(tmp_path, monkeypatch):
+    directory, prompt, ids = observed_transition_fixture(tmp_path, monkeypatch, r15=True)
+    events = [c.load(p) for p in (directory / 'capture/events').glob('*.json')]
+    dispatch = [ev for ev in events if ev['kind'] == 'attention_dispatch']
+    assert len(dispatch) == 1 and dispatch[0]['generated_index'] == 368
+    proof = a.capture(directory, 'adaptive', 'd'*40, 'api', prompt, ids)['attention_dispatch']
+    assert proof['mode'] == 'MIXED' and proof['modes'] == ['3D', '2D']
+    assert [x['ordinal'] for x in proof['event']['calls']] == [0, 1]
+    assert not any(ev['kind'] == 'observer_error' for ev in events)
+    records = [c.load(p) for p in (directory / 'capture').glob('*.forward.json')]
+    previous = next(r for r in records if r['key'] != proof['event']['key'])
+    assert 'attention_dispatch' not in previous['preparation']
+
+
+@pytest.mark.parametrize('problem', ['missing', 'duplicate', 'execution_sha', 'request_id',
+    'key', 'scheduler_step', 'forward_sequence', 'generated_index', 'predicate', 'grid',
+    'segments', 'block', 'tile', 'order', 'empty', 'truncated', 'extra', 'prep', 'missing_key'])
+def test_r15_analyzer_rejects_invalid_dispatch(tmp_path, monkeypatch, problem):
+    directory, prompt, ids = observed_transition_fixture(tmp_path, monkeypatch, r15=True)
+    path = next(p for p in (directory / 'capture/events').glob('*.json')
+                if c.load(p)['kind'] == 'attention_dispatch')
+    event = c.load(path)
+    forward_path = next(p for p in (directory / 'capture').glob('*.forward.json')
+                        if c.load(p)['key'] == event['key'])
+    forward = c.load(forward_path)
+    if problem == 'missing': path.unlink()
+    elif problem == 'duplicate': c.event(directory / 'capture', **dict(event))
+    else:
+        if problem in ('execution_sha', 'request_id', 'key'): event[problem] = 'wrong'
+        elif problem in ('scheduler_step', 'forward_sequence', 'generated_index'): event[problem] += 1
+        elif problem == 'predicate': event['calls'][0]['use_3d'] = False
+        elif problem == 'grid': event['calls'][0]['grid'][2] = 2
+        elif problem == 'segments': event['calls'][0]['num_segments'] = 2
+        elif problem == 'block': event['calls'][0]['block_size'] = 32
+        elif problem == 'tile': event['calls'][0]['tile_size'] = 3
+        elif problem == 'order': event['calls'].reverse()
+        elif problem == 'empty': event['calls'] = []
+        elif problem == 'truncated': event['calls'].pop()
+        elif problem == 'extra': event['calls'].append(event['calls'][0])
+        elif problem == 'prep': forward['preparation']['attention_dispatch']['key'] = 'wrong'
+        elif problem == 'missing_key': del event['key']
+        if problem != 'prep':
+            forward['preparation']['attention_dispatch']['calls'] = copy.deepcopy(event['calls'])
+        path.write_bytes(c.encoded(event))
+        forward_path.write_bytes(c.encoded(forward))
+    with pytest.raises((c.Invalid, KeyError, TypeError, IndexError)):
+        a.capture(directory, 'adaptive', 'd'*40, 'api', prompt, ids)
+
+
+def test_r15_observer_error_disarms_and_invalidates(tmp_path, monkeypatch):
+    directory, prompt, ids = observed_transition_fixture(tmp_path, monkeypatch, r15=True)
+    o._local.attention_capture = dict(key='bad', calls=[])
+    o.observe('attention_dispatch', AttentionSentinel((1,)))
+    assert o._local.attention_capture is None and o._local.preparation is None
+    with pytest.raises(c.Invalid, match='observer error'):
+        a.capture(directory, 'adaptive', 'd'*40, 'api', prompt, ids)
+
+
+@pytest.mark.parametrize('bundle,state', [
+    ('complete-3999b36f90114ad289daf22ff932ae01.tar.gz', 'REPRODUCED'),
+    ('complete-a4d65ac6c375455fad050e5d04e41b1d.tar.gz', 'NOT_REPRODUCED'),
+])
+def test_r15_preserved_r13_r14_archives_remain_readable(tmp_path, bundle, state):
+    import tarfile
+    archive = c.ROOT / 'experiments/runs/m2_03/diagnostics' / bundle
+    with tarfile.open(archive) as tar:
+        for member in tar.getmembers():
+            if not member.isfile() or not member.name.startswith('data/'):
+                continue
+            relative = Path(member.name).relative_to('data')
+            assert not relative.is_absolute() and '..' not in relative.parts
+            destination = tmp_path / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(tar.extractfile(member).read())
+    report = a.compare(tmp_path)
+    assert report['state'] == state, report
+    assert report['captures']['adaptive']['attention_dispatch'] is None

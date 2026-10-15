@@ -25,6 +25,31 @@ from .common import WINDOW, OBSERVATION_TARGET, encoded, event, load, need, save
 
 _local = threading.local()
 
+DISPATCH_FIELDS = (
+    'max_seqlen_q', 'seq_threshold_3D', 'num_par_softmax_segments', 'num_seqs',
+    'softmax_segm_output_present', 'softmax_segm_max_present', 'softmax_segm_expsum_present',
+    'is_batch_invariant', 'use_3d', 'grid', 'tile_size', 'BLOCK_M', 'BLOCK_Q',
+    'block_size', 'num_segments')
+
+
+def attention_dispatch(*values):
+    """Scalar-only fast path: no configuration I/O, tensors, or CUDA operations."""
+    capture = getattr(_local, 'attention_capture', None)
+    if capture is None:
+        return
+    need(len(values) == len(DISPATCH_FIELDS), 'attention dispatch field count')
+    record = dict(zip(DISPATCH_FIELDS, values))
+    for name, value in record.items():
+        if name == 'grid':
+            need(type(value) is tuple and all(type(x) is int for x in value),
+                 'non-scalar attention grid')
+            record[name] = list(value)
+        else:
+            need(type(value) in (int, bool) or value is None,
+                 'non-scalar attention metadata: ' + name)
+    calls = capture['calls']
+    calls.append(dict(record, ordinal=len(calls), key=capture['key']))
+
 
 def ints(tensor):
     return tensor.detach().cpu().tolist()
@@ -58,6 +83,7 @@ def observation_target(config):
 def correction_before(config, runner, scheduled):
     """Clone device counts before correction, without host synchronization."""
     _local.preparation = None
+    _local.attention_capture = None
     ids = list(runner.input_batch.req_ids[:int(runner.input_batch.num_reqs)])
     if not ids or all(x.startswith(("_warmup_", "_v2_mixed_warmup")) for x in ids):
         return
@@ -124,14 +150,31 @@ def prepared(config, runner, scheduled, input_ids, positions, slot_mappings):
                            blocks_per_kv_block=table.blocks_per_kv_block,
                            dcp_world_size=table.dcp_world_size, pcp_world_size=table.pcp_world_size))
     prep['groups'] = groups
+    if config.get('r15_attention_dispatch') is True:
+        need(config['lane'] == 'adaptive', 'R15 requires Adaptive target')
+        expected = runner.model_config.hf_config.num_hidden_layers
+        need(type(expected) is int and expected > 0, 'missing target attention layer count')
+        prep['attention_dispatch'] = dict(key=prep['key'], expected_calls=expected, calls=[])
+        _local.attention_capture = prep['attention_dispatch']
 
 
 def finish_transition(config, record):
     previous = getattr(_local, 'transition_previous', None)
-    if any(row['generated_index'] == OBSERVATION_TARGET and row['row'] < len(record['selected'])
-           for row in record['rows']):
+    boundary = any(row['generated_index'] == OBSERVATION_TARGET and row['row'] < len(record['selected'])
+                   for row in record['rows'])
+    if boundary:
         need(not _local.transition_published, "duplicate emitted boundary forward")
         need(previous is not None, "missing immediately preceding forward")
+        if config.get('r15_attention_dispatch') is True:
+            dispatch = record['preparation']['attention_dispatch']
+            need(len(dispatch['calls']) == dispatch['expected_calls'] > 0,
+                 'incomplete target attention dispatch collection')
+            event(config['directory'], 'attention_dispatch',
+                  execution_sha=config['execution_sha'], lane=config['lane'],
+                  request_id=record['request_id'], key=record['key'],
+                  scheduler_step=record['scheduler_step'],
+                  forward_sequence=record['forward_sequence'], generated_index=OBSERVATION_TARGET,
+                  **{name: dispatch[name] for name in ('expected_calls', 'calls')})
         for name, raw in _local.pending_vectors.items():
             write_new(Path(config['directory']) / name, raw)
         for item in (previous, record):
@@ -140,6 +183,8 @@ def finish_transition(config, record):
     # The predecessor needs preparation/selection metadata, not rejected rows'
     # logits. Keep no tensor views or vectors in the rolling predecessor.
     record['scores'] = {}
+    if not boundary:
+        record['preparation'].pop('attention_dispatch', None)
     _local.pending_vectors = {}
     _local.transition_previous = record
 
@@ -315,6 +360,7 @@ def skip_controlled_kv_refill(config, request_id, scheduled, query, rows, draft_
 
 
 def begin(config, runner, scheduled, logits, spec, grammar):
+    _local.attention_capture = None  # Target forward ended; exclude sampling/drafter calls.
     _local.ctx = None
     _local.pending_vectors = {}
     batch = runner.input_batch
@@ -572,10 +618,15 @@ def control(stage, *args):
 
 
 def observe(stage, *args):
+    if stage == 'attention_dispatch' and getattr(_local, 'attention_capture', None) is None:
+        return
     config_path = os.environ.get("M203_TARGETED_CONFIG")
     if not config_path:
         return
     try:
+        if stage == 'attention_dispatch':
+            attention_dispatch(*args)
+            return
         config = load(config_path)
         if stage in ('correction_before', 'prepared'):
             if observation_target(config) == OBSERVATION_TARGET:
@@ -590,6 +641,8 @@ def observe(stage, *args):
             accounting(config, stage, *args)
     except Exception as exc:
         _local.ctx = None
+        _local.attention_capture = None
+        _local.preparation = None
         try:
             config = load(config_path)
             event(config["directory"], "observer_error", stage=stage,

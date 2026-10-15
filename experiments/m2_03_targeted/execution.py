@@ -115,7 +115,8 @@ def free_port(port):
         need(s.connect_ex(("127.0.0.1", port)) != 0, "port occupied: " + str(port))
 
 
-def init_run(root, execution, policy_path, *, r14_single_token_boundary=False):
+def init_run(root, execution, policy_path, *, r14_single_token_boundary=False,
+             r15_attention_dispatch=False):
     verify_execution(execution)
     root = isolated(root)
     policy_raw = blob(policy_path, execution)
@@ -129,6 +130,7 @@ def init_run(root, execution, policy_path, *, r14_single_token_boundary=False):
     frozen_request()
     root.mkdir(parents=True, exist_ok=False)
     r14 = {'r14_single_token_boundary': OBSERVATION_TARGET} if r14_single_token_boundary else {}
+    r15 = {'r15_attention_dispatch': True} if r15_attention_dispatch else {}
     save(root / "run.json", {"schema": "m203.targeted.run.v1", "case": CASE,
                             "historical_checkpoint_sha": HISTORICAL,
                             "historical_execution_sha": HISTORICAL_EXECUTION,
@@ -136,7 +138,7 @@ def init_run(root, execution, policy_path, *, r14_single_token_boundary=False):
                             "policy_path": policy_path, "policy_sha256": sha(policy_raw),
                             "request_sha256": REQUEST_HASH, "target": OBSERVATION_TARGET,
                             "reconstruction_target": RECONSTRUCTION_TARGET,
-                            "observation_target": OBSERVATION_TARGET, **r14})
+                            "observation_target": OBSERVATION_TARGET, **r14, **r15})
     for lane in LANES:
         directory = root / lane
         (directory / "capture").mkdir(parents=True)
@@ -145,6 +147,7 @@ def init_run(root, execution, policy_path, *, r14_single_token_boundary=False):
                                             "reconstruction_target": RECONSTRUCTION_TARGET,
                                             "observation_target": OBSERVATION_TARGET,
                                             **(r14 if lane == 'adaptive' else {}),
+                                            **(r15 if lane == 'adaptive' else {}),
                                             "diagnostic_control": policy.get("diagnostic_control", {})})
     return root
 
@@ -531,6 +534,8 @@ def main(argv=None):
     p.add_argument("--policy", required=True)
     p.add_argument('--r14-single-token-boundary', action='store_true',
                    help='diagnostic only: suppress Adaptive current drafts at proven generated index 368')
+    p.add_argument('--r15-attention-dispatch', action='store_true',
+                   help='diagnostic only: record boundary attention launch metadata')
     for stage in ("preflight", "install-observer", "restore-observer", "restoration-status", "serve", "request", "stop", "abort", "validate-lane", "checkpoint"):
         p = sub.add_parser(stage)
         p.add_argument("--run", type=Path, required=True)
@@ -557,7 +562,8 @@ def main(argv=None):
             result = {"snapshot": str(import_checkpoint(args.evidence_sha, args.bundle_path, args.descriptor_path, args.output))}
         elif args.stage == "init":
             result = {"run": str(init_run(args.run, args.execution_sha, args.policy,
-                                        r14_single_token_boundary=args.r14_single_token_boundary))}
+                                        r14_single_token_boundary=args.r14_single_token_boundary,
+                                        r15_attention_dispatch=args.r15_attention_dispatch))}
         elif args.stage in ("verify-checkpoint", "export", "compare"):
             checked = verify_checkpoint(args.snapshot)
             if args.stage == "export":

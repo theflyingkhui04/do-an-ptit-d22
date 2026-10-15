@@ -10,11 +10,20 @@ from .common import ROOT, decode, need, sha
 
 MANIFEST = ROOT / "experiments/m2_03_targeted/upstream.json"
 FIXTURE = ROOT / "tests/fixtures/m203_v030_sources.json.gz"
+ATTENTION_SOURCE = "v1/attention/ops/triton_unified_attention.py"
 IMPORT = ("from experiments.m2_03_targeted.observer import observe as _m203_observe, "
           "control as _m203_control\n")
 
 # Exact insertion anchors from official v0.30.0. Whole-file SHA pin is mandatory.
 INSERTIONS = {
+    ATTENTION_SOURCE: [
+        ("    kernel_unified_attention[grid](\n",
+         '    _m203_observe("attention_dispatch", max_seqlen_q, seq_threshold_3D,\n'
+         '                  num_par_softmax_segments, num_seqs,\n'
+         '                  softmax_segm_output is not None, softmax_segm_max is not None,\n'
+         '                  softmax_segm_expsum is not None, is_batch_invariant, use_3d,\n'
+         '                  grid, tile_size, BLOCK_M, BLOCK_Q, block_size, num_segments)\n'),
+    ],
     "v1/worker/gpu_model_runner.py": [
         ("        # Update num_computed_tokens on GPU. In async spec decode,\n",
          '        _m203_observe("correction_before", self, scheduler_output)\n'),

@@ -5,11 +5,69 @@ import sys
 from pathlib import Path
 
 from .common import CASE, TARGET, RECONSTRUCTION_TARGET, OBSERVATION_TARGET, LANES, REQUEST_HASH, HISTORICAL, HISTORICAL_EXECUTION, Invalid, decode, fingerprint, load, need, sha
-from .observer import map_rows, score_stats, valid_selected, observation_target
+from .observer import map_rows, score_stats, valid_selected, observation_target, DISPATCH_FIELDS
 from . import sources
 from .lifecycle import verify_shutdown
 
 STATES = ("REPRODUCED", "NOT_REPRODUCED", "BOUNDARY_NOT_COVERED", "INVALID_CAPTURE")
+
+
+def attention_dispatch_proof(events, current, enabled):
+    """Validate actual launches, retaining the full ordered, possibly mixed pattern."""
+    matches = [e for e in events if e['kind'] == 'attention_dispatch']
+    if not enabled:
+        need(not matches, 'unexpected R15 dispatch event')
+        return None  # Preserved R13/R14 evidence is unknown, not invalid.
+    need(len(matches) == 1, 'R15 dispatch event missing/duplicate')
+    event = matches[0]
+    need(event['generated_index'] == OBSERVATION_TARGET, 'R15 boundary drift')
+    for name in ('execution_sha', 'lane', 'request_id', 'key', 'scheduler_step', 'forward_sequence'):
+        need(event[name] == current[name], 'R15 dispatch linkage mismatch: ' + name)
+    prep = current['preparation']
+    dispatch = prep['attention_dispatch']
+    need(dispatch['key'] == current['key'] and event['calls'] == dispatch['calls']
+         and event['expected_calls'] == dispatch['expected_calls'], 'R15 preparation linkage mismatch')
+    calls, expected = event['calls'], event['expected_calls']
+    need(type(expected) is int and expected > 0 and type(calls) is list
+         and len(calls) == expected, 'R15 incomplete ordered attention calls')
+    flags = {'softmax_segm_output_present', 'softmax_segm_max_present',
+             'softmax_segm_expsum_present', 'is_batch_invariant', 'use_3d'}
+    nullable = {'seq_threshold_3D', 'num_par_softmax_segments'}
+    for ordinal, call in enumerate(calls):
+        need(set(call) == set(DISPATCH_FIELDS) | {'key', 'ordinal'}, 'R15 dispatch fields')
+        need(type(call['ordinal']) is int and call['ordinal'] == ordinal
+             and call['key'] == current['key'], 'R15 attention call order/key')
+        for name in DISPATCH_FIELDS:
+            value = call[name]
+            if name in flags:
+                need(type(value) is bool, 'R15 dispatch boolean: ' + name)
+            elif name == 'grid':
+                need(type(value) is list and all(type(x) is int and x > 0 for x in value), 'R15 grid')
+            else:
+                need((value is None and name in nullable)
+                     or (type(value) is int and value == 0 and name == 'seq_threshold_3D')
+                     or (type(value) is int and value > 0), 'R15 dispatch integer: ' + name)
+        use_3d = not (
+            call['seq_threshold_3D'] is None or call['num_par_softmax_segments'] is None
+            or not call['softmax_segm_output_present'] or not call['softmax_segm_max_present']
+            or not call['softmax_segm_expsum_present'] or call['max_seqlen_q'] > 1
+            or call['num_seqs'] > call['seq_threshold_3D'] or call['is_batch_invariant'])
+        need(call['use_3d'] == use_3d, 'R15 contradictory dispatch predicate')
+        segments = call['num_par_softmax_segments'] if use_3d else 1
+        grid = call['grid']
+        need(call['num_seqs'] == 1 and call['max_seqlen_q'] == prep['scheduled_tokens'],
+             'R15 query metadata mismatch')
+        need(len(grid) == (3 if use_3d else 2) and call['num_segments'] == segments
+             and (not use_3d or grid[2] == segments)
+             and grid[0] == prep['scheduled_tokens'] // call['BLOCK_Q'] + call['num_seqs'],
+             'R15 launch grid/segments mismatch')
+        need(call['BLOCK_M'] >= 16 and call['BLOCK_M'] & (call['BLOCK_M'] - 1) == 0
+             and call['BLOCK_Q'] <= call['BLOCK_M']
+             and call['tile_size'] & (call['tile_size'] - 1) == 0
+             and call['block_size'] in {g['kv_cache_block_size'] for g in prep['groups']},
+             'R15 launch block/tile mismatch')
+    pattern = ['3D' if call['use_3d'] else '2D' for call in calls]
+    return dict(event=event, modes=pattern, mode=pattern[0] if len(set(pattern)) == 1 else 'MIXED')
 
 
 def validate_transition(previous, current, prompt, ids):
@@ -160,6 +218,9 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
         accounting[record['key']] = dict(before=b, after=a, emitted_span=[start, a['output_count']])
     validate_transition(previous, current, prompt, ids)
     config = load(directory / 'observer.json')
+    r15 = config.get('r15_attention_dispatch', False)
+    need(type(r15) is bool and (not r15 or lane == 'adaptive'), 'R15 observer gate drift')
+    dispatch_proof = attention_dispatch_proof(events, current, r15)
     if config.get('r14_single_token_boundary') is not None:
         need(config['r14_single_token_boundary'] == OBSERVATION_TARGET and lane == 'adaptive',
              'R14 observer gate mismatch')
@@ -200,7 +261,8 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
                 decoding_path=current['decoding_path'], active_query=current['active_query'],
                 active_query_token_count=len(current['active_query']), accounting=accounting,
                 preparation={r['key']: r['preparation'] for r in records},
-                kv_recompute_ready=ready, kv_recompute_refill_skipped=refill)
+                kv_recompute_ready=ready, kv_recompute_refill_skipped=refill,
+                attention_dispatch=dispatch_proof)
 
 
 def provenance(root, lanes=LANES):
@@ -218,9 +280,17 @@ def provenance(root, lanes=LANES):
              'observation/reconstruction target drift')
     preflight, installed = load(root / "preflight.json"), load(root / "installed.json")
     need(preflight["execution_sha"] == execution and preflight["runtime"] == installed["runtime"], "runtime provenance drift")
-    need(preflight["source_base_sha256"] == sources.manifest()["sha256"], "base source provenance drift")
+    r15 = config.get('r15_attention_dispatch', False)
+    need(type(r15) is bool, 'R15 run gate drift')
+    base = sources.manifest()['sha256']
     expected = {k: sha(sources.transform(k, v.encode())) for k, v in sources.fixture_sources().items() if k in sources.INSERTIONS}
-    need(installed["patched_sha256"] == expected, "observer source provenance drift")
+    profiles = [(base, expected)]
+    if not r15:
+        # Only the exact pre-R15 profile is accepted, never an arbitrary subset.
+        profiles.append(({k: v for k, v in base.items() if k != sources.ATTENTION_SOURCE},
+                         {k: v for k, v in expected.items() if k != sources.ATTENTION_SOURCE}))
+    need(any(preflight['source_base_sha256'] == b and installed['patched_sha256'] == p
+             for b, p in profiles), 'base/observer source provenance drift')
     policy = config["policy"]
     control = policy.get("diagnostic_control", {})
     r14 = config.get('r14_single_token_boundary')
@@ -259,6 +329,8 @@ def provenance(root, lanes=LANES):
             }, "cudagraph control value drift")
         need(all(env[k] == v for k, v in policy["adaptive_env"].items()), "adaptive environment drift")
         observer = load(root / lane / "observer.json")
+        need(observer.get('r15_attention_dispatch', False) is (r15 and lane == 'adaptive'),
+             'R15 run/observer gate drift')
         expected_r14 = r14 if lane == 'adaptive' else None
         need(observer.get('r14_single_token_boundary') == expected_r14
              and env.get('M203_R14_SINGLE_TOKEN_BOUNDARY') == (None if expected_r14 is None else str(expected_r14)),
