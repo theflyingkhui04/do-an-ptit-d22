@@ -99,12 +99,50 @@ def vector(root, descriptor):
     return values
 
 
+def refill_proof(directory, lane, request_id, prompt_len):
+    """Validate the durable proof for the one controlled discarded refill."""
+    root = directory / "capture"
+    paths = sorted((root / "events").glob("*.json"))
+    events = [(p, load(p)) for p in paths]
+    starts = [(p, e) for p, e in events if e["kind"] == "kv_recompute_started"]
+    skipped = [e for _, e in events if e["kind"] == "kv_recompute_refill_skipped"]
+    observer_path = directory / "observer.json"
+    control = (load(observer_path).get("diagnostic_control", {})
+               if observer_path.is_file() else {})
+    expected = (lane == "adaptive"
+                and control.get("adaptive_kv_recompute_output_count") == TARGET)
+    need(len(starts) == len(skipped) == int(expected),
+         "controlled discarded refill proof missing/ambiguous")
+    if not expected:
+        return None
+    started_path, started = starts[0]
+    proof = skipped[0]
+    need(re.fullmatch(re.escape(request_id) + r"(?:-[0-9a-f]{8})?",
+                      started["request_id"])
+         and proof["request_id"] == started["request_id"],
+         "discarded refill request linkage mismatch")
+    need(started["output_count"] == proof["output_count"] == TARGET
+         and started["total_tokens"] == proof["total_tokens"] == prompt_len + TARGET
+         and started["recomputed_tokens"] == proof["recomputed_tokens"]
+         == started["total_tokens"] - 1
+         and proof["scheduled_tokens"] == proof["recomputed_tokens"]
+         and proof["active_query_token_count"] == proof["recomputed_tokens"]
+         and proof["query_start_position"] == 0
+         and proof["query_end_position"] == proof["recomputed_tokens"] - 1
+         and proof["row_generated_index"] == TARGET - 1
+         and proof["decoding_path"] == "ordinary"
+         and proof["started_event_sha256"] == sha(started_path.read_bytes()),
+         "controlled discarded refill proof invalid")
+    return proof
+
+
 def capture(directory, lane, execution, request_id, prompt, ids):
     root = directory / "capture"
     errors = [load(p) for p in sorted((root / "events").glob("*.json"))]
     need(not any(e["kind"] == "observer_error" for e in errors), "observer error present")
     need("M203_TARGETED_OBSERVER_ERROR_UNSAVED" not in (directory / "server.log").read_text(errors="replace"), "observer error unsaved")
     need(not list(root.rglob("*.pending-*")), "incomplete capture write")
+    refill = refill_proof(directory, lane, request_id, len(prompt))
     records = [load(p) for p in sorted(root.glob("*.forward.json"))]
     hits = []
     for rec in records:
@@ -187,6 +225,8 @@ def capture(directory, lane, execution, request_id, prompt, ids):
     hits[0]['selection_role'] = ('ordinary' if chosen['decoding_path'] == 'ordinary' else 'bonus'
                                 if j == chosen['draft_count'] else 'accepted_draft'
                                 if j < len(chosen['selected']) - 1 else 'recovered')
+    if refill is not None:
+        hits[0]["kv_recompute_refill_skipped"] = refill
     return hits[0]
 
 

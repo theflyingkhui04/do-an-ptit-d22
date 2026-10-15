@@ -81,6 +81,45 @@ def snapshot(tensor, root, name):
             "source_dtype": dtype, **stats}
 
 
+def skip_controlled_kv_refill(config, request_id, scheduled, query, rows, draft_count):
+    """Skip only the proven all-but-last KV-recompute refill forward."""
+    control = config.get("diagnostic_control", {})
+    need(config["lane"] == "adaptive"
+         and control.get("adaptive_kv_recompute_output_count") == 60,
+         "discarded sampler output")
+    event_paths = sorted((Path(config["directory"]) / "events").glob("*.json"))
+    events = [(p, load(p)) for p in event_paths]
+    started = [(p, value) for p, value in events
+               if value.get("kind") == "kv_recompute_started"]
+    skipped = [value for _, value in events
+               if value.get("kind") == "kv_recompute_refill_skipped"]
+    need(len(started) == 1 and not skipped,
+         "discarded refill provenance missing/ambiguous")
+    started_path, proof = started[0]
+    recomputed = proof.get("recomputed_tokens")
+    need(proof.get("request_id") == request_id
+         and proof.get("output_count") == 60
+         and type(proof.get("total_tokens")) is int
+         and recomputed == proof["total_tokens"] - 1,
+         "discarded refill control proof invalid")
+    scheduled_tokens = scheduled.num_scheduled_tokens.get(request_id)
+    need(scheduled.total_num_scheduled_tokens == scheduled_tokens == recomputed
+         and draft_count == 0 and len(rows) == 1
+         and rows[0]["role"] == "ordinary"
+         and rows[0]["generated_index"] == 59
+         and len(query) == recomputed
+         and [p for p, _ in query] == list(range(recomputed)),
+         "discarded refill shape invalid")
+    event(config["directory"], "kv_recompute_refill_skipped",
+          request_id=request_id, output_count=60,
+          total_tokens=proof["total_tokens"], recomputed_tokens=recomputed,
+          scheduled_tokens=scheduled_tokens,
+          active_query_token_count=len(query), query_start_position=query[0][0],
+          query_end_position=query[-1][0], row_generated_index=59,
+          decoding_path="ordinary",
+          started_event_sha256=sha(started_path.read_bytes()))
+
+
 def begin(config, runner, scheduled, logits, spec, grammar):
     _local.ctx = None
     batch = runner.input_batch
@@ -115,10 +154,11 @@ def begin(config, runner, scheduled, logits, spec, grammar):
     need(logits.shape[0] == len(rows), "logits/position row count mismatch")
     if not any(r["generated_index"] in WINDOW for r in rows):
         return
-    need(not bool(getattr(getattr(runner, "discard_request_mask", None), "np", [False])[0]),
-         "discarded sampler output")
     query = list(zip(positions, ints(runner.input_ids.gpu[lo:hi])))
     need(len({p for p, _ in query}) == len(query) and all(p >= 0 and t >= 0 for p, t in query), "invalid active query")
+    if bool(getattr(getattr(runner, "discard_request_mask", None), "np", [False])[0]):
+        skip_controlled_kv_refill(config, ids[0], scheduled, query, rows, n)
+        return
     key = uuid.uuid4().hex
     capture = {"schema": "m203.targeted.forward.v1", "key": key, "lane": config["lane"],
                "execution_sha": config["execution_sha"], "request_id": ids[0], "prompt_token_ids": prompt,

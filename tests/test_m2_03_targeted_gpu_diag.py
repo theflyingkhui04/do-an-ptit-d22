@@ -317,14 +317,53 @@ def test_kv_recompute_evidence_is_required_and_preserves_boundary_shape(tmp_path
     assert missing["state"] == "INVALID_CAPTURE"
     assert "KV recompute control missing" in missing["reason"]
 
-    c.event(root / "adaptive/capture", "kv_recompute_ready",
+    capture = root / "adaptive/capture"
+    c.event(capture, "kv_recompute_ready",
             request_id="api-1234abcd", output_count=60,
             total_tokens=65, recomputed_tokens=64,
             num_computed_tokens=64, budget_restored=True)
+    missing_refill = a.compare(root)
+    assert missing_refill["state"] == "INVALID_CAPTURE"
+    assert "discarded refill proof missing" in missing_refill["reason"]
+
+    c.event(capture, "kv_recompute_started",
+            request_id="api-1234abcd", output_count=60,
+            total_tokens=65, recomputed_tokens=64, original_budget=1024)
+    runner = NS(
+        input_batch=NS(num_reqs=1, req_ids=["api-1234abcd"],
+                       has_structured_output_reqs=False),
+        uses_mrope=False, enable_prompt_embeds=False,
+        cache_config=NS(enable_prefix_caching=False),
+        vllm_config=NS(parallel_config=NS(
+            tensor_parallel_size=1, pipeline_parallel_size=1,
+            data_parallel_size=1, decode_context_parallel_size=1)),
+        requests={"api-1234abcd": NS(prompt_token_ids=[0] * 5)},
+        query_start_loc=NS(np=[0, 64]), positions=torch.arange(64),
+        input_ids=NS(gpu=torch.zeros(64, dtype=torch.int64)),
+        use_async_scheduling=True, discard_request_mask=NS(np=[True]))
+    scheduled = NS(total_num_scheduled_tokens=64,
+                   num_scheduled_tokens={"api-1234abcd": 64},
+                   scheduled_spec_decode_tokens={"api-1234abcd": []})
+    observer = c.load(root / "adaptive/observer.json")
+    existing_forwards = set(capture.glob("*.forward.json"))
+    o.begin(observer, runner, scheduled,
+            torch.tensor([[0., 1., 3., 2.]], dtype=torch.float16), None, None)
+    assert set(capture.glob("*.forward.json")) == existing_forwards
+
     report = a.compare(root)
     assert report["state"] == "REPRODUCED", report
     assert report["captures"]["adaptive"]["decoding_path"] == "ordinary"
     assert report["captures"]["adaptive"]["active_query_token_count"] == 1
+    assert report["captures"]["adaptive"]["kv_recompute_refill_skipped"][
+        "row_generated_index"] == 59
+
+    proof = next(c.load(p) for p in (capture / "events").glob("*.json")
+                 if c.load(p)["kind"] == "kv_recompute_refill_skipped")
+    c.event(capture, "kv_recompute_refill_skipped",
+            **{k: v for k, v in proof.items() if k != "kind"})
+    duplicate = a.compare(root)
+    assert duplicate["state"] == "INVALID_CAPTURE"
+    assert "discarded refill proof missing/ambiguous" in duplicate["reason"]
 
 
 def test_rejected_candidate_not_mistaken_for_selected_row(tmp_path):
