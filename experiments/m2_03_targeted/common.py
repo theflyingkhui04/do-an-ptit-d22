@@ -20,6 +20,24 @@ LANES = ("vanilla", "adaptive")
 REQUEST_FILE = "experiments/configs/w3_v2/chat_requests.jsonl"
 REQUEST_HASH = "0c1ed2e2e80a61792e7f5f01f03ddc4c9ba0bf6ff29ed1a0a2b98c4a5b294ebb"
 WORKLOAD_HASH = "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b"
+OBSERVATION_CASES = {
+    CASE: REQUEST_HASH,
+    "w3_business_v2_006": "478e5a1300c063e405d8c3899ea154e020ce2ac459831d9460c06d4d505682bb",
+}
+OBSERVATION_PAIRS = {(CASE, OBSERVATION_TARGET), ("w3_business_v2_006", 81)}
+
+
+def canonical_observation(config):
+    return (config.get('observation_only') is True
+            and (config.get('case'), config.get('observation_target', config.get('target')))
+            == ("w3_business_v2_006", 81))
+
+
+def observation_controls(case):
+    # The new production diagnostic inherits runtime capability resolution.
+    # The reviewed legacy observation retains its historical launch policy.
+    return ({} if case == "w3_business_v2_006" else {
+        'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE'})
 
 
 class Invalid(RuntimeError):
@@ -97,14 +115,53 @@ def blob(path, commit=HISTORICAL):
     return git("cat-file", "blob", f"{commit}:{path}")
 
 
-def frozen_request():
+def observation_spec(config):
+    only = config.get('observation_only', False)
+    need(type(only) is bool, 'invalid observation-only mode')
+    case = config.get('case', CASE)
+    target = config.get('observation_target', config.get('target', 60))
+    if only:
+        need(type(target) is int and (case, target) in OBSERVATION_PAIRS,
+             'unsupported observation case/index')
+        need('target' not in config or config['target'] == target, 'observation target drift')
+        need(config.get('request_sha256') == OBSERVATION_CASES[case], 'observation request checksum drift')
+        need(config.get('production_attention_observation') is True, 'production observation required')
+        need(not any(config.get(k) for k in ('r14_single_token_boundary', 'r15_attention_dispatch',
+                                             'r16_force_attention_3d')), 'observation-only intervention forbidden')
+        need(config.get('diagnostic_control', config.get('policy', {}).get('diagnostic_control'))
+             == observation_controls(case),
+            'observation-only policy must exclude reconstruction/other controls')
+    else:
+        need(case == CASE, 'unconfigured observation case')
+    return {'case': case, 'target': target, 'request_sha256': OBSERVATION_CASES[case]}
+
+
+def transition_observation(config):
+    return config.get('observation_only') is True or config.get('observation_target') == OBSERVATION_TARGET
+
+
+def observation_policy(policy, only=False, case=CASE):
+    if not only:
+        return policy
+    result = decode(encoded(policy))
+    controls = result.get('diagnostic_control', {})
+    need(controls == {'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE',
+                      'vanilla_kv_recompute_output_count': 60, 'adaptive_kv_recompute_output_count': 60},
+         'unreviewed source observation policy')
+    need(case in OBSERVATION_CASES, 'unreviewed observation policy case')
+    result['diagnostic_control'] = observation_controls(case)
+    return result
+
+
+def frozen_request(case=CASE):
+    need(case in OBSERVATION_CASES, 'unreviewed frozen observation case')
     raw = blob(REQUEST_FILE)
     need(sha(raw) == WORKLOAD_HASH, "frozen workload checksum mismatch")
     rows = [decode(line) for line in raw.splitlines()]
-    matches = [r for r in rows if r["sample_id"] == CASE]
+    matches = [r for r in rows if r["sample_id"] == case]
     need(len(matches) == 1, "frozen sample missing/ambiguous")
     request = matches[0]["request"]
-    need(fingerprint(request) == REQUEST_HASH, "frozen request checksum mismatch")
+    need(fingerprint(request) == OBSERVATION_CASES[case], "frozen request checksum mismatch")
     need(request["seed"] == 42 and request["temperature"] == 0
          and request["max_tokens"] == 768, "frozen generation drift")
     return request

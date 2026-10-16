@@ -22,6 +22,8 @@ import threading
 import uuid
 
 from .common import WINDOW, OBSERVATION_TARGET, encoded, event, load, need, save, sha, write_new
+from .common import observation_spec, transition_observation, canonical_observation
+from . import canonical as canonical_contract
 
 _local = threading.local()
 
@@ -123,7 +125,12 @@ def materialize_preparation(prep):
 
 def observation_target(config):
     # Missing field denotes a preserved legacy index-60 capture, never a new run.
-    return config.get("observation_target", 60)
+    return observation_spec(config)['target'] if config.get('observation_only') else config.get("observation_target", 60)
+
+
+def schedule_provenance(config, scheduled):
+    name = '_m203_observation_provenance' if config.get('observation_only') else '_m203_kv_recompute_provenance'
+    return getattr(scheduled, name, None)
 
 
 def correction_before(config, runner, scheduled):
@@ -144,12 +151,12 @@ def correction_before(config, runner, scheduled):
         _local.transition_published = False
     _local.transition_sequence += 1
     cpu = runner.input_batch.num_computed_tokens_cpu[:1].tolist()
-    position = len(runner.requests[request_id].prompt_token_ids) + OBSERVATION_TARGET - 1
+    position = len(runner.requests[request_id].prompt_token_ids) + observation_target(config) - 1
     # CPU values can be optimistic by up to four drafts. Include a predecessor
     # independently of the GPU position/row mapping that this probe audits.
     if not position - 16 <= cpu[0] <= position + 8:
         return
-    dispatch = getattr(scheduled, '_m203_kv_recompute_provenance', None)
+    dispatch = schedule_provenance(config, scheduled)
     need(isinstance(dispatch, dict), "missing transition dispatch linkage")
     mapping = dict(runner.input_batch.prev_req_id_to_index or {})
     valid = runner.valid_sampled_token_count_gpu
@@ -197,10 +204,18 @@ def prepared(config, runner, scheduled, input_ids, positions, slot_mappings):
                            blocks_per_kv_block=table.blocks_per_kv_block,
                            dcp_world_size=table.dcp_world_size, pcp_world_size=table.pcp_world_size))
     prep['groups'] = groups
+    if canonical_observation(config):
+        prep['runtime_identity'] = canonical_contract.runner_identity(runner)
+        mode = runner.vllm_config.compilation_config.cudagraph_mode
+        mode = getattr(mode, 'name', None)
+        need(mode in ('NONE', 'PIECEWISE', 'FULL', 'FULL_DECODE_ONLY', 'FULL_AND_PIECEWISE'),
+             'resolved runtime CUDA-graph mode unavailable')
+        prep['resolved_cudagraph_mode'] = mode
     if config.get('production_attention_observation') is True:
         from .sources import profile_options
         profile_options(config)
-        need(config['lane'] == 'adaptive', 'production dispatch requires Adaptive target')
+        need(config['lane'] == 'adaptive' or config.get('observation_only') is True,
+             'production dispatch requires Adaptive target')
         expected = runner.model_config.hf_config.num_hidden_layers
         need(type(expected) is int and expected > 0, 'missing production attention layer count')
         prep['production_attention_dispatch'] = dict(
@@ -236,7 +251,9 @@ def prepared(config, runner, scheduled, input_ids, positions, slot_mappings):
 
 def finish_transition(config, record):
     previous = getattr(_local, 'transition_previous', None)
-    boundary = any(row['generated_index'] == OBSERVATION_TARGET and row['row'] < len(record['selected'])
+    target = (observation_target(config) if config.get('observation_only')
+              else config.get('observation_target', OBSERVATION_TARGET))
+    boundary = any(row['generated_index'] == target and row['row'] < len(record['selected'])
                    for row in record['rows'])
     if boundary:
         need(not _local.transition_published, "duplicate emitted boundary forward")
@@ -250,7 +267,7 @@ def finish_transition(config, record):
                   execution_sha=config['execution_sha'], lane=config['lane'],
                   request_id=record['request_id'], key=record['key'],
                   scheduler_step=record['scheduler_step'], forward_sequence=record['forward_sequence'],
-                  generated_index=OBSERVATION_TARGET,
+                  generated_index=target,
                   **{name: dispatch[name] for name in ('expected_calls', 'calls')})
         if config.get('r15_attention_dispatch') is True:
             dispatch = record['preparation']['attention_dispatch']
@@ -260,7 +277,7 @@ def finish_transition(config, record):
                   execution_sha=config['execution_sha'], lane=config['lane'],
                   request_id=record['request_id'], key=record['key'],
                   scheduler_step=record['scheduler_step'],
-                  forward_sequence=record['forward_sequence'], generated_index=OBSERVATION_TARGET,
+                  forward_sequence=record['forward_sequence'], generated_index=target,
                   **{name: dispatch[name] for name in ('expected_calls', 'calls')})
         for name, raw in _local.pending_vectors.items():
             write_new(Path(config['directory']) / name, raw)
@@ -459,7 +476,8 @@ def begin(config, runner, scheduled, logits, spec, grammar):
     need(len(ids) == 1, "expected one real request")
     need(grammar is None and not getattr(batch, "has_structured_output_reqs", False), "grammar unsupported")
     need(not runner.uses_mrope and not runner.enable_prompt_embeds, "nonstandard positions unsupported")
-    need(not runner.cache_config.enable_prefix_caching, "prefix caching enabled")
+    prefix_cache = bool(runner.cache_config.enable_prefix_caching)
+    need(canonical_observation(config) or not prefix_cache, "prefix caching enabled")
     pc = runner.vllm_config.parallel_config
     need(all(int(getattr(pc, p, 1)) == 1 for p in
              ("tensor_parallel_size", "pipeline_parallel_size", "data_parallel_size", "decode_context_parallel_size")),
@@ -482,7 +500,8 @@ def begin(config, runner, scheduled, logits, spec, grammar):
     if spec is None:
         rows[0]["role"] = "ordinary"
     need(logits.shape[0] == len(rows), "logits/position row count mismatch")
-    transition = observation_target(config) == OBSERVATION_TARGET
+    target = observation_target(config)
+    transition = transition_observation(config)
     prep = getattr(_local, 'preparation', None) if transition else None
     if transition and prep is None:
         # Reconstruction remains at 60. Its discarded refill still needs the
@@ -506,7 +525,7 @@ def begin(config, runner, scheduled, logits, spec, grammar):
                "active_query": query, "rows": rows, "draft_count": n,
                "decoding_path": 'ordinary' if spec is None else 'speculative',
                "spec_target_rows": targets, "spec_bonus_rows": bonus,
-               "async_scheduling": bool(runner.use_async_scheduling), "prefix_cache_enabled": False,
+               "async_scheduling": bool(runner.use_async_scheduling), "prefix_cache_enabled": prefix_cache,
                "same_internal_state_proven": False, "runtime_probe_changes_timing": True,
                "kv_recompute_scheduler_provenance": dispatch,
                "scores": {}, "selected": None}
@@ -514,8 +533,11 @@ def begin(config, runner, scheduled, logits, spec, grammar):
         capture.update(schema="m203.targeted.transition.v1", preparation=prep,
                        forward_sequence=prep['forward_sequence'], previous_key=prep['previous_key'],
                        scheduler_step=prep['scheduler_step'])
+        if config.get('observation_only'):
+            capture['observation_scheduler_provenance'] = schedule_provenance(config, scheduled)
+            capture['observation_spec'] = observation_spec(config)
     for r in rows:
-        if (r['generated_index'] == OBSERVATION_TARGET if transition else r["generated_index"] in WINDOW):
+        if (r['generated_index'] == target if transition else r["generated_index"] in WINDOW):
             j = r["row"]
             capture["scores"][str(j)] = {"raw": snapshot(
                 logits[j], config["directory"], f"{key}-r{j}-raw.f32",
@@ -544,7 +566,7 @@ def processed(stage, logits, metadata, spec=None):
             need("processed" not in record["scores"][str(j)], "duplicate processed score capture")
             record["scores"][str(j)]["processed"] = snapshot(logits[k], config["directory"],
                                                              f'{record["key"]}-r{j}-processed.f32',
-                                                             _local.pending_vectors if observation_target(config) == OBSERVATION_TARGET else None)
+                                                             _local.pending_vectors if transition_observation(config) else None)
             record['scores'][str(j)]['processed'].update(
                 capture_point='rejection_pre_acceptance' if stage == 'verify_scores' else 'sampler_pre_greedy',
                 source_row=k)
@@ -563,7 +585,7 @@ def end(config, runner, output):
     record["accepted_drafts"] = len(record["selected"]) - 1
     record["rejected_drafts"] = record["draft_count"] - record["accepted_drafts"]
     need(record["rejected_drafts"] >= 0, "invalid draft accounting")
-    if observation_target(config) == OBSERVATION_TARGET:
+    if transition_observation(config):
         record['preparation'] = materialize_preparation(record['preparation'])
         _local.preparation = None
         need(record['preparation']['active_query'] == list(map(list, record['active_query'])),
@@ -575,13 +597,14 @@ def end(config, runner, output):
 
 def accounting(config, stage, request, output, scheduled, stale):
     before = len(request._output_token_ids)
-    transition = observation_target(config) == OBSERVATION_TARGET
-    if not ((OBSERVATION_TARGET - 12 <= before <= OBSERVATION_TARGET + 8) if transition else (52 <= before <= 70)):
+    transition = transition_observation(config)
+    target = observation_target(config)
+    if not ((target - 12 <= before <= target + 8) if transition else (52 <= before <= 70)):
         return
     need(type(stale) is bool, "invalid stale flag")
     linkage = {}
     if transition:
-        dispatch = getattr(scheduled, '_m203_kv_recompute_provenance', None)
+        dispatch = schedule_provenance(config, scheduled)
         need(isinstance(dispatch, dict), 'accounting dispatch linkage missing')
         linkage['scheduler_step'] = dispatch['scheduler_step']
     event(config["directory"], stage, **linkage, request_id=request.request_id,
@@ -698,6 +721,17 @@ def control(stage, *args):
     if not config_path:
         return
     config = load(config_path)
+    if config.get('observation_only') is True:
+        observation_spec(config)
+        need(stage in ('before_schedule', 'after_schedule'), 'unknown observation schedule stage')
+        scheduler = args[0]
+        if stage == 'before_schedule':
+            scheduler._m203_observation_step = getattr(scheduler, '_m203_observation_step', 0) + 1
+        else:
+            step = getattr(scheduler, '_m203_observation_step', None)
+            need(type(step) is int and step > 0, 'observation scheduler predecessor missing')
+            args[1]._m203_observation_provenance = dict(state='OBSERVATION_ONLY', scheduler_step=step)
+        return
     if kv_recompute_target(config) is None:
         return
     need(stage in ("before_schedule", "after_schedule"),
@@ -724,8 +758,13 @@ def observe(stage, *args):
             attention_dispatch(*args)
             return
         config = load(config_path)
-        if stage in ('correction_before', 'prepared'):
-            if observation_target(config) == OBSERVATION_TARGET:
+        if stage == 'runner_initialized':
+            need(canonical_observation(config), 'unexpected runner identity hook')
+            identity = canonical_contract.runner_identity(args[0])
+            save(Path(config['directory']) / 'runtime_identity.json', dict(identity,
+                execution_sha=config['execution_sha'], lane=config['lane']))
+        elif stage in ('correction_before', 'prepared'):
+            if transition_observation(config):
                 (correction_before if stage == 'correction_before' else prepared)(config, *args)
         elif stage == "begin":
             begin(config, *args)

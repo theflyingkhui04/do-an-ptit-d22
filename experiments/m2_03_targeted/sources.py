@@ -8,7 +8,7 @@ restores to its production baseline; it never installs diagnostic guards/control
 import ast
 import gzip
 from pathlib import Path
-from .common import ROOT, decode, need, sha
+from .common import ROOT, decode, need, sha, observation_spec, canonical_observation
 
 MANIFEST = ROOT / "experiments/m2_03_targeted/upstream.json"
 FIXTURE = ROOT / "tests/fixtures/m203_v030_sources.json.gz"
@@ -119,6 +119,8 @@ def production_attention_source():
 
 
 def profile_options(config):
+    if 'observation_only' in config:
+        observation_spec(config)
     enabled = config.get('production_attention_observation', False)
     need(type(enabled) is bool, 'invalid production observation profile')
     if enabled:
@@ -129,17 +131,18 @@ def profile_options(config):
             'production observation cannot use diagnostic attention controls')
     else:
         need('production_patch_sha' not in config, 'production revision without profile')
-    return {'production': True} if enabled else {}
+    return ({'production': True, **({'canonical': True} if canonical_observation(config) else {})}
+            if enabled else {})
 
 
-def base_sources(production=False):
+def base_sources(production=False, canonical=False):
     result = {name: text.encode() for name, text in fixture_sources().items()}
     if production:
         result[ATTENTION_SOURCE] = production_attention_source()
     return result
 
 
-def base_hashes(production=False):
+def base_hashes(production=False, canonical=False):
     return {name: sha(raw) for name, raw in base_sources(production).items()}
 
 
@@ -198,7 +201,7 @@ class StripObserver(ast.NodeTransformer):
         return node
 
 
-def transform(name, raw):
+def transform(name, raw, canonical=False):
     if name == ATTENTION_SOURCE and sha(raw) == PRODUCTION_ATTENTION_SHA256:
         return observe_production(raw)
     need(sha(raw) == manifest()["sha256"][name], "unpatched vLLM source hash drift: " + name)
@@ -208,6 +211,10 @@ def transform(name, raw):
     for anchor, insertion in INSERTIONS[name]:
         need(text.count(anchor) == 1, "source anchor not unique: " + name)
         text = text.replace(anchor, insertion + anchor, 1)
+    if canonical and name == 'v1/worker/gpu_model_runner.py':
+        anchor = '        self.vllm_config = vllm_config\n'
+        need(text.count(anchor) == 1, 'canonical runner initialization anchor drift')
+        text = text.replace(anchor, anchor + '        _m203_observe("runner_initialized", self)\n', 1)
     nodes = ast.parse(text).body
     boundary = max([n.end_lineno for n in nodes if isinstance(n, ast.ImportFrom)
                     and n.module == "__future__"] +
@@ -224,24 +231,24 @@ def transform(name, raw):
     return patched
 
 
-def verify_installed(root, patched=False, production=False):
+def verify_installed(root, patched=False, production=False, canonical=False):
     hashes = {}
     references = base_sources(production)
     for name, expected in manifest()["sha256"].items():
         raw = (Path(root) / name).read_bytes()
         need(sha(fixture_sources()[name].encode()) == expected, "vendored source fixture drift")
         reference = references[name]
-        wanted = transform(name, reference) if patched else reference
+        wanted = transform(name, reference, canonical=canonical) if patched else reference
         need(raw == wanted, "installed source mismatch: " + name)
         hashes[name] = sha(raw)
     return hashes
 
 
-def installed_state(root, production=False):
+def installed_state(root, production=False, canonical=False):
     """Read-only classification; a mixed/unknown tree is never inference-ready."""
     files, states = {}, set()
     for name, raw in base_sources(production).items():
-        patched = transform(name, raw)
+        patched = transform(name, raw, canonical=canonical)
         try:
             actual = (Path(root) / name).read_bytes()
             actual_sha = sha(actual)

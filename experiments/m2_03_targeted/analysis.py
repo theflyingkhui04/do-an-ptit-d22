@@ -7,10 +7,58 @@ from pathlib import Path
 from .common import CASE, TARGET, RECONSTRUCTION_TARGET, OBSERVATION_TARGET, LANES, REQUEST_HASH, HISTORICAL, HISTORICAL_EXECUTION, Invalid, decode, fingerprint, load, need, sha
 from .observer import (map_rows, score_stats, valid_selected, observation_target,
                        DISPATCH_ARGUMENT_FIELDS, DISPATCH_FIELDS, PRODUCTION_DISPATCH_FIELDS)
-from . import sources
+from . import sources, canonical as canonical_contract
+from .common import observation_spec, transition_observation, observation_controls, canonical_observation
 from .lifecycle import verify_shutdown
 
 STATES = ("REPRODUCED", "NOT_REPRODUCED", "BOUNDARY_NOT_COVERED", "INVALID_CAPTURE")
+
+
+def configured_attention_proof(events, current, target):
+    """Validate observed production decisions, including q=1 and 2D fallback."""
+    matches = [e for e in events if e['kind'] == 'production_attention_dispatch']
+    need(len(matches) == 1, 'configured attention event missing/duplicate')
+    event = matches[0]
+    prep = current['preparation']
+    dispatch = prep['production_attention_dispatch']
+    need(event['generated_index'] == target and event['expected_calls'] == dispatch['expected_calls'] == 28
+         and len(event['calls']) == 28 and event['calls'] == dispatch['calls']
+         and dispatch['force_3d'] is False and dispatch['key'] == current['key'],
+         'configured attention completeness/boundary mismatch')
+    for key in ('execution_sha', 'lane', 'request_id', 'key', 'scheduler_step', 'forward_sequence'):
+        need(event[key] == current[key], 'configured attention event linkage')
+    flags = {'softmax_segm_output_present', 'softmax_segm_max_present', 'softmax_segm_expsum_present',
+             'is_batch_invariant', 'use_3d', 'short_query_3d', 'guards_active', 'force_3d'}
+    for ordinal, call in enumerate(event['calls']):
+        need(set(call) == set(PRODUCTION_DISPATCH_FIELDS) | {'key', 'ordinal'}, 'configured dispatch fields')
+        for name in PRODUCTION_DISPATCH_FIELDS:
+            value = call[name]
+            need((name in flags and type(value) is bool)
+                 or (name == 'grid' and type(value) is list and all(type(x) is int and x > 0 for x in value))
+                 or (name not in flags | {'grid'} and type(value) is int and value > 0)
+                 or (name in {'seq_threshold_3D', 'num_par_softmax_segments'} and value is None),
+                 'configured attention metadata: ' + name)
+        count = prep['scheduled_tokens']
+        need(type(call['ordinal']) is int and call['ordinal'] == ordinal and call['key'] == current['key']
+             and call['max_seqlen_q'] == count and call['num_seqs'] == 1 and call['force_3d'] is False,
+             'configured attention query/intervention mismatch')
+        available = (call['seq_threshold_3D'] is not None and call['seq_threshold_3D'] >= 1
+                     and call['num_par_softmax_segments'] is not None
+                     and all(call[k] for k in ('softmax_segm_output_present', 'softmax_segm_max_present',
+                                               'softmax_segm_expsum_present')) and not call['is_batch_invariant'])
+        short = call['short_query_3d']
+        need(not short or (count == 3 and available), 'configured short-query admission mismatch')
+        need(call['guards_active'] is short and call['use_3d'] is ((available and count == 1) or short),
+             'configured production routing/guards mismatch')
+        segments = call['num_par_softmax_segments'] if call['use_3d'] else 1
+        need(call['num_segments'] == segments and len(call['grid']) == (3 if call['use_3d'] else 2)
+             and (not call['use_3d'] or (call['grid'][2] == segments and segments & (segments - 1) == 0))
+             and call['grid'][0] == count // call['BLOCK_Q'] + 1
+             and call['block_size'] in {g['kv_cache_block_size'] for g in prep['groups']},
+             'configured attention grid/segment mismatch')
+    modes = ['3D' if call['use_3d'] else '2D' for call in event['calls']]
+    return dict(event=event, mode=modes[0] if len(set(modes)) == 1 else 'MIXED', force_3d=False,
+                production_patch_sha=sources.PRODUCTION_COMMIT)
 
 
 def production_attention_proof(events, current, enabled):
@@ -178,7 +226,7 @@ def r16_causal_result(capture):
             'all_28_calls_forced_3D': capture['attention_dispatch']['mode'] == '3D'}
 
 
-def validate_transition(previous, current, prompt, ids):
+def validate_transition(previous, current, prompt, ids, target=OBSERVATION_TARGET):
     """Validate owned snapshots; never infer equality from optimistic CPU state."""
     need(current['previous_key'] == previous['key']
          and current['forward_sequence'] == previous['forward_sequence'] + 1
@@ -276,11 +324,13 @@ def validate_transition(previous, current, prompt, ids):
         need(prep['prev_num_draft_tokens'] == [previous['draft_count']]
              and prep['valid_sampled_token_count_gpu'] == [len(previous['selected'])],
              'previous selected/count correction linkage mismatch')
-    need(current_start <= OBSERVATION_TARGET < current_start + len(current['selected']),
+    need(current_start <= target < current_start + len(current['selected']),
          'current forward does not cover observation target')
 
 
 def capture_transition(directory, lane, execution, request_id, prompt, ids):
+    config = load(directory / 'observer.json')
+    target = observation_target(config)
     root = directory / 'capture'
     events = [load(p) for p in (root / 'events').glob('*.json')]
     need(not any(e['kind'] == 'observer_error' for e in events)
@@ -296,13 +346,28 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
     for record in records:
         need(record['schema'] == 'm203.targeted.transition.v1' and record['lane'] == lane
              and record['execution_sha'] == execution and record['prompt_token_ids'] == prompt
-             and record['prefix_cache_enabled'] is False and record['async_scheduling'] is True,
+             and type(record['prefix_cache_enabled']) is bool
+             and (canonical_observation(config) or record['prefix_cache_enabled'] is False)
+             and record['async_scheduling'] is True,
              'transition provenance drift')
         need(re.fullmatch(re.escape(request_id) + r'(?:-[0-9a-f]{8})?', record['request_id']),
              'transition request linkage mismatch')
         need(record['preparation']['scheduler_step'] == record['scheduler_step']
              and record['preparation']['forward_sequence'] == record['forward_sequence'],
              'preparation sequence linkage mismatch')
+        if config.get('observation_only'):
+            need(record.get('observation_spec') == observation_spec(config)
+                 and record.get('observation_scheduler_provenance') == dict(
+                state='OBSERVATION_ONLY', scheduler_step=record['scheduler_step']), 'observation scheduler linkage')
+        if canonical_observation(config):
+            runtime_identity = load(root / 'runtime_identity.json')
+            canonical_contract.verify_runner(runtime_identity, config)
+            need(dict(record['preparation'].get('runtime_identity', {}),
+                      execution_sha=config['execution_sha'], lane=lane) == runtime_identity,
+                 'resolved runner/capture identity mismatch')
+            need(record['preparation'].get('resolved_cudagraph_mode') in (
+                'NONE', 'PIECEWISE', 'FULL', 'FULL_DECODE_ONLY', 'FULL_AND_PIECEWISE'),
+                 'resolved runtime CUDA-graph mode missing')
         if ready is not None:
             need(scheduler_provenance(record, ready) == 'POST_READY', 'transition precedes reconstruction')
         matching = [ev for ev in events if ev.get('request_id') == record['request_id']
@@ -324,7 +389,7 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
         need(a['num_output_placeholders'] == b['num_output_placeholders'] - len(selected),
              'scheduler placeholder accounting mismatch')
         accounting[record['key']] = dict(before=b, after=a, emitted_span=[start, a['output_count']])
-    validate_transition(previous, current, prompt, ids)
+    validate_transition(previous, current, prompt, ids, target)
     config = load(directory / 'observer.json')
     production = sources.profile_options(config)
     r15 = config.get('r15_attention_dispatch', False)
@@ -332,7 +397,8 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
     r16 = config.get('r16_force_attention_3d', False)
     need(type(r16) is bool and (not r16 or r15 and lane == 'adaptive'), 'R16 observer gate drift')
     dispatch_proof = attention_dispatch_proof(events, current, r15, r16)
-    production_proof = production_attention_proof(events, current, bool(production))
+    production_proof = (configured_attention_proof(events, current, target) if config.get('observation_only')
+                        else production_attention_proof(events, current, bool(production)))
     r16_boundary_state(current, r16)
     if config.get('r14_single_token_boundary') is not None:
         need(config['r14_single_token_boundary'] == OBSERVATION_TARGET and lane == 'adaptive',
@@ -358,7 +424,7 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
              and current['preparation']['cpu_num_computed_tokens'] == [proof['num_computed_tokens']]
              and current['draft_count'] == 0 and current['decoding_path'] == 'ordinary'
              and current['preparation']['scheduled_tokens'] == 1, 'R14 ordinary boundary/control mismatch')
-    j = OBSERVATION_TARGET - current['rows'][0]['generated_index']
+    j = target - current['rows'][0]['generated_index']
     row = current['rows'][j]
     scores = current['scores'][str(j)]
     need(set(current['scores']) == {str(j)} and not previous['scores']
@@ -370,7 +436,7 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
          and scores['processed']['source_row'] == (j if verify else 0), 'processed logits-row linkage mismatch')
     need(len(vector(root, scores['raw'])) == len(vector(root, scores['processed'])), 'vocabulary shape drift')
     return dict(record=current['key'], predecessor=previous['key'], row=row, scores=scores,
-                selected_token=current['selected'][j], prefix_sha256=fingerprint(prompt + ids[:OBSERVATION_TARGET]),
+                selected_token=current['selected'][j], prefix_sha256=fingerprint(prompt + ids[:target]),
                 decoding_path=current['decoding_path'], active_query=current['active_query'],
                 active_query_token_count=len(current['active_query']), accounting=accounting,
                 preparation={r['key']: r['preparation'] for r in records},
@@ -381,18 +447,21 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
 
 def provenance(root, lanes=LANES):
     config = load(root / "run.json")
+    spec = observation_spec(config)
     execution = config["diagnostic_execution_sha"]
     need(re.fullmatch(r"[0-9a-f]{40}", execution) and execution != HISTORICAL_EXECUTION, "execution SHA invalid/conflated")
-    need(config["schema"] == "m203.targeted.run.v1" and config["case"] == CASE
+    need(config["schema"] == "m203.targeted.run.v1" and config["case"] == spec['case']
          and config["target"] == observation_target(config)
          and config["historical_checkpoint_sha"] == HISTORICAL
          and config["historical_execution_sha"] == HISTORICAL_EXECUTION
-         and config["request_sha256"] == REQUEST_HASH, "run provenance drift")
+         and config["request_sha256"] == spec['request_sha256'], "run provenance drift")
     if 'observation_target' in config:
-        need(config['observation_target'] == OBSERVATION_TARGET
+        need(config['observation_target'] == (spec['target'] if config.get('observation_only') else OBSERVATION_TARGET)
              and config['reconstruction_target'] == RECONSTRUCTION_TARGET,
              'observation/reconstruction target drift')
     preflight, installed = load(root / "preflight.json"), load(root / "installed.json")
+    if config.get('observation_only'):
+        need(preflight.get('observation_spec') == spec, 'observation preflight selection drift')
     need(preflight["execution_sha"] == execution and preflight["runtime"] == installed["runtime"], "runtime provenance drift")
     r15 = config.get('r15_attention_dispatch', False)
     need(type(r15) is bool, 'R15 run gate drift')
@@ -400,7 +469,8 @@ def provenance(root, lanes=LANES):
     need(type(r16) is bool and (not r16 or r15), 'R16 run gate drift')
     production = sources.profile_options(config)
     base = sources.base_hashes(**production) if production else sources.manifest()['sha256']
-    expected = {k: sha(sources.transform(k, v)) for k, v in sources.base_sources(**production).items()
+    expected = {k: sha(sources.transform(k, v, canonical=canonical_observation(config)))
+                for k, v in sources.base_sources(**production).items()
                 if k in sources.INSERTIONS}
     profiles = [(base, expected)]
     if r15 and not r16:
@@ -419,9 +489,11 @@ def provenance(root, lanes=LANES):
     need(r14 is None or type(r14) is int and r14 == OBSERVATION_TARGET, 'R14 run gate drift')
     need(not (r14 is not None and r16), 'R14/R16 control conflict')
     if 'observation_target' in config:
-        need(control == {'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE',
+        need(control == (observation_controls(config['case'])
+                         if config.get('observation_only') else {
+                         'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE',
                          'vanilla_kv_recompute_output_count': RECONSTRUCTION_TARGET,
-                         'adaptive_kv_recompute_output_count': RECONSTRUCTION_TARGET}, 'r12 controls changed')
+                         'adaptive_kv_recompute_output_count': RECONSTRUCTION_TARGET}), 'r12 controls changed')
     need(set(control) <= {"vanilla_cudagraph_mode", "adaptive_cudagraph_mode",
                           "vanilla_kv_recompute_output_count", "adaptive_kv_recompute_output_count"}
          and control.get("vanilla_cudagraph_mode") in (None, "PIECEWISE")
@@ -435,14 +507,26 @@ def provenance(root, lanes=LANES):
         launch = load(root / lane / "launch.json")
         need(launch["execution_sha"] == execution and launch["argv"] == preflight["launcher_argv"][lane], "launch provenance drift")
         argv, env = launch["argv"], launch["environment"]
-        for flag, value in {"--model": policy["models"]["target"]["snapshot"], "--host": "127.0.0.1",
+        for flag, value in {"--model": policy["models"]["target"]["snapshot"],
+                            "--host": "0.0.0.0" if canonical_observation(config) else "127.0.0.1",
                             "--port": "8001" if lane == "vanilla" else "8003", "--dtype": "half",
                             "--quantization": "awq", "--generation-config": "vllm",
                             "--gpu-memory-utilization": "0.85", "--max-model-len": "4096", "--max-num-seqs": "32",
                             "--served-model-name": "qwen2.5-7b-" + lane}.items():
             need(argv.count(flag) == 1 and argv[argv.index(flag) + 1] == value, "launcher setting drift: " + flag)
-        need("--no-enable-prefix-caching" in argv and env["VLLM_USE_V2_MODEL_RUNNER"] == "0"
-             and env["CUDA_VISIBLE_DEVICES"] == "0", "cache/runner/GPU policy drift")
+        need(("--no-enable-prefix-caching" in argv) is (not canonical_observation(config))
+             and (canonical_observation(config) or env.get("VLLM_USE_V2_MODEL_RUNNER") == "0")
+             and env.get("CUDA_VISIBLE_DEVICES") == "0", "cache/runner/GPU policy drift")
+        if canonical_observation(config):
+            canonical_contract.verify_launch(lane, argv, env, launch['canonical_contract'],
+                policy['models'], load(root / lane / 'observer.json'))
+            inherited = launch['canonical_contract']['inherited_environment']
+            runtime_env = {k: v for k, v in inherited.items() if k.startswith(
+                ('VLLM_', 'CUDA_', 'TORCH_', 'PYTORCH_', 'NCCL_'))}
+            need(runtime_env == preflight['runtime']['environment'] == policy['runtime_environment'],
+                 'canonical inherited runtime environment drift')
+            need(preflight['canonical_launch'][lane] == dict(
+                contract=launch['canonical_contract'], environment=env), 'canonical preflight launch drift')
         expected_mode = control.get(f"{lane}_cudagraph_mode")
         need(argv.count("--compilation-config") == int(expected_mode is not None),
              "cudagraph control presence drift")
@@ -450,10 +534,14 @@ def provenance(root, lanes=LANES):
             need(decode(argv[argv.index("--compilation-config") + 1]) == {
                 "cudagraph_mode": expected_mode,
             }, "cudagraph control value drift")
-        need(all(env[k] == v for k, v in policy["adaptive_env"].items()), "adaptive environment drift")
+        if lane == 'adaptive' or not canonical_observation(config):
+            need(all(env[k] == v for k, v in policy["adaptive_env"].items()), "adaptive environment drift")
         observer = load(root / lane / "observer.json")
-        need(sources.profile_options(observer) == (production if lane == 'adaptive' else {}),
+        need(sources.profile_options(observer) == (production if lane == 'adaptive' or config.get('observation_only') else {}),
              'production run/observer profile mismatch')
+        if config.get('observation_only'):
+            need(observer.get('observation_only') is True and observation_spec(observer) == spec,
+                 'observation run/observer case/index drift')
         need(observer.get('r15_attention_dispatch', False) is (r15 and lane == 'adaptive'),
              'R15 run/observer gate drift')
         need(observer.get('r16_force_attention_3d', False) is (r16 and lane == 'adaptive'),
@@ -463,7 +551,7 @@ def provenance(root, lanes=LANES):
              and env.get('M203_R14_SINGLE_TOKEN_BOUNDARY') == (None if expected_r14 is None else str(expected_r14)),
              'R14 launch/observer gate drift')
         if 'observation_target' in config:
-            need(observer.get('observation_target') == OBSERVATION_TARGET
+            need(observer.get('observation_target') == spec['target']
                  and observer.get('reconstruction_target') == RECONSTRUCTION_TARGET,
                  'observer target drift')
         need(observer.get("diagnostic_control", {}) == control,
@@ -484,7 +572,9 @@ def response(directory, lane):
     request = load(directory / "request.json")
     need(request["model"] == "qwen2.5-7b-" + lane and request.pop("return_token_ids") is True, "payload audit flags")
     request["model"] = "qwen2.5:7b-instruct"
-    need(fingerprint(request) == REQUEST_HASH, "request semantics changed")
+    expected = (observation_spec(load(directory / 'observer.json'))['request_sha256']
+                if (directory / 'observer.json').exists() else REQUEST_HASH)
+    need(fingerprint(request) == expected, "request semantics changed")
     need(len(raw["choices"]) == 1, "response choices ambiguous")
     choice = raw["choices"][0]
     ids, prompt = choice["token_ids"], raw["prompt_token_ids"]
@@ -608,7 +698,7 @@ def scheduler_provenance(record, ready):
 
 
 def capture(directory, lane, execution, request_id, prompt, ids):
-    if (directory / 'observer.json').is_file() and observation_target(load(directory / 'observer.json')) == OBSERVATION_TARGET:
+    if (directory / 'observer.json').is_file() and transition_observation(load(directory / 'observer.json')):
         return capture_transition(directory, lane, execution, request_id, prompt, ids)
     root = directory / "capture"
     errors = [load(p) for p in sorted((root / "events").glob("*.json"))]
@@ -748,12 +838,14 @@ def validate_lane(root, lane):
 
 def compare(root):
     root = Path(root)
-    target = observation_target(load(root / 'run.json'))
-    report = {"result_kind": "DIAGNOSTIC_NOT_CANONICAL_GATE", "case": CASE, "target": target,
+    config = load(root / 'run.json')
+    target = config.get('observation_target', 60)
+    report = {"result_kind": "DIAGNOSTIC_NOT_CANONICAL_GATE", "case": config.get('case', CASE), "target": target,
               "diagnostic_control": load(root / "run.json")["policy"].get("diagnostic_control", {}),
               "same_internal_state_proven": False, "same_kv_state_proven": False,
-              "runtime_probe_changes_timing": True, "historical_gate": "47/54 FAIL"}
-    if target == OBSERVATION_TARGET:
+              "runtime_probe_changes_timing": True,
+              "historical_gate": "44/54 FAIL" if canonical_observation(config) else "47/54 FAIL"}
+    if transition_observation(config):
         report.update(observation_target=target, reconstruction_target=RECONSTRUCTION_TARGET)
     try:
         config = load(root / "run.json")
@@ -792,7 +884,7 @@ def compare(root):
                       exact_output_token_ids_equal=d is None,
                       finish_reasons_equal=v["finish_reason"] == a["finish_reason"])
         captures = ({k: capture(root / k, k, execution, r['request_id'], r['prompt'], r['ids'])
-                     for k, r in rows.items()} if target == OBSERVATION_TARGET else None)
+                     for k, r in rows.items()} if transition_observation(config) else None)
         r16 = config.get('r16_force_attention_3d', False)
         outside = d is not None and d != target and not (r16 and d > target)
         if min(len(v["ids"]), len(a["ids"])) <= target or outside:
@@ -820,7 +912,8 @@ def compare(root):
                 for lane in recompute_proofs
             }
         report.update(state="NOT_REPRODUCED" if d is None else "REPRODUCED", captures=captures,
-                      historical_token_pair_reproduced=(v["ids"][TARGET], a["ids"][TARGET]) == (51, 79759))
+                      historical_token_pair_reproduced=(not config.get('observation_only')
+                          and (v["ids"][TARGET], a["ids"][TARGET]) == (51, 79759)))
         report["processed_argmax_equal"] = captures["vanilla"]["scores"]["processed"]["top1_id"] == captures["adaptive"]["scores"]["processed"]["top1_id"]
         report["selected_equals_processed_argmax"] = {k: x["selected_token"] == x["scores"]["processed"]["top1_id"] for k, x in captures.items()}
         if config.get('r16_force_attention_3d', False):

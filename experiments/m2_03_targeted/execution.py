@@ -19,7 +19,9 @@ import tarfile
 import time
 import uuid
 
-from . import sources
+from . import sources, canonical as canonical_contract
+from .common import (observation_spec, observation_policy, observation_controls,
+                     canonical_observation, OBSERVATION_CASES, OBSERVATION_PAIRS)
 from .analysis import compare, response, validate_lane
 from .lifecycle import response_receipt, started_process, verify_shutdown
 from .common import (CASE, HISTORICAL, HISTORICAL_EXECUTION, LANES, REQUEST_HASH, ROOT,
@@ -117,18 +119,29 @@ def free_port(port):
 
 def init_run(root, execution, policy_path, *, r14_single_token_boundary=False,
              r15_attention_dispatch=False, r16_force_attention_3d=False,
-             production_attention_observation=False):
+             production_attention_observation=False, observation_case=None, observation_index=None):
     verify_execution(execution)
     root = isolated(root)
     policy_raw = blob(policy_path, execution)
     need((ROOT / policy_path).read_bytes() == policy_raw, "runtime policy not committed/exact")
-    policy = decode(policy_raw)
+    only = observation_case is not None or observation_index is not None
+    case = CASE if observation_case is None else observation_case
+    target = OBSERVATION_TARGET if observation_index is None else observation_index
+    need(type(target) is int and (case, target) in OBSERVATION_PAIRS,
+         'unsupported observation case/index')
+    policy = observation_policy(decode(policy_raw), only, case)
     reviewed_policy(policy)
-    need(policy.get('diagnostic_control') == {
+    need(policy.get('diagnostic_control') == (observation_controls(case) if only else {
         'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE',
         'vanilla_kv_recompute_output_count': RECONSTRUCTION_TARGET,
-        'adaptive_kv_recompute_output_count': RECONSTRUCTION_TARGET}, 'r13 requires unchanged r12 controls')
-    frozen_request()
+        'adaptive_kv_recompute_output_count': RECONSTRUCTION_TARGET}), 'r13 requires unchanged r12 controls')
+    frozen_request(case) if only else frozen_request()
+    if only:
+        need(not (r14_single_token_boundary or r15_attention_dispatch or r16_force_attention_3d),
+             'observation-only intervention forbidden')
+        production_attention_observation = True
+    selection = ({'observation_only': True, 'case': case, 'request_sha256': OBSERVATION_CASES[case]}
+                 if only else {})
     need(not (r14_single_token_boundary and r16_force_attention_3d),
          'R14 q=1 control and R16 q=3 control are mutually exclusive')
     production = ({'production_attention_observation': True,
@@ -141,25 +154,25 @@ def init_run(root, execution, policy_path, *, r14_single_token_boundary=False,
     r14 = {'r14_single_token_boundary': OBSERVATION_TARGET} if r14_single_token_boundary else {}
     r15 = {'r15_attention_dispatch': True} if r15_attention_dispatch else {}
     r16 = {'r16_force_attention_3d': True} if r16_force_attention_3d else {}
-    save(root / "run.json", {"schema": "m203.targeted.run.v1", "case": CASE,
+    save(root / "run.json", {"schema": "m203.targeted.run.v1", "case": case,
                             "historical_checkpoint_sha": HISTORICAL,
                             "historical_execution_sha": HISTORICAL_EXECUTION,
                             "diagnostic_execution_sha": execution, "policy": policy,
                             "policy_path": policy_path, "policy_sha256": sha(policy_raw),
-                            "request_sha256": REQUEST_HASH, "target": OBSERVATION_TARGET,
+                            "request_sha256": OBSERVATION_CASES[case], "target": target,
                             "reconstruction_target": RECONSTRUCTION_TARGET,
-                            "observation_target": OBSERVATION_TARGET, **r14, **r15, **r16, **production})
+                            "observation_target": target, **r14, **r15, **r16, **production, **selection})
     for lane in LANES:
         directory = root / lane
         (directory / "capture").mkdir(parents=True)
         save(directory / "observer.json", {"lane": lane, "directory": str(directory / "capture"),
                                             "execution_sha": execution,
                                             "reconstruction_target": RECONSTRUCTION_TARGET,
-                                            "observation_target": OBSERVATION_TARGET,
+                                            "observation_target": target, **selection,
                                             **(r14 if lane == 'adaptive' else {}),
                                             **(r15 if lane == 'adaptive' else {}),
                                             **(r16 if lane == 'adaptive' else {}),
-                                            **(production if lane == 'adaptive' else {}),
+                                            **(production if lane == 'adaptive' or only else {}),
                                             "diagnostic_control": policy.get("diagnostic_control", {})})
     return root
 
@@ -168,10 +181,12 @@ def preflight(root):
     config = load(root / "run.json")
     verify_execution(config["diagnostic_execution_sha"])
     need(sha(blob(config["policy_path"], config["diagnostic_execution_sha"])) == config["policy_sha256"], "policy checksum drift")
-    need(decode(blob(config["policy_path"], config["diagnostic_execution_sha"])) == config["policy"], "run policy drift")
-    need(config["case"] == CASE and config["request_sha256"] == REQUEST_HASH, "run request drift")
+    need(observation_policy(decode(blob(config["policy_path"], config["diagnostic_execution_sha"])),
+                            config.get('observation_only', False), config['case']) == config["policy"], "run policy drift")
+    spec = observation_spec(config)
+    need(config["case"] == spec['case'] and config["request_sha256"] == spec['request_sha256'], "run request drift")
     reviewed_policy(config["policy"])
-    frozen_request()
+    frozen_request(spec['case']) if config.get('observation_only') else frozen_request()
     actual = runtime()
     expected = config["policy"]["runtime"]
     need(set(expected) == {"python", "vllm", "torch", "cuda", "gpu", "driver"}, "runtime policy incomplete")
@@ -183,10 +198,22 @@ def preflight(root):
     models = model_inventory(config["policy"])
     hashes = sources.verify_installed(actual["vllm_root"], **sources.profile_options(config))
     launch = {lane: launch_args(root, lane)[0] for lane in LANES}
+    canonical_launch = {}
+    if canonical_observation(config):
+        for lane in LANES:
+            argv, env = launch_args(root, lane)
+            proof = canonical_contract.launch_evidence(lane, os.environ, env, str(ROOT))
+            observer = load(root / lane / 'observer.json')
+            canonical_contract.verify_launch(lane, argv, canonical_contract.environment_view(env),
+                                            proof, models, observer)
+            canonical_launch[lane] = dict(contract=proof,
+                environment=canonical_contract.environment_view(env))
     save(root / "preflight.json", {"runtime": actual, "models": models,
                                   "source_base_sha256": hashes,
                                   "launcher_argv": launch,
-                                  "execution_sha": config["diagnostic_execution_sha"]})
+                                  "execution_sha": config["diagnostic_execution_sha"],
+                                  **({'canonical_launch': canonical_launch} if canonical_launch else {}),
+                                  **({'observation_spec': spec} if config.get('observation_only') else {})})
 
 
 def install(root):
@@ -202,13 +229,15 @@ def install(root):
     if profile:
         need(approved.get('source_base_sha256') == sources.base_hashes(**profile),
              'production source profile differs from preflight')
+    if config.get('observation_only'):
+        need(approved.get('observation_spec') == observation_spec(config), 'observation preflight selection drift')
     # A durable one-shot installation intent prevents partially installed resume.
     write_new(root / "install.intent", encoded({"state": "UNKNOWN_UNTIL_INSTALL_COMPLETE"}))
     changed = {}
     for name in sources.INSERTIONS:
         path = target / name
         raw = path.read_bytes()
-        patched = sources.transform(name, raw)
+        patched = sources.transform(name, raw, canonical=canonical_observation(config))
         write_new(root / "original_sources" / name, raw)
         # Explicit install stage only. Never invoked automatically by serve.
         tmp = path.with_name(path.name + ".m203-targeted-" + uuid.uuid4().hex + ".pending")
@@ -269,7 +298,7 @@ def restore(root):
     profile = restore_source_options(root)
     replacements = []
     for name, raw in sources.base_sources(**profile).items():
-        patched = sources.transform(name, raw)
+        patched = sources.transform(name, raw, canonical=profile.get('canonical', False))
         path = Path(base) / name
         current = path.read_bytes()
         need(current in (raw, patched), "unknown source during restore; refusing mutation")
@@ -311,8 +340,18 @@ def restore(root):
 def inference_sources(root):
     need(not (root / 'restore_intent.json').exists(), 'restore started/incomplete/completed; no inference may resume this run')
     installed = load(root / 'installed.json')
+    config = load(root / 'run.json')
+    if config.get('observation_only'):
+        need(load(root / 'preflight.json').get('observation_spec') == observation_spec(config),
+             'observation preflight selection drift')
+        for lane in LANES:
+            observer = load(root / lane / 'observer.json')
+            need(observer.get('observation_only') is True
+                 and observation_spec(observer) == observation_spec(config)
+                 and sources.profile_options(observer) == sources.profile_options(config),
+                 'observation observer selection drift')
     sources.verify_installed(installed['runtime']['vllm_root'], patched=True,
-                             **sources.profile_options(load(root / 'run.json')))
+                             **sources.profile_options(config))
     return installed
 
 
@@ -326,12 +365,16 @@ def process_identity(pid):
 
 def launch_args(root, lane):
     config = load(root / "run.json")
+    canonical = canonical_observation(config)
+    if config.get('observation_only'):
+        observation_spec(config)
     models = config["policy"]["models"]
     argv = [sys.executable, "-m", "vllm.entrypoints.openai.api_server", "--model", models["target"]["snapshot"],
-            "--host", "127.0.0.1", "--port", str(PORTS[lane]), "--served-model-name", "qwen2.5-7b-" + lane,
+            "--host", "0.0.0.0" if canonical else "127.0.0.1", "--port", str(PORTS[lane]), "--served-model-name", "qwen2.5-7b-" + lane,
             "--generation-config", "vllm", "--quantization", "awq", "--dtype", "half",
-            "--gpu-memory-utilization", "0.85", "--max-model-len", "4096", "--max-num-seqs", "32",
-            "--no-enable-prefix-caching"]
+            "--gpu-memory-utilization", "0.85", "--max-model-len", "4096", "--max-num-seqs", "32"]
+    if not canonical:
+        argv += ["--no-enable-prefix-caching"]
     control = config["policy"].get("diagnostic_control", {})
     need(set(control) <= {"vanilla_cudagraph_mode", "adaptive_cudagraph_mode",
                           "vanilla_kv_recompute_output_count", "adaptive_kv_recompute_output_count"}
@@ -351,6 +394,16 @@ def launch_args(root, lane):
                 "draft_sample_method": "greedy"}
         argv += ["--speculative-config", encoded(spec).decode().strip(), "--scheduler-cls",
                  "src.server.adaptive_scheduler.AdaptiveAsyncScheduler", "--per-request-spec-decode-metrics", "summary"]
+    if canonical:
+        env = canonical_contract.observation_environment(lane, os.environ, str(ROOT),
+            str(root / lane / 'observer.json'), str(root / lane / 'adaptive_telemetry.jsonl'))
+        if lane == 'adaptive':
+            need(all(env[k] == v for k, v in config['policy']['adaptive_env'].items()),
+                 'canonical inherited adaptive environment differs from reviewed policy')
+        proof = canonical_contract.launch_evidence(lane, os.environ, env, str(ROOT))
+        canonical_contract.verify_launch(lane, argv, canonical_contract.environment_view(env),
+            proof, models, load(root / lane / 'observer.json'))
+        return argv, env
     env = os.environ.copy()
     env.pop('M203_R14_SINGLE_TOKEN_BOUNDARY', None)
     # Remove stale old diagnostic controls; never consult old /tmp state.
@@ -395,9 +448,19 @@ def serve(root, lane):
     argv, env = launch_args(root, lane)
     need(argv == load(root / "preflight.json")["launcher_argv"][lane], "launcher drift")
     directory = root / lane
+    canonical_launch = {}
+    if canonical_observation(config):
+        proof = canonical_contract.launch_evidence(lane, os.environ, env, str(ROOT))
+        recorded = dict(contract=proof, environment=canonical_contract.environment_view(env))
+        need(recorded == load(root / 'preflight.json')['canonical_launch'][lane],
+             'canonical launch environment changed since preflight')
+        canonical_launch = dict(canonical_contract=proof)
     save(directory / "launch.json", {"argv": argv, "execution_sha": config["diagnostic_execution_sha"],
-                                    "environment": {k: env[k] for k in env if k.startswith(("ADAPTIVE_", "M203_TARGETED_", "M203_R14_"))
-                                                    or k in ("VLLM_USE_V2_MODEL_RUNNER", "CUDA_VISIBLE_DEVICES", "CUDA_DEVICE_ORDER")}})
+                                    **canonical_launch,
+                                    "environment": (canonical_contract.environment_view(env)
+                                        if canonical_observation(config) else
+                                        {k: env[k] for k in env if k.startswith(("ADAPTIVE_", "M203_TARGETED_", "M203_R14_"))
+                                         or k in ("VLLM_USE_V2_MODEL_RUNNER", "CUDA_VISIBLE_DEVICES", "CUDA_DEVICE_ORDER")})})
     with (directory / "server.log").open("xb") as log:
         child = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         identity = process_identity(child.pid)
@@ -481,11 +544,18 @@ def request(root, lane):
     need(not (directory / "abort_intent.json").exists(), "run aborted; no workload allowed")
     need(not (directory / "request.claim").exists(), "request budget spent; outcome may be UNKNOWN, no resend")
     inference_sources(root)  # Recheck on disk before ANY HTTP, including an already-running server.
+    if canonical_observation(config):
+        observer = load(directory / 'observer.json')
+        canonical_contract.verify_runner(load(directory / 'capture/runtime_identity.json'), observer)
+        need(not any(load(p).get('kind') == 'observer_error'
+                     for p in (directory / 'capture/events').glob('*.json')),
+             'canonical runtime unsupported/observer initialization failed')
     status, raw = http_exchange(PORTS[lane], "GET", "/health")
     need(status == 200, "server not ready; no workload request sent")
     status, raw = http_exchange(PORTS[lane], "GET", "/v1/models")
     need(status == 200 and [x["id"] for x in decode(raw)["data"]] == ["qwen2.5-7b-" + lane], "served model/session mismatch")
-    payload = frozen_request()
+    spec = observation_spec(config)
+    payload = frozen_request(spec['case']) if config.get('observation_only') else frozen_request()
     payload.update(model="qwen2.5-7b-" + lane, return_token_ids=True)
     save(directory / "request.json", payload)
     claim_request(directory)  # MUST precede the only workload POST, including exceptions.
@@ -567,6 +637,10 @@ def main(argv=None):
                    help='diagnostic only: force 3D attention for the Adaptive q=3 index-368 forward')
     p.add_argument('--production-attention-observation', action='store_true',
                    help='observe exact production-patched attention; no diagnostic attention control')
+    p.add_argument('--observation-case', choices=sorted(OBSERVATION_CASES),
+                   help='explicit observation-only frozen W3 case (default w3_business_v2_003)')
+    p.add_argument('--observation-target', type=int,
+                   help='zero-based generated-token index for observation-only mode (default 368)')
     for stage in ("preflight", "install-observer", "restore-observer", "restoration-status", "serve", "request", "stop", "abort", "validate-lane", "checkpoint"):
         p = sub.add_parser(stage)
         p.add_argument("--run", type=Path, required=True)
@@ -596,7 +670,8 @@ def main(argv=None):
                                         r14_single_token_boundary=args.r14_single_token_boundary,
                                         r15_attention_dispatch=args.r15_attention_dispatch,
                                         r16_force_attention_3d=args.r16_force_attention_3d,
-                                        production_attention_observation=args.production_attention_observation))}
+                                        production_attention_observation=args.production_attention_observation,
+                                        observation_case=args.observation_case, observation_index=args.observation_target))}
         elif args.stage in ("verify-checkpoint", "export", "compare"):
             checked = verify_checkpoint(args.snapshot)
             if args.stage == "export":

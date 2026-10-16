@@ -393,3 +393,50 @@ python -B scripts/m2_03_gpu_diag.py --help
 Do not install vLLM on Windows or call GPU stages locally. Existing 88 baseline
 regressions must remain green; source-transform, mapping, budget, corruption,
 crash and checkpoint tests are CPU/synthetic, not T4 inference evidence.
+
+## Reviewed production observation at W3/006 @81
+
+The `init` options `--observation-case w3_business_v2_006 --observation-target 81`
+select observation-only instrumentation for the canonical 44/54 run's new
+earliest failure. The only other accepted observation-only pair is
+`w3_business_v2_003 @368`; unsupported case/index combinations stop before run
+creation. Omitting both options preserves the existing R13–R16 workflow.
+
+For W3/006 @81, the effective diagnostic controls are empty. The launcher keeps
+the inference settings of `scripts/launch_lane1_vanilla.sh` and
+`scripts/launch_lane3_adaptive.sh`, using byte-verified model snapshots. It adds
+neither a CUDA-graph override nor a prefix-cache override. vLLM resolves its
+runtime CUDA-graph mode naturally; the observer records that resolved mode and
+the actual prefix-cache setting. No reconstruction, R14, R15, or R16 control runs.
+`VLLM_USE_V2_MODEL_RUNNER` must be absent from the inherited environment and
+remains unset. An inherited selection override is rejected, never silently
+rewritten. Canonical exports and inherited controls are preserved; offline flags
+and CUDA-device settings are not added by observation. The only permitted
+instrumentation environment changes are `M203_TARGETED_CONFIG`, the observer's
+`PYTHONPATH` entry (preserving existing entries), and the Adaptive telemetry sink
+`ADAPTIVE_TELEMETRY_PATH`. Their reasons and source hashes are recorded, and
+provenance independently validates argv/env against the pinned launcher sources.
+
+The canonical-only startup hook records the actual runner class and resolved
+`use_v2_model_runner` property. Before any HTTP or request-budget claim, the
+harness requires the supported V1 runner's startup marker. V2, unknown runners,
+missing hooks, and observer startup errors stop the request; no fallback forces
+V1. Runtime identity is also linked to the boundary captures. Legacy observation
+and preserved R13–R16 source transformations retain their existing behavior.
+The frozen request fingerprint is
+`478e5a1300c063e405d8c3899ea154e020ce2ac459831d9460c06d4d505682bb`.
+
+The production attention patch must already be installed and hash-verified.
+The evidence links index 81 to the selected row, raw/processed logits, active
+query, positions, slots, scheduled tokens/drafts, scheduler step, request, and
+all production attention calls, including natural routing and guards with
+`force_3d=False`. Missing or ambiguous linkage invalidates the capture. If graph
+replay bypasses Python dispatch observation, missing calls invalidate evidence;
+the harness must not disable graphs to obtain a capture.
+
+This is a one-request diagnostic with timing overhead, not a repeat of the full
+54-prompt gate or proof of identical inherited KV state. Actual q-length and
+routing at the canonical failure remain unmeasured until valid runtime evidence
+is collected. CPU checks: `python -m pytest -q
+tests/test_m2_03_configurable_observation.py tests/test_m2_03_targeted_gpu_diag.py
+tests/test_m2_03_production_observer.py`.
