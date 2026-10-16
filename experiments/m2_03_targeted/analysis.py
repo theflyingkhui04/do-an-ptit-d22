@@ -8,7 +8,8 @@ from .common import CASE, TARGET, RECONSTRUCTION_TARGET, OBSERVATION_TARGET, LAN
 from .observer import (map_rows, score_stats, valid_selected, observation_target,
                        DISPATCH_ARGUMENT_FIELDS, DISPATCH_FIELDS, PRODUCTION_DISPATCH_FIELDS)
 from . import sources, canonical as canonical_contract
-from .common import observation_spec, transition_observation, observation_controls, canonical_observation
+from .common import (observation_spec, transition_observation, observation_controls,
+                     canonical_observation, canonical_observation_profile, v2_observation_profile)
 from .lifecycle import verify_shutdown
 
 STATES = ("REPRODUCED", "NOT_REPRODUCED", "BOUNDARY_NOT_COVERED", "INVALID_CAPTURE")
@@ -359,7 +360,7 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
             need(record.get('observation_spec') == observation_spec(config)
                  and record.get('observation_scheduler_provenance') == dict(
                 state='OBSERVATION_ONLY', scheduler_step=record['scheduler_step']), 'observation scheduler linkage')
-        if canonical_observation(config):
+        if canonical_observation_profile(config):
             runtime_identity = load(root / 'runtime_identity.json')
             canonical_contract.verify_runner(runtime_identity, config)
             need(dict(record['preparation'].get('runtime_identity', {}),
@@ -469,9 +470,10 @@ def provenance(root, lanes=LANES):
     need(type(r16) is bool and (not r16 or r15), 'R16 run gate drift')
     production = sources.profile_options(config)
     base = sources.base_hashes(**production) if production else sources.manifest()['sha256']
-    expected = {k: sha(sources.transform(k, v, canonical=canonical_observation(config)))
+    expected = {k: sha(sources.transform(k, v, canonical=production.get('canonical', False),
+                                       v2=production.get('v2', False)))
                 for k, v in sources.base_sources(**production).items()
-                if k in sources.INSERTIONS}
+                if k in sources.patch_names(v2=production.get('v2', False))}
     profiles = [(base, expected)]
     if r15 and not r16:
         historical_r15 = dict(expected)
@@ -698,6 +700,18 @@ def scheduler_provenance(record, ready):
 
 
 def capture(directory, lane, execution, request_id, prompt, ids):
+    observer_path = directory / 'observer.json'
+    identity_path = directory / 'capture/runtime_identity.json'
+    if observer_path.is_file() and identity_path.is_file():
+        identity = load(identity_path)
+        if identity.get('model_runner') == canonical_contract.V2_RUNNER:
+            observer = load(observer_path)
+            need(v2_observation_profile(observer), 'V2 analyzer outside reviewed observer profile')
+            run = load(directory.parent / 'run.json')
+            need(v2_observation_profile(run) and observation_spec(run) == observation_spec(observer),
+                 'V2 analyzer outside reviewed run profile')
+            from .v2_analysis import capture_v2
+            return capture_v2(directory, lane, execution, request_id, prompt, ids)
     if (directory / 'observer.json').is_file() and transition_observation(load(directory / 'observer.json')):
         return capture_transition(directory, lane, execution, request_id, prompt, ids)
     root = directory / "capture"
@@ -914,6 +928,11 @@ def compare(root):
         report.update(state="NOT_REPRODUCED" if d is None else "REPRODUCED", captures=captures,
                       historical_token_pair_reproduced=(not config.get('observation_only')
                           and (v["ids"][TARGET], a["ids"][TARGET]) == (51, 79759)))
+        geometry = {lane: {name: proof[name] for name in (
+            'logical_runtime_q', 'captured_graph_q_shape', 'max_seqlen_q')}
+            for lane, proof in captures.items() if 'logical_runtime_q' in proof}
+        if geometry:
+            report['v2_query_geometry'] = geometry
         report["processed_argmax_equal"] = captures["vanilla"]["scores"]["processed"]["top1_id"] == captures["adaptive"]["scores"]["processed"]["top1_id"]
         report["selected_equals_processed_argmax"] = {k: x["selected_token"] == x["scores"]["processed"]["top1_id"] for k, x in captures.items()}
         if config.get('r16_force_attention_3d', False):

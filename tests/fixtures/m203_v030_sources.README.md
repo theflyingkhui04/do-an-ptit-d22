@@ -34,3 +34,18 @@ masked-first-tile/sliding-window and graph-padding hardening discussed upstream
 is outside this diagnostic. No BLOCK_M/BLOCK_Q or segment-count tuning is ported.
 CPU tests exercise the inserted guard arithmetic and launch plumbing; they do
 not compile Triton or establish numerical correctness on a T4.
+
+The separate `m203_v030_v2_sources.json.gz` fixture contains eleven official
+vLLM v0.30.0 files retrieved on 2026-10-16. Exact paths and SHA-256 hashes are in
+`experiments/m2_03_targeted/upstream_v2.json`. All SPDX/license headers remain;
+the same Apache-2.0 license above applies. gzip mtime is zero. These sources are
+data for source review and CPU tests, never imported as a vLLM runtime.
+
+V2 source inspection identified the input/slot preparation and raw/selected-token
+boundaries in `gpu/model_runner.py`, final ordinary processing in
+`gpu/sample/sampler.py`, processed verification in
+`gpu/spec_decode/rejection_sampler.py`, and actual FULL capture/replay in
+`gpu/cudagraph_utils.py`. The remaining fixture files pin the input/state/KV and
+attention metadata contracts used by the observer. Stripping only the inserted
+observer calls/imports must recover each original inference AST. Production
+attention arithmetic/routing is not ported or rewritten.

@@ -417,12 +417,12 @@ instrumentation environment changes are `M203_TARGETED_CONFIG`, the observer's
 `ADAPTIVE_TELEMETRY_PATH`. Their reasons and source hashes are recorded, and
 provenance independently validates argv/env against the pinned launcher sources.
 
-The canonical-only startup hook records the actual runner class and resolved
-`use_v2_model_runner` property. Before any HTTP or request-budget claim, the
-harness requires the supported V1 runner's startup marker. V2, unknown runners,
+The canonical-only startup hooks record the actual V1 or V2 target runner class
+and resolved `use_v2_model_runner` property. Before any HTTP or request-budget
+claim, the harness requires a supported runner's startup marker. Unknown runners,
 missing hooks, and observer startup errors stop the request; no fallback forces
-V1. Runtime identity is also linked to the boundary captures. Legacy observation
-and preserved R13–R16 source transformations retain their existing behavior.
+V1. Runtime identity is linked to the boundary captures. Legacy observation and
+preserved R13–R16 source transformations retain their existing behavior.
 The frozen request fingerprint is
 `478e5a1300c063e405d8c3899ea154e020ce2ac459831d9460c06d4d505682bb`.
 
@@ -440,3 +440,61 @@ routing at the canonical failure remain unmeasured until valid runtime evidence
 is collected. CPU checks: `python -m pytest -q
 tests/test_m2_03_configurable_observation.py tests/test_m2_03_targeted_gpu_diag.py
 tests/test_m2_03_production_observer.py`.
+
+### Canonical V2 hooks for index 81
+
+V2 inventory and instrumentation are selected by the separate fail-closed
+`v2_observation_profile()` predicate, which validates the frozen observation spec
+and accepts only observation-only `w3_business_v2_006 @81`. Canonical launcher
+validation does not grant access to V2 sources. Legacy `w3_business_v2_003 @368`
+retains its pre-V2 six-file base inventory and five-file patch inventory, with
+`production=True, canonical=True` and no V2 flag. Its existing V1
+`runner_initialized` hook remains installed and validated. The legacy golden
+patch hashes use the pre-V2 `transform(..., canonical=True)` bytes, including
+that startup hook. `W3/006 @81` independently adds `v2=True` to its canonical
+source profile. The source-profile helper `canonical_observation_profile()`
+validates both reviewed pairs; the narrower launcher selector continues to
+preserve each case's launch settings. Byte-hash regressions cover install,
+startup/forward provenance and restore. A V2 runtime
+identity cannot select the analyzer unless both run and observer specs authorize
+the reviewed V2 profile.
+
+The additional source fixture is pinned to official vLLM v0.30.0 bytes in
+`upstream_v2.json`. The minimal V2 insertions are:
+
+- `gpu/model_runner.py`: target-runner initialization; prepared inputs and KV
+  slots before the target forward; forward completion; raw logits before grammar;
+  selected tokens after `AsyncOutput` starts copying, before state postprocessing.
+- `gpu/sample/sampler.py`: processed logits immediately before greedy-compatible
+  Gumbel selection, after top-k/top-p processing.
+- `gpu/spec_decode/rejection_sampler.py`: processed verification logits immediately
+  before the existing rejection kernel.
+- `gpu/cudagraph_utils.py`: bracket actual FULL capture and observe the exact
+  graph object chosen at replay. No replay, capture, or dispatch call is replaced.
+
+FULL replay does not execute the Python attention wrapper. Its evidence therefore
+links the real scheduler/forward to a byte-hashed trace of production decisions
+observed during capture of that exact graph and descriptor. Graph references are
+weak, so observation does not retain GPU graphs after vLLM releases them. Warmup
+calls are excluded. PIECEWISE/NONE forwards collect live production calls instead.
+No attention kernel, routing predicate, constexpr guard, or runtime mode is changed.
+
+The V2 evidence distinguishes the actual scheduled/active query length from the
+captured attention `max_seqlen_q`, padded token/request counts, and the natural
+2D/3D path. These can differ under FULL graphs; q=3 alone does not prove guarded
+3D dispatch. It includes actual GPU positions, input IDs, logits-row indices,
+request-state index, block tables and slots. The analyzer checks these against
+the emitted API tokens, scheduler accounting and production attention event.
+Missing, duplicated, stale, cross-request, or unlinked data is invalid evidence.
+Parallel, multi-request and adaptive-verification layouts outside this single-case
+diagnostic are rejected. This adds no general V2 tracing mode.
+
+The analysis API exposes `logical_runtime_q` (equal to `scheduled_tokens`),
+`captured_graph_q_shape` (the captured attention Q tensor's leading dimension,
+or null for a live forward), and `max_seqlen_q` (the observed bound for each of
+the 28 attention calls). These fields are present in each V2 capture and in the
+report's `v2_query_geometry` map. For example, a logical query of 3 tokens can
+replay a graph with Q shape 4 and `max_seqlen_q=5`; these are separate measurements.
+Legacy-only reports do not acquire V2 geometry fields.
+
+V2 CPU/source tests: `python -m pytest tests/test_m2_03_v2_observation.py -q`.

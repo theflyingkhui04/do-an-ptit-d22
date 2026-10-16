@@ -28,6 +28,7 @@ OBSERVATION_PAIRS = {(CASE, OBSERVATION_TARGET), ("w3_business_v2_006", 81)}
 
 
 def canonical_observation(config):
+    """Select the new diagnostic's launcher semantics, not its source profile."""
     return (config.get('observation_only') is True
             and (config.get('case'), config.get('observation_target', config.get('target')))
             == ("w3_business_v2_006", 81))
@@ -134,6 +135,24 @@ def observation_spec(config):
     else:
         need(case == CASE, 'unconfigured observation case')
     return {'case': case, 'target': target, 'request_sha256': OBSERVATION_CASES[case]}
+
+
+def canonical_observation_profile(config):
+    """Both reviewed observation-only cases retain canonical startup hooks."""
+    observation_spec(config)
+    return config.get('observation_only') is True
+
+
+def v2_observation_profile(config):
+    """Select V2 instrumentation only from a validated, reviewed observation spec.
+
+    This is independent of launcher validation and of the resolved runner type.
+    Invalid selections raise; neither a generic canonical flag nor runtime
+    identity can grant access to the expanded V2 source profile.
+    """
+    spec = observation_spec(config)
+    return (config.get('observation_only') is True
+            and (spec['case'], spec['target']) == ('w3_business_v2_006', 81))
 
 
 def transition_observation(config):

@@ -21,7 +21,8 @@ import uuid
 
 from . import sources, canonical as canonical_contract
 from .common import (observation_spec, observation_policy, observation_controls,
-                     canonical_observation, OBSERVATION_CASES, OBSERVATION_PAIRS)
+                     canonical_observation, canonical_observation_profile,
+                     OBSERVATION_CASES, OBSERVATION_PAIRS)
 from .analysis import compare, response, validate_lane
 from .lifecycle import response_receipt, started_process, verify_shutdown
 from .common import (CASE, HISTORICAL, HISTORICAL_EXECUTION, LANES, REQUEST_HASH, ROOT,
@@ -43,6 +44,7 @@ def verify_execution(execution):
     # All code actually imported/served must be committed with exact bytes.
     paths = list((ROOT / "experiments/m2_03_targeted").glob("*"))
     paths += [ROOT / "scripts/m2_03_gpu_diag.py"] + [ROOT / p for p in PRODUCTION]
+    paths += [ROOT / 'tests/fixtures/m203_v030_v2_sources.json.gz']
     for p in paths:
         if p.is_file():
             rel = p.relative_to(ROOT).as_posix()
@@ -234,10 +236,11 @@ def install(root):
     # A durable one-shot installation intent prevents partially installed resume.
     write_new(root / "install.intent", encoded({"state": "UNKNOWN_UNTIL_INSTALL_COMPLETE"}))
     changed = {}
-    for name in sources.INSERTIONS:
+    for name in sources.patch_names(v2=profile.get('v2', False)):
         path = target / name
         raw = path.read_bytes()
-        patched = sources.transform(name, raw, canonical=canonical_observation(config))
+        patched = sources.transform(name, raw, canonical=profile.get('canonical', False),
+                                    v2=profile.get('v2', False))
         write_new(root / "original_sources" / name, raw)
         # Explicit install stage only. Never invoked automatically by serve.
         tmp = path.with_name(path.name + ".m203-targeted-" + uuid.uuid4().hex + ".pending")
@@ -298,7 +301,8 @@ def restore(root):
     profile = restore_source_options(root)
     replacements = []
     for name, raw in sources.base_sources(**profile).items():
-        patched = sources.transform(name, raw, canonical=profile.get('canonical', False))
+        patched = sources.transform(name, raw, canonical=profile.get('canonical', False),
+                                    v2=profile.get('v2', False))
         path = Path(base) / name
         current = path.read_bytes()
         need(current in (raw, patched), "unknown source during restore; refusing mutation")
@@ -544,7 +548,7 @@ def request(root, lane):
     need(not (directory / "abort_intent.json").exists(), "run aborted; no workload allowed")
     need(not (directory / "request.claim").exists(), "request budget spent; outcome may be UNKNOWN, no resend")
     inference_sources(root)  # Recheck on disk before ANY HTTP, including an already-running server.
-    if canonical_observation(config):
+    if canonical_observation_profile(config):
         observer = load(directory / 'observer.json')
         canonical_contract.verify_runner(load(directory / 'capture/runtime_identity.json'), observer)
         need(not any(load(p).get('kind') == 'observer_error'

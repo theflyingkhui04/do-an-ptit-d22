@@ -1,0 +1,17 @@
+{
+  "tag": "v0.30.0",
+  "upstream": "https://github.com/vllm-project/vllm/tree/v0.30.0/vllm",
+  "sha256": {
+    "v1/attention/backends/triton_attn.py": "1057663d110e1d5229495a799027b27277c1eca325d5b6780fa2259afbf58a1a",
+    "v1/attention/ops/triton_unified_attention.py": "65d0fbcf33d00789df8ca688c0a1c908e710cfaef53471178747ecae11f05829",
+    "v1/worker/gpu/attn_utils.py": "b9b81e59dda2720b1f9c434471381f879228832443e52756e469b4ad4905888f",
+    "v1/worker/gpu/block_table.py": "61c004315d5af7e7eae4e2a9e6be92ea82c520327690a7f55a73bb9ce95f520a",
+    "v1/worker/gpu/cudagraph_utils.py": "6e9c042890603535e300a40df8ee159dbed1058a64a83ae50ff0329e332e05ff",
+    "v1/worker/gpu/input_batch.py": "d5dd956eb319bd69dd9e762047833d81ad40b21fce619fcb2133759e73620694",
+    "v1/worker/gpu/model_runner.py": "174c93db921c23cf0396eee4764be25b2bd2d4b6a06e9fa41ce3598b884ce8ce",
+    "v1/worker/gpu/sample/output.py": "d6e298c0f197d487a8faaf7200f500fa83df1d7a4bbf4339cadd6a18008f7f9c",
+    "v1/worker/gpu/sample/sampler.py": "832c9945d201a1e730ff9b4b52076aa83bd4a5064e1e4cfea952cf84d4a8d1f0",
+    "v1/worker/gpu/spec_decode/rejection_sampler.py": "030db5bfca162cc1f305112f299de5d6d61c59d3ed0807fee46575441ca4086d",
+    "v1/worker/gpu/states.py": "99418f5df43ca612ded72609fee011620b065b2cab2f249ccb387096bf4ae71a"
+  }
+}

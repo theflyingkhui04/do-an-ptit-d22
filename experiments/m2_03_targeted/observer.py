@@ -22,7 +22,8 @@ import threading
 import uuid
 
 from .common import WINDOW, OBSERVATION_TARGET, encoded, event, load, need, save, sha, write_new
-from .common import observation_spec, transition_observation, canonical_observation
+from .common import (observation_spec, transition_observation, canonical_observation,
+                     canonical_observation_profile)
 from . import canonical as canonical_contract
 
 _local = threading.local()
@@ -204,7 +205,7 @@ def prepared(config, runner, scheduled, input_ids, positions, slot_mappings):
                            blocks_per_kv_block=table.blocks_per_kv_block,
                            dcp_world_size=table.dcp_world_size, pcp_world_size=table.pcp_world_size))
     prep['groups'] = groups
-    if canonical_observation(config):
+    if canonical_observation_profile(config):
         prep['runtime_identity'] = canonical_contract.runner_identity(runner)
         mode = runner.vllm_config.compilation_config.cudagraph_mode
         mode = getattr(mode, 'name', None)
@@ -759,7 +760,7 @@ def observe(stage, *args):
             return
         config = load(config_path)
         if stage == 'runner_initialized':
-            need(canonical_observation(config), 'unexpected runner identity hook')
+            need(canonical_observation_profile(config), 'unexpected runner identity hook')
             identity = canonical_contract.runner_identity(args[0])
             save(Path(config['directory']) / 'runtime_identity.json', dict(identity,
                 execution_sha=config['execution_sha'], lane=config['lane']))

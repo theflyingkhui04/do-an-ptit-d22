@@ -10,6 +10,7 @@ from pathlib import PurePosixPath, PureWindowsPath
 from .common import ROOT, decode, need, sha
 
 RUNNER = 'vllm.v1.worker.gpu_model_runner.GPUModelRunner'
+V2_RUNNER = 'vllm.v1.worker.gpu.model_runner.GPUModelRunner'
 SCRIPTS = {
     'vanilla': ('scripts/launch_lane1_vanilla.sh',
                 'c9e00bcca1a03d25a257f0e1377cbd39395c27f51ef389d96913b8ad64da3a5d'),
@@ -125,13 +126,15 @@ def runner_identity(runner):
     identity = cls.__module__ + '.' + cls.__qualname__
     config = runner.vllm_config
     # Read the resolved setting, never the default or an environment guess.
-    need(identity == RUNNER and config.use_v2_model_runner is False,
-         'unsupported resolved model runner; V1 observation hooks required')
-    return dict(model_runner=identity, use_v2_model_runner=False)
+    mode = config.use_v2_model_runner
+    need((identity == RUNNER and mode is False) or (identity == V2_RUNNER and mode is True),
+         'unsupported resolved model runner/identity')
+    return dict(model_runner=identity, use_v2_model_runner=mode)
 
 
 def verify_runner(proof, config):
-    need(isinstance(proof, dict) and proof.get('use_v2_model_runner') is False
-         and proof == dict(model_runner=RUNNER, use_v2_model_runner=False,
+    mode = proof.get('use_v2_model_runner') if isinstance(proof, dict) else None
+    need(type(mode) is bool
+         and proof == dict(model_runner=V2_RUNNER if mode else RUNNER, use_v2_model_runner=mode,
                        execution_sha=config['execution_sha'], lane=config['lane']),
          'unsupported/missing resolved model-runner identity')

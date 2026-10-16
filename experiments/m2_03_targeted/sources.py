@@ -8,7 +8,8 @@ restores to its production baseline; it never installs diagnostic guards/control
 import ast
 import gzip
 from pathlib import Path
-from .common import ROOT, decode, need, sha, observation_spec, canonical_observation
+from .common import (ROOT, decode, need, sha, observation_spec, canonical_observation_profile,
+                     v2_observation_profile)
 
 MANIFEST = ROOT / "experiments/m2_03_targeted/upstream.json"
 FIXTURE = ROOT / "tests/fixtures/m203_v030_sources.json.gz"
@@ -131,19 +132,38 @@ def profile_options(config):
             'production observation cannot use diagnostic attention controls')
     else:
         need('production_patch_sha' not in config, 'production revision without profile')
-    return ({'production': True, **({'canonical': True} if canonical_observation(config) else {})}
-            if enabled else {})
+    if not enabled:
+        return {}
+    profile = {'production': True}
+    # Existing startup/provenance hooks and new source expansion are separate
+    # dimensions. Both reviewed pairs keep canonical startup observation.
+    if canonical_observation_profile(config):
+        profile['canonical'] = True
+    if v2_observation_profile(config):
+        profile['v2'] = True
+    return profile
 
 
-def base_sources(production=False, canonical=False):
+def base_sources(production=False, canonical=False, v2=False):
     result = {name: text.encode() for name, text in fixture_sources().items()}
     if production:
         result[ATTENTION_SOURCE] = production_attention_source()
+    if v2:
+        from . import v2_sources
+        result.update({k: v for k, v in v2_sources.references().items() if k != ATTENTION_SOURCE})
     return result
 
 
-def base_hashes(production=False, canonical=False):
-    return {name: sha(raw) for name, raw in base_sources(production).items()}
+def base_hashes(production=False, canonical=False, v2=False):
+    return {name: sha(raw) for name, raw in base_sources(production, canonical, v2).items()}
+
+
+def patch_names(canonical=False, v2=False):
+    # canonical controls the existing V1 startup marker, never V2 inventory.
+    if not v2:
+        return list(INSERTIONS)
+    from . import v2_sources
+    return list(INSERTIONS) + list(v2_sources.INSERTIONS)
 
 
 def observe_production(raw):
@@ -201,7 +221,10 @@ class StripObserver(ast.NodeTransformer):
         return node
 
 
-def transform(name, raw, canonical=False):
+def transform(name, raw, canonical=False, v2=False):
+    if v2 and name not in manifest()['sha256']:
+        from . import v2_sources
+        return v2_sources.transform(name, raw)
     if name == ATTENTION_SOURCE and sha(raw) == PRODUCTION_ATTENTION_SHA256:
         return observe_production(raw)
     need(sha(raw) == manifest()["sha256"][name], "unpatched vLLM source hash drift: " + name)
@@ -231,24 +254,24 @@ def transform(name, raw, canonical=False):
     return patched
 
 
-def verify_installed(root, patched=False, production=False, canonical=False):
+def verify_installed(root, patched=False, production=False, canonical=False, v2=False):
     hashes = {}
-    references = base_sources(production)
-    for name, expected in manifest()["sha256"].items():
+    references = base_sources(production, canonical, v2)
+    for name, reference in references.items():
         raw = (Path(root) / name).read_bytes()
-        need(sha(fixture_sources()[name].encode()) == expected, "vendored source fixture drift")
-        reference = references[name]
-        wanted = transform(name, reference, canonical=canonical) if patched else reference
+        if name in manifest()['sha256']:
+            need(sha(fixture_sources()[name].encode()) == manifest()['sha256'][name], "vendored source fixture drift")
+        wanted = transform(name, reference, canonical=canonical, v2=v2) if patched else reference
         need(raw == wanted, "installed source mismatch: " + name)
         hashes[name] = sha(raw)
     return hashes
 
 
-def installed_state(root, production=False, canonical=False):
+def installed_state(root, production=False, canonical=False, v2=False):
     """Read-only classification; a mixed/unknown tree is never inference-ready."""
     files, states = {}, set()
-    for name, raw in base_sources(production).items():
-        patched = transform(name, raw, canonical=canonical)
+    for name, raw in base_sources(production, canonical, v2).items():
+        patched = transform(name, raw, canonical=canonical, v2=v2)
         try:
             actual = (Path(root) / name).read_bytes()
             actual_sha = sha(actual)

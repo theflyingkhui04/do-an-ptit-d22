@@ -44,7 +44,7 @@ def test_default_is_unchanged_and_explicit_case_uses_frozen_request(tmp_path, mo
     for lane in c.LANES:
         config = c.load(root / lane / 'observer.json')
         assert c.observation_spec(config) == c.observation_spec(run)
-        assert s.profile_options(config) == {'production': True, 'canonical': True}
+        assert s.profile_options(config) == {'production': True, 'canonical': True, 'v2': True}
         assert o.kv_recompute_target(config) is None
         assert not any(config.get(k) for k in ('r14_single_token_boundary', 'r15_attention_dispatch', 'r16_force_attention_3d'))
         argv, env = e.launch_args(root, lane)
@@ -72,7 +72,8 @@ def test_invalid_selection_or_intervention_is_refused_before_creating_run(tmp_pa
 
 def prepare_runtime(root, monkeypatch):
     package = root.parent / 'vllm'
-    for name, raw in s.base_sources(production=True).items():
+    profile = s.profile_options(c.load(root / 'run.json'))
+    for name, raw in s.base_sources(**profile).items():
         path = package / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
@@ -102,7 +103,8 @@ def observe_lane(directory, lane, q_len=1, offset=0):
                 vllm_config=NS(use_v2_model_runner=False,
                     parallel_config=NS(tensor_parallel_size=1, pipeline_parallel_size=1,
                     data_parallel_size=1, decode_context_parallel_size=1),
-                    compilation_config=NS(cudagraph_mode=NS(name='PIECEWISE'))),
+                    compilation_config=NS(cudagraph_mode=NS(name=config['diagnostic_control'].get(
+                        f'{lane}_cudagraph_mode', 'PIECEWISE')))),
                 requests={rid: NS(prompt_token_ids=prompt)}, use_async_scheduling=True,
                 use_async_spec_decode=lane == 'adaptive',
                 prev_positions=NS(np=np.array([0]), gpu=torch.tensor([0])),
