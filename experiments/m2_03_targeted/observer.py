@@ -25,11 +25,29 @@ from .common import WINDOW, OBSERVATION_TARGET, encoded, event, load, need, save
 
 _local = threading.local()
 
-DISPATCH_FIELDS = (
+DISPATCH_ARGUMENT_FIELDS = (
     'max_seqlen_q', 'seq_threshold_3D', 'num_par_softmax_segments', 'num_seqs',
     'softmax_segm_output_present', 'softmax_segm_max_present', 'softmax_segm_expsum_present',
     'is_batch_invariant', 'use_3d', 'grid', 'tile_size', 'BLOCK_M', 'BLOCK_Q',
     'block_size', 'num_segments')
+DISPATCH_FIELDS = DISPATCH_ARGUMENT_FIELDS + ('natural_use_3d', 'force_3d', 'q3_correctness_guards')
+
+
+def force_attention_3d(max_seqlen_q, num_seqs, natural_use_3d):
+    """Return the boundary-only diagnostic override without touching CUDA state."""
+    capture = getattr(_local, 'attention_capture', None)
+    if capture is None:
+        return False
+    need(type(max_seqlen_q) is int and type(num_seqs) is int
+         and type(natural_use_3d) is bool, 'invalid natural attention dispatch')
+    force = capture['force_3d']
+    if force:
+        need(max_seqlen_q == 3 and num_seqs == 1 and natural_use_3d is False,
+             'forced 3D reached unexpected attention shape/path')
+    controls = capture['controls']
+    controls.append(dict(ordinal=len(controls), natural_use_3d=natural_use_3d,
+                         force_3d=force))
+    return force
 
 
 def attention_dispatch(*values):
@@ -37,8 +55,10 @@ def attention_dispatch(*values):
     capture = getattr(_local, 'attention_capture', None)
     if capture is None:
         return
-    need(len(values) == len(DISPATCH_FIELDS), 'attention dispatch field count')
-    record = dict(zip(DISPATCH_FIELDS, values))
+    need(len(values) == len(DISPATCH_ARGUMENT_FIELDS) + 1, 'attention dispatch field count')
+    record = dict(zip(DISPATCH_ARGUMENT_FIELDS, values[:-1]))
+    need(type(values[-1]) is bool, 'non-boolean attention correctness guards')
+    record['q3_correctness_guards'] = values[-1]
     for name, value in record.items():
         if name == 'grid':
             need(type(value) is tuple and all(type(x) is int for x in value),
@@ -48,6 +68,11 @@ def attention_dispatch(*values):
             need(type(value) in (int, bool) or value is None,
                  'non-scalar attention metadata: ' + name)
     calls = capture['calls']
+    controls = capture['controls']
+    need(len(controls) == len(calls) + 1, 'attention control/launch mismatch')
+    control = controls[len(calls)]
+    need(control['ordinal'] == len(calls), 'attention control order mismatch')
+    record.update(natural_use_3d=control['natural_use_3d'], force_3d=control['force_3d'])
     calls.append(dict(record, ordinal=len(calls), key=capture['key']))
 
 
@@ -154,7 +179,27 @@ def prepared(config, runner, scheduled, input_ids, positions, slot_mappings):
         need(config['lane'] == 'adaptive', 'R15 requires Adaptive target')
         expected = runner.model_config.hf_config.num_hidden_layers
         need(type(expected) is int and expected > 0, 'missing target attention layer count')
-        prep['attention_dispatch'] = dict(key=prep['key'], expected_calls=expected, calls=[])
+        force = config.get('r16_force_attention_3d', False)
+        need(type(force) is bool, 'invalid R16 force gate')
+        if force:
+            request = runner.requests[request_id]
+            boundary_position = len(request.prompt_token_ids) + OBSERVATION_TARGET - 1
+            previous = getattr(_local, 'transition_previous', None)
+            # Async CPU token lists can contain -1 placeholders. Use the
+            # completed observer record of the preceding ordinary selection.
+            force = (boundary_position == 556 and previous is not None
+                     and previous['key'] == prep['previous_key']
+                     and previous['request_id'] == request_id
+                     and previous['selected'] == [47742]
+                     and previous['draft_count'] == 0
+                     and len(previous['rows']) == 1
+                     and previous['rows'][0]['generated_index'] == OBSERVATION_TARGET - 1
+                     and previous['rows'][0]['position'] == 555
+                     and prep['scheduled_tokens'] == 3
+                     and prep['scheduled_draft_count'] == 2
+                     and prep['cpu_num_computed_tokens'] == [boundary_position])
+        prep['attention_dispatch'] = dict(key=prep['key'], expected_calls=expected,
+                                          force_3d=force, controls=[], calls=[])
         _local.attention_capture = prep['attention_dispatch']
 
 
@@ -603,6 +648,8 @@ def kv_recompute_after_schedule(config, scheduler, scheduled):
 
 
 def control(stage, *args):
+    if stage == 'force_attention_3d':
+        return force_attention_3d(*args)
     config_path = os.environ.get("M203_TARGETED_CONFIG")
     if not config_path:
         return

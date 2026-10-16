@@ -1,7 +1,7 @@
 """Exact upstream v0.30.0 source transform. No dependency on any previous hook.
 
-Only import + standalone observer calls are added. Removing those AST nodes
-must recover the exact original AST. Installed source hashes must match first.
+Observer calls and R16-only constexpr correctness guards are added. Stripping
+those additions must recover the exact original AST. Source hashes match first.
 """
 import ast
 import gzip
@@ -11,18 +11,50 @@ from .common import ROOT, decode, need, sha
 MANIFEST = ROOT / "experiments/m2_03_targeted/upstream.json"
 FIXTURE = ROOT / "tests/fixtures/m203_v030_sources.json.gz"
 ATTENTION_SOURCE = "v1/attention/ops/triton_unified_attention.py"
+R15_ATTENTION_PATCHED_SHA256 = "2295fef50bb0c3400c384dc157032a36d6699402a850085f3e7419dd9c24fdb7"
 IMPORT = ("from experiments.m2_03_targeted.observer import observe as _m203_observe, "
           "control as _m203_control\n")
 
 # Exact insertion anchors from official v0.30.0. Whole-file SHA pin is mandatory.
+# Guard arithmetic: upstream PR #59448 (non-DiffKV), also discussed in
+# #59085/#56148. Only its empty-segment epilogue and reducer clamp are ported;
+# the R16 full-attention gate excludes sliding-window/padding generalization.
 INSERTIONS = {
     ATTENTION_SOURCE: [
+        ("):\n    # Per-(token, head) scale caches: used iff KV_QUANT_MODE in {2, 3}.\n",
+         "    _M203_Q3_GUARDS: tl.constexpr = False,\n"),
+        ("):\n    query_token_idx = tl.program_id(0)\n",
+         "    _M203_Q3_GUARDS: tl.constexpr = False,\n"),
+        ("        store_segm_reduce_scalars(\n",
+         '        if _M203_Q3_GUARDS:\n'
+         '            M = tl.where(L > 0.0, M, float("-inf"))\n'),
+        ("    # load and rescale segment exp sums\n",
+         '    if _M203_Q3_GUARDS:\n'
+         '        overall_max = tl.where(overall_max > float("-inf"), overall_max, 0.0)\n\n'),
+        ("    # The kernel signature is the same for 2D and 3D — only the launch\n",
+         '    _m203_q3_guards = False\n'
+         '    if _m203_control("force_attention_3d", max_seqlen_q, num_seqs, use_3d):\n'
+         '        assert q.shape[0] == max_seqlen_q == 3 and max_seqlen_k == 559\n'
+         '        assert num_seqs == 1 and causal is True and window_size == (-1, -1)\n'
+         '        assert not use_mm_prefix and not use_rswa and not use_td\n'
+         '        assert not is_batch_invariant and kv_quant_mode == KVQuantMode.NONE\n'
+         '        assert num_par_softmax_segments is not None and num_par_softmax_segments > 0\n'
+         '        assert softmax_segm_output is not None and softmax_segm_output.shape[0] >= q.shape[0]\n'
+         '        assert softmax_segm_max is not None and softmax_segm_max.shape[0] >= q.shape[0]\n'
+         '        assert softmax_segm_expsum is not None and softmax_segm_expsum.shape[0] >= q.shape[0]\n'
+         '        use_3d = True\n'
+         '        _m203_q3_guards = True\n\n'),
         ("    kernel_unified_attention[grid](\n",
          '    _m203_observe("attention_dispatch", max_seqlen_q, seq_threshold_3D,\n'
          '                  num_par_softmax_segments, num_seqs,\n'
          '                  softmax_segm_output is not None, softmax_segm_max is not None,\n'
          '                  softmax_segm_expsum is not None, is_batch_invariant, use_3d,\n'
-         '                  grid, tile_size, BLOCK_M, BLOCK_Q, block_size, num_segments)\n'),
+         '                  grid, tile_size, BLOCK_M, BLOCK_Q, block_size, num_segments,\n'
+         '                  _m203_q3_guards)\n'),
+        ("        MM_PREFIX_CLAMP_SW=mm_prefix_clamp_sliding_window,\n",
+         "        _M203_Q3_GUARDS=_m203_q3_guards,\n"),
+        ("            USE_FP8=output_scale is not None,\n",
+         "            _M203_Q3_GUARDS=_m203_q3_guards,\n"),
     ],
     "v1/worker/gpu_model_runner.py": [
         ("        # Update num_computed_tokens on GPU. In async spec decode,\n",
@@ -71,6 +103,38 @@ class StripObserver(ast.NodeTransformer):
         if (isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
                 and node.value.func.id in ("_m203_observe", "_m203_control")):
             return None
+        return self.generic_visit(node)
+
+    def visit_If(self, node):
+        if isinstance(node.test, ast.Name) and node.test.id == '_M203_Q3_GUARDS':
+            return None
+        if (isinstance(node.test, ast.Call) and isinstance(node.test.func, ast.Name)
+                and node.test.func.id == "_m203_control"
+                and node.test.args and isinstance(node.test.args[0], ast.Constant)
+                and node.test.args[0].value == "force_attention_3d"):
+            return None
+        return self.generic_visit(node)
+
+    def visit_Assign(self, node):
+        if (len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == '_m203_q3_guards'):
+            return None
+        return self.generic_visit(node)
+
+    def visit_FunctionDef(self, node):
+        node = self.generic_visit(node)
+        for index, argument in enumerate(node.args.args):
+            if argument.arg == '_M203_Q3_GUARDS':
+                start = len(node.args.args) - len(node.args.defaults)
+                need(index >= start, 'diagnostic constexpr must have a default')
+                node.args.args.pop(index)
+                node.args.defaults.pop(index - start)
+                break
+        return node
+
+    def visit_Call(self, node):
+        node = self.generic_visit(node)
+        node.keywords = [k for k in node.keywords if k.arg != '_M203_Q3_GUARDS']
         return node
 
 

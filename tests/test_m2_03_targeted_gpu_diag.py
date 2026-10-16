@@ -284,6 +284,7 @@ def observed_transition_fixture(tmp_path, monkeypatch, *, lane='adaptive', bound
         if r15:
             assert o._local.attention_capture is not None
             for use_3d in (True, False):
+                assert o.control('force_attention_3d', 1, 1, use_3d) is False
                 o.observe('attention_dispatch', *dispatch_values(use_3d))
             assert not any(c.load(p)['kind'] == 'attention_dispatch' for p in (cap / 'events').glob('*.json'))
         raw = torch.tensor([[0., 3., 2., 1.]])
@@ -1955,10 +1956,12 @@ def test_observer_hook_owner_and_order_on_exact_pinned_source(name, method, sequ
     assert [calls[key][0] for key in sequence] == sorted(calls[key][0] for key in sequence)
 
 
-def dispatch_values(use_3d=True):
-    return (1, 32, 16, 1, True, True, True, not use_3d, use_3d,
-            (1, 4, 16) if use_3d else (1, 4), 16 if use_3d else 32, 16, 2, 16,
-            16 if use_3d else 1)
+def dispatch_values(use_3d=True, max_seqlen_q=1):
+    q_blocks = max_seqlen_q // 2 + 1
+    return (max_seqlen_q, 32, 16, 1, True, True, True,
+            not use_3d and max_seqlen_q == 1, use_3d,
+            (q_blocks, 4, 16) if use_3d else (q_blocks, 4), 16 if use_3d else 32, 16, 2, 16,
+            16 if use_3d else 1, use_3d and max_seqlen_q == 3)
 
 
 def test_r15_exact_source_hook_placement_and_roundtrip():
@@ -1975,7 +1978,17 @@ def test_r15_exact_source_hook_placement_and_roundtrip():
     assert isinstance(launch, ast.Subscript) and launch.value.id == 'kernel_unified_attention'
     assert sum(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
                and n.func.id == '_m203_observe' for n in ast.walk(tree)) == 1
+    controls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Name) and n.func.id == '_m203_control']
+    assert len(controls) == 1 and controls[0].args[0].value == 'force_attention_3d'
     assert ast.dump(s.StripObserver().visit(ast.parse(patched))) == ast.dump(ast.parse(raw))
+    force_at = patched.index(b'    if _m203_control("force_attention_3d"')
+    assert (patched.index(b'    use_3d = not (') < force_at
+            < patched.index(b'    if use_per_token_head_scales:', force_at))
+    force_if = next(n for n in fn.body if isinstance(n, ast.If) and n.test is controls[0])
+    assignments = [n for n in force_if.body if isinstance(n, ast.Assign)]
+    assert [(n.targets[0].id, n.value.value) for n in assignments] == [
+        ('use_3d', True), ('_m203_q3_guards', True)]
     assert b'launch_kwargs["num_stages"]' in patched[:patched.index(b'    _m203_observe(')]
     for anchor, _ in s.INSERTIONS[name]:
         assert raw.decode().count(anchor) == 1
@@ -2003,7 +2016,13 @@ class AttentionSentinel:
     ({'softmax_segm_expsum': None}, False), ({'seq_threshold_3D': None}, False),
     ({'num_par_softmax_segments': None}, False), ({'seq_threshold_3D': 1}, True),
     ({'seq_threshold_3D': 0}, False), ({'batch_invariant': True}, False),
-    ({'batch_invariant': False}, True),
+    ({'batch_invariant': False}, True), ({'max_seqlen_q': 3, 'force': True}, True),
+    ({'max_seqlen_q': 3, 'force': True, 'softmax_segm_output': None}, 'reject'),
+    ({'max_seqlen_q': 3, 'force': True, 'softmax_segm_max': None}, 'reject'),
+    ({'max_seqlen_q': 3, 'force': True, 'softmax_segm_expsum': None}, 'reject'),
+    ({'max_seqlen_q': 3, 'force': True, 'scratch_rows': 2}, 'reject'),
+    ({'max_seqlen_q': 3, 'force': True, 'num_par_softmax_segments': None}, 'reject'),
+    ({'max_seqlen_q': 3, 'force': True, 'window_size': (16, 0)}, 'reject'),
 ])
 def test_r15_actual_pinned_wrapper_predicate_without_tensor_access(monkeypatch, change, expected):
     text = s.transform(s.ATTENTION_SOURCE, s.fixture_sources()[s.ATTENTION_SOURCE].encode()).decode()
@@ -2022,9 +2041,10 @@ def test_r15_actual_pinned_wrapper_predicate_without_tensor_access(monkeypatch, 
         triton=NS(next_power_of_2=lambda n: 1 << (n-1).bit_length()),
         is_batch_invariant=change.get('batch_invariant', False),
         kernel_unified_attention=Kernel(launches), reduce_segments=Kernel(reductions),
-        _m203_observe=o.observe)
+        _m203_observe=o.observe, _m203_control=o.control)
     exec(compile(ast.Module(body=nodes, type_ignores=[]), '<pinned-attention>', 'exec'), namespace)
-    o._local.attention_capture = dict(key='boundary', calls=[])
+    force = change.get('force', False)
+    o._local.attention_capture = dict(key='boundary', force_3d=force, controls=[], calls=[])
     monkeypatch.setenv('M203_TARGETED_CONFIG', 'must-not-be-read')
     monkeypatch.setattr(o, 'load', lambda _: pytest.fail('pre-launch config I/O'))
     sentinel = AttentionSentinel
@@ -2035,30 +2055,44 @@ def test_r15_actual_pinned_wrapper_predicate_without_tensor_access(monkeypatch, 
         max_seqlen_k=556+q, softmax_scale=1.0, causal=True, window_size=(-1, -1),
         block_table=sentinel((1, 40)), softcap=0., q_descale=None, k_descale=None, v_descale=None,
         seq_threshold_3D=32, num_par_softmax_segments=16,
-        softmax_segm_output=sentinel((32,)), softmax_segm_max=sentinel((32,)),
-        softmax_segm_expsum=sentinel((32,)))
-    args.update({k: v for k, v in change.items() if k != 'batch_invariant'})
+        softmax_segm_output=sentinel((change.get('scratch_rows', 32),)),
+        softmax_segm_max=sentinel((change.get('scratch_rows', 32),)),
+        softmax_segm_expsum=sentinel((change.get('scratch_rows', 32),)))
+    args.update({k: v for k, v in change.items() if k not in ('batch_invariant', 'force', 'scratch_rows')})
+    if expected == 'reject':
+        with pytest.raises(AssertionError):
+            namespace['unified_attention'](**args)
+        assert not launches and not reductions
+        o._local.attention_capture = None
+        return
     namespace['unified_attention'](**args)
     capture = o._local.attention_capture
     o._local.attention_capture = None
     assert len(capture['calls']) == len(launches) == 1
     call = capture['calls'][0]
     assert call['use_3d'] is expected
+    assert call['force_3d'] is force
+    assert call['natural_use_3d'] is (expected if not force else False)
     assert launches[0][1]['IS_3D'] is expected
+    assert launches[0][1]['_M203_Q3_GUARDS'] is force
+    assert call['q3_correctness_guards'] is force
+    if reductions:
+        assert reductions[0][1]['_M203_Q3_GUARDS'] is force
     assert call['grid'] == list(launches[0][0])
     assert call['tile_size'] == launches[0][1]['TILE_SIZE']
     assert bool(reductions) is expected
     assert launches[0][1]['query_ptr'] is args['q']
     assert launches[0][1]['key_cache_ptr'] is args['k']
     assert launches[0][1]['value_cache_ptr'] is args['v']
-    current = dict(key='boundary', request_id='request', execution_sha='d'*40,
-                   lane='adaptive', scheduler_step=1, forward_sequence=1)
-    event = dict(current, kind='attention_dispatch', generated_index=368,
-                 expected_calls=1, calls=capture['calls'])
-    current['preparation'] = dict(scheduled_tokens=q, groups=[dict(kv_cache_block_size=16)],
-        attention_dispatch=dict(capture, expected_calls=1))
-    proof = a.attention_dispatch_proof([event], current, True)
-    assert proof['mode'] == ('3D' if expected else '2D')
+    if not force:
+        current = dict(key='boundary', request_id='request', execution_sha='d'*40,
+                       lane='adaptive', scheduler_step=1, forward_sequence=1)
+        event = dict(current, kind='attention_dispatch', generated_index=368,
+                     expected_calls=1, calls=capture['calls'])
+        current['preparation'] = dict(scheduled_tokens=q, groups=[dict(kv_cache_block_size=16)],
+            attention_dispatch=dict(capture, expected_calls=1))
+        proof = a.attention_dispatch_proof([event], current, True)
+        assert proof['mode'] == ('3D' if expected else '2D')
 
 
 def test_r15_lifecycle_deferred_boundary_event_and_mixed_pattern(tmp_path, monkeypatch):
@@ -2112,7 +2146,7 @@ def test_r15_analyzer_rejects_invalid_dispatch(tmp_path, monkeypatch, problem):
 
 def test_r15_observer_error_disarms_and_invalidates(tmp_path, monkeypatch):
     directory, prompt, ids = observed_transition_fixture(tmp_path, monkeypatch, r15=True)
-    o._local.attention_capture = dict(key='bad', calls=[])
+    o._local.attention_capture = dict(key='bad', force_3d=False, controls=[], calls=[])
     o.observe('attention_dispatch', AttentionSentinel((1,)))
     assert o._local.attention_capture is None and o._local.preparation is None
     with pytest.raises(c.Invalid, match='observer error'):
@@ -2122,6 +2156,8 @@ def test_r15_observer_error_disarms_and_invalidates(tmp_path, monkeypatch):
 @pytest.mark.parametrize('bundle,state', [
     ('complete-3999b36f90114ad289daf22ff932ae01.tar.gz', 'REPRODUCED'),
     ('complete-a4d65ac6c375455fad050e5d04e41b1d.tar.gz', 'NOT_REPRODUCED'),
+    ('complete-20dca630cc004e2cb577b6e66fdfdec5.tar.gz', 'REPRODUCED'),
+    ('complete-605f6d6615014428bb99d0a0c384f68a.tar.gz', 'NOT_REPRODUCED'),
 ])
 def test_r15_preserved_r13_r14_archives_remain_readable(tmp_path, bundle, state):
     import tarfile
@@ -2137,4 +2173,228 @@ def test_r15_preserved_r13_r14_archives_remain_readable(tmp_path, bundle, state)
             destination.write_bytes(tar.extractfile(member).read())
     report = a.compare(tmp_path)
     assert report['state'] == state, report
-    assert report['captures']['adaptive']['attention_dispatch'] is None
+    dispatch = report['captures']['adaptive']['attention_dispatch']
+    if c.load(tmp_path / 'adaptive/observer.json').get('r15_attention_dispatch'):
+        assert dispatch['mode'] == ('2D' if state == 'REPRODUCED' else '3D')
+        assert len(dispatch['event']['calls']) == 28
+    else:
+        assert dispatch is None
+
+
+def r16_dispatch_fixture():
+    _, current, _, _ = transition_fixture()
+    current.update(draft_count=2, decoding_path='speculative',
+                   active_query=[[556, 47742], [557, 129831], [558, 128319]])
+    prep = current['preparation']
+    prep.update(active_query=current['active_query'], scheduled_tokens=3,
+                scheduled_draft_count=2, query_start_loc=[0, 3], seq_lens=[559],
+                cpu_num_computed_tokens=[556], gpu_num_computed_tokens_after=[556])
+    prep['groups'][0]['slot_mapping'] = [572, 573, 574]
+    calls, controls = [], []
+    for ordinal in range(28):
+        control = dict(ordinal=ordinal, natural_use_3d=False, force_3d=True)
+        call = dict(zip(o.DISPATCH_ARGUMENT_FIELDS, dispatch_values(True, 3)))
+        call['grid'] = list(call['grid'])
+        call.update(control, key=current['key'], q3_correctness_guards=True)
+        controls.append(control)
+        calls.append(call)
+    prep['attention_dispatch'] = dict(key=current['key'], expected_calls=28,
+                                      force_3d=True, controls=controls, calls=calls)
+    event = {name: current[name] for name in
+             ('execution_sha', 'lane', 'request_id', 'key', 'scheduler_step', 'forward_sequence')}
+    event.update(kind='attention_dispatch', generated_index=368,
+                 expected_calls=28, calls=copy.deepcopy(calls))
+    return current, event
+
+
+def test_r16_init_implies_r15_and_rejects_r14(tmp_path, monkeypatch):
+    policy = 'experiments/m2_03_targeted/runtime_policy.kaggle_t4_index60.json'
+    monkeypatch.setattr(e, 'verify_execution', lambda execution: None)
+    monkeypatch.setattr(e, 'blob', lambda path, execution: (c.ROOT / path).read_bytes())
+    root = e.init_run(tmp_path / 'r16', 'd'*40, policy, r16_force_attention_3d=True)
+    run = c.load(root / 'run.json')
+    assert run['r15_attention_dispatch'] is run['r16_force_attention_3d'] is True
+    assert c.load(root / 'adaptive/observer.json')['r16_force_attention_3d'] is True
+    assert c.load(root / 'vanilla/observer.json').get('r16_force_attention_3d') is None
+    with pytest.raises(c.Invalid, match='mutually exclusive'):
+        e.init_run(tmp_path / 'conflict', 'd'*40, policy,
+                   r14_single_token_boundary=True, r16_force_attention_3d=True)
+
+
+def test_r16_force_gate_is_boundary_only_and_disabled_is_identity():
+    o._local.attention_capture = None
+    assert o.control('force_attention_3d', 3, 1, False) is False
+    natural = dict(key='natural', force_3d=False, controls=[], calls=[])
+    o._local.attention_capture = natural
+    assert o.control('force_attention_3d', 3, 1, False) is False
+    o.attention_dispatch(*dispatch_values(False, 3))
+    assert natural['calls'][0]['use_3d'] is natural['calls'][0]['force_3d'] is False
+    forced = dict(key='forced', force_3d=True, controls=[], calls=[])
+    o._local.attention_capture = forced
+    assert o.control('force_attention_3d', 3, 1, False) is True
+    o.attention_dispatch(*dispatch_values(True, 3))
+    assert forced['calls'][0]['natural_use_3d'] is False
+    assert forced['calls'][0]['force_3d'] is forced['calls'][0]['use_3d'] is True
+    with pytest.raises(c.Invalid, match='unexpected attention shape'):
+        o.control('force_attention_3d', 1, 1, True)
+    o._local.attention_capture = None
+
+
+@pytest.mark.parametrize('problem,expected', [(None, True), ('draft', False),
+                                               ('prior', False), ('count', False)])
+def test_r16_prepared_arms_only_exact_cpu_proven_boundary(problem, expected):
+    rid = 'api-boundary'
+    table = NS(num_blocks_per_row=np.array([36]), block_size=16, kv_cache_block_size=16,
+               blocks_per_kv_block=1, dcp_world_size=1, pcp_world_size=1,
+               get_device_tensor=lambda n: torch.tensor([[2] * 36]))
+    drafts = [-1, -1]
+    prior = 47742 if problem != 'prior' else 1
+    count = 556 if problem != 'count' else 555
+    request = NS(prompt_token_ids=[0] * 189, output_token_ids=[-1])
+    runner = NS(input_batch=NS(req_ids=[rid], block_table=NS(block_tables=[table])),
+                requests={rid: request}, num_computed_tokens=torch.tensor([556]),
+                query_start_loc=NS(gpu=torch.tensor([0, 3])), seq_lens=torch.tensor([559]),
+                model_config=NS(hf_config=NS(num_hidden_layers=28)))
+    scheduled = NS(total_num_scheduled_tokens=3, scheduled_spec_decode_tokens={rid: drafts})
+    o._local.preparation = dict(key='boundary', request_id=rid, scheduled_tokens=3,
+        previous_key='previous', scheduled_draft_count=2 if problem != 'draft' else 1,
+        cpu_num_computed_tokens=[count], correction_enabled=False,
+        prev_req_id_to_index={}, prev_positions=[], prev_num_draft_tokens=[0])
+    o._local.transition_previous = dict(key='previous', request_id=rid,
+        selected=[prior], draft_count=0, rows=[dict(generated_index=367, position=555)])
+    o.prepared(dict(lane='adaptive', r15_attention_dispatch=True,
+                    r16_force_attention_3d=True), runner, scheduled,
+               torch.tensor([47742, *drafts]), torch.tensor([556, 557, 558]),
+               {0: torch.tensor([572, 573, 574])})
+    assert o._local.attention_capture['force_3d'] is expected
+    o._local.attention_capture = o._local.preparation = None
+    o._local.transition_previous = None
+
+
+def test_r16_analyzer_proves_exact_q3_state_and_all_28_forced_calls():
+    current, event = r16_dispatch_fixture()
+    a.r16_boundary_state(current, True)
+    proof = a.attention_dispatch_proof([event], current, True, True)
+    assert proof['mode'] == '3D' and proof['modes'] == ['3D'] * 28
+    assert all(not call['natural_use_3d'] and call['force_3d'] and call['use_3d']
+               for call in proof['event']['calls'])
+    base = dict(active_query_token_count=3, attention_dispatch=proof)
+    assert a.r16_causal_result(dict(base, selected_token=9765))['outcome'] == \
+        'BOUNDARY_ARGMAX_CHANGED_TO_9765'
+    assert a.r16_causal_result(dict(base, selected_token=128281))['outcome'] == \
+        'BOUNDARY_ARGMAX_REMAINS_128281'
+    result = a.r16_causal_result(dict(base, selected_token=9765))
+    assert result['causal_conclusion'] == 'PENDING_R15_BASELINE_STATE_COMPARISON'
+    assert result['same_r15_prefix_verified'] is False
+    assert result['same_r15_kv_values_verified'] is False
+
+
+def test_pre_r16_r15_dispatch_schema_remains_readable():
+    current, event = r16_dispatch_fixture()
+    legacy = []
+    for call in event['calls']:
+        call = {k: copy.deepcopy(v) for k, v in call.items()
+                if k not in ('natural_use_3d', 'force_3d', 'q3_correctness_guards')}
+        call.update(use_3d=False, grid=[2, 4], tile_size=32, num_segments=1)
+        legacy.append(call)
+    event['calls'] = copy.deepcopy(legacy)
+    dispatch = current['preparation']['attention_dispatch']
+    dispatch['calls'] = copy.deepcopy(legacy)
+    dispatch.pop('force_3d')
+    dispatch.pop('controls')
+    proof = a.attention_dispatch_proof([event], current, True)
+    assert proof['mode'] == '2D' and len(proof['modes']) == 28
+
+
+@pytest.mark.parametrize('problem', ['q_len', 'drafts', 'positions', 'slot_mapping',
+                                      'call_count', 'natural', 'force', 'actual', 'guards', 'extra_control'])
+def test_r16_analyzer_rejects_state_or_intervention_drift(problem):
+    current, event = r16_dispatch_fixture()
+    if problem == 'q_len': current['preparation']['scheduled_tokens'] = 1
+    elif problem == 'drafts': current['draft_count'] = 0
+    elif problem == 'positions': current['active_query'][0][0] = 555
+    elif problem == 'slot_mapping': current['preparation']['groups'][0]['slot_mapping'][0] = 571
+    elif problem == 'call_count':
+        event['calls'].pop()
+        current['preparation']['attention_dispatch']['calls'].pop()
+    elif problem == 'extra_control':
+        current['preparation']['attention_dispatch']['controls'].append(
+            dict(ordinal=28, natural_use_3d=False, force_3d=True))
+    else:
+        call = event['calls'][0]
+        call[{'natural': 'natural_use_3d', 'force': 'force_3d', 'actual': 'use_3d',
+              'guards': 'q3_correctness_guards'}[problem]] ^= True
+        current['preparation']['attention_dispatch']['calls'][0] = copy.deepcopy(call)
+        if problem in ('natural', 'force'):
+            current['preparation']['attention_dispatch']['controls'][0][
+                {'natural': 'natural_use_3d', 'force': 'force_3d'}[problem]] ^= True
+    with pytest.raises((c.Invalid, IndexError)):
+        a.r16_boundary_state(current, True)
+        a.attention_dispatch_proof([event], current, True, True)
+
+
+def q3_guard_nodes():
+    tree = ast.parse(s.transform(s.ATTENTION_SOURCE,
+                                s.fixture_sources()[s.ATTENTION_SOURCE].encode()))
+    functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    def guard(name):
+        return next(n for n in ast.walk(functions[name]) if isinstance(n, ast.If)
+                    and isinstance(n.test, ast.Name) and n.test.id == '_M203_Q3_GUARDS')
+    return functions, guard('kernel_unified_attention'), guard('reduce_segments')
+
+
+def test_r16_q3_guards_exact_locations_and_constexpr_defaults():
+    functions, epilogue, reducer = q3_guard_nodes()
+    original = {n.name: n for n in ast.parse(s.fixture_sources()[s.ATTENTION_SOURCE]).body
+                if isinstance(n, ast.FunctionDef)}
+    for name, guard in [('kernel_unified_attention', epilogue), ('reduce_segments', reducer)]:
+        function = functions[name]
+        assert function.args.args[-1].arg == '_M203_Q3_GUARDS'
+        assert [a_.arg for a_ in function.args.args[:-1]] == [
+            a_.arg for a_ in original[name].args.args]  # Preserve positional callers.
+        arg_index = next(i for i, a_ in enumerate(function.args.args) if a_.arg == '_M203_Q3_GUARDS')
+        start = len(function.args.args) - len(function.args.defaults)
+        assert function.args.defaults[arg_index - start].value is False
+        assert ast.unparse(guard.test) == '_M203_Q3_GUARDS'
+    parent = next(n for n in ast.walk(functions['kernel_unified_attention'])
+                  if isinstance(n, ast.If) and epilogue in n.body)
+    assert ast.unparse(parent.test) == 'IS_3D'
+    store = parent.body[parent.body.index(epilogue) + 1]
+    assert store.value.func.id == 'store_segm_reduce_scalars'
+    body = functions['reduce_segments'].body
+    preceding = body[body.index(reducer) - 1]
+    assert ast.unparse(preceding) == 'overall_max = tl.max(segm_max)'
+    assert ast.unparse(epilogue.body[0]) == "M = tl.where(L > 0.0, M, float('-inf'))"
+    assert ast.unparse(reducer.body[0]) == \
+        "overall_max = tl.where(overall_max > float('-inf'), overall_max, 0.0)"
+
+
+@pytest.mark.parametrize('guarded', [False, True])
+def test_r16_q3_guard_math_empty_segments_and_negative_logits(guarded):
+    """Execute actual inserted arithmetic on CPU; no Triton execution is claimed."""
+    _, epilogue, reducer = q3_guard_nodes()
+    def run(maxima, mass, output, *, epilogue_on=guarded, reducer_on=guarded):
+        ns = dict(M=np.array(maxima, dtype=np.float32), L=np.array(mass, dtype=np.float32),
+                  _M203_Q3_GUARDS=epilogue_on, tl=NS(where=np.where))
+        exec(compile(ast.Module(body=[epilogue], type_ignores=[]), '<q3-epilogue>', 'exec'), ns)
+        maxima = ns['M']
+        ns.update(overall_max=np.max(maxima), _M203_Q3_GUARDS=reducer_on)
+        exec(compile(ast.Module(body=[reducer], type_ignores=[]), '<q3-reducer>', 'exec'), ns)
+        with np.errstate(invalid='ignore', under='ignore', divide='ignore'):
+            weights = np.exp(maxima - ns['overall_max'])
+            total = np.sum(np.asarray(mass) * weights)
+            numerator = np.sum(np.asarray(output) * weights)
+            return 0.0 if total == 0 else numerator / total
+    # An empty segment with the stale maximum 0 must not underflow real logits.
+    observed = run([-1000, 0, -1001], [1, 0, 1], [2, 0, 4])
+    reference = (2 + 4*np.exp(-1)) / (1 + np.exp(-1))
+    if guarded:
+        assert observed == pytest.approx(reference, rel=1e-6)
+        assert run([0, 0], [0, 0], [0, 0]) == 0.0
+        assert np.isnan(run([0, 0], [0, 0], [0, 0], reducer_on=False))
+        assert run([-1000, 0], [1, 0], [2, 0], epilogue_on=False) == 0.0
+    else:
+        assert observed == 0.0  # Reproduces the missing-epilogue-guard failure.
+    # Nonempty segments produce exactly the same CPU reduction when gated off/on.
+    assert run([2, 1], [1, 1], [2, 4]) == run([2, 1], [1, 1], [2, 4],
+                                                  epilogue_on=False, reducer_on=False)

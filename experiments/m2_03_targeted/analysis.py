@@ -5,14 +5,15 @@ import sys
 from pathlib import Path
 
 from .common import CASE, TARGET, RECONSTRUCTION_TARGET, OBSERVATION_TARGET, LANES, REQUEST_HASH, HISTORICAL, HISTORICAL_EXECUTION, Invalid, decode, fingerprint, load, need, sha
-from .observer import map_rows, score_stats, valid_selected, observation_target, DISPATCH_FIELDS
+from .observer import (map_rows, score_stats, valid_selected, observation_target,
+                       DISPATCH_ARGUMENT_FIELDS, DISPATCH_FIELDS)
 from . import sources
 from .lifecycle import verify_shutdown
 
 STATES = ("REPRODUCED", "NOT_REPRODUCED", "BOUNDARY_NOT_COVERED", "INVALID_CAPTURE")
 
 
-def attention_dispatch_proof(events, current, enabled):
+def attention_dispatch_proof(events, current, enabled, forced=False):
     """Validate actual launches, retaining the full ordered, possibly mixed pattern."""
     matches = [e for e in events if e['kind'] == 'attention_dispatch']
     if not enabled:
@@ -25,20 +26,37 @@ def attention_dispatch_proof(events, current, enabled):
         need(event[name] == current[name], 'R15 dispatch linkage mismatch: ' + name)
     prep = current['preparation']
     dispatch = prep['attention_dispatch']
+    legacy = not forced and 'force_3d' not in dispatch
     need(dispatch['key'] == current['key'] and event['calls'] == dispatch['calls']
-         and event['expected_calls'] == dispatch['expected_calls'], 'R15 preparation linkage mismatch')
+         and event['expected_calls'] == dispatch['expected_calls']
+         and (legacy or dispatch['force_3d'] is forced), 'R15/R16 preparation linkage mismatch')
     calls, expected = event['calls'], event['expected_calls']
     need(type(expected) is int and expected > 0 and type(calls) is list
          and len(calls) == expected, 'R15 incomplete ordered attention calls')
+    if not legacy:
+        need(type(dispatch['controls']) is list and len(dispatch['controls']) == len(calls),
+             'R15/R16 control/launch count mismatch')
     flags = {'softmax_segm_output_present', 'softmax_segm_max_present',
-             'softmax_segm_expsum_present', 'is_batch_invariant', 'use_3d'}
+             'softmax_segm_expsum_present', 'is_batch_invariant', 'use_3d',
+             'natural_use_3d', 'force_3d', 'q3_correctness_guards'}
     nullable = {'seq_threshold_3D', 'num_par_softmax_segments'}
     for ordinal, call in enumerate(calls):
-        need(set(call) == set(DISPATCH_FIELDS) | {'key', 'ordinal'}, 'R15 dispatch fields')
+        legacy_call = legacy and set(call) == set(DISPATCH_ARGUMENT_FIELDS) | {'key', 'ordinal'}
+        old_r15 = not forced and set(call) == (set(DISPATCH_FIELDS) - {'q3_correctness_guards'}) | {'key', 'ordinal'}
+        need(legacy_call or old_r15 or set(call) == set(DISPATCH_FIELDS) | {'key', 'ordinal'},
+             'R15 dispatch fields')
         need(type(call['ordinal']) is int and call['ordinal'] == ordinal
              and call['key'] == current['key'], 'R15 attention call order/key')
+        checked = (dict(call, natural_use_3d=call['use_3d'], force_3d=False, q3_correctness_guards=False)
+                   if legacy_call else call)
+        if old_r15:
+            checked = dict(call, q3_correctness_guards=False)
+        if not legacy_call:
+            need(dispatch['controls'][ordinal] == {
+                'ordinal': ordinal, 'natural_use_3d': checked['natural_use_3d'],
+                'force_3d': checked['force_3d']}, 'R15/R16 control/launch linkage')
         for name in DISPATCH_FIELDS:
-            value = call[name]
+            value = checked[name]
             if name in flags:
                 need(type(value) is bool, 'R15 dispatch boolean: ' + name)
             elif name == 'grid':
@@ -47,27 +65,66 @@ def attention_dispatch_proof(events, current, enabled):
                 need((value is None and name in nullable)
                      or (type(value) is int and value == 0 and name == 'seq_threshold_3D')
                      or (type(value) is int and value > 0), 'R15 dispatch integer: ' + name)
-        use_3d = not (
-            call['seq_threshold_3D'] is None or call['num_par_softmax_segments'] is None
-            or not call['softmax_segm_output_present'] or not call['softmax_segm_max_present']
-            or not call['softmax_segm_expsum_present'] or call['max_seqlen_q'] > 1
-            or call['num_seqs'] > call['seq_threshold_3D'] or call['is_batch_invariant'])
-        need(call['use_3d'] == use_3d, 'R15 contradictory dispatch predicate')
-        segments = call['num_par_softmax_segments'] if use_3d else 1
-        grid = call['grid']
-        need(call['num_seqs'] == 1 and call['max_seqlen_q'] == prep['scheduled_tokens'],
+        natural_use_3d = not (
+            checked['seq_threshold_3D'] is None or checked['num_par_softmax_segments'] is None
+            or not checked['softmax_segm_output_present'] or not checked['softmax_segm_max_present']
+            or not checked['softmax_segm_expsum_present'] or checked['max_seqlen_q'] > 1
+            or checked['num_seqs'] > checked['seq_threshold_3D'] or checked['is_batch_invariant'])
+        need(checked['natural_use_3d'] == natural_use_3d
+             and checked['force_3d'] is forced
+             and checked['q3_correctness_guards'] is forced
+             and checked['use_3d'] == (natural_use_3d or forced),
+             'R15/R16 contradictory dispatch predicate/control')
+        use_3d = checked['use_3d']
+        segments = checked['num_par_softmax_segments'] if use_3d else 1
+        grid = checked['grid']
+        need(checked['num_seqs'] == 1 and checked['max_seqlen_q'] == prep['scheduled_tokens'],
              'R15 query metadata mismatch')
-        need(len(grid) == (3 if use_3d else 2) and call['num_segments'] == segments
+        need(len(grid) == (3 if use_3d else 2) and checked['num_segments'] == segments
              and (not use_3d or grid[2] == segments)
-             and grid[0] == prep['scheduled_tokens'] // call['BLOCK_Q'] + call['num_seqs'],
+             and grid[0] == prep['scheduled_tokens'] // checked['BLOCK_Q'] + checked['num_seqs'],
              'R15 launch grid/segments mismatch')
-        need(call['BLOCK_M'] >= 16 and call['BLOCK_M'] & (call['BLOCK_M'] - 1) == 0
-             and call['BLOCK_Q'] <= call['BLOCK_M']
-             and call['tile_size'] & (call['tile_size'] - 1) == 0
-             and call['block_size'] in {g['kv_cache_block_size'] for g in prep['groups']},
+        need(checked['BLOCK_M'] >= 16 and checked['BLOCK_M'] & (checked['BLOCK_M'] - 1) == 0
+             and checked['BLOCK_Q'] <= checked['BLOCK_M']
+             and checked['tile_size'] & (checked['tile_size'] - 1) == 0
+             and checked['block_size'] in {g['kv_cache_block_size'] for g in prep['groups']},
              'R15 launch block/tile mismatch')
     pattern = ['3D' if call['use_3d'] else '2D' for call in calls]
+    if forced:
+        need(expected == len(calls) == 28 and all(not call['natural_use_3d']
+             and call['force_3d'] and call['use_3d'] and call['q3_correctness_guards'] for call in calls),
+             'R16 did not force all 28 naturally-2D target attention calls')
     return dict(event=event, modes=pattern, mode=pattern[0] if len(set(pattern)) == 1 else 'MIXED')
+
+
+def r16_boundary_state(current, enabled):
+    if not enabled:
+        return
+    expected_query = [[556, 47742], [557, 129831], [558, 128319]]
+    prep = current['preparation']
+    need(current['draft_count'] == 2 and current['decoding_path'] == 'speculative'
+         and current['active_query'] == expected_query
+         and prep['scheduled_tokens'] == 3 and prep['scheduled_draft_count'] == 2
+         and prep['query_start_loc'] == [0, 3] and prep['seq_lens'] == [559]
+         and prep['cpu_num_computed_tokens'] == prep['gpu_num_computed_tokens_after'] == [556]
+         and all(group['slot_mapping'] == [572, 573, 574] for group in prep['groups']),
+         'R16 did not preserve the proven R13 q=3 boundary state')
+
+
+def r16_causal_result(capture):
+    token = capture['selected_token']
+    outcome = ('BOUNDARY_ARGMAX_CHANGED_TO_9765' if token == 9765 else
+               'BOUNDARY_ARGMAX_REMAINS_128281' if token == 128281 else
+               'UNEXPECTED_BOUNDARY_TOKEN')
+    return {'intervention': 'natural_2D_to_forced_3D',
+            'adaptive_q_len': capture['active_query_token_count'],
+            'selected_token': token, 'outcome': outcome,
+            'causal_conclusion': 'PENDING_R15_BASELINE_STATE_COMPARISON',
+            'same_r15_prefix_verified': False,
+            'same_r15_kv_values_verified': False,
+            'q3_correctness_guards_enabled': all(call['q3_correctness_guards']
+                for call in capture['attention_dispatch']['event']['calls']),
+            'all_28_calls_forced_3D': capture['attention_dispatch']['mode'] == '3D'}
 
 
 def validate_transition(previous, current, prompt, ids):
@@ -220,7 +277,10 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
     config = load(directory / 'observer.json')
     r15 = config.get('r15_attention_dispatch', False)
     need(type(r15) is bool and (not r15 or lane == 'adaptive'), 'R15 observer gate drift')
-    dispatch_proof = attention_dispatch_proof(events, current, r15)
+    r16 = config.get('r16_force_attention_3d', False)
+    need(type(r16) is bool and (not r16 or r15 and lane == 'adaptive'), 'R16 observer gate drift')
+    dispatch_proof = attention_dispatch_proof(events, current, r15, r16)
+    r16_boundary_state(current, r16)
     if config.get('r14_single_token_boundary') is not None:
         need(config['r14_single_token_boundary'] == OBSERVATION_TARGET and lane == 'adaptive',
              'R14 observer gate mismatch')
@@ -282,9 +342,15 @@ def provenance(root, lanes=LANES):
     need(preflight["execution_sha"] == execution and preflight["runtime"] == installed["runtime"], "runtime provenance drift")
     r15 = config.get('r15_attention_dispatch', False)
     need(type(r15) is bool, 'R15 run gate drift')
+    r16 = config.get('r16_force_attention_3d', False)
+    need(type(r16) is bool and (not r16 or r15), 'R16 run gate drift')
     base = sources.manifest()['sha256']
     expected = {k: sha(sources.transform(k, v.encode())) for k, v in sources.fixture_sources().items() if k in sources.INSERTIONS}
     profiles = [(base, expected)]
+    if r15 and not r16:
+        historical_r15 = dict(expected)
+        historical_r15[sources.ATTENTION_SOURCE] = sources.R15_ATTENTION_PATCHED_SHA256
+        profiles.append((base, historical_r15))
     if not r15:
         # Only the exact pre-R15 profile is accepted, never an arbitrary subset.
         profiles.append(({k: v for k, v in base.items() if k != sources.ATTENTION_SOURCE},
@@ -295,6 +361,7 @@ def provenance(root, lanes=LANES):
     control = policy.get("diagnostic_control", {})
     r14 = config.get('r14_single_token_boundary')
     need(r14 is None or type(r14) is int and r14 == OBSERVATION_TARGET, 'R14 run gate drift')
+    need(not (r14 is not None and r16), 'R14/R16 control conflict')
     if 'observation_target' in config:
         need(control == {'vanilla_cudagraph_mode': 'PIECEWISE', 'adaptive_cudagraph_mode': 'NONE',
                          'vanilla_kv_recompute_output_count': RECONSTRUCTION_TARGET,
@@ -331,6 +398,8 @@ def provenance(root, lanes=LANES):
         observer = load(root / lane / "observer.json")
         need(observer.get('r15_attention_dispatch', False) is (r15 and lane == 'adaptive'),
              'R15 run/observer gate drift')
+        need(observer.get('r16_force_attention_3d', False) is (r16 and lane == 'adaptive'),
+             'R16 run/observer gate drift')
         expected_r14 = r14 if lane == 'adaptive' else None
         need(observer.get('r14_single_token_boundary') == expected_r14
              and env.get('M203_R14_SINGLE_TOKEN_BOUNDARY') == (None if expected_r14 is None else str(expected_r14)),
@@ -666,7 +735,9 @@ def compare(root):
                       finish_reasons_equal=v["finish_reason"] == a["finish_reason"])
         captures = ({k: capture(root / k, k, execution, r['request_id'], r['prompt'], r['ids'])
                      for k, r in rows.items()} if target == OBSERVATION_TARGET else None)
-        if min(len(v["ids"]), len(a["ids"])) <= target or (d is not None and d != target):
+        r16 = config.get('r16_force_attention_3d', False)
+        outside = d is not None and d != target and not (r16 and d > target)
+        if min(len(v["ids"]), len(a["ids"])) <= target or outside:
             report.update(state="BOUNDARY_NOT_COVERED", reason="new divergence/termination outside target boundary")
             return report
         if captures is None:
@@ -694,6 +765,8 @@ def compare(root):
                       historical_token_pair_reproduced=(v["ids"][TARGET], a["ids"][TARGET]) == (51, 79759))
         report["processed_argmax_equal"] = captures["vanilla"]["scores"]["processed"]["top1_id"] == captures["adaptive"]["scores"]["processed"]["top1_id"]
         report["selected_equals_processed_argmax"] = {k: x["selected_token"] == x["scores"]["processed"]["top1_id"] for k, x in captures.items()}
+        if config.get('r16_force_attention_3d', False):
+            report['attention_dispatch_causal_test'] = r16_causal_result(captures['adaptive'])
         differences = {}
         for kind in ("raw", "processed"):
             values = [vector(root / lane / "capture", captures[lane]["scores"][kind]) for lane in LANES]
