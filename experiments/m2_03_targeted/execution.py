@@ -116,7 +116,8 @@ def free_port(port):
 
 
 def init_run(root, execution, policy_path, *, r14_single_token_boundary=False,
-             r15_attention_dispatch=False, r16_force_attention_3d=False):
+             r15_attention_dispatch=False, r16_force_attention_3d=False,
+             production_attention_observation=False):
     verify_execution(execution)
     root = isolated(root)
     policy_raw = blob(policy_path, execution)
@@ -130,6 +131,11 @@ def init_run(root, execution, policy_path, *, r14_single_token_boundary=False,
     frozen_request()
     need(not (r14_single_token_boundary and r16_force_attention_3d),
          'R14 q=1 control and R16 q=3 control are mutually exclusive')
+    production = ({'production_attention_observation': True,
+                   'production_patch_sha': sources.PRODUCTION_COMMIT}
+                  if production_attention_observation else {})
+    sources.profile_options(dict(production, r14_single_token_boundary=r14_single_token_boundary,
+        r15_attention_dispatch=r15_attention_dispatch, r16_force_attention_3d=r16_force_attention_3d))
     r15_attention_dispatch = r15_attention_dispatch or r16_force_attention_3d
     root.mkdir(parents=True, exist_ok=False)
     r14 = {'r14_single_token_boundary': OBSERVATION_TARGET} if r14_single_token_boundary else {}
@@ -142,7 +148,7 @@ def init_run(root, execution, policy_path, *, r14_single_token_boundary=False,
                             "policy_path": policy_path, "policy_sha256": sha(policy_raw),
                             "request_sha256": REQUEST_HASH, "target": OBSERVATION_TARGET,
                             "reconstruction_target": RECONSTRUCTION_TARGET,
-                            "observation_target": OBSERVATION_TARGET, **r14, **r15, **r16})
+                            "observation_target": OBSERVATION_TARGET, **r14, **r15, **r16, **production})
     for lane in LANES:
         directory = root / lane
         (directory / "capture").mkdir(parents=True)
@@ -153,6 +159,7 @@ def init_run(root, execution, policy_path, *, r14_single_token_boundary=False,
                                             **(r14 if lane == 'adaptive' else {}),
                                             **(r15 if lane == 'adaptive' else {}),
                                             **(r16 if lane == 'adaptive' else {}),
+                                            **(production if lane == 'adaptive' else {}),
                                             "diagnostic_control": policy.get("diagnostic_control", {})})
     return root
 
@@ -174,7 +181,7 @@ def preflight(root):
     for port in PORTS.values():
         free_port(port)
     models = model_inventory(config["policy"])
-    hashes = sources.verify_installed(actual["vllm_root"])
+    hashes = sources.verify_installed(actual["vllm_root"], **sources.profile_options(config))
     launch = {lane: launch_args(root, lane)[0] for lane in LANES}
     save(root / "preflight.json", {"runtime": actual, "models": models,
                                   "source_base_sha256": hashes,
@@ -190,7 +197,11 @@ def install(root):
     actual = runtime()
     need(actual == approved["runtime"], "runtime drift before install")
     target = Path(actual["vllm_root"])
-    sources.verify_installed(target)
+    profile = sources.profile_options(config)
+    sources.verify_installed(target, **profile)
+    if profile:
+        need(approved.get('source_base_sha256') == sources.base_hashes(**profile),
+             'production source profile differs from preflight')
     # A durable one-shot installation intent prevents partially installed resume.
     write_new(root / "install.intent", encoded({"state": "UNKNOWN_UNTIL_INSTALL_COMPLETE"}))
     changed = {}
@@ -207,19 +218,29 @@ def install(root):
             os.fsync(f.fileno())
         os.replace(tmp, path)
         changed[name] = sha(patched)
-    sources.verify_installed(target, patched=True)
+    sources.verify_installed(target, patched=True, **profile)
     save(root / "installed.json", {"patched_sha256": changed, "runtime": actual})
+
+
+def restore_source_options(root):
+    # Legacy recovery also works without run.json. It still accepts only the
+    # pristine/diagnostic pair, so missing metadata can never downgrade production.
+    config = root / 'run.json'
+    return sources.profile_options(load(config)) if config.exists() else {}
 
 
 def restore_plan(root):
     base = str(Path(load(root / 'preflight.json')['runtime']['vllm_root']).resolve())
-    return {'vllm_root': base, 'pristine_sha256': sources.manifest()['sha256'],
+    profile = restore_source_options(root)
+    hashes = sources.base_hashes(**profile) if profile else sources.manifest()['sha256']
+    return {'vllm_root': base, 'pristine_sha256': hashes,
             'multi_file_atomic': False, 'inference_restart_authorized': False}
 
 
 def restoration_status(root):
     plan = restore_plan(root)
-    profile = sources.installed_state(plan['vllm_root'])
+    profile = sources.installed_state(plan['vllm_root'],
+                                      **restore_source_options(root))
     intent = root / 'restore_intent.json'
     completed = root / 'restore_complete.json'
     state = 'NOT_STARTED'
@@ -245,9 +266,9 @@ def restore(root):
         free_port(port)
     plan = restore_plan(root)
     base = plan['vllm_root']
+    profile = restore_source_options(root)
     replacements = []
-    for name, text in sources.fixture_sources().items():
-        raw = text.encode()
+    for name, raw in sources.base_sources(**profile).items():
         patched = sources.transform(name, raw)
         path = Path(base) / name
         current = path.read_bytes()
@@ -267,7 +288,7 @@ def restore(root):
         need(restoration_status(root)['state'] == 'RESTORED', 'source drift after completed restore')
         return
     attempt = root / 'restore_attempts' / uuid.uuid4().hex
-    save(attempt / 'before.json', {'source_state': sources.installed_state(base), 'multi_file_atomic': False})
+    save(attempt / 'before.json', {'source_state': sources.installed_state(base, **profile), 'multi_file_atomic': False})
     try:
         for i, (name, path, raw, before) in enumerate(replacements):
             need(path.read_bytes() == before, 'source changed during restore; refusing overwrite')
@@ -276,7 +297,7 @@ def restore(root):
             write_new(tmp, raw)
             os.replace(tmp, path)  # Atomic per-file only; the sequence is NOT atomic.
             save(attempt / f'{i:02d}-applied.json', {'file': name, 'sha256': sha(raw)})
-        hashes = sources.verify_installed(base)
+        hashes = sources.verify_installed(base, **profile)
         event(root, 'observer_restored', files_restored=len(replacements), inference_restart_authorized=False)
         save(root / 'restore_complete.json', {'plan_sha256': sha(encoded(plan)), 'sha256': hashes})
     except BaseException as exc:
@@ -290,7 +311,8 @@ def restore(root):
 def inference_sources(root):
     need(not (root / 'restore_intent.json').exists(), 'restore started/incomplete/completed; no inference may resume this run')
     installed = load(root / 'installed.json')
-    sources.verify_installed(installed['runtime']['vllm_root'], patched=True)
+    sources.verify_installed(installed['runtime']['vllm_root'], patched=True,
+                             **sources.profile_options(load(root / 'run.json')))
     return installed
 
 
@@ -543,6 +565,8 @@ def main(argv=None):
                    help='diagnostic only: record boundary attention launch metadata')
     p.add_argument('--r16-force-attention-3d', action='store_true',
                    help='diagnostic only: force 3D attention for the Adaptive q=3 index-368 forward')
+    p.add_argument('--production-attention-observation', action='store_true',
+                   help='observe exact production-patched attention; no diagnostic attention control')
     for stage in ("preflight", "install-observer", "restore-observer", "restoration-status", "serve", "request", "stop", "abort", "validate-lane", "checkpoint"):
         p = sub.add_parser(stage)
         p.add_argument("--run", type=Path, required=True)
@@ -571,7 +595,8 @@ def main(argv=None):
             result = {"run": str(init_run(args.run, args.execution_sha, args.policy,
                                         r14_single_token_boundary=args.r14_single_token_boundary,
                                         r15_attention_dispatch=args.r15_attention_dispatch,
-                                        r16_force_attention_3d=args.r16_force_attention_3d))}
+                                        r16_force_attention_3d=args.r16_force_attention_3d,
+                                        production_attention_observation=args.production_attention_observation))}
         elif args.stage in ("verify-checkpoint", "export", "compare"):
             checked = verify_checkpoint(args.snapshot)
             if args.stage == "export":

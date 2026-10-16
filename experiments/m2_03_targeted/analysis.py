@@ -6,11 +6,62 @@ from pathlib import Path
 
 from .common import CASE, TARGET, RECONSTRUCTION_TARGET, OBSERVATION_TARGET, LANES, REQUEST_HASH, HISTORICAL, HISTORICAL_EXECUTION, Invalid, decode, fingerprint, load, need, sha
 from .observer import (map_rows, score_stats, valid_selected, observation_target,
-                       DISPATCH_ARGUMENT_FIELDS, DISPATCH_FIELDS)
+                       DISPATCH_ARGUMENT_FIELDS, DISPATCH_FIELDS, PRODUCTION_DISPATCH_FIELDS)
 from . import sources
 from .lifecycle import verify_shutdown
 
 STATES = ("REPRODUCED", "NOT_REPRODUCED", "BOUNDARY_NOT_COVERED", "INVALID_CAPTURE")
+
+
+def production_attention_proof(events, current, enabled):
+    matches = [ev for ev in events if ev['kind'] == 'production_attention_dispatch']
+    if not enabled:
+        need(not matches and 'production_attention_dispatch' not in current['preparation'],
+             'unexpected production attention observation')
+        return None
+    need(len(matches) == 1, 'production dispatch event missing/duplicate')
+    event = matches[0]
+    for name in ('execution_sha', 'lane', 'request_id', 'key', 'scheduler_step', 'forward_sequence'):
+        need(event[name] == current[name], 'production dispatch linkage: ' + name)
+    prep = current['preparation']
+    dispatch = prep['production_attention_dispatch']
+    need(event['generated_index'] == OBSERVATION_TARGET and current['lane'] == 'adaptive'
+         and current['draft_count'] == 2 and current['decoding_path'] == 'speculative'
+         and len(current['active_query']) == prep['scheduled_tokens'] == 3
+         and prep['scheduled_draft_count'] == 2 and prep['query_start_loc'] == [0, 3],
+         'production q=3 verification boundary not established')
+    need(set(dispatch) == {'key', 'expected_calls', 'force_3d', 'calls'}
+         and dispatch['key'] == current['key'] and dispatch['force_3d'] is False
+         and type(event['expected_calls']) is int
+         and event['expected_calls'] == dispatch['expected_calls'] == 28
+         and event['calls'] == dispatch['calls'] and len(event['calls']) == 28,
+         'production attention completeness/intervention mismatch')
+    flags = {'softmax_segm_output_present', 'softmax_segm_max_present', 'softmax_segm_expsum_present',
+             'is_batch_invariant', 'use_3d', 'short_query_3d', 'guards_active', 'force_3d'}
+    for ordinal, call in enumerate(event['calls']):
+        need(set(call) == set(PRODUCTION_DISPATCH_FIELDS) | {'key', 'ordinal'}, 'production dispatch fields')
+        for name in PRODUCTION_DISPATCH_FIELDS:
+            value = call[name]
+            need((name in flags and type(value) is bool)
+                 or (name == 'grid' and type(value) is list
+                     and all(type(x) is int and x > 0 for x in value))
+                 or (name not in flags | {'grid'} and type(value) is int and value > 0),
+                 'production dispatch metadata: ' + name)
+        need(type(call['ordinal']) is int and call['ordinal'] == ordinal and call['key'] == current['key']
+             and call['max_seqlen_q'] == 3 and call['num_seqs'] == 1
+             and call['short_query_3d'] is call['use_3d'] is call['guards_active'] is True
+             and call['force_3d'] is call['is_batch_invariant'] is False
+             and all(call[k] for k in ('softmax_segm_output_present', 'softmax_segm_max_present',
+                                      'softmax_segm_expsum_present')),
+             'production routing/guards/intervention mismatch')
+        segments = call['num_par_softmax_segments']
+        need(segments & (segments - 1) == 0 and call['num_segments'] == segments
+             and len(call['grid']) == 3 and call['grid'][2] == segments
+             and call['grid'][0] == 3 // call['BLOCK_Q'] + 1
+             and call['block_size'] in {g['kv_cache_block_size'] for g in prep['groups']},
+             'production grid/segment mismatch')
+    return {'event': event, 'mode': '3D', 'force_3d': False, 'guards_active': True,
+            'production_patch_sha': sources.PRODUCTION_COMMIT}
 
 
 def attention_dispatch_proof(events, current, enabled, forced=False):
@@ -275,11 +326,13 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
         accounting[record['key']] = dict(before=b, after=a, emitted_span=[start, a['output_count']])
     validate_transition(previous, current, prompt, ids)
     config = load(directory / 'observer.json')
+    production = sources.profile_options(config)
     r15 = config.get('r15_attention_dispatch', False)
     need(type(r15) is bool and (not r15 or lane == 'adaptive'), 'R15 observer gate drift')
     r16 = config.get('r16_force_attention_3d', False)
     need(type(r16) is bool and (not r16 or r15 and lane == 'adaptive'), 'R16 observer gate drift')
     dispatch_proof = attention_dispatch_proof(events, current, r15, r16)
+    production_proof = production_attention_proof(events, current, bool(production))
     r16_boundary_state(current, r16)
     if config.get('r14_single_token_boundary') is not None:
         need(config['r14_single_token_boundary'] == OBSERVATION_TARGET and lane == 'adaptive',
@@ -322,7 +375,8 @@ def capture_transition(directory, lane, execution, request_id, prompt, ids):
                 active_query_token_count=len(current['active_query']), accounting=accounting,
                 preparation={r['key']: r['preparation'] for r in records},
                 kv_recompute_ready=ready, kv_recompute_refill_skipped=refill,
-                attention_dispatch=dispatch_proof)
+                attention_dispatch=dispatch_proof,
+                **({'production_attention_dispatch': production_proof} if production else {}))
 
 
 def provenance(root, lanes=LANES):
@@ -344,14 +398,16 @@ def provenance(root, lanes=LANES):
     need(type(r15) is bool, 'R15 run gate drift')
     r16 = config.get('r16_force_attention_3d', False)
     need(type(r16) is bool and (not r16 or r15), 'R16 run gate drift')
-    base = sources.manifest()['sha256']
-    expected = {k: sha(sources.transform(k, v.encode())) for k, v in sources.fixture_sources().items() if k in sources.INSERTIONS}
+    production = sources.profile_options(config)
+    base = sources.base_hashes(**production) if production else sources.manifest()['sha256']
+    expected = {k: sha(sources.transform(k, v)) for k, v in sources.base_sources(**production).items()
+                if k in sources.INSERTIONS}
     profiles = [(base, expected)]
     if r15 and not r16:
         historical_r15 = dict(expected)
         historical_r15[sources.ATTENTION_SOURCE] = sources.R15_ATTENTION_PATCHED_SHA256
         profiles.append((base, historical_r15))
-    if not r15:
+    if not r15 and not production:
         # Only the exact pre-R15 profile is accepted, never an arbitrary subset.
         profiles.append(({k: v for k, v in base.items() if k != sources.ATTENTION_SOURCE},
                          {k: v for k, v in expected.items() if k != sources.ATTENTION_SOURCE}))
@@ -396,6 +452,8 @@ def provenance(root, lanes=LANES):
             }, "cudagraph control value drift")
         need(all(env[k] == v for k, v in policy["adaptive_env"].items()), "adaptive environment drift")
         observer = load(root / lane / "observer.json")
+        need(sources.profile_options(observer) == (production if lane == 'adaptive' else {}),
+             'production run/observer profile mismatch')
         need(observer.get('r15_attention_dispatch', False) is (r15 and lane == 'adaptive'),
              'R15 run/observer gate drift')
         need(observer.get('r16_force_attention_3d', False) is (r16 and lane == 'adaptive'),

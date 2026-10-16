@@ -31,6 +31,7 @@ DISPATCH_ARGUMENT_FIELDS = (
     'is_batch_invariant', 'use_3d', 'grid', 'tile_size', 'BLOCK_M', 'BLOCK_Q',
     'block_size', 'num_segments')
 DISPATCH_FIELDS = DISPATCH_ARGUMENT_FIELDS + ('natural_use_3d', 'force_3d', 'q3_correctness_guards')
+PRODUCTION_DISPATCH_FIELDS = DISPATCH_ARGUMENT_FIELDS + ('short_query_3d', 'guards_active', 'force_3d')
 
 
 def force_attention_3d(max_seqlen_q, num_seqs, natural_use_3d):
@@ -76,6 +77,26 @@ def attention_dispatch(*values):
     calls.append(dict(record, ordinal=len(calls), key=capture['key']))
 
 
+def production_attention_dispatch(*values):
+    """Observe already-decided production routing; never call diagnostic control."""
+    capture = getattr(_local, 'production_attention_capture', None)
+    if capture is None:
+        return
+    need(capture['force_3d'] is False, 'production attention intervention forbidden')
+    need(len(values) == len(DISPATCH_ARGUMENT_FIELDS) + 2, 'production dispatch field count')
+    record = dict(zip(PRODUCTION_DISPATCH_FIELDS, (*values, False)))
+    for name, value in record.items():
+        if name == 'grid':
+            need(type(value) is tuple and all(type(x) is int for x in value), 'production grid metadata')
+            record[name] = list(value)
+        else:
+            need(type(value) in (int, bool) or value is None, 'production dispatch non-scalar')
+    need(type(record['short_query_3d']) is bool and type(record['guards_active']) is bool,
+         'production guard metadata not boolean')
+    calls = capture['calls']
+    calls.append(dict(record, ordinal=len(calls), key=capture['key']))
+
+
 def ints(tensor):
     return tensor.detach().cpu().tolist()
 
@@ -109,6 +130,7 @@ def correction_before(config, runner, scheduled):
     """Clone device counts before correction, without host synchronization."""
     _local.preparation = None
     _local.attention_capture = None
+    _local.production_attention_capture = None
     ids = list(runner.input_batch.req_ids[:int(runner.input_batch.num_reqs)])
     if not ids or all(x.startswith(("_warmup_", "_v2_mixed_warmup")) for x in ids):
         return
@@ -175,6 +197,15 @@ def prepared(config, runner, scheduled, input_ids, positions, slot_mappings):
                            blocks_per_kv_block=table.blocks_per_kv_block,
                            dcp_world_size=table.dcp_world_size, pcp_world_size=table.pcp_world_size))
     prep['groups'] = groups
+    if config.get('production_attention_observation') is True:
+        from .sources import profile_options
+        profile_options(config)
+        need(config['lane'] == 'adaptive', 'production dispatch requires Adaptive target')
+        expected = runner.model_config.hf_config.num_hidden_layers
+        need(type(expected) is int and expected > 0, 'missing production attention layer count')
+        prep['production_attention_dispatch'] = dict(
+            key=prep['key'], expected_calls=expected, force_3d=False, calls=[])
+        _local.production_attention_capture = prep['production_attention_dispatch']
     if config.get('r15_attention_dispatch') is True:
         need(config['lane'] == 'adaptive', 'R15 requires Adaptive target')
         expected = runner.model_config.hf_config.num_hidden_layers
@@ -210,6 +241,17 @@ def finish_transition(config, record):
     if boundary:
         need(not _local.transition_published, "duplicate emitted boundary forward")
         need(previous is not None, "missing immediately preceding forward")
+        if config.get('production_attention_observation') is True:
+            dispatch = record['preparation']['production_attention_dispatch']
+            need(dispatch['force_3d'] is False
+                 and len(dispatch['calls']) == dispatch['expected_calls'] > 0,
+                 'incomplete production attention observation')
+            event(config['directory'], 'production_attention_dispatch',
+                  execution_sha=config['execution_sha'], lane=config['lane'],
+                  request_id=record['request_id'], key=record['key'],
+                  scheduler_step=record['scheduler_step'], forward_sequence=record['forward_sequence'],
+                  generated_index=OBSERVATION_TARGET,
+                  **{name: dispatch[name] for name in ('expected_calls', 'calls')})
         if config.get('r15_attention_dispatch') is True:
             dispatch = record['preparation']['attention_dispatch']
             need(len(dispatch['calls']) == dispatch['expected_calls'] > 0,
@@ -230,6 +272,7 @@ def finish_transition(config, record):
     record['scores'] = {}
     if not boundary:
         record['preparation'].pop('attention_dispatch', None)
+        record['preparation'].pop('production_attention_dispatch', None)
     _local.pending_vectors = {}
     _local.transition_previous = record
 
@@ -406,6 +449,7 @@ def skip_controlled_kv_refill(config, request_id, scheduled, query, rows, draft_
 
 def begin(config, runner, scheduled, logits, spec, grammar):
     _local.attention_capture = None  # Target forward ended; exclude sampling/drafter calls.
+    _local.production_attention_capture = None
     _local.ctx = None
     _local.pending_vectors = {}
     batch = runner.input_batch
@@ -665,12 +709,17 @@ def control(stage, *args):
 
 
 def observe(stage, *args):
+    if stage == 'production_attention_dispatch' and getattr(_local, 'production_attention_capture', None) is None:
+        return
     if stage == 'attention_dispatch' and getattr(_local, 'attention_capture', None) is None:
         return
     config_path = os.environ.get("M203_TARGETED_CONFIG")
     if not config_path:
         return
     try:
+        if stage == 'production_attention_dispatch':
+            production_attention_dispatch(*args)
+            return
         if stage == 'attention_dispatch':
             attention_dispatch(*args)
             return
@@ -689,6 +738,7 @@ def observe(stage, *args):
     except Exception as exc:
         _local.ctx = None
         _local.attention_capture = None
+        _local.production_attention_capture = None
         _local.preparation = None
         try:
             config = load(config_path)

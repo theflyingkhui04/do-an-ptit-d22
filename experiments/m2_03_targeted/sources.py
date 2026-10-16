@@ -2,6 +2,8 @@
 
 Observer calls and R16-only constexpr correctness guards are added. Stripping
 those additions must recover the exact original AST. Source hashes match first.
+The separately pinned production profile adds only one observation call and
+restores to its production baseline; it never installs diagnostic guards/control.
 """
 import ast
 import gzip
@@ -12,6 +14,17 @@ MANIFEST = ROOT / "experiments/m2_03_targeted/upstream.json"
 FIXTURE = ROOT / "tests/fixtures/m203_v030_sources.json.gz"
 ATTENTION_SOURCE = "v1/attention/ops/triton_unified_attention.py"
 R15_ATTENTION_PATCHED_SHA256 = "2295fef50bb0c3400c384dc157032a36d6699402a850085f3e7419dd9c24fdb7"
+PRODUCTION_COMMIT = "031bc43a9aee3d3c0c241ebd72cafef7a3ee5c38"
+PRODUCTION_MODULE_SHA256 = "5969446e49218fa5067c11e17dbfbb7b6c22713670b5f4b64388dac9cc945971"
+PRODUCTION_ATTENTION_SHA256 = "1dbfc2c1efb4012cc9bb801a89c2dbe355e4539a1c54599edc6e8a9a7db73087"
+PRODUCTION_IMPORT = "from experiments.m2_03_targeted.observer import observe as _m203_observe\n"
+PRODUCTION_OBSERVATION = (
+    '    _m203_observe("production_attention_dispatch", max_seqlen_q, seq_threshold_3D,\n'
+    '                  num_par_softmax_segments, num_seqs,\n'
+    '                  softmax_segm_output is not None, softmax_segm_max is not None,\n'
+    '                  softmax_segm_expsum is not None, is_batch_invariant, use_3d,\n'
+    '                  grid, tile_size, BLOCK_M, BLOCK_Q, block_size, num_segments,\n'
+    '                  short_query_3d, short_query_3d)\n')
 IMPORT = ("from experiments.m2_03_targeted.observer import observe as _m203_observe, "
           "control as _m203_control\n")
 
@@ -95,6 +108,53 @@ def fixture_sources():
     return decode(gzip.decompress(FIXTURE.read_bytes()))
 
 
+def production_attention_source():
+    from src.server import triton_spec_decode_patch as production
+    need(sha(Path(production.__file__).read_bytes()) == PRODUCTION_MODULE_SHA256,
+         'production patch module differs from ' + PRODUCTION_COMMIT)
+    raw = fixture_sources()[ATTENTION_SOURCE].encode()
+    result = production.transform(raw)
+    need(sha(result) == PRODUCTION_ATTENTION_SHA256, 'production attention source drift')
+    return result
+
+
+def profile_options(config):
+    enabled = config.get('production_attention_observation', False)
+    need(type(enabled) is bool, 'invalid production observation profile')
+    if enabled:
+        need(config.get('production_patch_sha') == PRODUCTION_COMMIT,
+             'unreviewed production patch revision')
+        need(not any(config.get(k) for k in (
+            'r14_single_token_boundary', 'r15_attention_dispatch', 'r16_force_attention_3d')),
+            'production observation cannot use diagnostic attention controls')
+    else:
+        need('production_patch_sha' not in config, 'production revision without profile')
+    return {'production': True} if enabled else {}
+
+
+def base_sources(production=False):
+    result = {name: text.encode() for name, text in fixture_sources().items()}
+    if production:
+        result[ATTENTION_SOURCE] = production_attention_source()
+    return result
+
+
+def base_hashes(production=False):
+    return {name: sha(raw) for name, raw in base_sources(production).items()}
+
+
+def observe_production(raw):
+    need(raw == production_attention_source(), 'exact production attention source required')
+    anchor = '    kernel_unified_attention[grid](\n'
+    text = raw.decode()
+    need(text.count(anchor) == 1, 'production launch anchor drift')
+    patched = (PRODUCTION_IMPORT + text.replace(anchor, PRODUCTION_OBSERVATION + anchor, 1)).encode()
+    compile(patched, ATTENTION_SOURCE, 'exec')
+    stripped = StripObserver().visit(ast.parse(patched))
+    need(ast.dump(stripped) == ast.dump(ast.parse(raw)), 'production observer changed inference AST')
+    return patched
+
+
 class StripObserver(ast.NodeTransformer):
     def visit_ImportFrom(self, node):
         return None if node.module == "experiments.m2_03_targeted.observer" else node
@@ -139,6 +199,8 @@ class StripObserver(ast.NodeTransformer):
 
 
 def transform(name, raw):
+    if name == ATTENTION_SOURCE and sha(raw) == PRODUCTION_ATTENTION_SHA256:
+        return observe_production(raw)
     need(sha(raw) == manifest()["sha256"][name], "unpatched vLLM source hash drift: " + name)
     if name not in INSERTIONS:
         return raw
@@ -162,23 +224,23 @@ def transform(name, raw):
     return patched
 
 
-def verify_installed(root, patched=False):
+def verify_installed(root, patched=False, production=False):
     hashes = {}
+    references = base_sources(production)
     for name, expected in manifest()["sha256"].items():
         raw = (Path(root) / name).read_bytes()
-        reference = fixture_sources()[name].encode("utf-8")
-        need(sha(reference) == expected, "vendored source fixture drift")
+        need(sha(fixture_sources()[name].encode()) == expected, "vendored source fixture drift")
+        reference = references[name]
         wanted = transform(name, reference) if patched else reference
         need(raw == wanted, "installed source mismatch: " + name)
         hashes[name] = sha(raw)
     return hashes
 
 
-def installed_state(root):
+def installed_state(root, production=False):
     """Read-only classification; a mixed/unknown tree is never inference-ready."""
     files, states = {}, set()
-    for name, text in fixture_sources().items():
-        raw = text.encode('utf-8')
+    for name, raw in base_sources(production).items():
         patched = transform(name, raw)
         try:
             actual = (Path(root) / name).read_bytes()
