@@ -203,6 +203,60 @@ class ResponseContractTests(unittest.TestCase):
             v.ensure_same_provenance(old, {**runtime, "git_sha": "y"}, "abc")
 
 
+class RuntimeGpuProvenanceTests(unittest.TestCase):
+    def collect(self, *, selected_name="Tesla T4", cvd="0", visible_count=1):
+        inventory = f"0, {selected_name}, GPU-zero\n1, Tesla T4, GPU-one"
+        outputs = {
+            ("nvidia-smi", "-i", "0", "--query-gpu=name", "--format=csv,noheader"): selected_name,
+            ("nvidia-smi", "-i", "0", "--query-gpu=driver_version", "--format=csv,noheader"): "selected-driver",
+            ("nvidia-smi", "-i", "0", "--query-gpu=uuid", "--format=csv,noheader"): "GPU-zero",
+            ("nvidia-smi", "--query-gpu=index,name,uuid", "--format=csv,noheader"): inventory,
+        }
+        env = {} if cvd is None else {"CUDA_VISIBLE_DEVICES": cvd}
+        with (
+            patch.object(v, "get_git_sha", return_value="git-sha"),
+            patch.object(v, "installed_version", side_effect=lambda name:
+                         v.EXPECTED_VLLM if name == "vllm" else v.EXPECTED_TORCH),
+            patch.object(v.torch, "__version__", v.EXPECTED_TORCH),
+            patch.object(v.torch.version, "cuda", "13.0"),
+            patch.object(v.torch.cuda, "device_count", return_value=visible_count) as count,
+            patch.object(v, "tool_output", side_effect=lambda argv: outputs[tuple(argv)]) as commands,
+            patch.dict(v.os.environ, env, clear=True),
+        ):
+            info = v.collect_runtime()
+            count.assert_called_once_with()
+            self.assertEqual([tuple(call.args[0]) for call in commands.call_args_list], list(outputs))
+            return info
+
+    def test_dual_physical_t4_with_one_cuda_visible_t4_is_accepted(self):
+        info = self.collect()
+        self.assertEqual(info["gpu_name"], "Tesla T4")
+        self.assertEqual(info["driver_version"], "selected-driver")
+        self.assertEqual(info["selected_gpu_uuid"], "GPU-zero")
+        self.assertEqual(info["physical_gpu_inventory"],
+                         "0, Tesla T4, GPU-zero\n1, Tesla T4, GPU-one")
+        self.assertEqual(info["cuda_visible_devices"], "0")
+        self.assertEqual(info["cuda_device_count"], 1)
+
+    def test_wrong_selected_gpu_is_rejected(self):
+        with self.assertRaisesRegex(v.VerificationError, "Expected Tesla T4"):
+            self.collect(selected_name="NVIDIA L4")
+
+    def test_missing_or_wrong_cuda_visible_devices_is_rejected(self):
+        for cvd in (None, "", "1", "0,1"):
+            with self.subTest(cvd=cvd), self.assertRaisesRegex(
+                v.VerificationError, "Expected CUDA_VISIBLE_DEVICES=0"
+            ):
+                self.collect(cvd=cvd)
+
+    def test_cuda_visible_count_must_be_exactly_one(self):
+        for count in (0, 2):
+            with self.subTest(count=count), self.assertRaisesRegex(
+                v.VerificationError, "Expected exactly one CUDA-visible GPU"
+            ):
+                self.collect(visible_count=count)
+
+
 class EndToEndContractTests(unittest.TestCase):
     """Mock the HTTP/GPU boundary; exercise both stages and real on-disk JSONL."""
 
