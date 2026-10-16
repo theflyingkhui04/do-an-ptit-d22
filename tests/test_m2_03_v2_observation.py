@@ -108,6 +108,21 @@ def attention_calls(fn, query, max_query=None, requests=1):
     for _ in range(28): fn(**args)
 
 
+def prepared_hook(runner, scheduled, batch, descriptor, tables, slots, metadata, dummy_run):
+    # Execute the actual inserted call so a lost/inverted lifecycle argument is
+    # caught, rather than testing only the handler in isolation.
+    tree = ast.parse(vs.transform(vs.RUNNER, vs.references()[vs.RUNNER]))
+    hooks = [node for node in ast.walk(tree) if isinstance(node, ast.Expr)
+             and isinstance(node.value, ast.Call)
+             and isinstance(node.value.func, ast.Name) and node.value.func.id == '_m203_v2'
+             and node.value.args[0].value == 'prepared']
+    assert len(hooks) == 1
+    exec(compile(ast.Module(body=hooks, type_ignores=[]), '<v2-prepared-hook>', 'exec'),
+         dict(_m203_v2=v.observe, self=runner, scheduler_output=scheduled,
+              input_batch=batch, batch_desc=descriptor, block_tables=tables,
+              slot_mappings=slots, attn_metadata=metadata, dummy_run=dummy_run))
+
+
 def run_capture(root, monkeypatch, q=3, mode='FULL', padded=None, max_q=None, requests=1, offset=0):
     config_path = root / 'observer.json'
     config = c.load(config_path) if config_path.exists() else config_at(root)
@@ -119,6 +134,10 @@ def run_capture(root, monkeypatch, q=3, mode='FULL', padded=None, max_q=None, re
     fn, _, _ = production.observed_wrapper()
     manager, graph = runner.cudagraph_manager, Graph()
     if mode == 'FULL':
+        # Startup profiling may have no attention or real request state.
+        prepared_hook(runner, None, NS(num_reqs=0, req_ids=[]), descriptor,
+                      None, None, None, True)
+        v.observe('forward_done', runner, None, True)
         captured_metadata = {name: NS(**dict(vars(m), num_actual_tokens=descriptor.num_tokens))
                              for name, m in metadata.items()}
         v.observe('graph_inputs', manager, descriptor,
@@ -127,7 +146,15 @@ def run_capture(root, monkeypatch, q=3, mode='FULL', padded=None, max_q=None, re
         attention_calls(fn, descriptor.num_tokens, descriptor.max_query_len, requests)
         manager.graphs[descriptor] = graph
         v.observe('graph_end', manager, descriptor, graph)
-    v.observe('prepared', runner, scheduled, batch, descriptor, tables, slots, metadata, False)
+        binding = manager._m203_v2_inputs[descriptor]
+        observation = manager._m203_v2_observations[descriptor]
+        prepared_hook(runner, None, NS(num_reqs=requests, req_ids=[]), descriptor,
+                      tables, slots, captured_metadata, True)
+        v.observe('forward_done', runner, None, True)
+        assert manager._m203_v2_inputs[descriptor] is binding
+        assert manager._m203_v2_observations[descriptor] is observation
+        assert v._state.forward is None and v._state.frames == {}
+    prepared_hook(runner, scheduled, batch, descriptor, tables, slots, metadata, False)
     if mode == 'FULL': v.observe('graph_replay', manager, descriptor, graph)
     else: attention_calls(fn, batch.num_tokens, descriptor.max_query_len, requests)
     v.observe('forward_done', runner, batch, False)
@@ -175,6 +202,104 @@ def test_graph_hooks_bracket_actual_capture_and_bind_exact_replay():
         s.ATTENTION_SOURCE, s.production_attention_source())
 
 
+@pytest.mark.parametrize('mode,requests,attention', [
+    ('NONE', 0, False), ('PIECEWISE', 4, True), ('FULL', 1, True), ('FULL', 4, True),
+])
+@pytest.mark.parametrize('claimed', [False, True])
+def test_v2_dummy_prepared_has_no_request_validation_or_boundary(
+        tmp_path, monkeypatch, mode, requests, attention, claimed):
+    config = config_at(tmp_path)
+    monkeypatch.setenv('M203_TARGETED_CONFIG', str(tmp_path / 'observer.json'))
+    runner, _, _, descriptor, tables, slots, metadata, _ = cpu_runner(config, mode=mode)
+    v.observe('initialized', runner)
+    o._local.production_attention_capture = None
+    if claimed:
+        c.claim_request(tmp_path)
+    # No state mapping, IDs, token values, or scheduler provenance are available.
+    # A single dummy row is still dummy; multiple/zero dummy rows are valid too.
+    prepared_hook(None, None, NS(num_reqs=requests, req_ids=[]), descriptor,
+                  tables if attention else None, slots if attention else None,
+                  metadata if attention else None, True)
+    assert v._state.forward is None and v._state.frames == {}
+    assert o._local.production_attention_capture is None
+    assert not list((tmp_path / 'capture/events').glob('*.json'))
+    assert not list((tmp_path / 'capture').glob('*.v2-forward.json'))
+
+
+@pytest.mark.parametrize('requests', [0, 2])
+def test_v2_kernel_warmup_without_provenance_is_ignored_before_request(tmp_path, monkeypatch, requests):
+    config = config_at(tmp_path)
+    monkeypatch.setenv('M203_TARGETED_CONFIG', str(tmp_path / 'observer.json'))
+    runner, _, _, descriptor, tables, slots, metadata, _ = cpu_runner(config)
+    v.observe('initialized', runner)
+    o._local.production_attention_capture = None
+    ids = ['synthetic-a', 'synthetic-b'][:requests]
+    scheduled = NS(num_scheduled_tokens={rid: 1 for rid in ids},
+                   total_num_scheduled_tokens=requests, scheduled_spec_decode_tokens={})
+    # Scheduler-realistic synthetic work can arrive with dummy_run=False. No
+    # request state is needed to classify it, even with zero/multiple requests.
+    prepared_hook(None, scheduled, NS(num_reqs=requests, req_ids=ids), descriptor,
+                  tables, slots, metadata, False)
+    assert not (tmp_path / 'request.claim').exists()
+    assert v._state.forward is None and v._state.frames == {}
+    assert o._local.production_attention_capture is None
+    assert not list((tmp_path / 'capture/events').glob('*.json'))
+    assert not list((tmp_path / 'capture').glob('*.v2-forward.json'))
+
+
+@pytest.mark.parametrize('provenance', ['absent', None, {},
+    dict(state='OTHER', scheduler_step=17), dict(state='OBSERVATION_ONLY', scheduler_step=True)])
+def test_v2_claimed_execution_without_valid_provenance_fails_closed(tmp_path, monkeypatch, provenance):
+    config = config_at(tmp_path)
+    monkeypatch.setenv('M203_TARGETED_CONFIG', str(tmp_path / 'observer.json'))
+    runner, batch, scheduled, descriptor, tables, slots, metadata, _ = cpu_runner(config)
+    v.observe('initialized', runner)
+    c.claim_request(tmp_path)
+    if provenance == 'absent':
+        del scheduled._m203_observation_provenance
+    else:
+        scheduled._m203_observation_provenance = provenance
+    # Missing provenance must also fail outside the @81 observation window.
+    batch.num_computed_tokens_np[0] = 0
+    prepared_hook(runner, scheduled, batch, descriptor, tables, slots, metadata, False)
+    errors = [c.load(p) for p in (tmp_path / 'capture/events').glob('*.json')]
+    assert len(errors) == 1 and errors[0]['kind'] == 'observer_error'
+    assert errors[0]['stage'] == 'v2_prepared'
+    assert errors[0]['error'] == 'Invalid: V2 scheduler linkage missing'
+    assert v._state.forward is None and v._state.frames == {}
+    assert not list((tmp_path / 'capture').glob('*.v2-forward.json'))
+
+
+@pytest.mark.parametrize('requests,ids', [(0, []), (2, ['a', 'b']), (1, []), (1, ['a', 'b'])])
+def test_v2_real_prepared_requires_exactly_one_unambiguous_request(tmp_path, monkeypatch, requests, ids):
+    config = config_at(tmp_path)
+    monkeypatch.setenv('M203_TARGETED_CONFIG', str(tmp_path / 'observer.json'))
+    runner, batch, scheduled, descriptor, tables, slots, metadata, _ = cpu_runner(config)
+    v.observe('initialized', runner)
+    c.claim_request(tmp_path)
+    batch.num_reqs, batch.req_ids = requests, ids
+    prepared_hook(runner, scheduled, batch, descriptor, tables, slots, metadata, False)
+    errors = [c.load(p) for p in (tmp_path / 'capture/events').glob('*.json')]
+    assert len(errors) == 1 and errors[0]['kind'] == 'observer_error'
+    assert errors[0]['stage'] == 'v2_prepared'
+    assert errors[0]['error'] == 'Invalid: V2 observation requires one real request'
+    assert v._state.forward is None and v._state.frames == {}
+    assert not list((tmp_path / 'capture').glob('*.v2-forward.json'))
+
+
+@pytest.mark.parametrize('signal', [None, 1, 'False'])
+def test_v2_invalid_dummy_signal_fails_closed(tmp_path, monkeypatch, signal):
+    config = config_at(tmp_path)
+    monkeypatch.setenv('M203_TARGETED_CONFIG', str(tmp_path / 'observer.json'))
+    runner, batch, scheduled, descriptor, tables, slots, metadata, _ = cpu_runner(config)
+    v.observe('initialized', runner)
+    prepared_hook(runner, scheduled, batch, descriptor, tables, slots, metadata, signal)
+    errors = [c.load(p) for p in (tmp_path / 'capture/events').glob('*.json')]
+    assert len(errors) == 1 and errors[0]['kind'] == 'observer_error'
+    assert 'dummy_run lifecycle signal missing/invalid' in errors[0]['error']
+    assert v._state.forward is None and v._state.frames == {}
+
+
 @pytest.mark.parametrize('q,mode,padded,max_q,requests,offset', [
     (1, 'FULL', 1, 1, 1, 0), (2, 'FULL', 2, 2, 1, 0),
     (1, 'FULL', 1, 5, 1, 0), (4, 'FULL', 4, 5, 4, 0), (5, 'FULL', 5, 5, 5, 0),
@@ -183,10 +308,13 @@ def test_graph_hooks_bracket_actual_capture_and_bind_exact_replay():
     (3, 'PIECEWISE', 3, 3, 1, 0), (3, 'PIECEWISE', 4, 3, 1, 0), (3, 'NONE', 3, 3, 1, 0),
 ])
 def test_exact_v2_q_length_routing_and_gpu_row_linkage(tmp_path, monkeypatch, q, mode, padded, max_q, requests, offset):
+    c.claim_request(tmp_path)
     data, ids = run_capture(tmp_path, monkeypatch, q, mode, padded, max_q, requests, offset)
     runner, batch, *_ = data
     proof = va.capture_v2(tmp_path, 'adaptive', 'd' * 40, batch.req_ids[0], data[-1], ids)
     assert proof['row']['generated_index'] == 81 and proof['selected_token'] == 1
+    assert not any(c.load(p)['kind'] == 'observer_error'
+                   for p in (tmp_path / 'capture/events').glob('*.json'))
     assert proof['active_query_token_count'] == q
     assert proof['logical_runtime_q'] == q
     assert proof['captured_graph_q_shape'] == (padded if mode == 'FULL' else None)
@@ -204,7 +332,8 @@ def test_exact_v2_q_length_routing_and_gpu_row_linkage(tmp_path, monkeypatch, q,
 
 
 @pytest.mark.parametrize('problem', ['slot', 'index', 'scheduler', 'request', 'logits', 'event',
-    'graph_hash', 'graph_descriptor', 'graph_calls', 'force', 'missing_frame', 'identity', 'prefix_cache', 'buffer'])
+    'graph_hash', 'graph_descriptor', 'graph_calls', 'force', 'missing_frame', 'identity', 'prefix_cache', 'buffer',
+    'observer_error'])
 def test_ambiguous_or_incomplete_v2_evidence_fails_closed(tmp_path, monkeypatch, problem):
     data, ids = run_capture(tmp_path, monkeypatch)
     path = next((tmp_path / 'capture').glob('*.v2-forward.json'))
@@ -224,6 +353,8 @@ def test_ambiguous_or_incomplete_v2_evidence_fails_closed(tmp_path, monkeypatch,
     elif problem == 'identity': frame['runtime_identity']['use_v2_model_runner'] = False
     elif problem == 'prefix_cache': frame['prefix_cache_enabled'] = False
     elif problem == 'buffer': frame['buffer_signature']['inputs']['input_ids']['pointer'] += 1
+    elif problem == 'observer_error':
+        c.event(tmp_path / 'capture', 'observer_error', stage='v2_prepared', error='genuine failure')
     if problem == 'missing_frame': path.unlink()
     else: path.write_bytes(c.encoded(frame))
     with pytest.raises((c.Invalid, KeyError, IndexError)):

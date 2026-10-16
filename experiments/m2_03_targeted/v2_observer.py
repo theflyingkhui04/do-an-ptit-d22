@@ -148,11 +148,23 @@ def graph_replay(config, manager, desc, graph):
     frame['dispatch'] = decode(encoded(trace['dispatch']))
 
 
-def prepared(config, runner, scheduled, batch, desc, tables, slots, metadata, dummy):
+def prepared(config, runner, scheduled, batch, desc, tables, slots, metadata, dummy_run):
     from .observer import _local, device_snapshot
     _state.forward = None
-    if dummy:
+    # Pinned execute_model uses this flag to select InputBatch.make_dummy,
+    # including profiling with no attention and FULL dummy attention preparation.
+    # Capture buffer/dispatch linkage belongs to graph_inputs/begin/end; skipping
+    # a dummy runtime frame must not skip those independent graph hooks.
+    need(type(dummy_run) is bool, 'V2 dummy_run lifecycle signal missing/invalid')
+    if dummy_run:
         return
+    dispatch = getattr(scheduled, '_m203_observation_provenance', None)
+    # Kernel warmup can call execute_model with dummy_run=False. Only the
+    # targeted scheduler attaches provenance; request.claim precedes its HTTP POST.
+    if dispatch is None and not (Path(config['directory']).parent / 'request.claim').exists():
+        return
+    need(isinstance(dispatch, dict) and dispatch.get('state') == 'OBSERVATION_ONLY'
+         and type(dispatch.get('scheduler_step')) is int, 'V2 scheduler linkage missing')
     need(batch.num_reqs == 1 and len(batch.req_ids) == 1, 'V2 observation requires one real request')
     rid = batch.req_ids[0]
     state_index = int(batch.idx_mapping_np[0])
@@ -170,11 +182,8 @@ def prepared(config, runner, scheduled, batch, desc, tables, slots, metadata, du
     need(all(getattr(pc, k, 1) == 1 for k in ('tensor_parallel_size', 'pipeline_parallel_size',
         'data_parallel_size', 'decode_context_parallel_size')), 'V2 parallel linkage unsupported')
     need(runner.req_states.num_reqs == 1, 'multiple V2 resident requests')
-    dispatch = getattr(scheduled, '_m203_observation_provenance', None)
     count = scheduled.num_scheduled_tokens.get(rid)
     drafts = len(scheduled.scheduled_spec_decode_tokens.get(rid, []))
-    need(isinstance(dispatch, dict) and dispatch.get('state') == 'OBSERVATION_ONLY'
-         and type(dispatch.get('scheduler_step')) is int, 'V2 scheduler linkage missing')
     need(count == scheduled.total_num_scheduled_tokens == batch.num_tokens
          and count == int(batch.num_scheduled_tokens[0]) and 1 <= count <= 5
          and drafts == batch.num_draft_tokens and drafts in range(5), 'V2 scheduled query/draft mismatch')

@@ -13,6 +13,7 @@ INSERTIONS = {
     RUNNER: [
         ('        self.model_config = vllm_config.model_config\n',
          '        _m203_v2("initialized", self)\n'),
+        # execute_model's authoritative flag, also used by InputBatch.make_dummy.
         ('        input_ids = input_batch.input_ids\n',
          '        _m203_v2("prepared", self, scheduler_output, input_batch, batch_desc, block_tables, slot_mappings, attn_metadata, dummy_run)\n'),
         ('        self.kv_connector.finish_forward()\n',
