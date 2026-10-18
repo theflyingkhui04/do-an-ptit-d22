@@ -15,6 +15,8 @@ import json
 from experiments.protocol_b import ROOT, require, write_new
 
 HASHES = {
+    "v1/spec_decode/llm_base_proposer.py": "5bd11c41f0a8cf1272b5880d9878043f876bee6c7e04fb781e613f92930b15ab",
+    "v1/spec_decode/draft_model.py": "6b884f49a75f01d1aa6b2d27159b63fa27f7ba7f0518d2810d1a5b565e14f026",
     "v1/worker/gpu/model_runner.py": "174c93db921c23cf0396eee4764be25b2bd2d4b6a06e9fa41ce3598b884ce8ce",
     "v1/worker/gpu/cudagraph_utils.py": "6e9c042890603535e300a40df8ee159dbed1058a64a83ae50ff0329e332e05ff",
     "v1/worker/gpu/input_batch.py": "d5dd956eb319bd69dd9e762047833d81ad40b21fce619fcb2133759e73620694",

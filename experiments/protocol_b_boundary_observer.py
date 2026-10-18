@@ -70,7 +70,7 @@ def hash_history(cache, block_table, kernel_block_size, heads, head_dim, write_s
                 cache_identity=tensor_identity(cache))
 
 
-def kv_layer_bindings(vllm_config, cache_config, inputs, metadata, slots):
+def kv_layer_bindings(vllm_config, cache_config, inputs, metadata, slots, *, v1_runner=None):
     """Resolve only target decoder layers; capture invokes this without any value copies."""
     parallel = vllm_config.parallel_config
     require(all(int(getattr(parallel, k, 1)) == 1 for k in
@@ -81,14 +81,44 @@ def kv_layer_bindings(vllm_config, cache_config, inputs, metadata, slots):
     require(inputs.get("inputs_embeds") is None and inputs.get("intermediate_tensors") is None,
             "KV unsupported embedded/intermediate input")
     context = vllm_config.compilation_config.static_forward_context
-    require(len(cache_config.kv_cache_groups) == 1, "KV unsupported target cache groups")
-    names = sorted(name for group in cache_config.kv_cache_groups for name in group.layer_names)
+    all_names = [name for group in cache_config.kv_cache_groups for name in group.layer_names]
+    drafts = set()
+    if v1_runner is not None:
+        # Pinned V1 DraftModelProposer inherits this maintained set from
+        # SpecDecodeBaseProposer.load_model(); never classify by name spelling.
+        drafter = getattr(v1_runner, "drafter", None)
+        require(v1_runner.speculative_config.uses_draft_model()
+                and type(drafter).__name__ == "DraftModelProposer",
+                "KV unsupported V1 draft ownership")
+        drafts = getattr(drafter, "_draft_attn_layer_names", None)
+        require(isinstance(drafts, set) and bool(drafts)
+                and all(isinstance(name, str) for name in drafts)
+                and drafts <= set(all_names), "KV missing/ambiguous draft ownership")
+        grouped_drafts = [name for group in drafter.draft_attn_groups for name in group.layer_names]
+        require(len(grouped_drafts) == len(set(grouped_drafts))
+                and set(grouped_drafts) == drafts, "KV ambiguous draft attention groups")
+        target_modules = {id(layer) for layer in v1_runner.get_model().modules()}
+        draft_modules = {id(layer) for layer in v1_runner.get_draft_model().modules()}
+        require(all(name in context and
+                    ((id(context[name]) in draft_modules and id(context[name]) not in target_modules)
+                     if name in drafts else
+                     (id(context[name]) in target_modules and id(context[name]) not in draft_modules))
+                    for name in all_names), "KV ambiguous target/draft model ownership")
+    else:
+        require(len(cache_config.kv_cache_groups) == 1, "KV unsupported target cache groups")
+    names = sorted(set(all_names) - drafts)
     count = int(vllm_config.model_config.hf_text_config.num_hidden_layers)
-    require(len(names) == len(set(names)) == count and set(metadata) == set(names)
-            and set(slots) == set(names), "KV incomplete/ambiguous target layer set")
+    require(len(all_names) == len(set(all_names)) and len(names) == count
+            and set(names) <= set(metadata) <= set(names) | drafts
+            and set(names) <= set(slots) <= set(names) | drafts,
+            "KV incomplete/ambiguous target layer set")
+    require(sum(bool(set(group.layer_names) & set(names)) for group in cache_config.kv_cache_groups) == 1,
+            "KV unsupported target cache groups")
     layers = {}
     for gid, group in enumerate(cache_config.kv_cache_groups):
         for name in group.layer_names:
+            if name in drafts:
+                continue
             layer, m = context[name], metadata[name]
             require(layer.attn_backend.get_name() == "TRITON_ATTN", "KV unsupported backend")
             impl = layer.impl
@@ -234,7 +264,8 @@ def kv_v1(config, runner, scheduled, input_ids, positions, metadata, slots, mode
     # The approved Adaptive execution is PIECEWISE. FULL requires its own capture binding.
     require(mode.name == "PIECEWISE", "KV unsupported V1 dispatched mode")
     inputs = dict(input_ids=input_ids, positions=positions)
-    binding = kv_layer_bindings(runner.vllm_config, runner.kv_cache_config, inputs, metadata, slots)
+    binding = kv_layer_bindings(runner.vllm_config, runner.kv_cache_config, inputs, metadata, slots,
+                                v1_runner=runner)
     kv_snapshot(config, runner, inputs, metadata, slots, ids[0], 0, mode.name, binding, None)
 
 

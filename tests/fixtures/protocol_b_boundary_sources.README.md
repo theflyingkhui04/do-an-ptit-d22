@@ -29,3 +29,9 @@ snapshot. This fixture supports offline transformation tests; it does not prove
 identity with the later deployed installation. The next diagnostic must match
 every installed source against the pinned SHA-256, preserve pristine bytes, and
 record patched hashes only for instrumented files.
+
+The V1 ownership correction additionally pins `v1/spec_decode/draft_model.py`
+and `v1/spec_decode/llm_base_proposer.py` from the same upstream tag.
+`SpecDecodeBaseProposer.load_model()` maintains `_draft_attn_layer_names`;
+`initialize_attn_backend()` builds `draft_attn_groups` from that set.
+Both dependencies are authenticated and preserved without instrumentation.

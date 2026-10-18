@@ -427,6 +427,113 @@ class BindingContractTests(unittest.TestCase):
         self.assertIsNone(observer._local.kv_pending)
 
 
+def adaptive_runtime_fixture(separate_draft_group=False):
+    args = runtime_fixture()
+    config, caches, _, metadata, slots = args
+    target = next(iter(metadata))
+    # Arbitrary name and unsupported draft object: ownership, not spelling,
+    # determines exclusion. Draft metadata/layout must never enter target hashing.
+    draft = "unrelated_attention_identity"
+    context = config.compilation_config.static_forward_context
+    draft_layer = NS(kv_cache=torch.tensor([999.0]))
+    context[draft] = draft_layer
+    if separate_draft_group:
+        caches.kv_cache_groups.append(NS(layer_names=[draft], kv_cache_spec=object()))
+    else:
+        caches.kv_cache_groups[0].layer_names.append(draft)
+    metadata[draft], slots[draft] = object(), object()
+    proposer = type("DraftModelProposer", (NS,), {})(
+        _draft_attn_layer_names={draft}, draft_attn_groups=[NS(layer_names=[draft])])
+    runner = NS(drafter=proposer, speculative_config=NS(uses_draft_model=lambda: True),
+                get_model=lambda: NS(modules=lambda: iter([context[target]])),
+                get_draft_model=lambda: NS(modules=lambda: iter([draft_layer])))
+    return args, runner, target, draft
+
+
+class AdaptiveTargetSelectionTests(unittest.TestCase):
+    def test_target_plus_draft_metadata_and_slots_select_only_target(self):
+        for separate in (False, True):
+            args, runner, target, draft = adaptive_runtime_fixture(separate)
+            binding = observer.kv_layer_bindings(*args, v1_runner=runner)
+            self.assertEqual(binding["expected_layers"], [target])
+            self.assertEqual(len(binding["layers"]), binding["model_layer_count"])
+            self.assertNotIn(draft, binding["layers"])
+
+    def test_target_hidden_layer_count_is_still_required(self):
+        args, runner, _, _ = adaptive_runtime_fixture()
+        args[0].model_config.hf_text_config.num_hidden_layers = 2
+        with self.assertRaises(EvidenceError):
+            observer.kv_layer_bindings(*args, v1_runner=runner)
+
+    def test_missing_target_metadata_or_slots_is_invalid(self):
+        for index in (3, 4):
+            args, runner, target, _ = adaptive_runtime_fixture()
+            del args[index][target]
+            with self.assertRaises(EvidenceError):
+                observer.kv_layer_bindings(*args, v1_runner=runner)
+
+    def test_missing_or_ambiguous_ownership_is_invalid(self):
+        mutations = [
+            lambda a, r, t, d: delattr(r.drafter, "_draft_attn_layer_names"),
+            lambda a, r, t, d: setattr(r.drafter, "_draft_attn_layer_names", set()),
+            lambda a, r, t, d: setattr(r.drafter, "_draft_attn_layer_names", {d, "unknown"}),
+            lambda a, r, t, d: setattr(r.drafter, "_draft_attn_layer_names", {t}),
+            lambda a, r, t, d: setattr(r.drafter, "draft_attn_groups", [NS(layer_names=[t])]),
+            lambda a, r, t, d: setattr(r, "get_draft_model", r.get_model),
+            lambda a, r, t, d: a[1].kv_cache_groups[0].layer_names.append(t),
+        ]
+        for mutate in mutations:
+            args, runner, target, draft = adaptive_runtime_fixture()
+            mutate(args, runner, target, draft)
+            with self.assertRaises(EvidenceError):
+                observer.kv_layer_bindings(*args, v1_runner=runner)
+
+    def test_unsupported_target_layout_remains_invalid(self):
+        args, runner, target, _ = adaptive_runtime_fixture()
+        args[0].compilation_config.static_forward_context[target].kv_cache = torch.zeros(1)
+        with self.assertRaises(EvidenceError):
+            observer.kv_layer_bindings(*args, v1_runner=runner)
+
+    def test_vanilla_remains_strict_about_draft_extras(self):
+        args, _, _, _ = adaptive_runtime_fixture()
+        with self.assertRaises(EvidenceError):
+            observer.kv_layer_bindings(*args)
+        baseline = runtime_fixture()
+        self.assertEqual(observer.kv_layer_bindings(*baseline)["expected_layers"], list(baseline[3]))
+
+    def test_adaptive_entry_point_passes_target_only_binding_to_snapshot(self):
+        args, runner, target, draft = adaptive_runtime_fixture()
+        config, caches, inputs, metadata, slots = args
+        runner.vllm_config, runner.kv_cache_config = config, caches
+        runner.input_batch = NS(req_ids=["r"], num_reqs=1)
+        runner.requests = {"r": NS(prompt_token_ids=[8] * 176)}
+        scheduled = NS(total_num_scheduled_tokens=1, scheduled_spec_decode_tokens={})
+        with patch.object(observer, "kv_snapshot") as snapshot:
+            observer.kv_v1(dict(lane="adaptive", prompt_token_ids=[8] * 176), runner, scheduled,
+                           inputs["input_ids"], inputs["positions"], metadata, slots, NS(name="PIECEWISE"))
+        binding = snapshot.call_args.args[8]
+        self.assertEqual(set(binding["layers"]), {target})
+        self.assertNotIn(draft, binding["expected_layers"])
+
+    def test_hash_iteration_excludes_draft_cache(self):
+        args, runner, target, draft = adaptive_runtime_fixture()
+        config, caches, inputs, metadata, slots = args
+        binding = observer.kv_layer_bindings(*args, v1_runner=runner)
+        # Exercise the same selected-layer iteration used by kv_snapshot,
+        # using real CPU tensors for the extraction contract only.
+        target_cache = config.compilation_config.static_forward_context[target].kv_cache
+        _, table, _, current = cache_fixture()
+        def hashes():
+            return {name: observer.hash_history(
+                config.compilation_config.static_forward_context[name].kv_cache,
+                table, 16, 2, 3, current)["digests"] for name in binding["expected_layers"]}
+        before = hashes()
+        config.compilation_config.static_forward_context[draft].kv_cache.fill_(-123)
+        self.assertEqual(before, hashes())
+        target_cache[0, 0, 0, 0] = 1
+        self.assertNotEqual(before, hashes())
+
+
 class KVAnalyzerIntegrationTests(unittest.TestCase):
     def artifact(self, other_boundary=False):
         import test_protocol_b_boundary as legacy
