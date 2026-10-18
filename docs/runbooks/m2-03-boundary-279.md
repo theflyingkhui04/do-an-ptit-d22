@@ -1,5 +1,31 @@
 # M2-03: targeted boundary 279 on Kaggle/T4
 
+## Layer-1 historical-position localization
+
+New preparations enable `layer1_localization` in the manifest and both lane
+configs. The existing all-target-layer prefix hashes and gates remain required.
+Only `model.layers.1.self_attn.attn` adds per-position content, nested as
+`layers[layer_name].localization` in its existing `kv_history` event; all
+snapshot, request, source, binding and block/write-slot linkage is inherited.
+
+Schema `m203.boundary.layer1.positions.v1` records coverage `[0,454]`
+(exclusive end), explicit positions 0..453, dimensions, byte accounting,
+and separate K/V prefix digests plus 454 position digests each. The same
+canonical FP16 CPU bytes supply both prefix and position hashes, with exact
+span reconstruction checked before hashing. No additional device transfer,
+CUDA synchronization, model hook or raw value dump is introduced.
+
+The analyzer emits `historical_kv.layer1_localization` with `P_K`, `P_V`,
+`P`, `K_differs_at_P`, and `V_differs_at_P`. `LOCALIZED` requires exact
+boundary reproduction, valid whole-model `STATE_DIFFERENT`, both expected
+layer-1 prefix differences, complete scoped artifacts, and matching prefix
+linkage. Missing, malformed or contradictory evidence is `INVALID_EVIDENCE`.
+Scoped equality never grants whole-model equivalence. Earliest stored position
+does not identify the time or cause of divergence.
+
+GPU verification of this extension: **NOT RUN**. CPU hashing changes timing;
+`runtime_probe_changes_timing=true` remains mandatory.
+
 ## Historical K/V probe implementation update (2026-10-18)
 
 New preparations enable the narrowly scoped `kv_probe` for sample

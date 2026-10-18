@@ -14,6 +14,19 @@ from pathlib import Path
 from experiments.protocol_b import require, utc_now, write_new, fingerprint
 
 _local = threading.local()
+LAYER1 = "model.layers.1.self_attn.attn"
+LOCALIZATION_SCHEMA = "m203.boundary.layer1.positions.v1"
+
+
+def position_spans(raw, bytes_per_position):
+    """CPU-only partition of the exact canonical component bytes; no value conversion."""
+    require(isinstance(raw, bytes) and type(bytes_per_position) is int
+            and bytes_per_position > 0 and len(raw) == 454 * bytes_per_position,
+            "Layer-1 position byte accounting differs")
+    view = memoryview(raw)
+    spans = tuple(view[p * bytes_per_position:(p + 1) * bytes_per_position] for p in range(454))
+    require(b"".join(spans) == raw, "Layer-1 position spans do not reconstruct prefix")
+    return spans
 
 
 def tensor_identity(tensor):
@@ -41,7 +54,7 @@ def history_slots(block_table, kernel_block_size, row=0, positions=range(454)):
 
 
 def hash_history(cache, block_table, kernel_block_size, heads, head_dim, write_slot,
-                 row=0, positions=range(454)):
+                 row=0, positions=range(454), *, localize_layer1=False):
     """Hash one layer/component at a time; CPU tensors test indexing, not CUDA behavior."""
     import torch
     import hashlib
@@ -55,19 +68,32 @@ def hash_history(cache, block_table, kernel_block_size, heads, head_dim, write_s
     indices = torch.tensor(slots, device=cache.device, dtype=torch.long)
     physical, offsets = indices // kernel_block_size, indices % kernel_block_size
     digests = {}
+    components = {}
     for component, start in (("K", 0), ("V", head_dim)):
         # Advanced indexing produces (logical_position, kv_head, head_dimension).
         selected = cache[physical, :, offsets, start:start + head_dim]
         raw = selected.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes()
         digests[component] = hashlib.sha256(raw).hexdigest()
+        if localize_layer1:
+            spans = position_spans(raw, heads * head_dim * cache.element_size())
+            components[component] = dict(prefix_sha256=digests[component],
+                position_sha256=[hashlib.sha256(span).hexdigest() for span in spans])
+            del spans
         del raw, selected
-    return dict(coverage=[0, 454], order=["logical_position", "kv_head", "head_dimension"],
+    result = dict(coverage=[0, 454], order=["logical_position", "kv_head", "head_dimension"],
                 heads=heads, head_dim=head_dim, dtype=str(cache.dtype), byte_order="little",
                 elements_per_component=454 * heads * head_dim,
                 bytes_per_component=454 * heads * head_dim * 2,
                 kernel_block_size=kernel_block_size, physical_blocks=blocks,
                 write_slot=write_slot, no_write_alias=True, digests=digests,
                 cache_identity=tensor_identity(cache))
+    if localize_layer1:
+        result["localization"] = dict(schema=LOCALIZATION_SCHEMA, target_layer=LAYER1,
+            coverage=[0, 454], position_count=454, logical_positions=list(range(454)),
+            order=result["order"], heads=heads, head_dim=head_dim, dtype=result["dtype"],
+            byte_order=result["byte_order"], bytes_per_position=heads * head_dim * cache.element_size(),
+            **components)
+    return result
 
 
 def kv_layer_bindings(vllm_config, cache_config, inputs, metadata, slots, *, v1_runner=None):
@@ -273,6 +299,8 @@ def kv_snapshot(config, runner, inputs, metadata, slots, rid, index, mode, bindi
     auth_id = kv_authenticate(config)
     require(len(config["prompt_token_ids"]) == 176, "KV boundary prompt length changed")
     layers = {}
+    localize = config.get("layer1_localization") is True
+    require(not localize or LAYER1 in binding["expected_layers"], "Layer-1 target ownership missing")
     context = runner.vllm_config.compilation_config.static_forward_context
     for name in binding["expected_layers"]:
         layer, m = context[name], metadata[name]
@@ -284,7 +312,8 @@ def kv_snapshot(config, runner, inputs, metadata, slots, rid, index, mode, bindi
         require(all(v == [1.0] for v in scales.values()), "KV unsupported nonunit dense scales")
         write_slot, = ints(slots[name][:1])
         extracted = hash_history(layer.kv_cache, m.block_table, layer.kv_cache.shape[2],
-                                 info["heads"], info["head_dim"], write_slot)
+                                 info["heads"], info["head_dim"], write_slot,
+                                 localize_layer1=localize and name == LAYER1)
         layers[name] = dict(extracted, group=info["group"], spec_block_size=info["spec_block_size"],
                             interpretation=dict(info["interpretation"], scales=scales))
     # At FULL, include capture-bound launch scalars; runtime scalars are not claimed consumed.
@@ -301,6 +330,8 @@ def kv_snapshot(config, runner, inputs, metadata, slots, rid, index, mode, bindi
          copies=dict(device_to_cpu="metadata/scales; one historical layer/component at a time",
                      host_to_device="454 int64 slot indices per target layer",
                      device_gather="one historical K or V component into temporary storage",
+                     cpu_localization="layer 1 only: span reconstruction and 454 SHA-256 per component"
+                     if localize else None,
                      synchronization="blocking Tensor.cpu() on observation stream",
                      device_wide_synchronize=False), phase="pre_forward")
 

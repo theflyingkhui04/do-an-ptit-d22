@@ -13,7 +13,7 @@ from experiments.protocol_b import (ROOT, EvidenceError, canonical_json, file_sh
                                     load_json, load_plan, require, utc_now, write_new)
 from experiments.protocol_b_capture import capture, command, reserve_run, server_processes
 from experiments.protocol_b_boundary_observer import (map_rows, selected_tokens,
-    history_slots, validate_full_binding)
+    history_slots, validate_full_binding, LAYER1, LOCALIZATION_SCHEMA)
 
 CHECKPOINT = "4372f8b81998e8a50ee2b87ea6d7c4a9c4b523c5"
 BASE_EXECUTION = "a63baa1c42fd75f542f876ab512765149ddd5e20"
@@ -89,7 +89,8 @@ def prepare(directory, session):
                         sorted((ROOT / "experiments").glob("protocol_b_boundary*.py"))},
                     request_position_one_based=46, prelude_count=45,
                     plan=plan, reference_records={r["lane"]: r["records"][:46] for r in runs},
-                    kv_probe=True, interpretation_status="NOT_YET_APPROVED", task_done=False)
+                    kv_probe=True, layer1_localization=True,
+                    interpretation_status="NOT_YET_APPROVED", task_done=False)
     for key in ("PROTOCOL_B_TARGET_REVISION", "PROTOCOL_B_DRAFT_REVISION"):
         field = "target_revision" if "TARGET" in key else "draft_revision"
         require(os.environ[key] == runs[0]["environment"][field], "Model revision changed")
@@ -101,6 +102,7 @@ def prepare(directory, session):
         (output / "observer").mkdir()
         write_new(output / "boundary_config.json", dict(
             directory=str(output.resolve()), lane=lane, sample_id=SAMPLE, target=TARGET, kv_probe=True,
+            layer1_localization=True,
             execution_sha=execution, session_id=session, gpu_uuid=gpu,
             target_revision=manifest["target_revision"], draft_revision=manifest["draft_revision"],
             prompt_token_ids=runs[0]["records"][45]["prompt_token_ids"]))
@@ -128,6 +130,7 @@ def capture_lane(directory, lane):
             and settings["lane"] == lane and settings["sample_id"] == SAMPLE
             and settings["target"] == TARGET
             and settings.get("kv_probe") is True and manifest.get("kv_probe") is True
+            and settings.get("layer1_localization") == manifest.get("layer1_localization")
             and settings["prompt_token_ids"] == manifest["reference_records"][lane][-1]["prompt_token_ids"]
             and Path(settings["directory"]).resolve() == config.parent,
             "Observer config identity changed")
@@ -342,6 +345,78 @@ def compare_kv_histories(snapshots, captures, source_events, authenticated, boun
     return result
 
 
+def first_position_differences(vanilla, adaptive):
+    """Numeric logical positions, K/V independently; this alone grants no evidence status."""
+    first, at_p = {}, {}
+    for component in ("K", "V"):
+        left, right = vanilla[component]["position_sha256"], adaptive[component]["position_sha256"]
+        require(isinstance(left, list) and isinstance(right, list) and len(left) == len(right) == 454
+                and all(isinstance(digest, str) and re.fullmatch("[0-9a-f]{64}", digest)
+                        for digest in left + right), "Layer-1 missing/malformed position digests")
+        first[component] = next((p for p in range(454) if left[p] != right[p]), None)
+    earliest = min((p for p in first.values() if p is not None), default=None)
+    for component in ("K", "V"):
+        at_p[component] = (vanilla[component]["position_sha256"][earliest] !=
+                           adaptive[component]["position_sha256"][earliest]) if earliest is not None else None
+    return dict(P_K=first["K"], P_V=first["V"], P=earliest,
+                K_differs_at_P=at_p["K"], V_differs_at_P=at_p["V"])
+
+
+def compare_layer1_localization(snapshots, whole):
+    """Accept only as an extension of the same fully validated whole-model comparison."""
+    result = dict(schema=LOCALIZATION_SCHEMA, target_layer=LAYER1, status="INVALID_EVIDENCE",
+                  P_K=None, P_V=None, P=None, K_differs_at_P=None, V_differs_at_P=None)
+    try:
+        require(whole["status"] == "STATE_DIFFERENT"
+                and whole["historical_kv_state_equivalent"] is False
+                and whole["snapshot_ids"] == {lane: snapshots[lane]["snapshot_id"]
+                                              for lane in ("vanilla", "adaptive")},
+                "Layer-1 localization requires valid whole-model STATE_DIFFERENT linkage")
+        localizations = {}
+        for lane in ("vanilla", "adaptive"):
+            layers = snapshots[lane]["layers"]
+            require([name for name, layer in layers.items() if "localization" in layer] == [LAYER1],
+                    "Layer-1 missing/ambiguous localization scope")
+            layer = layers[LAYER1]
+            loc = layer["localization"]
+            require(loc["schema"] == LOCALIZATION_SCHEMA and loc["target_layer"] == LAYER1
+                    and loc["coverage"] == [0, 454] and loc["position_count"] == 454
+                    and type(loc["position_count"]) is int
+                    and loc["logical_positions"] == list(range(454))
+                    and all(type(p) is int for p in loc["logical_positions"])
+                    and loc["order"] == layer["order"]
+                    == ["logical_position", "kv_head", "head_dimension"],
+                    "Layer-1 logical coverage/order differs")
+            require(type(loc["heads"]) is int and type(loc["head_dim"]) is int
+                    and loc["heads"] == layer["heads"] > 0
+                    and loc["head_dim"] == layer["head_dim"] > 0
+                    and loc["dtype"] == layer["dtype"] == "torch.float16"
+                    and loc["byte_order"] == layer["byte_order"] == "little"
+                    and type(loc["bytes_per_position"]) is int
+                    and loc["bytes_per_position"] == loc["heads"] * loc["head_dim"] * 2
+                    and 454 * loc["bytes_per_position"] == layer["bytes_per_component"],
+                    "Layer-1 dimensional/byte accounting differs")
+            for component in ("K", "V"):
+                require(set(loc[component]) == {"prefix_sha256", "position_sha256"}
+                        and loc[component]["prefix_sha256"] == layer["digests"][component]
+                        and isinstance(loc[component]["prefix_sha256"], str)
+                        and re.fullmatch("[0-9a-f]{64}", loc[component]["prefix_sha256"]),
+                        "Layer-1 prefix digest differs from whole-prefix evidence")
+            localizations[lane] = loc
+        positions = first_position_differences(localizations["vanilla"], localizations["adaptive"])
+        for component in ("K", "V"):
+            prefix_differs = (localizations["vanilla"][component]["prefix_sha256"] !=
+                              localizations["adaptive"][component]["prefix_sha256"])
+            require(prefix_differs == (positions["P_" + component] is not None),
+                    "Layer-1 prefix/position fingerprints contradict each other")
+            require(prefix_differs and LAYER1 + ":" + component in whole["differences"],
+                    "Layer-1 whole-prefix K/V difference not reproduced")
+        result.update(positions, status="LOCALIZED", snapshot_ids=whole["snapshot_ids"])
+    except (EvidenceError, KeyError, TypeError, ValueError, IndexError) as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
 def analyze_kv(directory, events, boundaries):
     from experiments.protocol_b_boundary_sources import authenticate
     authenticated = authenticate(directory)
@@ -358,7 +433,12 @@ def analyze_kv(directory, events, boundaries):
         snapshots[lane] = selected[0]
         captures[lane] = [e for e in events[lane] if e["kind"] == "kv_capture"]
         sources[lane] = [e for e in events[lane] if e["kind"] == "kv_sources"]
-    return compare_kv_histories(snapshots, captures, sources, authenticated, boundaries)
+    whole = compare_kv_histories(snapshots, captures, sources, authenticated, boundaries)
+    if manifest.get("layer1_localization") is True:
+        require(all(load_json(directory / lane / "boundary_config.json").get("layer1_localization") is True
+                    for lane in ("vanilla", "adaptive")), "Layer-1 lane configuration differs")
+        whole["layer1_localization"] = compare_layer1_localization(snapshots, whole)
+    return whole
 
 
 def analyze(directory):
@@ -448,6 +528,9 @@ def analyze(directory):
                 require(result["historical_kv"]["status"] != "INVALID_EVIDENCE",
                         result["historical_kv"].get("error", "KV invalid evidence"))
                 result["historical_kv_state_equivalent"] = result["historical_kv"]["historical_kv_state_equivalent"]
+                if m.get("layer1_localization") is True:
+                    require(result["historical_kv"]["layer1_localization"]["status"] == "LOCALIZED",
+                            result["historical_kv"]["layer1_localization"].get("error", "Layer-1 invalid evidence"))
     except (EvidenceError, OSError, ValueError, KeyError, TypeError, IndexError) as exc:
         result.update(status="INVALID_EVIDENCE", error=f"{type(exc).__name__}: {exc}")
         result.pop("boundary", None)
