@@ -9,6 +9,8 @@ import unittest
 import shutil
 import os
 import stat
+import subprocess
+import sys
 from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
@@ -20,6 +22,42 @@ from experiments.protocol_b_boundary import (SAMPLE, first_difference, is_finger
                                              same_request, validate_boundary, seal, analyze, SCHEMA)
 from experiments.protocol_b_boundary_observer import map_rows, selected_tokens
 from experiments.protocol_b_boundary_sources import HASHES, StripObserver, transform
+
+
+class ObserverImportPathTests(unittest.TestCase):
+    def test_runbook_exports_repo_root_before_prepare_or_launch(self):
+        root = Path(__file__).resolve().parents[1]
+        runbook = (root / "docs/runbooks/m2-03-boundary-279.md").read_text(encoding="utf-8")
+        block = runbook.split("```bash\n", 1)[1].split("```", 1)[0]
+        commands = [
+            'test "$PWD" = "$(git rev-parse --show-toplevel)"',
+            'export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"',
+            "python -c 'import experiments.protocol_b_boundary_observer'",
+            'python -m experiments.protocol_b_boundary prepare',
+            'bash scripts/switch_lane.sh "$selector"',
+        ]
+        positions = [block.index(command) for command in commands]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_observer_import_inherited_by_child_and_grandchild_outside_repo(self):
+        root = Path(__file__).resolve().parents[1]
+        probe = (
+            "import experiments.protocol_b_boundary_observer as observer; "
+            "from pathlib import Path; "
+            f"assert Path(observer.__file__).resolve() == Path({str(root / 'experiments/protocol_b_boundary_observer.py')!r})"
+        )
+        child = (
+            "import subprocess, sys; "
+            f"exec({probe!r}); "
+            f"subprocess.run([sys.executable, '-c', {probe!r}], check=True)"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for previous in (None, "", tmp):
+                with self.subTest(previous=previous):
+                    env = os.environ.copy()
+                    env["PYTHONPATH"] = str(root) + (os.pathsep + previous if previous else "")
+                    subprocess.run([sys.executable, "-c", child], cwd=tmp, env=env,
+                                   check=True, capture_output=True, text=True, timeout=30)
 
 
 class RowMappingTests(unittest.TestCase):

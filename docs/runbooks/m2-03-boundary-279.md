@@ -74,6 +74,11 @@ git cat-file -e 4372f8b81998e8a50ee2b87ea6d7c4a9c4b523c5^{commit}
 git ls-files --error-unmatch experiments/protocol_b_boundary.py \
   experiments/protocol_b_boundary_observer.py experiments/protocol_b_boundary_sources.py
 
+# Bind imports to this reviewed repo root in every server/EngineCore child.
+test "$PWD" = "$(git rev-parse --show-toplevel)"
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+python -c 'import experiments.protocol_b_boundary_observer'
+
 export CUDA_VISIBLE_DEVICES=$(nvidia-smi -i 0 --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
 test "$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=name --format=csv,noheader)" = 'Tesla T4'
 export HF_HUB_OFFLINE=1
@@ -178,6 +183,13 @@ Read `workflow-exit-code.txt`, lane exit codes, stop/restore logs and
 - `{vanilla,adaptive}/observer/`: raw/processed vectors, selected-row and accounting/cache events.
 - Lane server/switch/capture logs and GPU snapshots.
 - `instrumentation.json`, `vllm-originals/`, source bundle, package inventory and checksums.
+
+Import-path provenance is already retained in each lane's `run.json` and
+`environment.json`: `config.environment.execution_root` and `base_pythonpath`.
+`run.json` also retains `live_server.environment.PYTHONPATH` read from the
+live server. The exported value is inherited through `switch_lane.sh`, the
+launcher and vLLM children; the Adaptive launcher additionally prepends the
+same repo root. Existing capture validation checks both lane-specific values.
 
 For an interpretable reproduction, unequal raw vectors localize a difference
 before sampling but do not isolate numerical execution from KV/prefill history.
