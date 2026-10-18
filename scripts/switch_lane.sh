@@ -128,8 +128,7 @@ start_lane1() {
     echo "==> Đang khởi chạy Làn 1: Vanilla Baseline (Cổng 8001)..."
     echo "    Log được ghi vào: ${log_file}"
 
-    chmod +x "$PROJECT_ROOT/scripts/launch_lane1_vanilla.sh"
-    nohup "$PROJECT_ROOT/scripts/launch_lane1_vanilla.sh" > "$log_file" 2>&1 &
+    nohup bash "$PROJECT_ROOT/scripts/launch_lane1_vanilla.sh" > "$log_file" 2>&1 &
     local pid=$!
     echo $pid > "$PID_FILE_LANE1"
     echo "    Tiến trình chạy nền với PID: ${pid}"
@@ -143,8 +142,7 @@ start_lane2() {
     echo "==> Đang khởi chạy Làn 2: Static Draft Baseline (Cổng 8002)..."
     echo "    Log được ghi vào: ${log_file}"
 
-    chmod +x "$PROJECT_ROOT/scripts/launch_lane2_static.sh"
-    nohup "$PROJECT_ROOT/scripts/launch_lane2_static.sh" > "$log_file" 2>&1 &
+    nohup bash "$PROJECT_ROOT/scripts/launch_lane2_static.sh" > "$log_file" 2>&1 &
     local pid=$!
     echo $pid > "$PID_FILE_LANE2"
     echo "    Tiến trình chạy nền với PID: ${pid}"
@@ -158,8 +156,7 @@ start_lane3() {
     echo "==> Đang khởi chạy Làn 3: Adaptive Draft (Cổng 8003)..."
     echo "    Log được ghi vào: ${log_file}"
 
-    chmod +x "$PROJECT_ROOT/scripts/launch_lane3_adaptive.sh"
-    nohup "$PROJECT_ROOT/scripts/launch_lane3_adaptive.sh" > "$log_file" 2>&1 &
+    nohup bash "$PROJECT_ROOT/scripts/launch_lane3_adaptive.sh" > "$log_file" 2>&1 &
     local pid=$!
     echo $pid > "$PID_FILE_LANE3"
     echo "    Tiến trình chạy nền với PID: ${pid}"
