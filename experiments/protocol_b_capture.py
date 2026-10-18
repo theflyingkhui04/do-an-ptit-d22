@@ -260,7 +260,8 @@ def reserve_run(output, pair_id, run_id, lane, session_id):
                                                     lane=lane, session_id=session_id))
 
 
-def capture(output, pair_id, run_id, lane, session_id, *, reserved=False):
+def capture(output, pair_id, run_id, lane, session_id, *, reserved=False,
+            diagnostic_through=None):
     """Append raw responses, then seal one new run. On failure keep partial evidence."""
     output = Path(output)
     if not reserved:
@@ -275,6 +276,13 @@ def capture(output, pair_id, run_id, lane, session_id, *, reserved=False):
     run = {**identity, "started_at": started, "complete": False, "records": []}
     try:
         plan = load_plan()
+        prompts = plan["prompts"]
+        if diagnostic_through is not None:
+            require(diagnostic_through == "w3_business_v2_004"
+                    and len(prompts) == 54 and prompts[45]["sample_id"] == diagnostic_through,
+                    "Only the approved 46-request boundary diagnostic is supported")
+            prompts = prompts[:46]
+            run.update(diagnostic_only=True, diagnostic_through=diagnostic_through)
         live = server_processes(lane)
         env = runtime(plan, session_id, live)
         validate_live_server(live, lane, env)
@@ -289,7 +297,7 @@ def capture(output, pair_id, run_id, lane, session_id, *, reserved=False):
                 "Unexpected served model")
         run["server_models"] = models
         with (output / "responses.jsonl").open("x", encoding="utf-8") as journal:
-            for prompt in plan["prompts"]:
+            for prompt in prompts:
                 record = {key: prompt[key] for key in (
                     "workload", "sample_id", "dataset_version", "prompt_version", "request_sha256")}
                 record.update(identity, timestamp=utc_now(), ok=False)
