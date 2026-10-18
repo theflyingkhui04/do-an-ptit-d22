@@ -54,6 +54,16 @@ Baseline/Adaptive effective graph modes are recorded rather than equalized.
 
 ## Exact execution
 
+The 2026-10-18 diagnostic used Vanilla Model Runner V2 and Adaptive V1
+(`draft_model` fallback). The observer now also pins and patches the executed
+V2 sampler from evidence checkpoint `31d31f242af55faecb262114e738aa0340c07429`.
+V2 raw capture runs after model graph replay, processed capture runs after
+top-k/top-p and before Gumbel sampling, and output capture retains sampled IDs
+and sampled/rejected counts. Only single-request ordinary Vanilla decoding
+without structured output is supported. A selected row without pre-Gumbel
+scores (including an uninstrumented FlashInfer path) is invalid evidence.
+No runner-selection or graph-mode override is added; V1 Adaptive hooks remain.
+
 Use **one Bash session**, from a clean reviewed checkout on
 `fix/m2-03-lossless-clean`. This checkout must contain the evidence Git object
 and the new diagnostic at an explicitly reviewed checkpoint. Set

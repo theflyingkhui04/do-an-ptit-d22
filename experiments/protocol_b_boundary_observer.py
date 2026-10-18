@@ -167,6 +167,98 @@ def end(config, runner, output):
     emit(config, "forward", **record)
 
 
+def v2_begin(config, sampler, batch, logits):
+    """V2 ordinary Vanilla only; snapshot actual inputs, never retain tensors."""
+    _local.v2_context = None
+    states = sampler.req_states
+    # V2 profiles its sampler with a dummy batch before adding any requests.
+    if not states.req_id_to_index:
+        return
+    ids = list(batch.req_ids or ())
+    if not ids or not any(rid in states.req_id_to_index for rid in ids):
+        return
+    slots = [int(i) for i in batch.idx_mapping_np]
+    require(len(ids) == len(slots) == batch.num_reqs
+            and all(states.req_id_to_index.get(rid) == i for rid, i in zip(ids, slots)),
+            "V2 request/idx mapping differs")
+    matching = [rid for rid, i in zip(ids, slots)
+                if int(states.prompt_len.np[i]) == len(config["prompt_token_ids"])
+                and ints(states.all_token_ids.gpu[i, :len(config["prompt_token_ids"])])
+                == config["prompt_token_ids"]]
+    if not matching:
+        return
+    require(config["lane"] == "vanilla" and len(ids) == len(matching) == 1,
+            "V2 requires single-request Vanilla batch")
+    require(not batch.has_structured_output_reqs and batch.num_draft_tokens == 0,
+            "V2 grammar/speculative path unsupported")
+    require(ints(batch.idx_mapping) == slots and ints(batch.expanded_idx_mapping) == slots,
+            "V2 GPU idx mapping differs")
+    require(list(batch.cu_num_logits_np) == ints(batch.cu_num_logits) == [0, 1],
+            "V2 ambiguous logits ownership")
+    bounds = [int(i) for i in batch.query_start_loc_np[:2]]
+    require(bounds == ints(batch.query_start_loc[:2]) and bounds == [0, batch.num_tokens]
+            and batch.num_tokens > 0, "V2 ambiguous query bounds")
+    positions = ints(batch.positions[:batch.num_tokens])
+    indices = ints(batch.logits_indices)
+    rows = map_rows(len(config["prompt_token_ids"]), positions, indices, 0, [], [0])
+    require(logits.ndim == 2 and logits.shape[0] == len(rows), "V2 logits row mismatch")
+    target = [r for r in rows if r["generated_index"] == 279]
+    if not target:
+        return
+    require(len(target) == 1 and not bool(batch.is_prefilling_np[0]),
+            "V2 missing/ambiguous decode row")
+    require(float(sampler.sampling_states.temperature.np[slots[0]]) == 0.0,
+            "V2 requires frozen greedy sampling")
+    query = list(map(list, zip(positions, ints(batch.input_ids[:batch.num_tokens]))))
+    require(len({p for p, _ in query}) == len(query)
+            and all(p >= 0 and t >= 0 for p, t in query), "V2 invalid actual model inputs")
+    key = uuid.uuid4().hex
+    record = dict(key=key, request_id=ids[0], prompt_token_ids=list(config["prompt_token_ids"]),
+                  active_query=query, query_bounds=bounds, logits_indices=indices, rows=rows,
+                  target_row=target[0], draft_count=0, draft_token_ids=[], decoding_path="ordinary",
+                  model_runner="v2", req_ids=ids, idx_mapping=slots,
+                  expanded_idx_mapping=ints(batch.expanded_idx_mapping), cu_num_logits=[0, 1],
+                  same_kv_cache_state_proven=False, runtime_probe_changes_timing=True,
+                  raw=score(config, key, "raw", logits[target[0]["row"]]))
+    _local.v2_context = (config, record)
+
+
+def v2_processed(sampler, logits, expanded_idx_mapping, idx_mapping_np, pos):
+    context = getattr(_local, "v2_context", None)
+    if context is None:
+        return
+    config, record = context
+    require([int(i) for i in idx_mapping_np] == record["idx_mapping"]
+            and ints(expanded_idx_mapping) == record["expanded_idx_mapping"]
+            and ints(pos) == [r["position"] for r in record["rows"]],
+            "V2 processed row binding differs")
+    require(all(float(sampler.sampling_states.temperature.np[i]) == 0.0
+                for i in record["idx_mapping"]), "V2 sampling changed")
+    require(logits.ndim == 2 and logits.shape[0] == len(record["rows"])
+            and "processed" not in record, "V2 missing/duplicate processed row")
+    record["processed"] = score(config, record["key"], "processed", logits[record["target_row"]["row"]])
+    record["processed_capture_point"] = "v2_pre_gumbel_after_top_k_top_p"
+
+
+def v2_end(output):
+    context = getattr(_local, "v2_context", None)
+    _local.v2_context = None
+    if context is None:
+        return
+    config, record = context
+    require("processed" in record, "V2 unsupported sampling path: missing pre-gumbel scores")
+    sampled = ints(output.sampled_token_ids)
+    num_sampled, num_rejected = ints(output.num_sampled), ints(output.num_rejected)
+    require(output.sampled_token_ids.ndim == 2 and len(sampled) == 1
+            and len(sampled[0]) == 1 and num_sampled == [1] and num_rejected == [0],
+            "V2 invalid sampled output/counts")
+    selected = selected_tokens(sampled[0])
+    require(len(selected) == 1, "V2 missing selected token")
+    record.update(selected=selected, sampled_token_ids=sampled, num_sampled=num_sampled,
+                  num_rejected=num_rejected, accepted_drafts=0, rejected_drafts=0)
+    emit(config, "forward", **record)
+
+
 def accounting(config, stage, request, output, scheduled, stale):
     if list(request.prompt_token_ids or []) != config["prompt_token_ids"]:
         return
@@ -197,6 +289,12 @@ def observe(stage, *args):
             processed(stage, *args)
         elif stage == "end":
             end(config, *args)
+        elif stage == "v2_begin":
+            v2_begin(config, *args)
+        elif stage == "v2_processed":
+            v2_processed(*args)
+        elif stage == "v2_end":
+            v2_end(*args)
         elif stage in ("account_before", "account_after"):
             accounting(config, stage, *args)
         elif stage == "cache_lookup":
@@ -208,7 +306,10 @@ def observe(stage, *args):
                      num_computed_tokens=request.num_computed_tokens)
     except Exception as exc:
         # A failed observer never becomes usable evidence or changes a result.
-        _local.context = None
+        if stage.startswith("v2_"):
+            _local.v2_context = None
+        else:
+            _local.context = None
         error = f"{type(exc).__name__}: {exc}"
         try:
             emit(config, "observer_error", stage=stage, error=error)

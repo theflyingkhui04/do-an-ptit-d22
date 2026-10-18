@@ -14,12 +14,21 @@ from pathlib import Path
 from experiments.protocol_b import ROOT, require, write_new
 
 HASHES = {
+    "v1/worker/gpu/sample/sampler.py": "832c9945d201a1e730ff9b4b52076aa83bd4a5064e1e4cfea952cf84d4a8d1f0",
     "v1/worker/gpu_model_runner.py": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
     "v1/sample/sampler.py": "f95805b2c6d06218c724826aa5f881a606e8d0a534a566aee7c85948520dd216",
     "v1/sample/rejection_sampler.py": "0bb9d224887ccb1355e16199005cc23a4afc6fa75156eca419851b7247d99750",
     "v1/core/sched/scheduler.py": "c1db45f3bbad3a875dd8638331b8870c4380ac1ab4734265ba5c863833a82884",
 }
 INSERTIONS = {
+    "v1/worker/gpu/sample/sampler.py": [
+        ("        # NOTE(woosuk): We intentionally compute num_nans before sampling to make clear\n",
+         '        _pb279_observe("v2_begin", self, input_batch, logits)\n'),
+        ("            sampled = gumbel_sample(\n",
+         '            _pb279_observe("v2_processed", self, processed_logits, expanded_idx_mapping, idx_mapping_np, pos)\n'),
+        ("        return sampler_output\n",
+         '        _pb279_observe("v2_end", sampler_output)\n'),
+    ],
     "v1/worker/gpu_model_runner.py": [
         ("        # Apply structured output bitmasks if present.\n",
          '        _pb279_observe("begin", self, scheduler_output, logits, spec_decode_metadata, grammar_output)\n'),

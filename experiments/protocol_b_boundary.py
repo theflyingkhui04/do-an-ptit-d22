@@ -182,6 +182,16 @@ def validate_boundary(record, events, output):
     j = row["row"]
     selected = selected_tokens(f["selected"])
     require(0 < len(selected) <= n + 1 and j < len(selected), "Boundary candidate was rejected")
+    if f.get("model_runner") == "v2":
+        require(n == 0 and f["req_ids"] == [f["request_id"]]
+                and len(f["idx_mapping"]) == 1
+                and all(type(i) is int and i >= 0 for i in f["idx_mapping"])
+                and f["expanded_idx_mapping"] == f["idx_mapping"] and f["cu_num_logits"] == [0, 1],
+                "V2 request/row ownership differs")
+        require(f["sampled_token_ids"] == [selected] and f["num_sampled"] == [1]
+                and f["num_rejected"] == [0]
+                and f["processed_capture_point"] == "v2_pre_gumbel_after_top_k_top_p",
+                "V2 sampled output/processed path differs")
     base = rows[0]["generated_index"]
     require(base >= 0 and record["token_ids"][base:base + j] == selected[:j],
             "Earlier accepted tokens differ from HTTP conditioning prefix")

@@ -24,6 +24,13 @@ from experiments.protocol_b_boundary_observer import map_rows, selected_tokens
 from experiments.protocol_b_boundary_sources import HASHES, StripObserver, transform
 
 
+def pinned_sources():
+    sources = {}
+    for name in ("protocol_b_boundary_v030.json.gz", "protocol_b_boundary_v2_v030.json.gz"):
+        sources.update(json.loads(gzip.decompress((Path(__file__).parent / "fixtures" / name).read_bytes())))
+    return sources
+
+
 class ObserverImportPathTests(unittest.TestCase):
     def test_runbook_exports_repo_root_before_prepare_or_launch(self):
         root = Path(__file__).resolve().parents[1]
@@ -102,14 +109,18 @@ class RowMappingTests(unittest.TestCase):
         a = dict(sample_id=SAMPLE, token_ids=[1] * 282, finish_reason="stop")
         v["token_ids"][279], a["token_ids"][279] = 79126, 128273
         self.assertTrue(is_fingerprint(v, a))
-        for change in ("earlier", "length", "finish"):
+        for change in ("earlier", "length", "finish", "token", "sample"):
             b = copy.deepcopy(a)
             if change == "earlier":
                 b["token_ids"][200] = 9
             elif change == "length":
                 b["token_ids"].append(1)
-            else:
+            elif change == "finish":
                 b["finish_reason"] = "length"
+            elif change == "token":
+                b["token_ids"][279] = 79126
+            else:
+                b["sample_id"] = "other-sample"
             self.assertFalse(is_fingerprint(v, b))
         self.assertIsNone(first_difference([1], [1]))
 
@@ -313,8 +324,7 @@ class BoundaryEvidenceTests(unittest.TestCase):
 
 class SourceTransformTests(unittest.TestCase):
     def test_real_pinned_sources_restore_original_ast(self):
-        fixture = Path(__file__).parent / "fixtures/protocol_b_boundary_v030.json.gz"
-        sources = json.loads(gzip.decompress(fixture.read_bytes()))
+        sources = pinned_sources()
         self.assertEqual(set(sources), set(HASHES))
         for name, text in sources.items():
             with self.subTest(name=name):
@@ -380,9 +390,8 @@ class AtomicSourceWriteTests(unittest.TestCase):
         root = Path(self.temp.name)
         self.package, self.run = root / "vllm", root / "run"
         self.run.mkdir()
-        fixture = Path(__file__).parent / "fixtures/protocol_b_boundary_v030.json.gz"
         self.originals = {name: text.encode() for name, text in
-                          json.loads(gzip.decompress(fixture.read_bytes())).items()}
+                          pinned_sources().items()}
         for name, raw in self.originals.items():
             path = self.package / name
             path.parent.mkdir(parents=True, exist_ok=True)
