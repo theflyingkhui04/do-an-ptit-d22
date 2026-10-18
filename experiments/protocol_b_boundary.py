@@ -22,6 +22,13 @@ SAMPLE = "w3_business_v2_004"
 TARGET = 279
 SCHEMA = "m203.boundary.comparison.v1"
 
+# Approved orchestration-only fix:
+# switch_lane.sh must invoke tracked launchers via `bash` instead of chmod +x,
+# preventing executable-bit drift during the diagnostic.
+APPROVED_SWITCH_LANE_SHA256 = (
+    "0dd97d5eb0ca74ce3457b9e6fee8d9260e4bcde5e5ca1447ea814a0f9c46c3df"
+)
+
 
 def reference():
     def read(path):
@@ -78,7 +85,14 @@ def prepare(directory, session):
         if path != "experiments/protocol_b_capture.py":
             require(file_sha(ROOT / path) == digest, "Baseline inference/plan source changed: " + path)
     for path, digest in runs[0]["environment"]["launcher_hashes"].items():
-        require(file_sha(ROOT / path) == digest, "Launcher changed: " + path)
+        current = file_sha(ROOT / path)
+        if path == "scripts/switch_lane.sh":
+            require(
+                current == APPROVED_SWITCH_LANE_SHA256,
+                "Unapproved switch_lane.sh change",
+            )
+        else:
+            require(current == digest, "Launcher changed: " + path)
     directory.mkdir(exist_ok=False)
     manifest = dict(schema="m203.boundary.manifest.v1", created_at=utc_now(),
                     evidence_checkpoint=CHECKPOINT, base_execution=BASE_EXECUTION,
