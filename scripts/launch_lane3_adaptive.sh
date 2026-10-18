@@ -25,6 +25,13 @@ echo "    telemetry=$ADAPTIVE_TELEMETRY_PATH vram_guard=$ADAPTIVE_ENABLE_VRAM_GU
 # 3. Speculative config: giống Làn 2 nhưng num_speculative_tokens=4 (trần k) và bật
 #    dynamic SD để scheduler đổi K mỗi bước qua dynamic_sd_lookup.
 SPEC_CONFIG='{"method": "draft_model", "model": "Qwen/Qwen2.5-0.5B-Instruct", "num_speculative_tokens": 4, "num_speculative_tokens_per_batch_size": [[1, 32, 4]], "use_heterogeneous_vocab": true, "draft_sample_method": "greedy"}'
+if [ -n "${PROTOCOL_B_DRAFT_REVISION:-}" ]; then
+  SPEC_CONFIG=$(python3 -c 'import json,os,sys; c=json.loads(sys.argv[1]); c["revision"]=os.environ["PROTOCOL_B_DRAFT_REVISION"]; print(json.dumps(c))' "$SPEC_CONFIG")
+fi
+REVISION_ARGS=()
+if [ -n "${PROTOCOL_B_TARGET_REVISION:-}" ]; then
+  REVISION_ARGS=(--revision "$PROTOCOL_B_TARGET_REVISION")
+fi
 
 # 4. Xác định lệnh vLLM (hỗ trợ cả CLI và Python module)
 if command -v vllm &> /dev/null; then
@@ -37,6 +44,7 @@ fi
 # Cùng generation defaults, quantization, VRAM và max-num-seqs như Làn 1/2;
 # khác biệt thực nghiệm duy nhất là scheduler điều khiển k thích ứng.
 $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
+  "${REVISION_ARGS[@]}" \
   --host 0.0.0.0 \
   --port 8003 \
   --served-model-name qwen2.5-7b-adaptive \
