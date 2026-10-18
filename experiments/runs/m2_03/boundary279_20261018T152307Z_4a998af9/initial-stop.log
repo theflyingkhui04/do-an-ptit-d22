@@ -1,0 +1,4 @@
+==> Đang dừng tất cả tiến trình vLLM và giải phóng GPU VRAM...
+    GPU đã giải phóng (0 MiB đang dùng).
+    Đã dọn dẹp xong tiến trình cũ.
+Đã dừng toàn bộ dịch vụ vLLM.
