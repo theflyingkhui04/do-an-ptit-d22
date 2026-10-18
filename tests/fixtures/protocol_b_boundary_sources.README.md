@@ -18,3 +18,14 @@ from checkpoint `31d31f242af55faecb262114e738aa0340c07429`, under
 `experiments/runs/m2_03/boundary279_20261018T115933Z_0267339f/vllm-v2-executed-sources/`.
 Its SHA-256 is `832c9945d201a1e730ff9b4b52076aa83bd4a5064e1e4cfea952cf84d4a8d1f0`.
 The existing V1 fixture and historical experiment outputs are unchanged.
+
+## Historical K/V source binding
+
+`protocol_b_boundary_kv_v030.json.gz` contains the twelve unmodified upstream
+v0.30.0 dependencies enumerated in the approved source-binding review, fetched
+from https://github.com/vllm-project/vllm/tree/v0.30.0.
+The V2 runner and graph-manager bytes match the earlier preserved executed-source
+snapshot. This fixture supports offline transformation tests; it does not prove
+identity with the later deployed installation. The next diagnostic must match
+every installed source against the pinned SHA-256, preserve pristine bytes, and
+record patched hashes only for instrumented files.

@@ -1,5 +1,38 @@
 # M2-03: targeted boundary 279 on Kaggle/T4
 
+## Historical K/V probe implementation update (2026-10-18)
+
+New preparations enable the narrowly scoped `kv_probe` for sample
+`w3_business_v2_004`, query `[(454, 128367)]` only. No additional request,
+cache reset, mode override, or prelude change is introduced.
+GPU verification of this extension: **NOT RUN**.
+
+Installation authenticates the bounded V2/Triton source set and preserves its
+pristine bytes alongside the existing boundary sources. Only instrumented
+files are rewritten. Any unsupported source/backend/layout fails closed.
+
+The observer records final FULL capture bindings outside capture, excluding
+warm-up and throwaway memory-profiling captures. Immediately before FULL replay
+it verifies those persistent storage identities; PIECEWISE and Adaptive V1
+observe their prepared runtime bindings before forward. The supported target
+representation is one full-attention cache group, dense FP16, unit scales,
+single-device execution; other representations are invalid evidence.
+
+`kv_history` events contain per-target-layer K/V SHA-256 for all historical
+positions 0..453, canonical position/head/dimension ordering, source linkage,
+coverage, addresses/strides, actual dispatch, and current-write-slot safety.
+Only small indices/metadata and one layer/component are staged at a time.
+Copies introduce synchronization/timing changes; exact reproduction remains
+mandatory. Capture identities copy no tensor values.
+
+The analyzer adds `historical_kv.status`: `STATE_DIFFERENT`,
+`STATE_EQUIVALENT`, or `INVALID_EVIDENCE`. Only complete authenticated equality
+sets `historical_kv_state_equivalent=true`. The broader
+`same_kv_cache_state_proven` remains false: this probe does not establish equal
+current-position activations or all internal execution state.
+Changed boundary fingerprints are invalid K/V evidence. Existing historical
+bundles without the probe remain score evidence only.
+
 Local implementation and CPU verification only. GPU execution: **NOT RUN**.
 The user must invoke this runbook on the approved, otherwise idle T4 setup.
 Publishing a reviewed execution checkpoint requires separate commit/push approval.

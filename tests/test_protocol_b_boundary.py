@@ -21,12 +21,13 @@ from experiments.protocol_b import EvidenceError, file_sha, write_new, fingerpri
 from experiments.protocol_b_boundary import (SAMPLE, first_difference, is_fingerprint,
                                              same_request, validate_boundary, seal, analyze, SCHEMA)
 from experiments.protocol_b_boundary_observer import map_rows, selected_tokens
-from experiments.protocol_b_boundary_sources import HASHES, StripObserver, transform
+from experiments.protocol_b_boundary_sources import HASHES, INSERTIONS, StripObserver, transform
 
 
 def pinned_sources():
     sources = {}
-    for name in ("protocol_b_boundary_v030.json.gz", "protocol_b_boundary_v2_v030.json.gz"):
+    for name in ("protocol_b_boundary_v030.json.gz", "protocol_b_boundary_v2_v030.json.gz",
+                 "protocol_b_boundary_kv_v030.json.gz"):
         sources.update(json.loads(gzip.decompress((Path(__file__).parent / "fixtures" / name).read_bytes())))
     return sources
 
@@ -231,7 +232,7 @@ class BoundaryEvidenceTests(unittest.TestCase):
             seal(self.output)
         self.assertIn(file_sha(path), (self.output / "SHA256SUMS").read_text())
 
-    def artifact(self, *, other_boundary=False):
+    def artifact(self, *, other_boundary=False, kv=False):
         """Synthetic serialized artifacts, not a model/GPU simulator."""
         prompts = [dict(sample_id=f"fixture-{i}", request={"messages": [str(i)],
                         "temperature": 0, "seed": 42}) for i in range(54)]
@@ -241,6 +242,8 @@ class BoundaryEvidenceTests(unittest.TestCase):
         m = dict(plan={"prompts": prompts}, execution_sha="a" * 40, session_id="fixture-session",
                  gpu_uuid="GPU-fixture", boot_id="fixture-boot", target_revision="b" * 40,
                  draft_revision="c" * 40, reference_records={})
+        if kv:
+            m["kv_probe"] = True
         env = dict(git_sha=m["execution_sha"], **{k: m[k] for k in
                    ("session_id", "gpu_uuid", "boot_id", "target_revision", "draft_revision")})
         for index, lane in enumerate(("vanilla", "adaptive")):
@@ -251,6 +254,8 @@ class BoundaryEvidenceTests(unittest.TestCase):
             for i, p in enumerate(prompts[:46]):
                 ids = [7] * 284 if lane == "vanilla" else [7] * 282
                 ids[279] = 79126 if lane == "vanilla" else 128273
+                if kv:
+                    ids[278] = 128367
                 if other_boundary and lane == "adaptive":
                     ids[200] = 9
                 model = "fixture-" + lane
@@ -271,6 +276,8 @@ class BoundaryEvidenceTests(unittest.TestCase):
                 diagnostic_through=SAMPLE, records=records, environment=env,
                 responses_sha256=file_sha(path), started_at=str(index * 2), finished_at=str(index * 2 + 1)))
             config = dict(lane=lane, execution_sha=m["execution_sha"])
+            if kv:
+                config["kv_probe"] = True
             write_new(output / "boundary_config.json", config)
             write_new(output / "observer_binding.json", dict(
                 config_sha256=file_sha(output / "boundary_config.json"), config_fingerprint=fingerprint(config)))
@@ -279,6 +286,8 @@ class BoundaryEvidenceTests(unittest.TestCase):
                 e.update(schema="m203.boundary.event.v1", lane=lane, execution_sha=m["execution_sha"],
                          config_fingerprint=fingerprint(config), request_id="chatcmpl-45-1234abcd")
             events[0]["selected"] = [records[-1]["token_ids"][279]]
+            if kv:
+                events[0].update(pid=2, timestamp="3", active_query=[[454, 128367]])
             events[1]["committed_ids"] = records[-1]["token_ids"][:280]
             for i, e in enumerate(events):
                 write_new(output / "observer" / f"{i}.json", e)
@@ -334,8 +343,11 @@ class SourceTransformTests(unittest.TestCase):
                 self.assertEqual(ast.dump(StripObserver().visit(ast.parse(patched))), ast.dump(ast.parse(raw)))
                 with self.assertRaises(EvidenceError):
                     transform(name, raw + b"\n")
-                with self.assertRaises(EvidenceError):
-                    transform(name, patched)
+                if name in INSERTIONS:
+                    with self.assertRaises(EvidenceError):
+                        transform(name, patched)
+                else:
+                    self.assertEqual(patched, raw)  # Authenticated dependency, no hook inserted.
 
 
 class CapturePrefixTests(unittest.TestCase):

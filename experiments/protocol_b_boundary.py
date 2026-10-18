@@ -12,7 +12,8 @@ from pathlib import Path
 from experiments.protocol_b import (ROOT, EvidenceError, canonical_json, file_sha, fingerprint,
                                     load_json, load_plan, require, utc_now, write_new)
 from experiments.protocol_b_capture import capture, command, reserve_run, server_processes
-from experiments.protocol_b_boundary_observer import map_rows, selected_tokens
+from experiments.protocol_b_boundary_observer import (map_rows, selected_tokens,
+    history_slots, validate_full_binding)
 
 CHECKPOINT = "4372f8b81998e8a50ee2b87ea6d7c4a9c4b523c5"
 BASE_EXECUTION = "a63baa1c42fd75f542f876ab512765149ddd5e20"
@@ -88,7 +89,7 @@ def prepare(directory, session):
                         sorted((ROOT / "experiments").glob("protocol_b_boundary*.py"))},
                     request_position_one_based=46, prelude_count=45,
                     plan=plan, reference_records={r["lane"]: r["records"][:46] for r in runs},
-                    interpretation_status="NOT_YET_APPROVED", task_done=False)
+                    kv_probe=True, interpretation_status="NOT_YET_APPROVED", task_done=False)
     for key in ("PROTOCOL_B_TARGET_REVISION", "PROTOCOL_B_DRAFT_REVISION"):
         field = "target_revision" if "TARGET" in key else "draft_revision"
         require(os.environ[key] == runs[0]["environment"][field], "Model revision changed")
@@ -99,21 +100,15 @@ def prepare(directory, session):
         reserve_run(output, "boundary279", lane, lane, session)
         (output / "observer").mkdir()
         write_new(output / "boundary_config.json", dict(
-            directory=str(output.resolve()), lane=lane, sample_id=SAMPLE, target=TARGET,
+            directory=str(output.resolve()), lane=lane, sample_id=SAMPLE, target=TARGET, kv_probe=True,
             execution_sha=execution, session_id=session, gpu_uuid=gpu,
             target_revision=manifest["target_revision"], draft_revision=manifest["draft_revision"],
             prompt_token_ids=runs[0]["records"][45]["prompt_token_ids"]))
 
 
 def verify_instrumentation(directory):
-    from experiments.protocol_b_boundary_sources import HASHES
-    state = load_json(directory / "instrumentation.json")
-    require(state["original_hashes"] == HASHES, "Unexpected instrumented sources")
-    require(state["observer_sha256"] == file_sha(ROOT / "experiments/protocol_b_boundary_observer.py"),
-            "Observer source changed")
-    for name, digest in state["patched_hashes"].items():
-        require(file_sha(Path(state["vllm_root"]) / name) == digest, "Installed hooks changed")
-    require(set(state["patched_hashes"]) == set(HASHES), "Missing hooks")
+    from experiments.protocol_b_boundary_sources import authenticate
+    authenticate(directory, installed=True)
 
 
 def capture_lane(directory, lane):
@@ -132,6 +127,7 @@ def capture_lane(directory, lane):
                 ("execution_sha", "session_id", "gpu_uuid", "target_revision", "draft_revision"))
             and settings["lane"] == lane and settings["sample_id"] == SAMPLE
             and settings["target"] == TARGET
+            and settings.get("kv_probe") is True and manifest.get("kv_probe") is True
             and settings["prompt_token_ids"] == manifest["reference_records"][lane][-1]["prompt_token_ids"]
             and Path(settings["directory"]).resolve() == config.parent,
             "Observer config identity changed")
@@ -240,11 +236,137 @@ def validate_boundary(record, events, output):
     return f, vectors
 
 
+def compare_kv_histories(snapshots, captures, source_events, authenticated, boundaries):
+    """Offline gate. Pointer equality is local binding evidence, never cross-lane content."""
+    result = dict(status="INVALID_EVIDENCE", historical_kv_state_equivalent=False)
+    try:
+        for lane in ("vanilla", "adaptive"):
+            s, f = snapshots[lane], boundaries[lane]
+            require(s["history_schema"] == "m203.boundary.kv.v1"
+                    and s["phase"] == "pre_forward" and s["batch_row"] == 0
+                    and s["request_id"] == f["request_id"] and s["pid"] == f["pid"]
+                    and s["active_query"] == f["active_query"] == [[454, 128367]]
+                    and s["position"] == 454 and s["generated_index"] == 279
+                    and f["draft_count"] == 0 and f["target_row"]["position"] == 454
+                    and s["timestamp"] <= f["timestamp"], "KV stale/ambiguous boundary snapshot")
+            if f.get("model_runner") == "v2":
+                require(f["idx_mapping"] == [s["request_state_index"]], "KV request-state index differs")
+            else:
+                require(s["request_state_index"] == 0, "KV V1 request-state index differs")
+            auth = [e for e in source_events[lane] if e["auth_id"] == s["auth_id"]
+                    and e["pid"] == s["pid"]]
+            require(len(auth) == 1 and all(auth[0][k] == v for k, v in authenticated.items())
+                    and auth[0]["timestamp"] <= s["timestamp"], "KV source authentication differs")
+            require(s["runtime_probe_changes_timing"] is True
+                    and s["copies"]["device_wide_synchronize"] is False,
+                    "KV missing perturbation record")
+            require(s["visibility"] == dict(query_start_loc=[0, 1], seq_len=455,
+                                           historical_positions=[0, 454]),
+                    "KV incomplete effective visibility")
+            binding = s["runtime_binding"]
+            require(set(binding["inputs"]) == {"input_ids", "positions"},
+                    "KV incomplete input identities")
+            names = s["expected_layers"]
+            require(names == sorted(set(names)) and len(names) == s["model_layer_count"] > 0
+                    and names == binding["expected_layers"]
+                    and binding["model_layer_count"] == len(names)
+                    and set(s["layers"]) == set(binding["layers"]) == set(names),
+                    "KV missing/ambiguous target layer coverage")
+            mode = s["dispatched_graph_mode"]
+            require(mode in ("FULL", "PIECEWISE")
+                    and (lane != "adaptive" or mode == "PIECEWISE"), "KV unsupported dispatch")
+            if mode == "FULL":
+                found = [c for c in captures[lane] if c["capture_id"] == s["capture_id"]]
+                require(len(found) == 1 and found[0]["pid"] == s["pid"]
+                        and found[0]["auth_id"] == s["auth_id"]
+                        and found[0]["descriptor"] == s["descriptor"]
+                        and found[0]["timestamp"] <= s["timestamp"], "KV missing FULL capture")
+                validate_full_binding(found[0]["bindings"], binding)
+            else:
+                require(s["capture_id"] is None and s["descriptor"] is None, "KV wrong PIECEWISE binding")
+            for name in names:
+                x, b = s["layers"][name], binding["layers"][name]
+                require(set(b["metadata"]) == {"query_start_loc", "seq_lens", "block_table", "slot_mapping",
+                                                "softmax_segm_output", "softmax_segm_max", "softmax_segm_expsum"}
+                        and set(b["scales"]) == {"_q_scale", "_k_scale", "_v_scale"},
+                        "KV incomplete metadata/scale identities")
+                require(x["coverage"] == [0, 454]
+                        and x["order"] == ["logical_position", "kv_head", "head_dimension"]
+                        and x["heads"] == b["heads"] > 0 and x["head_dim"] == b["head_dim"] > 0
+                        and x["elements_per_component"] == 454 * x["heads"] * x["head_dim"]
+                        and x["bytes_per_component"] == 2 * x["elements_per_component"]
+                        and x["dtype"] == "torch.float16" and x["byte_order"] == "little",
+                        "KV incomplete or unsupported content coverage")
+                require(x["cache_identity"] == b["cache"] and x["group"] == b["group"]
+                        and x["spec_block_size"] == b["spec_block_size"]
+                        and x["spec_block_size"] % x["kernel_block_size"] == 0
+                        and x["cache_identity"]["shape"][1:] ==
+                        [x["heads"], x["kernel_block_size"], 2 * x["head_dim"]]
+                        and x["cache_identity"]["device"].startswith("cuda"),
+                        "KV runtime cache binding/layout differs")
+                _, current, blocks = history_slots([x["physical_blocks"]], x["kernel_block_size"])
+                require(current == x["write_slot"] and blocks == x["physical_blocks"]
+                        and x["no_write_alias"] is True
+                        and max(blocks) < x["cache_identity"]["shape"][0],
+                        "KV write-slot safety/physical coverage differs")
+                require(set(x["digests"]) == {"K", "V"} and all(
+                    re.fullmatch("[0-9a-f]{64}", digest) for digest in x["digests"].values()),
+                    "KV missing component fingerprints")
+                interpretation = dict(x["interpretation"])
+                scales = interpretation.pop("scales")
+                require(interpretation == b["interpretation"]
+                        and interpretation["backend"] == "TRITON_ATTN"
+                        and interpretation["quantization"] == "NONE"
+                        and set(scales) == {"_q_scale", "_k_scale", "_v_scale"}
+                        and all(v == [1.0] for v in scales.values()),
+                        "KV unsupported interpretation/scales")
+        v, a = snapshots["vanilla"], snapshots["adaptive"]
+        require(v["expected_layers"] == a["expected_layers"], "KV target layer sets differ")
+        differences = []
+        if v["visibility"] != a["visibility"]:
+            differences.append("effective_visibility")
+        for name in v["expected_layers"]:
+            x, y = v["layers"][name], a["layers"][name]
+            require((x["heads"], x["head_dim"]) == (y["heads"], y["head_dim"]),
+                    "KV cross-lane architecture differs")
+            if x["interpretation"] != y["interpretation"]:
+                differences.append(name + ":interpretation")
+            for component in ("K", "V"):
+                if x["digests"][component] != y["digests"][component]:
+                    differences.append(name + ":" + component)
+        result.update(status="STATE_DIFFERENT" if differences else "STATE_EQUIVALENT",
+                      historical_kv_state_equivalent=not differences, differences=differences,
+                      snapshot_ids={lane: s["snapshot_id"] for lane, s in snapshots.items()})
+    except (EvidenceError, KeyError, TypeError, ValueError, IndexError, ZeroDivisionError) as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def analyze_kv(directory, events, boundaries):
+    from experiments.protocol_b_boundary_sources import authenticate
+    authenticated = authenticate(directory)
+    manifest = load_json(directory / "manifest.json")
+    require(authenticated["observer_sha256"] ==
+            manifest["diagnostic_source_hashes"]["protocol_b_boundary_observer.py"],
+            "KV observer differs from execution manifest")
+    snapshots, captures, sources = {}, {}, {}
+    for lane in ("vanilla", "adaptive"):
+        require(not any(e["kind"] == "observer_error" for e in events[lane]), "KV observer errors")
+        selected = [e for e in events[lane] if e["kind"] == "kv_history"
+                    and e["request_id"] == boundaries[lane]["request_id"]]
+        require(len(selected) == 1, "KV missing/duplicate history snapshot")
+        snapshots[lane] = selected[0]
+        captures[lane] = [e for e in events[lane] if e["kind"] == "kv_capture"]
+        sources[lane] = [e for e in events[lane] if e["kind"] == "kv_sources"]
+    return compare_kv_histories(snapshots, captures, sources, authenticated, boundaries)
+
+
 def analyze(directory):
     m = load_json(directory / "manifest.json")
     result = dict(schema=SCHEMA, generated_at=utc_now(), sample_id=SAMPLE,
                   interpretation_status="NOT_YET_APPROVED", task_done=False,
-                  status="INVALID_EVIDENCE", same_kv_cache_state_proven=False)
+                  status="INVALID_EVIDENCE", same_kv_cache_state_proven=False,
+                  historical_kv=dict(status="INVALID_EVIDENCE", historical_kv_state_equivalent=False))
     try:
         prompts = m["plan"]["prompts"]
         require(len(prompts) == 54 and len({p["sample_id"] for p in prompts}) == 54
@@ -302,6 +424,9 @@ def analyze(directory):
                           for lane in records})
         if not is_fingerprint(v, a):
             result["status"] = "NON_REPRODUCTION"
+            if m.get("kv_probe") is True:
+                result.update(status="INVALID_EVIDENCE", boundary_status="NON_REPRODUCTION",
+                              error="KV boundary fingerprint not reproduced")
         else:
             captures = {lane: validate_boundary(records[lane], event_sets[lane], directory / lane)
                         for lane in records}
@@ -316,6 +441,13 @@ def analyze(directory):
                     argmax=[int(np.argmax(x)), int(np.argmax(y))],
                     finite_max_abs_diff=float(np.max(np.abs(x[finite] - y[finite]))) if finite.any() else None,
                     finite_mask_equal=bool(np.array_equal(np.isfinite(x), np.isfinite(y))))
+            if m.get("kv_probe") is True:
+                require(all(load_json(directory / lane / "boundary_config.json").get("kv_probe") is True
+                            for lane in records), "KV lane configuration differs")
+                result["historical_kv"] = analyze_kv(directory, event_sets, result["boundary"])
+                require(result["historical_kv"]["status"] != "INVALID_EVIDENCE",
+                        result["historical_kv"].get("error", "KV invalid evidence"))
+                result["historical_kv_state_equivalent"] = result["historical_kv"]["historical_kv_state_equivalent"]
     except (EvidenceError, OSError, ValueError, KeyError, TypeError, IndexError) as exc:
         result.update(status="INVALID_EVIDENCE", error=f"{type(exc).__name__}: {exc}")
         result.pop("boundary", None)

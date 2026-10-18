@@ -16,6 +16,264 @@ from experiments.protocol_b import require, utc_now, write_new, fingerprint
 _local = threading.local()
 
 
+def tensor_identity(tensor):
+    """Metadata only: never copy tensor values or allocate CUDA storage at capture."""
+    return dict(data_ptr=tensor.data_ptr(), storage_ptr=tensor.untyped_storage().data_ptr(),
+                storage_offset=tensor.storage_offset(), shape=list(tensor.shape),
+                strides=list(tensor.stride()), dtype=str(tensor.dtype), device=str(tensor.device))
+
+
+def history_slots(block_table, kernel_block_size, row=0, positions=range(454)):
+    """CPU-testable addressing contract; gathered tables use batch rows, not state slots."""
+    positions = list(positions)
+    require(positions == list(range(454)), "KV incomplete historical positions")
+    require(type(kernel_block_size) is int and kernel_block_size > 0, "KV invalid block size")
+    table = ints(block_table[row]) if hasattr(block_table, "detach") else block_table[row]
+    require(len(table) > 454 // kernel_block_size, "KV missing historical/current blocks")
+    blocks = table[:454 // kernel_block_size + 1]
+    require(all(type(b) is int and b >= 0 for b in blocks), "KV invalid physical block")
+    slots = [table[p // kernel_block_size] * kernel_block_size + p % kernel_block_size
+             for p in positions]
+    require(len(set(slots)) == 454, "KV aliased historical slots")
+    current = table[454 // kernel_block_size] * kernel_block_size + 454 % kernel_block_size
+    require(current not in slots, "KV current write aliases history")
+    return slots, current, blocks
+
+
+def hash_history(cache, block_table, kernel_block_size, heads, head_dim, write_slot,
+                 row=0, positions=range(454)):
+    """Hash one layer/component at a time; CPU tensors test indexing, not CUDA behavior."""
+    import torch
+    import hashlib
+    require(cache.dtype == torch.float16 and cache.ndim == 4
+            and list(cache.shape[1:]) == [heads, kernel_block_size, 2 * head_dim],
+            "KV unsupported dense FP16 cache representation")
+    require(heads > 0 and head_dim > 0 and sys.byteorder == "little", "KV unsupported dimensions/endian")
+    slots, current, blocks = history_slots(block_table, kernel_block_size, row, positions)
+    require(type(write_slot) is int and write_slot == current, "KV current slot mapping differs")
+    require(max(blocks) < cache.shape[0], "KV physical block outside layer cache")
+    indices = torch.tensor(slots, device=cache.device, dtype=torch.long)
+    physical, offsets = indices // kernel_block_size, indices % kernel_block_size
+    digests = {}
+    for component, start in (("K", 0), ("V", head_dim)):
+        # Advanced indexing produces (logical_position, kv_head, head_dimension).
+        selected = cache[physical, :, offsets, start:start + head_dim]
+        raw = selected.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes()
+        digests[component] = hashlib.sha256(raw).hexdigest()
+        del raw, selected
+    return dict(coverage=[0, 454], order=["logical_position", "kv_head", "head_dimension"],
+                heads=heads, head_dim=head_dim, dtype=str(cache.dtype), byte_order="little",
+                elements_per_component=454 * heads * head_dim,
+                bytes_per_component=454 * heads * head_dim * 2,
+                kernel_block_size=kernel_block_size, physical_blocks=blocks,
+                write_slot=write_slot, no_write_alias=True, digests=digests,
+                cache_identity=tensor_identity(cache))
+
+
+def kv_layer_bindings(vllm_config, cache_config, inputs, metadata, slots):
+    """Resolve only target decoder layers; capture invokes this without any value copies."""
+    parallel = vllm_config.parallel_config
+    require(all(int(getattr(parallel, k, 1)) == 1 for k in
+                ("tensor_parallel_size", "pipeline_parallel_size", "data_parallel_size",
+                 "decode_context_parallel_size", "prefill_context_parallel_size")),
+            "KV unsupported parallelism")
+    require(isinstance(metadata, dict) and isinstance(slots, dict), "KV unsupported microbatch metadata")
+    require(inputs.get("inputs_embeds") is None and inputs.get("intermediate_tensors") is None,
+            "KV unsupported embedded/intermediate input")
+    context = vllm_config.compilation_config.static_forward_context
+    require(len(cache_config.kv_cache_groups) == 1, "KV unsupported target cache groups")
+    names = sorted(name for group in cache_config.kv_cache_groups for name in group.layer_names)
+    count = int(vllm_config.model_config.hf_text_config.num_hidden_layers)
+    require(len(names) == len(set(names)) == count and set(metadata) == set(names)
+            and set(slots) == set(names), "KV incomplete/ambiguous target layer set")
+    layers = {}
+    for gid, group in enumerate(cache_config.kv_cache_groups):
+        for name in group.layer_names:
+            layer, m = context[name], metadata[name]
+            require(layer.attn_backend.get_name() == "TRITON_ATTN", "KV unsupported backend")
+            impl = layer.impl
+            require(impl._kv_quant_mode.name == "NONE"
+                    and not impl._is_per_token_head_quant
+                    and impl.kv_cache_dtype in ("auto", "float16")
+                    and tuple(impl.sliding_window) == (-1, -1)
+                    and impl.alibi_slopes is None and impl.sinks is None
+                    and impl.chunk_lookback == -1 and not impl.use_alibi_sqrt,
+                    "KV unsupported visibility/quantization")
+            require(type(m.causal) is bool and m.causal and not m.use_cascade
+                    and m.mm_prefix_range_tensor is None and m.rswa_prefix_lens is None,
+                    "KV unsupported attention metadata")
+            spec = group.kv_cache_spec
+            if hasattr(spec, "kv_cache_specs"):
+                spec = spec.kv_cache_specs[name]
+            require(type(spec).__name__ == "FullAttentionSpec", "KV unsupported cache spec")
+            cache = layer.kv_cache
+            require(str(cache.dtype) == "torch.float16" and cache.ndim == 4
+                    and list(cache.shape[1::2]) == [impl.num_kv_heads, 2 * impl.head_size]
+                    and spec.num_kv_heads == impl.num_kv_heads
+                    and spec.head_size == spec.head_size_v == impl.head_size
+                    and spec.dtype == cache.dtype and cache.shape[2] % 16 == 0,
+                    "KV unsupported layer cache layout")
+            require(tensor_identity(m.slot_mapping) == tensor_identity(slots[name]),
+                    "KV metadata/forward slot binding differs")
+            layers[name] = dict(group=gid, cache=tensor_identity(cache),
+                metadata={k: tensor_identity(getattr(m, k)) for k in
+                          ("query_start_loc", "seq_lens", "block_table", "slot_mapping",
+                           "softmax_segm_output", "softmax_segm_max", "softmax_segm_expsum")},
+                scales={k: tensor_identity(getattr(layer, k)) for k in ("_q_scale", "_k_scale", "_v_scale")},
+                heads=impl.num_kv_heads, head_dim=impl.head_size, spec_block_size=spec.block_size,
+                interpretation=dict(backend="TRITON_ATTN", quantization="NONE", causal=True,
+                                    window=[-1, -1], use_cascade=False, scale=impl.scale,
+                                    soft_cap=impl.logits_soft_cap),
+                launch=dict(max_seq_len=m.max_seq_len, max_query_len=m.max_query_len,
+                            num_actual_tokens=m.num_actual_tokens,
+                            seq_threshold_3D=m.seq_threshold_3D))
+    return dict(inputs={k: tensor_identity(inputs[k]) for k in ("input_ids", "positions")},
+                layers=layers, expected_layers=names, model_layer_count=count)
+
+
+def validate_full_binding(captured, runtime):
+    """Compare storage consumed by FULL, allowing runtime-only Python launch scalars to differ."""
+    require(captured["inputs"] == runtime["inputs"]
+            and captured["expected_layers"] == runtime["expected_layers"]
+            and captured["model_layer_count"] == runtime["model_layer_count"],
+            "KV FULL input/layer binding differs")
+    for name in captured["expected_layers"]:
+        left, right = captured["layers"][name], runtime["layers"][name]
+        require({k: v for k, v in left.items() if k != "launch"}
+                == {k: v for k, v in right.items() if k != "launch"},
+                "KV FULL capture/runtime identity mismatch: " + name)
+
+
+def kv_authenticate(config):
+    from experiments.protocol_b_boundary_sources import authenticate
+    auth = authenticate(Path(config["directory"]).parent, installed=True)
+    auth_id = fingerprint(dict(auth, pid=os.getpid()))
+    if getattr(_local, "kv_auth_id", None) != auth_id:
+        emit(config, "kv_sources", auth_id=auth_id, pid=os.getpid(), **auth)
+        _local.kv_auth_id = auth_id
+    return auth_id
+
+
+def kv_capture(config, manager, desc, inputs, metadata, slots, cache_config, warmup):
+    if warmup or desc.cg_mode.name != "FULL" or manager._capture_mem_samples is not None:
+        return
+    auth_id = kv_authenticate(config)
+    bindings = kv_layer_bindings(manager.vllm_config, cache_config, inputs, metadata, slots)
+    require(all(x["cache"]["device"].startswith("cuda") for x in bindings["layers"].values()),
+            "KV capture requires CUDA layer storage")
+    captures = getattr(_local, "kv_captures", {})
+    key = (id(manager), repr(desc))
+    require(key not in captures, "KV duplicate capture descriptor")
+    record = dict(capture_id=uuid.uuid4().hex, descriptor=repr(desc), bindings=bindings,
+                  auth_id=auth_id, pid=os.getpid())
+    captures[key] = record
+    _local.kv_captures = captures
+    emit(config, "kv_capture", **record)
+
+
+def kv_v2_prepare(config, runner, batch, desc, inputs, metadata, slots):
+    _local.kv_pending = None  # Never reuse a preceding step's mutable views.
+    ids = list(batch.req_ids or ())
+    matching = [rid for rid in ids if rid in runner.req_states.req_id_to_index
+                and int(runner.req_states.prompt_len.np[runner.req_states.req_id_to_index[rid]])
+                == len(config["prompt_token_ids"])]
+    if not matching:
+        return
+    # Position check is from the actual device input, not optimistic CPU counters.
+    positions = ints(batch.positions[:batch.num_tokens])
+    if 454 not in positions:
+        return
+    require(config["lane"] == "vanilla" and len(ids) == len(matching) == batch.num_reqs == 1,
+            "KV ambiguous V2 request")
+    index = runner.req_states.req_id_to_index[ids[0]]
+    if ints(runner.req_states.all_token_ids.gpu[index, :len(config["prompt_token_ids"])]) != config["prompt_token_ids"]:
+        return  # Another conditioning request can have the same prompt length.
+    require(batch.num_draft_tokens == 0 and not batch.is_prefilling_np[0]
+            and list(batch.idx_mapping_np) == ints(batch.idx_mapping) == [index],
+            "KV V2 request-state mapping differs")
+    require(positions == [454] and ints(batch.input_ids[:batch.num_tokens]) == [128367],
+            "KV unexpected boundary query")
+    require(desc.cg_mode.name in ("FULL", "PIECEWISE") and desc.num_ubatches == 1,
+            "KV unsupported dispatched graph mode/microbatch")
+    require(type(runner.model_state).__name__ == "DefaultModelState"
+            and runner.pcp_manager is None, "KV unsupported V2 model state")
+    _local.kv_pending = (runner, batch, desc, inputs, metadata, slots, ids[0], index)
+
+
+def kv_v2_observe(config, manager, desc=None):
+    pending = getattr(_local, "kv_pending", None)
+    _local.kv_pending = None
+    if pending is None:
+        return
+    runner, batch, prepared_desc, inputs, metadata, slots, rid, index = pending
+    require(runner.cudagraph_manager is manager, "KV stale/wrong FULL manager")
+    mode = prepared_desc.cg_mode.name
+    require((mode == "FULL" and desc == prepared_desc) or (mode == "PIECEWISE" and desc is None),
+            "KV dispatched hook differs")
+    binding = kv_layer_bindings(runner.vllm_config, runner.kv_cache_config, inputs, metadata, slots)
+    capture = None
+    if mode == "FULL":
+        capture = getattr(_local, "kv_captures", {}).get((id(manager), repr(desc)))
+        require(capture is not None, "KV missing FULL capture binding")
+        validate_full_binding(capture["bindings"], binding)
+    kv_snapshot(config, runner, inputs, metadata, slots, rid, index, mode, binding, capture)
+
+
+def kv_v1(config, runner, scheduled, input_ids, positions, metadata, slots, mode):
+    ids = list(runner.input_batch.req_ids[:runner.input_batch.num_reqs])
+    matching = [rid for rid in ids if list(runner.requests[rid].prompt_token_ids or [])
+                == config["prompt_token_ids"]]
+    if not matching:
+        return
+    n = scheduled.total_num_scheduled_tokens
+    if 454 not in ints(positions[:n]):
+        return
+    require(config["lane"] == "adaptive" and len(ids) == len(matching) == 1
+            and n == 1 and ints(positions[:n]) == [454] and ints(input_ids[:n]) == [128367]
+            and not scheduled.scheduled_spec_decode_tokens, "KV unexpected V1 boundary query")
+    # The approved Adaptive execution is PIECEWISE. FULL requires its own capture binding.
+    require(mode.name == "PIECEWISE", "KV unsupported V1 dispatched mode")
+    inputs = dict(input_ids=input_ids, positions=positions)
+    binding = kv_layer_bindings(runner.vllm_config, runner.kv_cache_config, inputs, metadata, slots)
+    kv_snapshot(config, runner, inputs, metadata, slots, ids[0], 0, mode.name, binding, None)
+
+
+def kv_snapshot(config, runner, inputs, metadata, slots, rid, index, mode, binding, capture):
+    auth_id = kv_authenticate(config)
+    require(len(config["prompt_token_ids"]) == 176, "KV boundary prompt length changed")
+    layers = {}
+    context = runner.vllm_config.compilation_config.static_forward_context
+    for name in binding["expected_layers"]:
+        layer, m = context[name], metadata[name]
+        require(layer.kv_cache.device.type == "cuda", "KV runtime requires CUDA layer storage")
+        require(ints(m.query_start_loc[:2]) == [0, 1] and ints(m.seq_lens[:1]) == [455],
+                "KV effective query/sequence length differs")
+        info = binding["layers"][name]
+        scales = {k: ints(getattr(layer, k).reshape(-1)) for k in ("_q_scale", "_k_scale", "_v_scale")}
+        require(all(v == [1.0] for v in scales.values()), "KV unsupported nonunit dense scales")
+        write_slot, = ints(slots[name][:1])
+        extracted = hash_history(layer.kv_cache, m.block_table, layer.kv_cache.shape[2],
+                                 info["heads"], info["head_dim"], write_slot)
+        layers[name] = dict(extracted, group=info["group"], spec_block_size=info["spec_block_size"],
+                            interpretation=dict(info["interpretation"], scales=scales))
+    # At FULL, include capture-bound launch scalars; runtime scalars are not claimed consumed.
+    emit(config, "kv_history", history_schema="m203.boundary.kv.v1",
+         snapshot_id=uuid.uuid4().hex, pid=os.getpid(), auth_id=auth_id,
+         request_id=rid, request_state_index=int(index), batch_row=0,
+         active_query=[[454, 128367]], position=454, generated_index=279,
+         dispatched_graph_mode=mode, descriptor=None if capture is None else capture["descriptor"],
+         capture_id=None if capture is None else capture["capture_id"],
+         runtime_binding=binding, expected_layers=binding["expected_layers"],
+         model_layer_count=binding["model_layer_count"], layers=layers,
+         visibility=dict(query_start_loc=[0, 1], seq_len=455, historical_positions=[0, 454]),
+         runtime_probe_changes_timing=True,
+         copies=dict(device_to_cpu="metadata/scales; one historical layer/component at a time",
+                     host_to_device="454 int64 slot indices per target layer",
+                     device_gather="one historical K or V component into temporary storage",
+                     synchronization="blocking Tensor.cpu() on observation stream",
+                     device_wide_synchronize=False), phase="pre_forward")
+
+
 def map_rows(prompt_len, positions, indices, draft_count, target_rows, bonus_rows):
     """Archive mapping: generated index = actual model position - prompt + 1."""
     require(type(prompt_len) is int and prompt_len > 0, "Invalid prompt length")
@@ -118,7 +376,7 @@ def begin(config, runner, scheduled, logits, spec, grammar):
             and all(p >= 0 and t >= 0 for p, t in query), "Invalid actual model inputs")
     row = target[0]
     key = uuid.uuid4().hex
-    record = dict(key=key, request_id=ids[0], prompt_token_ids=config["prompt_token_ids"],
+    record = dict(key=key, pid=os.getpid(), request_id=ids[0], prompt_token_ids=config["prompt_token_ids"],
                   active_query=query, query_bounds=[lo, hi], logits_indices=indices, rows=rows,
                   target_row=row, draft_count=n, decoding_path="ordinary" if spec is None else "speculative",
                   draft_token_ids=[] if spec is None else ints(spec.draft_token_ids),
@@ -213,7 +471,7 @@ def v2_begin(config, sampler, batch, logits):
     require(len({p for p, _ in query}) == len(query)
             and all(p >= 0 and t >= 0 for p, t in query), "V2 invalid actual model inputs")
     key = uuid.uuid4().hex
-    record = dict(key=key, request_id=ids[0], prompt_token_ids=list(config["prompt_token_ids"]),
+    record = dict(key=key, pid=os.getpid(), request_id=ids[0], prompt_token_ids=list(config["prompt_token_ids"]),
                   active_query=query, query_bounds=bounds, logits_indices=indices, rows=rows,
                   target_row=target[0], draft_count=0, draft_token_ids=[], decoding_path="ordinary",
                   model_runner="v2", req_ids=ids, idx_mapping=slots,
@@ -283,7 +541,22 @@ def observe(stage, *args):
         require(isinstance(config, dict) and all(key in config for key in
                 ("directory", "lane", "execution_sha", "prompt_token_ids")),
                 "Incomplete observer config")
-        if stage == "begin":
+        if stage.startswith("kv_"):
+            if config.get("kv_probe") is not True:
+                return
+            if stage == "kv_capture":
+                kv_capture(config, *args)
+            elif stage == "kv_v2_prepare":
+                kv_v2_prepare(config, *args)
+            elif stage == "kv_v2_full":
+                kv_v2_observe(config, *args)
+            elif stage == "kv_v2_piecewise":
+                kv_v2_observe(config, *args)
+            elif stage == "kv_v1":
+                kv_v1(config, *args)
+            else:
+                require(False, "Unknown KV stage")
+        elif stage == "begin":
             begin(config, *args)
         elif stage in ("sample_scores", "verify_scores"):
             processed(stage, *args)
@@ -306,6 +579,8 @@ def observe(stage, *args):
                      num_computed_tokens=request.num_computed_tokens)
     except Exception as exc:
         # A failed observer never becomes usable evidence or changes a result.
+        if stage.startswith("kv_"):
+            _local.kv_pending = None
         if stage.startswith("v2_"):
             _local.v2_context = None
         else:

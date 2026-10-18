@@ -10,10 +10,23 @@ import os
 import stat
 import tempfile
 from pathlib import Path
+import json
 
 from experiments.protocol_b import ROOT, require, write_new
 
 HASHES = {
+    "v1/worker/gpu/model_runner.py": "174c93db921c23cf0396eee4764be25b2bd2d4b6a06e9fa41ce3598b884ce8ce",
+    "v1/worker/gpu/cudagraph_utils.py": "6e9c042890603535e300a40df8ee159dbed1058a64a83ae50ff0329e332e05ff",
+    "v1/worker/gpu/input_batch.py": "d5dd956eb319bd69dd9e762047833d81ad40b21fce619fcb2133759e73620694",
+    "v1/worker/gpu/block_table.py": "61c004315d5af7e7eae4e2a9e6be92ea82c520327690a7f55a73bb9ce95f520a",
+    "v1/worker/gpu/model_states/default.py": "bb614f814780f052e869f9acf31dfbfa68718ee7dc6252eefa901b5730ee8a2a",
+    "v1/worker/gpu/attn_utils.py": "b9b81e59dda2720b1f9c434471381f879228832443e52756e469b4ad4905888f",
+    "v1/worker/utils.py": "0ca3ec6bf4d20076145b7fe64e564962adebedc8f75a856b517ba0b2f2d77acf",
+    "v1/kv_cache_interface.py": "1cf202f1a44d5bc5c3832b70b41507687ecceea3784e67a4f003bc0210d6eecb",
+    "forward_context.py": "cc1473477dcc7b762c3901b25cc7bf35c06a2c42f193136fed553abf6fe33f0e",
+    "model_executor/layers/attention/attention.py": "bc897e452f3aea603e353ca42a365d3be8836e9485d78cbf8cc4677baca2fb42",
+    "v1/attention/backends/triton_attn.py": "1057663d110e1d5229495a799027b27277c1eca325d5b6780fa2259afbf58a1a",
+    "v1/attention/ops/triton_unified_attention.py": "65d0fbcf33d00789df8ca688c0a1c908e710cfaef53471178747ecae11f05829",
     "v1/worker/gpu/sample/sampler.py": "832c9945d201a1e730ff9b4b52076aa83bd4a5064e1e4cfea952cf84d4a8d1f0",
     "v1/worker/gpu_model_runner.py": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
     "v1/sample/sampler.py": "f95805b2c6d06218c724826aa5f881a606e8d0a534a566aee7c85948520dd216",
@@ -21,6 +34,18 @@ HASHES = {
     "v1/core/sched/scheduler.py": "c1db45f3bbad3a875dd8638331b8870c4380ac1ab4734265ba5c863833a82884",
 }
 INSERTIONS = {
+    "v1/worker/gpu/model_runner.py": [
+        ("        # Run model.\n",
+         '        _pb279_observe("kv_v2_prepare", self, input_batch, batch_desc, model_inputs, attn_metadata, slot_mappings_by_layer)\n'),
+        ("                    model_output = self.cudagraph_manager.run_pw_graph(\n",
+         '                    _pb279_observe("kv_v2_piecewise", self.cudagraph_manager)\n'),
+    ],
+    "v1/worker/gpu/cudagraph_utils.py": [
+        ("        self.graphs[desc].replay()\n",
+         '        _pb279_observe("kv_v2_full", self, desc)\n'),
+        ("            def forward_fn(cg_mode: CUDAGraphMode) -> None:\n",
+         '            _pb279_observe("kv_capture", self, desc, model_inputs, attn_metadata, slot_mappings, kv_cache_config, warmup)\n\n'),
+    ],
     "v1/worker/gpu/sample/sampler.py": [
         ("        # NOTE(woosuk): We intentionally compute num_nans before sampling to make clear\n",
          '        _pb279_observe("v2_begin", self, input_batch, logits)\n'),
@@ -30,6 +55,8 @@ INSERTIONS = {
          '        _pb279_observe("v2_end", sampler_output)\n'),
     ],
     "v1/worker/gpu_model_runner.py": [
+        ("            model_output = self._model_forward(\n",
+         '            _pb279_observe("kv_v1", self, scheduler_output, input_ids, positions, attn_metadata, slot_mappings, cudagraph_mode)\n'),
         ("        # Apply structured output bitmasks if present.\n",
          '        _pb279_observe("begin", self, scheduler_output, logits, spec_decode_metadata, grammar_output)\n'),
         ("        self._update_states_after_model_execute(\n",
@@ -67,6 +94,8 @@ class StripObserver(ast.NodeTransformer):
 
 def transform(name, raw):
     require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Pristine vLLM source drift: " + name)
+    if name not in INSERTIONS:
+        return raw
     text = raw.decode("utf-8")
     for anchor, insertion in INSERTIONS[name]:
         require(text.count(anchor) == 1, "Nonunique source anchor: " + name)
@@ -110,7 +139,9 @@ def install(directory):
     require(spec is not None, "vLLM unavailable")
     root = Path(spec.origin).parent
     originals = {name: (root / name).read_bytes() for name in HASHES}
-    patched = {name: transform(name, raw) for name, raw in originals.items()}
+    # Authenticate the whole bounded dependency set before changing any source.
+    supported = {name: transform(name, raw) for name, raw in originals.items()}
+    patched = {name: supported[name] for name in INSERTIONS}
     backup = Path(directory) / "vllm-originals"
     backup.mkdir(exist_ok=False)
     for name, raw in originals.items():
@@ -128,6 +159,30 @@ def install(directory):
         _write_atomically(root / name, raw)
 
 
+def authenticate(directory, installed=False):
+    """Authenticate preserved bytes, transforms, and optionally live installed files."""
+    directory = Path(directory)
+    state = json.loads((directory / "instrumentation.json").read_text())
+    require(state["original_hashes"] == HASHES, "KV source hash set differs")
+    originals = {name: (directory / "vllm-originals" / name).read_bytes() for name in HASHES}
+    supported = {name: transform(name, raw) for name, raw in originals.items()}
+    patched_hashes = {name: hashlib.sha256(supported[name]).hexdigest() for name in INSERTIONS}
+    require(state["patched_hashes"] == patched_hashes, "KV patched source hashes differ")
+    expected = {name: hashlib.sha256(raw).hexdigest() for name, raw in supported.items()}
+    if installed:
+        spec = importlib.util.find_spec("vllm")
+        require(spec is not None and Path(spec.origin).parent.resolve()
+                == Path(state["vllm_root"]).resolve(), "KV installed package differs")
+        for name, digest in expected.items():
+            require(hashlib.sha256((Path(state["vllm_root"]) / name).read_bytes()).hexdigest()
+                    == digest, "KV installed source drift: " + name)
+        require(state["observer_sha256"] == hashlib.sha256(
+            Path(__file__).with_name("protocol_b_boundary_observer.py").read_bytes()).hexdigest(),
+            "KV observer source drift")
+    return dict(original_hashes=HASHES, installed_hashes=expected,
+                observer_sha256=state["observer_sha256"])
+
+
 def restore(directory):
     import json
     directory = Path(directory)
@@ -137,6 +192,6 @@ def restore(directory):
     for name, raw in originals.items():
         require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Backup drift")
         require((root / name).read_bytes() in (raw, transform(name, raw)), "Unknown installed source")
-    for name, raw in originals.items():
-        _write_atomically(root / name, raw)
+    for name in INSERTIONS:
+        _write_atomically(root / name, originals[name])
     write_new(directory / "restored.json", {"original_hashes": HASHES})
