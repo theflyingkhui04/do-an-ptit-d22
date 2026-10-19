@@ -16,7 +16,7 @@ from experiments.protocol_b_capture import control_gpu_selection, validate_gpu_s
 from experiments.protocol_b_boundary_observer import (map_rows, selected_tokens,
     history_slots, validate_full_binding, LAYER1, LOCALIZATION_SCHEMA, EARLY_SCHEMA,
     POSTWRITE_SCHEMA, position177_slot, postwrite_ownership)
-from experiments.protocol_b_boundary_observer import CONTROL_PROFILE
+from experiments.protocol_b_boundary_observer import CONTROL_PROFILE, ATTENTION_PROFILE, LAYER0
 
 CHECKPOINT = "4372f8b81998e8a50ee2b87ea6d7c4a9c4b523c5"
 BASE_EXECUTION = "a63baa1c42fd75f542f876ab512765149ddd5e20"
@@ -28,6 +28,8 @@ CONTROL_CHECKPOINT = "9c0f15e8ebcef4d3fff3bd4aa07b6f41d3288ff2"
 CONTROL_BASELINE_NAME = "postwrite-position177-c306aef-20261019T041028Z.tar.gz"
 CONTROL_BASELINE_BLOB = "b5590f982b97c0aa6a05ea0217eb6413f7bb2510"
 CONTROL_BASE_EXECUTION = "c306aef3c8ffea97aa2e045507c2245ee77df220"
+ATTENTION_CONTROL_NAME = "p177-k0-control-692f21c-20261019T062959Z.tar.gz"
+ATTENTION_CONTROL_SHA256 = "2403a8c2f786b6f6f1cdfff3f846535fa43c494b970139b3ac4c28fbec8c7340"
 CONTROL_SOURCE_PATHS = ("experiments/protocol_b_boundary.py", "experiments/protocol_b_boundary_observer.py",
     "experiments/protocol_b_boundary_sources.py", "src/server/adaptive_scheduler.py",
     "experiments/protocol_b.py", "experiments/protocol_b_capture.py")
@@ -920,18 +922,12 @@ def control_packages(text):
     return sorted(line.strip() for line in text.splitlines() if line.strip())
 
 
-def control_baseline(archive):
-    """Read the pinned sealed artifact; replay CPU validators in a disposable copy only."""
+def sealed_archive_files(raw):
+    """The existing bounded archive path/seal checks, shared by both sealed references."""
     import hashlib
     import io
     import tarfile
-    import tempfile
     from pathlib import PurePosixPath
-    archive = Path(archive)
-    raw = archive.read_bytes()
-    require(archive.name == CONTROL_BASELINE_NAME and hashlib.sha1(
-        b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest() == CONTROL_BASELINE_BLOB,
-        "Control baseline archive identity differs")
     files = {}
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
         for member in tar.getmembers():
@@ -955,6 +951,46 @@ def control_baseline(archive):
     require(set(seals) == set(files) - {"SHA256SUMS"}
             and all(hashlib.sha256(files[p]).hexdigest() == digest for p, digest in seals.items()),
             "Baseline seal mismatch")
+    return files
+
+
+def attention_control_reference(archive, baseline):
+    import hashlib
+    archive = Path(archive)
+    raw = archive.read_bytes()
+    require(archive.name == ATTENTION_CONTROL_NAME and hashlib.sha256(raw).hexdigest() == ATTENTION_CONTROL_SHA256,
+            "Attention sealed control identity differs")
+    files = sealed_archive_files(raw)
+    manifest = json.loads(files["manifest.json"])
+    result = json.loads(files["p177_k0_control.json"])
+    run = json.loads(files["adaptive/run.json"])
+    posts = [json.loads(data) for p, data in files.items()
+             if p.startswith("adaptive/observer/") and p.endswith(".json")]
+    posts = [e for e in posts if e.get("kind") == "postwrite_position177"]
+    require(manifest["baseline_identity"] == baseline["identity"] and len(posts) == 1
+            and result["status"] == "INTERPRETABLE"
+            and result["classification"] == "SPECULATIVE_MULTI_TOKEN_FORWARD_DIVERGENCE"
+            and result["task_done"] is False and result["override_count"] == 1
+            and run["complete"] is True
+            and run["records"][45]["token_ids"] == baseline["runs"]["vanilla"]["records"][45]["token_ids"]
+            and all(posts[0][c]["sha256"] == baseline["postwrites"]["vanilla"][c]["sha256"] for c in ("K", "V")),
+            "Attention sealed control linkage differs")
+    return dict(archive_sha256=ATTENTION_CONTROL_SHA256, execution_sha=manifest["execution_sha"],
+                postwrite={c: posts[0][c] for c in ("K", "V")})
+
+
+def control_baseline(archive):
+    """Read the pinned sealed artifact; replay CPU validators in a disposable copy only."""
+    import hashlib
+    import io
+    import tarfile
+    import tempfile
+    archive = Path(archive)
+    raw = archive.read_bytes()
+    require(archive.name == CONTROL_BASELINE_NAME and hashlib.sha1(
+        b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest() == CONTROL_BASELINE_BLOB,
+        "Control baseline archive identity differs")
+    files = sealed_archive_files(raw)
     with tempfile.TemporaryDirectory(prefix="m203-baseline-read-") as tmp:
         root = Path(tmp)
         for name, data in files.items():
@@ -992,22 +1028,28 @@ def control_baseline(archive):
                     packages=control_packages(files["packages.txt"].decode()))
 
 
-def control_scheduler_auth(baseline):
+def control_scheduler_auth(baseline, *, attention=False):
     import ast
     from experiments.protocol_b_boundary_sources import StripObserver, validate_scheduler_observation
     raw = ast.unparse(StripObserver().visit(ast.parse(baseline["scheduler_source"]))).encode()
     path = ROOT / "src/server/adaptive_scheduler.py"
     validate_scheduler_observation(raw, path.read_bytes())
-    return dict(profile=CONTROL_PROFILE, scheduler_sha256=file_sha(path),
-                mutation="one P176 producer SchedulerOutput.num_spec_tokens_to_schedule=0")
+    return dict(profile=ATTENTION_PROFILE if attention else CONTROL_PROFILE, scheduler_sha256=file_sha(path),
+                mutation="scheduler unchanged; producer-k0 gate disabled" if attention else
+                    "one P176 producer SchedulerOutput.num_spec_tokens_to_schedule=0")
 
 
-def prepare_control(directory, session, archive):
+def prepare_control(directory, session, archive, *, attention_reference=None):
     from experiments.protocol_b import CONFIG_ENV
-    require(os.environ.get("M203_P177_PRODUCER_K0") == "1", "Explicit control env gate required")
+    attention = attention_reference is not None
+    env_key = "M203_P177_ATTENTION_SUBSTITUTION" if attention else "M203_P177_PRODUCER_K0"
+    require(os.environ.get(env_key) == "1", "Explicit diagnostic env gate required")
+    if attention:
+        require(os.environ.get("M203_P177_PRODUCER_K0") != "1", "Budget control must be disabled")
     require(not command(["git", "status", "--porcelain", "--untracked-files=no"]), "Require reviewed clean checkout")
     baseline = control_baseline(archive)
-    source_auth = control_scheduler_auth(baseline)
+    source_auth = control_scheduler_auth(baseline, attention=attention)
+    reference = attention_control_reference(attention_reference, baseline) if attention else None
     original = baseline["runs"]["adaptive"]
     require([i for i, r in enumerate(original["records"][:46])
              if r["prompt_token_ids"] == original["records"][45]["prompt_token_ids"]] == [45],
@@ -1023,41 +1065,55 @@ def prepare_control(directory, session, archive):
             require(file_sha(ROOT / path) == digest, "Frozen inference source differs: " + path)
     require(all(file_sha(ROOT / path) == digest for path, digest in env["launcher_hashes"].items()), "Control launcher changed")
     directory.mkdir(exist_ok=False)
-    manifest = dict(schema="m203.p177-k0.manifest.v1", non_canonical=True, control_profile=CONTROL_PROFILE,
+    profile = ATTENTION_PROFILE if attention else CONTROL_PROFILE
+    manifest = dict(schema="m203.p177-k0.manifest.v1", non_canonical=True, control_profile=profile,
         created_at=utc_now(), execution_sha=command(["git", "rev-parse", "HEAD"]), session_id=session,
         baseline_archive=str(Path(archive).resolve()), baseline_identity=baseline["identity"],
         source_auth=source_auth, plan=baseline["manifest"]["plan"], gpu_selection=gpu_selection,
         source_hashes={p: file_sha(ROOT / p) for p in CONTROL_SOURCE_PATHS}, task_done=False)
+    if attention:
+        manifest.update(attention_reference=str(Path(attention_reference).resolve()), attention_reference_identity=reference)
     write_new(directory / "manifest.json", manifest)
     output = directory / "adaptive"
     reserve_run(output, "boundary279", "adaptive", "adaptive", session)
     (output / "observer").mkdir()
     prompt = manifest["plan"]["prompts"][45]
-    write_new(output / "boundary_config.json", dict(directory=str(output.resolve()), lane="adaptive", sample_id=SAMPLE,
+    config = dict(directory=str(output.resolve()), lane="adaptive", sample_id=SAMPLE,
         target=TARGET, non_canonical=True, early_timeline=True, postwrite_position177=True, kv_probe=True,
         layer1_localization=False, execution_sha=manifest["execution_sha"],
         prompt_token_ids=original["records"][45]["prompt_token_ids"], p177_k0_control=dict(profile=CONTROL_PROFILE,
             request=prompt["request"], request_sha256=prompt["request_sha256"],
             baseline_sha256=baseline["identity"]["archive_sha256"], normal_producer_budget=baseline["normal_producer_budget"],
-            token_prefix=original["records"][45]["token_ids"][:2])))
+            token_prefix=original["records"][45]["token_ids"][:2]))
+    if attention:
+        config["p177_attention_substitution"] = dict(config.pop("p177_k0_control"), profile=profile,
+            control_sha256=reference["archive_sha256"])
+    write_new(output / "boundary_config.json", config)
 
 
-def capture_control(directory):
-    require(os.environ.get("M203_P177_PRODUCER_K0") == "1", "Control env gate required")
+def capture_control(directory, *, attention=False):
+    env_key = "M203_P177_ATTENTION_SUBSTITUTION" if attention else "M203_P177_PRODUCER_K0"
+    require(os.environ.get(env_key) == "1", "Diagnostic env gate required")
+    if attention:
+        require(os.environ.get("M203_P177_PRODUCER_K0") != "1", "Budget control must be disabled")
     manifest = load_json(directory / "manifest.json")
-    require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
+    require(manifest["control_profile"] == (ATTENTION_PROFILE if attention else CONTROL_PROFILE) and manifest["non_canonical"] is True,
             "Not a control run")
     config = directory / "adaptive/boundary_config.json"
     require(Path(os.environ["PROTOCOL_B_BOUNDARY_CONFIG"]).resolve() == config.resolve(), "Control config path differs")
     require(all(file_sha(ROOT / p) == sha for p, sha in manifest["source_hashes"].items()), "Control execution source drift")
     baseline = control_baseline(manifest["baseline_archive"])
     require(baseline["identity"] == manifest["baseline_identity"]
-            and control_scheduler_auth(baseline) == manifest["source_auth"], "Control baseline/source drift")
+            and control_scheduler_auth(baseline, attention=attention) == manifest["source_auth"], "Control baseline/source drift")
+    if attention:
+        require(attention_control_reference(manifest["attention_reference"], baseline) == manifest["attention_reference_identity"],
+                "Attention control reference drift")
     env = baseline["runs"]["adaptive"]["environment"]
     require(control_gpu_selection(env["gpu_uuid"], env["boot_id"]) == manifest["gpu_selection"],
             "Control physical session changed")
     live = server_processes("adaptive")
-    require(live["_process_environment"].get("M203_P177_PRODUCER_K0") == "1"
+    require(live["_process_environment"].get(env_key) == "1"
+            and (not attention or live["_process_environment"].get("M203_P177_PRODUCER_K0") != "1")
             and live["_process_environment"].get("PROTOCOL_B_BOUNDARY_CONFIG") == str(config.resolve()),
             "Server did not inherit control env/config")
     packages = command([live["executable"], "-m", "pip", "freeze"], env=live["_process_environment"])
@@ -1066,7 +1122,7 @@ def capture_control(directory):
         handle.write(packages + "\n")
     write_new(directory / "adaptive/observer_binding.json", dict(config_sha256=file_sha(config),
         config_fingerprint=fingerprint(load_json(config)), server_pid=live["pid"],
-        process_start_ticks=live["process_start_ticks"], control_env="1"))
+        process_start_ticks=live["process_start_ticks"], control_env="1", diagnostic_env_key=env_key))
     verify_instrumentation(directory)
     try:
         return capture(directory / "adaptive", "boundary279", "adaptive", "adaptive", manifest["session_id"],
@@ -1209,7 +1265,148 @@ def compare_control(events, record, settings, baseline, authenticated):
     return result
 
 
-def analyze_control(directory):
+def compare_attention(events, record, settings, baseline, authenticated):
+    """Scoped causal classification; never a canonical acceptance result."""
+    import hashlib
+    result = control_result()
+    try:
+        profile = settings["p177_attention_substitution"]
+        require(settings["non_canonical"] is True and settings["lane"] == "adaptive"
+                and settings["sample_id"] == record["sample_id"] == SAMPLE
+                and profile["profile"] == ATTENTION_PROFILE and settings.get("p177_k0_control") is None
+                and profile["baseline_sha256"] == baseline["identity"]["archive_sha256"]
+                and profile["control_sha256"] == baseline["attention_reference"]["archive_sha256"]
+                == ATTENTION_CONTROL_SHA256, "Attention profile/reference differs")
+        require(record["ok"] is True and record["prompt_token_ids"] == settings["prompt_token_ids"]
+                == baseline["runs"]["adaptive"]["records"][45]["prompt_token_ids"]
+                and len(record["prompt_token_ids"]) == 176
+                and record["request_sha256"] == profile["request_sha256"] == fingerprint(profile["request"])
+                and record["token_ids"][:2] == profile["token_prefix"]
+                == baseline["runs"]["adaptive"]["records"][45]["token_ids"][:2], "Attention request/prefix differs")
+        require(not any(e["kind"] == "observer_error" or e["kind"].startswith("p177_control_") for e in events),
+                "Observer error or budget override in attention diagnostic")
+        require(all(e["schema"] == "m203.boundary.event.v1" and e["lane"] == "adaptive"
+                    and e["execution_sha"] == settings["execution_sha"]
+                    and e["config_fingerprint"] == fingerprint(settings) for e in events), "Attention event identity differs")
+        def one(kind, **fields):
+            selected = [e for e in events if e["kind"] == kind and all(e.get(k) == v for k, v in fields.items())]
+            require(len(selected) == 1, "Missing/duplicate " + kind)
+            return selected[0]
+        change, post = one("p177_attention_substitution"), one("postwrite_position177")
+        rid, seq = post["request_id"], post["schedule_seq"]
+        require(same_request(rid, record["response_id"]) and all(change[k] == post[k]
+                for k in ("request_id", "pid", "schedule_seq", "scheduler_output_id", "forward_id", "auth_id")),
+                "Attention forward/request lineage differs")
+        verify = one("early_verify", schedule_seq=seq, request_id=rid)
+        producer_seq = verify["producer_schedule_seq"]
+        producer = one("early_schedule", schedule_seq=producer_seq, request_id=rid)
+        produced = one("early_produced", schedule_seq=producer_seq, request_id=rid)
+        previous = one("early_verify", schedule_seq=producer_seq, request_id=rid)
+        consumer = one("early_schedule", schedule_seq=seq, request_id=rid)
+        require(producer["planned_k"] == producer["batch_k"] == producer["num_spec_tokens_to_schedule"] == 3
+                and producer["next_placeholders"] == [-1]*3 and produced["produced_count"] == 3
+                and previous["active_query"] == [[176, profile["token_prefix"][0]]]
+                and previous["verification_draft_slots"] == 0 and previous["decoding_path"] == "ordinary"
+                and consumer["placeholder_origin_schedule_seq"] == producer_seq < seq
+                and consumer["scheduled_tokens"] == 4 and len(consumer["scheduled_spec_decode_tokens"]) == 3,
+                "Attention normal producer/budget/drafts differ")
+        require(all(e["scheduler_output_id"] == producer["scheduler_output_id"] for e in (produced, previous))
+                and consumer["scheduler_output_id"] == verify["scheduler_output_id"] == post["scheduler_output_id"]
+                and produced["producer_tensor_id"] == verify["producer_tensor_id"]
+                and produced["producer_row"] == verify["previous_request_row"] == 0
+                and all(e["pid"] == post["pid"] for e in (producer, produced, previous, consumer, verify)),
+                "Attention scheduler/draft object lineage differs")
+        covering = [e for e in events if e["kind"] == "early_verify" and e["request_id"] == rid
+                    and any(p == 177 for p, _ in e["active_query"])]
+        require(covering == [verify] and verify["decoding_path"] == "speculative"
+                and verify["verification_draft_slots"] == verify["effective_num_drafted"] == 3
+                and verify["num_invalid"] == 0 and len(verify["actual_draft_token_ids"]) == 3
+                and [p for p, _ in verify["active_query"]] == post["actual_positions"]
+                == change["actual_target_positions"] == [177, 178, 179, 180]
+                and verify["active_query"] == post["active_query"]
+                and verify["active_query"][0] == [177, profile["token_prefix"][1]]
+                and [t for _, t in verify["active_query"][1:]] == verify["actual_draft_token_ids"],
+                "Attention first speculative coverage differs")
+        auth = one("kv_sources", auth_id=post["auth_id"], pid=post["pid"])
+        require(authenticated.get("attention_substitution") == ATTENTION_PROFILE
+                and all(auth[k] == v for k, v in authenticated.items())
+                and post["auth_id"] == fingerprint(dict(authenticated, pid=post["pid"])), "Attention source authentication differs")
+        require(previous["timestamp"] <= produced["timestamp"] <= change["timestamp"] <= post["timestamp"] <= verify["timestamp"],
+                "Attention execution order differs")
+        require(change["non_canonical"] is True and change["attention_profile"] == ATTENTION_PROFILE
+                and change["target_layer"] == LAYER0 and change["planned_k"] == change["scheduled_drafts"] == 3
+                and type(change["shadow_count"]) is type(change["substitution_count"]) is int
+                and change["shadow_count"] == change["substitution_count"] == 1
+                and change["no_extra_kv_write"] is True
+                and change["substitution_point"] == "after_native_attention_before_return_to_output_projection"
+                and change["shadow_query_start_loc"] == [0, 1] and change["shadow_seq_lens"] == [178]
+                and change["shadow_max_query_len"] == 1 and change["shadow_max_seq_len"] == 178
+                and change["shadow_segments"] == 16 and change["graph_mode"] == "PIECEWISE",
+                "Attention intervention contract differs")
+        for name, shape in (("native_attention_p177", [1,28,128]), ("shadow_3d_attention_p177", [1,28,128]),
+                            ("native_tail", [3,28,128]), ("tail_after", [3,28,128]), ("q_bytes", [1,28,128])):
+            item = change[name]
+            raw = bytes.fromhex(item["hex"])
+            require(item["shape"] == shape and item["dtype"] == "torch.float16"
+                    and item["device"] == post["cache_identity"]["device"]
+                    and len(raw) == item["byte_count"] == shape[0]*28*128*2
+                    and hashlib.sha256(raw).hexdigest() == item["sha256"], "Attention exact bytes differ: " + name)
+        require(change["native_tail"] == change["tail_after"]
+                and change["output_identity"]["shape"] == [4,28,128]
+                and change["output_identity"]["dtype"] == "torch.float16"
+                and change["output_identity"]["device"] == post["cache_identity"]["device"]
+                and change["q_identity"]["shape"] == [1,28,128], "Attention changed row contract")
+        binding = post["runtime_binding"]
+        cache = change["cache_identity"]
+        require(cache["shape"][1:] == [4,16,256], "Attention cache architecture differs")
+        for name, offset in (("key_identity", 0), ("value_identity", 128)):
+            expected = dict(cache, shape=[cache["shape"][0],16,4,128],
+                strides=[cache["strides"][i] for i in (0,2,1,3)],
+                storage_offset=cache["storage_offset"] + offset*cache["strides"][3],
+                data_ptr=cache["data_ptr"] + offset*cache["strides"][3]*2)
+            require(change[name] == expected, "Attention live cache view differs")
+        require(change["q_identity"]["dtype"] == "torch.float16"
+                and change["q_identity"]["device"] == cache["device"]
+                and change["q_identity"]["data_ptr"] > 0, "Attention live Q binding differs")
+        require(change["cache_identity"] == binding["layers"][LAYER0]["cache"]
+                and binding["layers"][LAYER0]["launch"]["max_query_len"] == 4
+                and binding["layers"][LAYER0]["launch"]["max_seq_len"] == 181
+                and binding["inputs"]["positions"]["shape"] == binding["inputs"]["input_ids"]["shape"] == [4],
+                "Attention original M=4/cache binding differs")
+        require(post["postwrite_schema"] == POSTWRITE_SCHEMA and post["target_layer"] == LAYER1
+                and post["phase"] == "post_target_forward" and post["logical_position"] == 177
+                and post["hook"] == "postwrite_v1" and post["graph_mode"] == "PIECEWISE"
+                and post["capture_warmup"] is False and post["device_wide_synchronize"] is False
+                and post["cache_identity"] == binding["layers"][LAYER1]["cache"], "Attention post-write contract differs")
+        postwrite_ownership(binding, post["cache_peers"])
+        location = position177_slot(post["block_table"], post["write_slots"], post["actual_positions"],
+                                    post["kernel_block_size"], post["cache_identity"]["shape"][0])
+        require(all(post[k] == v for k, v in location.items()), "Attention post-write slot differs")
+        prefix = change["prefix_0_176"]
+        require(prefix["logical_positions"] == list(range(177)) and all(prefix[c] == baseline["prefix"][c]
+                for c in ("K", "V")), "Attention historical prefix differs")
+        comparisons = {}
+        for lane, reference in baseline["postwrites"].items():
+            require(all(post[k] == reference[k] for k in ("dtype", "shape", "heads", "head_dim", "byte_count", "canonical_order")),
+                    "Attention/reference representation differs")
+            require(all(re.fullmatch(r"[0-9a-f]{64}", post[c]["sha256"]) for c in ("K", "V")), "Invalid P177 digest")
+            comparisons[lane] = {c + "_equal": post[c]["sha256"] == reference[c]["sha256"] for c in ("K", "V")}
+        require(all(baseline["attention_reference"]["postwrite"][c]["sha256"] == baseline["postwrites"]["vanilla"][c]["sha256"]
+                    != baseline["postwrites"]["adaptive"][c]["sha256"] for c in ("K", "V")), "References do not discriminate")
+        restored = all(comparisons["vanilla"].values())
+        changed = change["native_attention_p177"]["sha256"] != change["shadow_3d_attention_p177"]["sha256"]
+        require(changed or not restored, "Equal native/shadow cannot establish causality")
+        result.update(status="INTERPRETABLE", actual_target_positions=[177,178,179,180], planned_k=3, scheduled_drafts=3,
+            shadow_count=1, substitution_count=1,
+            native_attention_p177=change["native_attention_p177"], shadow_3d_attention_p177=change["shadow_3d_attention_p177"],
+            layer1_postwrite_vs_vanilla=comparisons["vanilla"], layer1_postwrite_vs_adaptive_normal=comparisons["adaptive"],
+            classification="LAYER0_ATTENTION_PATH_CAUSAL" if restored else "ATTENTION_SUBSTITUTION_INSUFFICIENT")
+    except (EvidenceError, KeyError, TypeError, ValueError, IndexError) as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def analyze_control(directory, *, attention=False):
     import tarfile
     result = control_result()
     try:
@@ -1217,10 +1414,14 @@ def analyze_control(directory):
         from experiments.protocol_b_capture import parse_completion
         from experiments.protocol_b_boundary_sources import authenticate
         manifest = load_json(directory / "manifest.json")
-        require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
+        require(manifest["control_profile"] == (ATTENTION_PROFILE if attention else CONTROL_PROFILE) and manifest["non_canonical"] is True,
                 "Not a control manifest")
         require(set(manifest["source_hashes"]) == set(CONTROL_SOURCE_PATHS), "Incomplete control execution sources")
         baseline = control_baseline(manifest["baseline_archive"])
+        if attention:
+            reference = attention_control_reference(manifest["attention_reference"], baseline)
+            require(reference == manifest["attention_reference_identity"], "Attention reference binding differs")
+            baseline["attention_reference"] = reference
         require(baseline["identity"] == manifest["baseline_identity"], "Control archive binding differs")
         require(control_packages((directory / "packages.txt").read_text())
                 == control_packages((directory / "server-packages.txt").read_text()) == baseline["packages"],
@@ -1274,7 +1475,10 @@ def analyze_control(directory):
                 and binding["config_fingerprint"] == fingerprint(config) and binding["control_env"] == "1"
                 and binding["server_pid"] == run["live_server"]["pid"]
                 and binding["process_start_ticks"] == run["live_server"]["process_start_ticks"], "Control live/config binding differs")
-        require(manifest["source_auth"]["profile"] == CONTROL_PROFILE, "Missing scheduler control auth")
+        if attention:
+            require(binding["diagnostic_env_key"] == "M203_P177_ATTENTION_SUBSTITUTION", "Attention serving env differs")
+        require(manifest["source_auth"]["profile"] == (ATTENTION_PROFILE if attention else CONTROL_PROFILE),
+                "Missing scheduler source auth")
         import ast
         import hashlib
         import tarfile
@@ -1290,24 +1494,36 @@ def analyze_control(directory):
                 and hashlib.sha256(code["experiments/protocol_b_boundary_observer.py"]).hexdigest()
                 == authenticate(directory)["observer_sha256"], "Control scheduler/helper source auth differs")
         events = [load_json(p) for p in (output / "observer").glob("*.json")]
-        result = compare_control(events, run["records"][-1], config, baseline, authenticate(directory))
+        compare = compare_attention if attention else compare_control
+        result = compare(events, run["records"][-1], config, baseline, authenticate(directory))
     except (EvidenceError, OSError, KeyError, TypeError, ValueError, IndexError, tarfile.TarError, EOFError) as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
-    write_new(directory / "p177_k0_control.json", result)
+    write_new(directory / ("p177_layer0_attention_substitution.json" if attention else "p177_k0_control.json"), result)
     return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("prepare", "install", "capture", "analyze", "restore", "seal",
-                                          "prepare-control", "capture-control", "analyze-control"))
+        "prepare-control", "capture-control", "analyze-control", "prepare-attention", "capture-attention", "analyze-attention"))
     parser.add_argument("directory", type=Path)
     parser.add_argument("--session")
     parser.add_argument("--lane", choices=("vanilla", "adaptive"))
     parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--control-reference", type=Path)
     args = parser.parse_args()
     directory = args.directory.resolve()
-    if args.action == "prepare-control":
+    if args.action == "prepare-attention":
+        require(args.session and args.baseline and args.control_reference, "Attention session/both sealed references required")
+        prepare_control(directory, args.session, args.baseline, attention_reference=args.control_reference)
+    elif args.action == "capture-attention":
+        capture_control(directory, attention=True)
+    elif args.action == "analyze-attention":
+        result = analyze_control(directory, attention=True)
+        print(canonical_json(result))
+        if result["status"] != "INTERPRETABLE":
+            raise SystemExit(1)
+    elif args.action == "prepare-control":
         require(args.session and args.baseline, "Control session/baseline required")
         prepare_control(directory, args.session, args.baseline)
     elif args.action == "capture-control":

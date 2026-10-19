@@ -1,9 +1,9 @@
 """Read-only vLLM 0.30.0 observer, narrowly ported from archive a7b52e7.
 
 Reuses m2_03_targeted/observer.py row/score/accounting hooks and A3/V8's
-actual-position mapping. One explicitly gated, non-canonical control changes only
-the P176 producer's next-step draft budget. Observation hooks never mutate inputs.
-Errors are retained as evidence; inference results are never replaced.
+actual-position mapping. Separately gated diagnostics change either the P176
+future budget or exactly one P177 layer0 attention-output row. Read-only hooks
+never mutate inputs; the attention intervention has its own fail-closed entry.
 """
 import json
 import os
@@ -20,9 +20,196 @@ LOCALIZATION_SCHEMA = "m203.boundary.layer1.positions.v1"
 EARLY_SCHEMA = "m203.boundary.early.v1"
 POSTWRITE_SCHEMA = "m203.boundary.postwrite.v1"
 CONTROL_PROFILE = "m203.p177-producer-k0.v1"
+ATTENTION_PROFILE = "m203.p177-layer0-attention-substitution.v1"
+LAYER0 = "model.layers.0.self_attn.attn"
 _controls = {}
 _early = {}
 _early_lock = threading.RLock()
+
+
+def attention_settings(config):
+    settings = config.get("p177_attention_substitution")
+    if settings is None:
+        return None
+    require(os.environ.get("M203_P177_ATTENTION_SUBSTITUTION") == "1"
+            and os.environ.get("M203_P177_PRODUCER_K0") != "1"
+            and config.get("p177_k0_control") is None
+            and config.get("non_canonical") is True and config.get("lane") == "adaptive"
+            and settings["profile"] == ATTENTION_PROFILE
+            and config.get("early_timeline") is True and config.get("postwrite_position177") is True,
+            "Unauthenticated attention substitution profile/env")
+    require(settings["request_sha256"] == fingerprint(settings["request"]), "Attention request hash differs")
+    return settings
+
+
+def attention_arm(config, pending):
+    settings = attention_settings(config)
+    if settings is None:
+        return
+    state = early_state(config)
+    entry = early_step(state, pending["scheduled"])
+    producers = [e for e in state["steps"].values()
+                 if e["schedule_seq"] == entry["placeholder_origin_schedule_seq"]]
+    require(len(producers) == 1, "Attention missing producer lineage")
+    producer = producers[0]
+    rid = pending["request_id"]
+    owner = state["producers"].get((id(pending["runner"]), rid))
+    require(producer.get("verified") is True and owner is not None
+            and owner["tensor"] is pending["runner"]._draft_token_ids
+            and owner["row"] == 0 and owner["schedule_seq"] == producer["schedule_seq"]
+            and list(owner["tensor"].shape) == [1,3], "Attention draft producer tensor ownership differs")
+    require(entry["request_id"] == producer["request_id"] == state["request_id"] == rid
+            and pending["positions"] == [177, 178, 179, 180]
+            and entry["active_query"][:1] == [[177, settings["token_prefix"][1]]]
+            and producer["positions"] == [176]
+            and producer["active_query"] == [[176, settings["token_prefix"][0]]]
+            and producer["planned_k"] == producer["batch_k"] == producer["future_k"] == 3
+            and len(pending["scheduled"].scheduled_spec_decode_tokens.get(rid, [])) == 3,
+            "Attention wrong normal producer/query/drafts")
+    require(all(177 not in e.get("positions", []) for e in state["steps"].values() if e is not entry),
+            "Attention P177 already covered")
+    require(pending["peers"][LAYER0] == pending["binding"]["layers"][LAYER0]["cache"],
+            "Attention target cache ownership differs")
+    left, right = cache_view_span(pending["peers"][LAYER0])
+    for name, identity in pending["peers"].items():
+        start, end = cache_view_span(identity)
+        require(identity["device"] == pending["peers"][LAYER0]["device"]
+                and (name == LAYER0 or end <= left or start >= right), "Attention target/draft cache overlap")
+    pending["attention_state"] = dict(shadow_count=0, substitution_count=0)
+    _local.attention_pending = pending
+
+
+def attention_bytes(tensor):
+    """Original FP16 bits, including signed zero; never cast to float32."""
+    import hashlib
+    import torch
+    require(tensor.dtype == torch.float16 and sys.byteorder == "little", "Attention byte contract differs")
+    raw = tensor.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes()
+    return dict(sha256=hashlib.sha256(raw).hexdigest(), hex=raw.hex(), byte_count=len(raw),
+                shape=list(tensor.shape), dtype=str(tensor.dtype), device=str(tensor.device))
+
+
+def attention_shadow_arguments(impl, layer, query, key, value, metadata, output):
+    """CPU-testable argument construction, not a simulation of Triton numerics."""
+    import torch
+    require(query.dtype == output.dtype == key.dtype == value.dtype == torch.float16
+            and query.device == output.device == key.device == value.device
+            and list(query.shape) == list(output.shape) == [4, 28, 128]
+            and impl.num_heads == 28 and impl.num_kv_heads == 4 and impl.head_size == 128,
+            "Attention tensor shape/dtype/device differs")
+    require(metadata.num_actual_tokens == metadata.max_query_len == 4 and metadata.max_seq_len == 181
+            and metadata.query_start_loc.device == metadata.seq_lens.device == metadata.block_table.device == query.device
+            and ints(metadata.query_start_loc) == [0, 4] and ints(metadata.seq_lens) == [181]
+            and metadata.causal is True and not metadata.use_cascade
+            and metadata.mm_prefix_range_tensor is None and metadata.rswa_prefix_lens is None
+            and metadata.rswa_window is None and impl._kv_quant_mode.name == "NONE"
+            and not impl._is_per_token_head_quant and impl.alibi_slopes is None and impl.sinks is None
+            and not impl.use_alibi_sqrt and not impl.use_td and impl.chunk_lookback == -1
+            and tuple(impl.sliding_window) == (-1, -1) and impl.logits_soft_cap == 0,
+            "Unsupported attention semantics")
+    require(metadata.seq_threshold_3D >= 1 and metadata.num_par_softmax_segments == 16
+            and all(getattr(metadata, name) is not None for name in
+                    ("softmax_segm_output", "softmax_segm_max", "softmax_segm_expsum")),
+            "Missing native segmented-3D support")
+    require(all(ints(getattr(layer, name).reshape(-1)) == [1.0]
+                for name in ("_q_scale", "_k_scale", "_v_scale")), "Attention nonunit scales")
+    # New metadata and scratch only: never alter live seq_lens/query_start_loc,
+    # cache, slots, or native scratch. The existing compute-only kernel sees
+    # exactly the prefix through P177, excluding cached speculative future rows.
+    device = query.device
+    return dict(q=query[:1], k=key, v=value, out=torch.empty_like(output[:1]),
+        cu_seqlens_q=torch.tensor([0, 1], dtype=metadata.query_start_loc.dtype, device=device),
+        max_seqlen_q=1, seqused_k=torch.tensor([178], dtype=metadata.seq_lens.dtype, device=device),
+        max_seqlen_k=178, softmax_scale=impl.scale, causal=True, alibi_slopes=None,
+        use_alibi_sqrt=False, window_size=impl.sliding_window, block_table=metadata.block_table[:1],
+        softcap=impl.logits_soft_cap, q_descale=None, k_descale=layer._k_scale.expand(1, 4),
+        v_descale=layer._v_scale.expand(1, 4), seq_threshold_3D=metadata.seq_threshold_3D,
+        num_par_softmax_segments=16,
+        softmax_segm_output=torch.empty((1, 28, 16, 128), dtype=torch.float32, device=device),
+        softmax_segm_max=torch.empty((1, 28, 16), dtype=torch.float32, device=device),
+        softmax_segm_expsum=torch.empty((1, 28, 16), dtype=torch.float32, device=device),
+        sinks=None, output_scale=None, mm_prefix_range=None, rswa_prefix_lens=None, rswa_window=None,
+        kv_quant_mode=impl._kv_quant_mode, k_scale_cache=None, v_scale_cache=None,
+        chunk_lookback=-1, use_td=False,
+        mm_prefix_clamp_sliding_window=getattr(layer, "mm_prefix_clamp_sliding_window", False))
+
+
+def attention_apply(config, pending, impl, layer, query, key, value, metadata, output, compute):
+    """Only mutation: output[0:1].copy_(shadow). All other work is observation."""
+    runner = pending["runner"]
+    context = runner.vllm_config.compilation_config.static_forward_context
+    require(layer is context[LAYER0] and impl is layer.impl and metadata is pending["metadata"][LAYER0]
+            and pending["config_key"] == fingerprint(config)
+            and pending["positions"] == [177, 178, 179, 180], "Attention target/request binding differs")
+    require(tensor_identity(layer.kv_cache) == pending["binding"]["layers"][LAYER0]["cache"],
+            "Attention cache identity changed")
+    require(ints(pending["inputs"]["positions"]) == pending["positions"]
+            and ints(pending["inputs"]["input_ids"])[0] == config["p177_attention_substitution"]["token_prefix"][1],
+            "Attention live target inputs changed")
+    expected_key, expected_value = layer.kv_cache.transpose(1, 2).split(128, dim=-1)
+    require(tensor_identity(key) == tensor_identity(expected_key)
+            and tensor_identity(value) == tensor_identity(expected_value), "Attention not the live cache views")
+    slots = ints(pending["slots"][LAYER0])
+    table = ints(metadata.block_table[0])
+    position177_slot(table, slots, pending["positions"], int(layer.kv_cache.shape[2]), int(layer.kv_cache.shape[0]))
+    require(slots == [table[pos // 16]*16 + pos % 16 for pos in pending["positions"]],
+            "Attention actual row slots differ")
+    state = pending["attention_state"]
+    require(state == dict(shadow_count=0, substitution_count=0), "Duplicate attention shadow/substitution")
+    args = attention_shadow_arguments(impl, layer, query, key, value, metadata, output)
+    native, tail = attention_bytes(output[:1]), attention_bytes(output[1:])
+    q_identity, q_bytes = tensor_identity(query[:1]), attention_bytes(query[:1])
+    state["shadow_count"] = 1  # A failing compute can never be retried/accepted.
+    compute(**args)  # compute-only unified_attention; no Attention.forward/cache writer.
+    shadow = attention_bytes(args["out"])
+    require(tensor_identity(query[:1]) == q_identity and attention_bytes(query[:1]) == q_bytes
+            and attention_bytes(output[:1]) == native and attention_bytes(output[1:]) == tail,
+            "Shadow changed native inputs/output")
+    output[:1].copy_(args["out"])
+    state["substitution_count"] = 1
+    require(attention_bytes(output[:1]) == shadow and attention_bytes(output[1:]) == tail,
+            "Attention substitution changed other rows")
+    emit(config, "p177_attention_substitution", attention_profile=ATTENTION_PROFILE, non_canonical=True,
+        pid=os.getpid(), request_id=pending["request_id"], schedule_seq=pending["schedule_seq"],
+        scheduler_output_id=id(pending["scheduled"]), forward_id=pending["forward_id"],
+        auth_id=kv_authenticate(config), actual_target_positions=pending["positions"], planned_k=3,
+        scheduled_drafts=3, shadow_count=1, substitution_count=1, target_layer=LAYER0,
+        native_attention_p177=native, shadow_3d_attention_p177=shadow, native_tail=tail,
+        tail_after=attention_bytes(output[1:]), q_identity=q_identity, q_bytes=q_bytes,
+        cache_identity=tensor_identity(layer.kv_cache), key_identity=tensor_identity(key),
+        value_identity=tensor_identity(value), block_table=table, write_slots=slots,
+        graph_mode="PIECEWISE", shadow_query_start_loc=[0, 1], shadow_seq_lens=[178],
+        shadow_max_query_len=1, shadow_max_seq_len=178, shadow_segments=16,
+        output_identity=tensor_identity(output), no_extra_kv_write=True,
+        substitution_point="after_native_attention_before_return_to_output_projection",
+        prefix_0_176=hash_control_prefix(context[LAYER1].kv_cache,
+            ints(pending["metadata"][LAYER1].block_table[0]), ints(pending["slots"][LAYER1])))
+
+
+def attention_substitute(impl, layer, query, key, value, metadata, output, output_scale, output_block_scale, compute):
+    """Direct, fail-closed hook; never swallowed by the read-only observer wrapper."""
+    if os.environ.get("M203_P177_ATTENTION_SUBSTITUTION") != "1":
+        return
+    config = json.loads(Path(os.environ["PROTOCOL_B_BOUNDARY_CONFIG"]).read_text())
+    require(attention_settings(config) is not None, "Attention env requires explicit profile")
+    if config.get("sample_id") != "w3_business_v2_004":
+        return
+    require(getattr(_local, "postwrite_v1_phase", "idle") != "failed", "Failed attention preparation")
+    pending = getattr(_local, "attention_pending", None)
+    if pending is None:
+        return  # Warmup, other requests, and ordinary/other-position forwards.
+    context = pending["runner"].vllm_config.compilation_config.static_forward_context
+    if layer is not context[LAYER0]:
+        require(any(layer is item for item in context.values()), "Unknown attention layer")
+        return
+    require(output_scale is None and output_block_scale is None and query.device.type == "cuda"
+            and pending is getattr(_local, "postwrite_v1_pending", None)
+            and pending["stream"] == postwrite_stream(), "Attention live forward/stream differs")
+    module = sys.modules.get("vllm.v1.attention.ops.triton_unified_attention")
+    require(module is not None and module.unified_attention is compute
+            and module.is_batch_invariant is False, "Unbound/non-native shadow kernel")
+    kv_authenticate(config)  # Authenticate installed source before the intervention.
+    attention_apply(config, pending, impl, layer, query, key, value, metadata, output, compute)
 
 
 def control_settings(config):
@@ -211,6 +398,9 @@ def early_schedule(config, scheduler, scheduled):
     origin = state["origins"].get(request.request_id)
     entry = dict(output=scheduled, schedule_seq=seq, request_id=request.request_id,
                  placeholder_origin_schedule_seq=origin)
+    if attention_settings(config) is not None:
+        entry.update(planned_k=scheduler._plan.per_request_k.get(request.request_id),
+                     batch_k=scheduler._plan.batch_k, future_k=scheduled.num_spec_tokens_to_schedule)
     state["steps"][id(scheduled)] = entry
     state["origins"][request.request_id] = seq
     early_emit(config, state, "schedule", schedule_seq=seq, request_id=request.request_id,
@@ -476,6 +666,8 @@ def postwrite_prepare(config, runner, inputs, metadata, slots, positions, rid, i
     _local.postwrite_claims = claims
     setattr(_local, "postwrite_" + version + "_pending", pending)
     setattr(_local, "postwrite_" + version + "_phase", "armed")
+    if version == "v1":
+        attention_arm(config, pending)
 
 
 def postwrite_finish(config, version, owner, execution):
@@ -502,6 +694,11 @@ def postwrite_finish(config, version, owner, execution):
         require(entry["schedule_seq"] == pending["schedule_seq"] and entry["request_id"] == pending["request_id"],
                 "Post-write early identity drift")
     runner = pending["runner"]
+    if attention_settings(config) is not None:
+        require(version == "v1" and getattr(_local, "attention_pending", None) is pending
+                and pending.get("attention_state") == dict(shadow_count=1, substitution_count=1),
+                "Missing attention shadow/substitution")
+        _local.attention_pending = None
     binding = kv_layer_bindings(runner.vllm_config, runner.kv_cache_config, pending["inputs"],
         pending["metadata"], pending["slots"], v1_runner=runner if version == "v1" else None)
     require(binding == pending["binding"], "Post-write prepared binding changed")
@@ -827,7 +1024,7 @@ def kv_v1(config, runner, scheduled, input_ids, positions, metadata, slots, mode
         require(config["lane"] == "adaptive" and len(ids) == len(matching) == 1, "Post-write ambiguous Adaptive batch")
         postwrite_prepare(config, runner, dict(input_ids=input_ids, positions=positions), metadata, slots,
                           actual_positions, ids[0], 0, mode, int(positions.shape[0]), scheduled=scheduled)
-    if control_settings(config) is not None:
+    if control_settings(config) is not None or attention_settings(config) is not None:
         return  # Control owns its P177/prefix contract, never the canonical boundary454 gate.
     if 454 not in actual_positions:
         return
@@ -977,7 +1174,7 @@ def begin(config, runner, scheduled, logits, spec, grammar):
     require(logits is not None and logits.ndim == 2 and logits.shape[0] == len(rows),
             "Missing/misaligned logits")
     early_verify(config, runner, scheduled, rows, spec)
-    if control_settings(config) is not None:
+    if control_settings(config) is not None or attention_settings(config) is not None:
         return
     target = [r for r in rows if r["generated_index"] == 279]
     if not target:

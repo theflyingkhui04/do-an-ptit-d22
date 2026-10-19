@@ -564,3 +564,67 @@ Always retain `non_canonical=true`, `task_done=false`,
 `temporal_kv_onset=UNKNOWN`, and `interpretation_status=NOT_YET_APPROVED`.
 The classification does not isolate projection arithmetic from cache writing,
 establish all-layer equality, or prove general speculative-decoding incorrectness.
+
+## 2026-10-19: one-shot layer0 attention substitution (non-canonical)
+
+This is a separate causal diagnostic, not Candidate A's production fix. CPU
+verification does not authorize a GPU run. Keep the frozen environment, physical
+GPU/boot, model revisions, sampling, prefix cache and PIECEWISE graph setting.
+Do not launch Vanilla or the full 54. Retain the existing 45 conditioning requests
+and then `w3_business_v2_004` through the existing collector.
+
+The normal P176 producer keeps k=3. The actual target query remains
+`[177,178,179,180]`, with three drafts. The hook runs only in target layer0's
+Triton attention, after native attention returns its result and before returning
+to Qwen's output projection. It computes one shadow using the same live Q[0:1]
+and K/V views, query offsets `[0,1]`, sequence length `[178]`, the same block table
+and scale, and native segmented-3D attention with 16 segments. Output and scratch
+are private allocations; live attention metadata and cache are never rewritten.
+The sole intervention copies the shadow into output[0:1]. Rows 1:4 remain native.
+There is no second model forward, RoPE, cache-write call or budget override.
+
+Use the preceding control workflow's preparation, provenance collection,
+switch/stop/restore trap and seal lifecycle, with **all** substitutions below.
+Use a fresh run root and review the resulting commands before any GPU execution:
+
+```bash
+# Run from the reviewed clean execution checkout with the frozen environment
+# already exported, after existing switch_lane.sh stop has succeeded.
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+unset M203_P177_PRODUCER_K0
+export M203_P177_ATTENTION_SUBSTITUTION=1
+SESSION_ID=$(cat /proc/sys/kernel/random/uuid)
+RUN_ROOT="/kaggle/working/m2-03-p177-attention-$(date -u +%Y%m%dT%H%M%SZ)-$SESSION_ID"
+export ADAPTIVE_TELEMETRY_PATH="$RUN_ROOT/adaptive_telemetry.jsonl"
+BASELINE="$PWD/experiments/runs/m2_03/diagnostics/postwrite-position177-c306aef-20261019T041028Z.tar.gz"
+CONTROL="$PWD/experiments/runs/m2_03/diagnostics/p177-k0-control-692f21c-20261019T062959Z.tar.gz"
+python -m experiments.protocol_b_boundary prepare-attention "$RUN_ROOT" \
+  --session "$SESSION_ID" --baseline "$BASELINE" --control-reference "$CONTROL"
+export PROTOCOL_B_BOUNDARY_CONFIG="$RUN_ROOT/adaptive/boundary_config.json"
+```
+
+The preparation command authenticates both sealed archives, including control
+SHA256 `2403a8c2f786b6f6f1cdfff3f846535fa43c494b970139b3ac4c28fbec8c7340`.
+Keep the preceding workflow's package freeze, source tar, nvidia snapshots,
+instrumentation install, Adaptive launch, stop-before-restore and failure logs.
+Replace its `capture-control` command with `capture-attention`, and its trap's
+`analyze-control` with `analyze-attention`. Do not export the old k=0 gate anywhere
+in that workflow. Unset `M203_P177_ATTENTION_SUBSTITUTION` after restoration.
+Never continue after stop, source authentication, capture or restoration fails.
+Do not retry or reuse a run root. Analyze once and seal once, preserving failures.
+
+Read `p177_layer0_attention_substitution.json` and its raw events. Native/shadow
+FP16 bytes (hex and SHA256), live Q/cache identities, original M=4 input binding,
+producer/draft lineage, unchanged tail bytes and layer1 postwrite hashes are
+required. The analyzer also requires the authenticated layer1 prefix 0..176.
+
+* `LAYER0_ATTENTION_PATH_CAUSAL`: native/shadow differ and substituted P177 K/V
+  both match sealed Vanilla/control while normal Adaptive differs.
+* `ATTENTION_SUBSTITUTION_INSUFFICIENT`: all gates pass but substituted P177 K/V
+  do not both match Vanilla. Do not promote Candidate A as sufficient.
+* `INVALID_EVIDENCE`: any missing, duplicate, inconsistent or unauthenticated gate;
+  this includes equal native/shadow with an apparently restored result.
+
+All results remain non-canonical, `task_done=false`,
+`same_kv_cache_state_proven=false`, `historical_kv_state_equivalent=false`,
+`interpretation_status=NOT_YET_APPROVED`, `temporal_kv_onset=UNKNOWN`.

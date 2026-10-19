@@ -107,6 +107,12 @@ RUNTIME_FIXES = {DRAFT_SOURCE: "draft-tokenizer-revision-v1"}
 CONTROL_DEPENDENCIES = {"v1/core/sched/async_scheduler.py":
     "e586a0ef3c6778be56a93e7f9bb712d4de9de6e7d7fe7e3e1d51dae83ecfc508"}
 PATCHED_FILES = (*INSERTIONS, *RUNTIME_FIXES)
+ATTENTION_SOURCE = "v1/attention/backends/triton_attn.py"
+ATTENTION_PROFILE = "m203.p177-layer0-attention-substitution.v1"
+ATTENTION_IMPORT = "from experiments.protocol_b_boundary_observer import attention_substitute as _pb177_attention\n"
+ATTENTION_ANCHOR = "        return output\n\n    def _pth_key_value_caches("
+ATTENTION_HOOK = ("        _pb177_attention(self, layer, query, key_cache, value_cache, attn_metadata, "
+                  "output, output_scale, output_block_scale, unified_attention)\n")
 DRAFT_TOKENIZER_CALL = (
     "            draft_tokenizer = get_tokenizer(\n"
     "                spec.draft_model_config.model,\n"
@@ -169,9 +175,27 @@ def validate_scheduler_observation(raw, patched):
     compile(patched, "adaptive_scheduler.py", "exec")
 
 
-def normalized_transform_ast(name, patched):
+def normalized_transform_ast(name, patched, *, attention=False):
     """Strip hooks; only the pinned draft assignment may lose the exact approved keyword."""
     tree = ast.parse(patched)
+    if name == ATTENTION_SOURCE and attention:
+        expected_import = ast.parse(ATTENTION_IMPORT).body[0]
+        expected_hook = ast.parse(ATTENTION_HOOK.strip()).body[0]
+        imports = [n for n in tree.body if ast.dump(n) == ast.dump(expected_import)]
+        methods = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "forward"]
+        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name) and n.func.id == "_pb177_attention"]
+        require(len(imports) == len(methods) == len(calls) == 1, "Missing/duplicate attention diagnostic hook")
+        method = methods[0]
+        require(ast.dump(method.body[-2]) == ast.dump(expected_hook)
+                and ast.dump(method.body[-1]) == ast.dump(ast.parse("return output").body[0])
+                and isinstance(method.body[-3], ast.Expr)
+                and isinstance(method.body[-3].value, ast.Call)
+                and isinstance(method.body[-3].value.func, ast.Name)
+                and method.body[-3].value.func.id == "unified_attention",
+                "Attention substitution must follow native attention and precede return/projection")
+        method.body.pop(-2)
+        tree.body.remove(imports[0])
     if name in INSERTIONS:
         tree = StripObserver().visit(tree)
     if name == DRAFT_SOURCE:
@@ -189,7 +213,7 @@ def normalized_transform_ast(name, patched):
     return tree
 
 
-def validate_transform(name, raw, patched):
+def validate_transform(name, raw, patched, *, attention=False):
     require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Pristine vLLM source drift: " + name)
     if name in POSTWRITE_INSERTIONS:
         anchor, insertion = POSTWRITE_INSERTIONS[name]
@@ -214,16 +238,19 @@ def validate_transform(name, raw, patched):
                   '_pb279_observe("kv_v1", self, scheduler_output, input_ids, positions, attn_metadata, slot_mappings, cudagraph_mode)')
         require(ast.dump(body[index - 1]) == ast.dump(ast.parse(before).body[0]),
                 "Historical pre-forward hook moved")
-    require(ast.dump(normalized_transform_ast(name, patched)) == ast.dump(ast.parse(raw)),
+    require(ast.dump(normalized_transform_ast(name, patched, attention=attention)) == ast.dump(ast.parse(raw)),
             "Unapproved inference AST change: " + name)
     compile(patched, name, "exec")
 
 
-def transform(name, raw):
+def transform(name, raw, *, attention=False):
     require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Pristine vLLM source drift: " + name)
-    if name not in PATCHED_FILES:
+    if name not in PATCHED_FILES and not (attention and name == ATTENTION_SOURCE):
         return raw
     text = raw.decode("utf-8")
+    if attention and name == ATTENTION_SOURCE:
+        require(text.count(ATTENTION_ANCHOR) == 1, "Nonunique attention return anchor")
+        text = ATTENTION_IMPORT + text.replace(ATTENTION_ANCHOR, ATTENTION_HOOK + ATTENTION_ANCHOR, 1)
     for anchor, insertion in INSERTIONS.get(name, ()):
         require(text.count(anchor) == 1, "Nonunique source anchor: " + name)
         text = text.replace(anchor, insertion + anchor, 1)
@@ -247,7 +274,7 @@ def transform(name, raw):
         lines.insert(boundary, "from experiments.protocol_b_boundary_observer import observe as _pb279_observe\n")
         text = "".join(lines)
     patched = text.encode()
-    validate_transform(name, raw, patched)
+    validate_transform(name, raw, patched, attention=attention)
     return patched
 
 
@@ -274,10 +301,14 @@ def install(directory):
     spec = importlib.util.find_spec("vllm")
     require(spec is not None, "vLLM unavailable")
     root = Path(spec.origin).parent
+    manifest_path = Path(directory) / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+    attention = manifest.get("control_profile") == ATTENTION_PROFILE
+    patched_files = (*PATCHED_FILES, ATTENTION_SOURCE) if attention else PATCHED_FILES
     originals = {name: (root / name).read_bytes() for name in HASHES}
     # Authenticate the whole bounded dependency set before changing any source.
-    supported = {name: transform(name, raw) for name, raw in originals.items()}
-    patched = {name: supported[name] for name in PATCHED_FILES}
+    supported = {name: transform(name, raw, attention=attention) for name, raw in originals.items()}
+    patched = {name: supported[name] for name in patched_files}
     backup = Path(directory) / "vllm-originals"
     backup.mkdir(exist_ok=False)
     for name, raw in originals.items():
@@ -291,12 +322,14 @@ def install(directory):
         "runtime_fixes": RUNTIME_FIXES,
         "observer_sha256": hashlib.sha256(
             (ROOT / "experiments/protocol_b_boundary_observer.py").read_bytes()).hexdigest()}
+    if attention:
+        metadata["attention_substitution"] = ATTENTION_PROFILE
     manifest_path = Path(directory) / "manifest.json"
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text())
         if manifest.get("control_profile"):
             from experiments.protocol_b_boundary_observer import CONTROL_PROFILE
-            require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
+            require(manifest["control_profile"] in (CONTROL_PROFILE, ATTENTION_PROFILE) and manifest["non_canonical"] is True,
                     "Unsupported source control profile")
             metadata["scheduler_control"] = manifest["source_auth"]
             for name, digest in CONTROL_DEPENDENCIES.items():
@@ -317,18 +350,24 @@ def authenticate(directory, installed=False):
     """Authenticate preserved bytes, transforms, and optionally live installed files."""
     directory = Path(directory)
     state = json.loads((directory / "instrumentation.json").read_text())
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+    attention = manifest.get("control_profile") == ATTENTION_PROFILE
+    require(state.get("attention_substitution") == (ATTENTION_PROFILE if attention else None),
+            "Attention diagnostic declaration differs")
     require(state["original_hashes"] == HASHES, "KV source hash set differs")
     require(state.get("runtime_fixes") == RUNTIME_FIXES, "Runtime fix declaration differs")
     originals = {name: (directory / "vllm-originals" / name).read_bytes() for name in HASHES}
-    supported = {name: transform(name, raw) for name, raw in originals.items()}
-    patched_hashes = {name: hashlib.sha256(supported[name]).hexdigest() for name in PATCHED_FILES}
+    supported = {name: transform(name, raw, attention=attention) for name, raw in originals.items()}
+    patched_files = (*PATCHED_FILES, ATTENTION_SOURCE) if attention else PATCHED_FILES
+    patched_hashes = {name: hashlib.sha256(supported[name]).hexdigest() for name in patched_files}
     require(state["patched_hashes"] == patched_hashes, "KV patched source hashes differ")
     expected = {name: hashlib.sha256(raw).hexdigest() for name, raw in supported.items()}
     manifest_path = directory / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
     if manifest.get("control_profile"):
         from experiments.protocol_b_boundary_observer import CONTROL_PROFILE
-        require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
+        require(manifest["control_profile"] in (CONTROL_PROFILE, ATTENTION_PROFILE) and manifest["non_canonical"] is True,
                 "Unsupported authenticated control profile")
         require(state.get("scheduler_control") == manifest["source_auth"], "Scheduler control source binding differs")
         require(state.get("control_dependencies") == CONTROL_DEPENDENCIES, "Control dependency declaration differs")
@@ -355,6 +394,8 @@ def authenticate(directory, installed=False):
             "KV observer source drift")
     result = dict(original_hashes=HASHES, installed_hashes=expected,
                   observer_sha256=state["observer_sha256"], runtime_fixes=RUNTIME_FIXES)
+    if attention:
+        result["attention_substitution"] = ATTENTION_PROFILE
     if manifest.get("control_profile"):
         result["control_dependencies"] = CONTROL_DEPENDENCIES
     return result
@@ -364,6 +405,8 @@ def restore(directory):
     import json
     directory = Path(directory)
     state = json.loads((directory / "instrumentation.json").read_text())
+    attention = state.get("attention_substitution") == ATTENTION_PROFILE
+    require(state.get("attention_substitution") in (None, ATTENTION_PROFILE), "Unknown attention diagnostic")
     root = Path(state["vllm_root"])
     if "scheduler_control" in state:
         require(state.get("control_dependencies") == CONTROL_DEPENDENCIES, "Control restore dependency declaration differs")
@@ -374,7 +417,10 @@ def restore(directory):
     originals = {name: (directory / "vllm-originals" / name).read_bytes() for name in HASHES}
     for name, raw in originals.items():
         require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Backup drift")
-        require((root / name).read_bytes() in (raw, transform(name, raw)), "Unknown installed source")
-    for name in PATCHED_FILES:
+        require((root / name).read_bytes() in (raw, transform(name, raw, attention=attention)), "Unknown installed source")
+    for name in ((*PATCHED_FILES, ATTENTION_SOURCE) if attention else PATCHED_FILES):
         _write_atomically(root / name, originals[name])
-    write_new(directory / "restored.json", {"original_hashes": HASHES, "runtime_fixes_removed": RUNTIME_FIXES})
+    restored = {"original_hashes": HASHES, "runtime_fixes_removed": RUNTIME_FIXES}
+    if attention:
+        restored["attention_substitution_removed"] = ATTENTION_PROFILE
+    write_new(directory / "restored.json", restored)
