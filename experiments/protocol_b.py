@@ -178,7 +178,7 @@ def token_ids(value):
     return value
 
 
-def validate_run(run, expected, pair_id, lane, environment):
+def validate_run(run, expected, pair_id, lane, environment, *, gpu_selection=None):
     require(isinstance(run, dict), "Invalid run")
     require(run.get("pair_id") == pair_id and run.get("lane") == lane,
             "Pair/lane identity mismatch")
@@ -225,7 +225,12 @@ def validate_run(run, expected, pair_id, lane, environment):
         require(key == "ADAPTIVE_CONTROLLER_KWARGS" or nonempty(settings[key]),
                 f"Empty runtime environment: {key}")
     require(all(settings.get(k) == v for k, v in FROZEN_ENV.items()), "Unapproved runtime environment")
-    require(settings["CUDA_VISIBLE_DEVICES"] == env["gpu_uuid"]
+    if gpu_selection is not None:
+        from experiments.protocol_b_capture import validate_gpu_selection
+        require(lane == "adaptive" and run.get("diagnostic_only") is True
+                and run.get("diagnostic_through") == "w3_business_v2_004", "GPU resolution requires control diagnostic")
+        validate_gpu_selection(gpu_selection, settings["CUDA_VISIBLE_DEVICES"], env["gpu_uuid"])
+    require((gpu_selection is not None or settings["CUDA_VISIBLE_DEVICES"] == env["gpu_uuid"])
             and settings["HF_HUB_OFFLINE"] == "1", "GPU/cache selection inconsistent")
     for field in ("launcher_hashes", "source_hashes"):
         require(isinstance(env[field], dict) and bool(env[field]), f"Missing {field}")

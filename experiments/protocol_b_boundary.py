@@ -12,6 +12,7 @@ from pathlib import Path
 from experiments.protocol_b import (ROOT, EvidenceError, canonical_json, file_sha, fingerprint,
                                     load_json, load_plan, require, utc_now, write_new)
 from experiments.protocol_b_capture import capture, command, reserve_run, server_processes
+from experiments.protocol_b_capture import control_gpu_selection, validate_gpu_selection
 from experiments.protocol_b_boundary_observer import (map_rows, selected_tokens,
     history_slots, validate_full_binding, LAYER1, LOCALIZATION_SCHEMA, EARLY_SCHEMA,
     POSTWRITE_SCHEMA, position177_slot, postwrite_ownership)
@@ -27,6 +28,9 @@ CONTROL_CHECKPOINT = "9c0f15e8ebcef4d3fff3bd4aa07b6f41d3288ff2"
 CONTROL_BASELINE_NAME = "postwrite-position177-c306aef-20261019T041028Z.tar.gz"
 CONTROL_BASELINE_BLOB = "b5590f982b97c0aa6a05ea0217eb6413f7bb2510"
 CONTROL_BASE_EXECUTION = "c306aef3c8ffea97aa2e045507c2245ee77df220"
+CONTROL_SOURCE_PATHS = ("experiments/protocol_b_boundary.py", "experiments/protocol_b_boundary_observer.py",
+    "experiments/protocol_b_boundary_sources.py", "src/server/adaptive_scheduler.py",
+    "experiments/protocol_b.py", "experiments/protocol_b_capture.py")
 
 # Approved orchestration-only fix:
 # switch_lane.sh must invoke tracked launchers via `bash` instead of chmod +x,
@@ -1010,23 +1014,20 @@ def prepare_control(directory, session, archive):
             "Control prompt identity is ambiguous in the conditioning prefix")
     env = original["environment"]
     require(load_plan() == baseline["manifest"]["plan"], "Control frozen plan differs")
-    require(os.environ["CUDA_VISIBLE_DEVICES"] == env["gpu_uuid"]
-            and Path("/proc/sys/kernel/random/boot_id").read_text().strip() == env["boot_id"], "Control physical session differs")
+    gpu_selection = control_gpu_selection(env["gpu_uuid"], env["boot_id"])
     for key in CONFIG_ENV:
-        if key != "ADAPTIVE_TELEMETRY_PATH":
+        if key not in ("ADAPTIVE_TELEMETRY_PATH", "CUDA_VISIBLE_DEVICES"):
             require(os.environ.get(key) == env["config"]["environment"][key], "Control environment differs: " + key)
     for path, digest in env["source_hashes"].items():
-        if path != "src/server/adaptive_scheduler.py":
+        if path not in ("src/server/adaptive_scheduler.py", "experiments/protocol_b.py", "experiments/protocol_b_capture.py"):
             require(file_sha(ROOT / path) == digest, "Frozen inference source differs: " + path)
     require(all(file_sha(ROOT / path) == digest for path, digest in env["launcher_hashes"].items()), "Control launcher changed")
     directory.mkdir(exist_ok=False)
     manifest = dict(schema="m203.p177-k0.manifest.v1", non_canonical=True, control_profile=CONTROL_PROFILE,
         created_at=utc_now(), execution_sha=command(["git", "rev-parse", "HEAD"]), session_id=session,
         baseline_archive=str(Path(archive).resolve()), baseline_identity=baseline["identity"],
-        source_auth=source_auth, plan=baseline["manifest"]["plan"],
-        source_hashes={p: file_sha(ROOT / p) for p in ("experiments/protocol_b_boundary.py",
-            "experiments/protocol_b_boundary_observer.py", "experiments/protocol_b_boundary_sources.py",
-            "src/server/adaptive_scheduler.py")}, task_done=False)
+        source_auth=source_auth, plan=baseline["manifest"]["plan"], gpu_selection=gpu_selection,
+        source_hashes={p: file_sha(ROOT / p) for p in CONTROL_SOURCE_PATHS}, task_done=False)
     write_new(directory / "manifest.json", manifest)
     output = directory / "adaptive"
     reserve_run(output, "boundary279", "adaptive", "adaptive", session)
@@ -1052,9 +1053,9 @@ def capture_control(directory):
     baseline = control_baseline(manifest["baseline_archive"])
     require(baseline["identity"] == manifest["baseline_identity"]
             and control_scheduler_auth(baseline) == manifest["source_auth"], "Control baseline/source drift")
-    require(os.environ["CUDA_VISIBLE_DEVICES"] == baseline["runs"]["adaptive"]["environment"]["gpu_uuid"]
-            and Path("/proc/sys/kernel/random/boot_id").read_text().strip()
-                == baseline["runs"]["adaptive"]["environment"]["boot_id"], "Control physical session changed")
+    env = baseline["runs"]["adaptive"]["environment"]
+    require(control_gpu_selection(env["gpu_uuid"], env["boot_id"]) == manifest["gpu_selection"],
+            "Control physical session changed")
     live = server_processes("adaptive")
     require(live["_process_environment"].get("M203_P177_PRODUCER_K0") == "1"
             and live["_process_environment"].get("PROTOCOL_B_BOUNDARY_CONFIG") == str(config.resolve()),
@@ -1069,7 +1070,7 @@ def capture_control(directory):
     verify_instrumentation(directory)
     try:
         return capture(directory / "adaptive", "boundary279", "adaptive", "adaptive", manifest["session_id"],
-                       reserved=True, diagnostic_through=SAMPLE)
+                       reserved=True, diagnostic_through=SAMPLE, gpu_selection=manifest["gpu_selection"])
     finally:
         verify_instrumentation(directory)
 
@@ -1218,6 +1219,7 @@ def analyze_control(directory):
         manifest = load_json(directory / "manifest.json")
         require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
                 "Not a control manifest")
+        require(set(manifest["source_hashes"]) == set(CONTROL_SOURCE_PATHS), "Incomplete control execution sources")
         baseline = control_baseline(manifest["baseline_archive"])
         require(baseline["identity"] == manifest["baseline_identity"], "Control archive binding differs")
         require(control_packages((directory / "packages.txt").read_text())
@@ -1230,7 +1232,11 @@ def analyze_control(directory):
                 run["environment"]["session_id"] == manifest["session_id"], "Control session differs")
         expected = {(p["workload"], p["sample_id"]): p for p in manifest["plan"]["prompts"][:46]}
         require(manifest["plan"] == baseline["manifest"]["plan"], "Control plan differs")
-        validate_run(run, expected, "boundary279", "adaptive", run["environment"])
+        old = baseline["runs"]["adaptive"]["environment"]
+        selection = manifest["gpu_selection"]
+        validate_gpu_selection(selection, run["environment"]["config"]["environment"]["CUDA_VISIBLE_DEVICES"], old["gpu_uuid"])
+        require(selection["boot_id"] == old["boot_id"] == run["environment"]["boot_id"], "Control physical session differs")
+        validate_run(run, expected, "boundary279", "adaptive", run["environment"], gpu_selection=selection)
         require(run["diagnostic_only"] is True and run["diagnostic_through"] == SAMPLE
                 and [r["sample_id"] for r in run["records"]] == [p["sample_id"] for p in manifest["plan"]["prompts"][:46]],
                 "Control replay order/count differs")
@@ -1242,11 +1248,14 @@ def analyze_control(directory):
             import copy
             value = copy.deepcopy(value)
             value["environment"].pop("ADAPTIVE_TELEMETRY_PATH", None)
+            value["environment"]["CUDA_VISIBLE_DEVICES"] = old["gpu_uuid"]
             return value
         require(comparable_config(new["config"]) == comparable_config(old["config"]), "Control sampling/cache/graph config differs")
         require(set(new["source_hashes"]) == set(old["source_hashes"])
                 and all(digest == old["source_hashes"][p] for p, digest in new["source_hashes"].items()
-                        if p != "src/server/adaptive_scheduler.py")
+                        if p not in ("src/server/adaptive_scheduler.py", "experiments/protocol_b.py", "experiments/protocol_b_capture.py"))
+                and all(new["source_hashes"][p] == manifest["source_hashes"][p]
+                        for p in ("experiments/protocol_b.py", "experiments/protocol_b_capture.py"))
                 and new["source_hashes"]["src/server/adaptive_scheduler.py"] == manifest["source_auth"]["scheduler_sha256"],
                 "Control frozen source hashes differ")
         require(file_sha(output / "responses.jsonl") == run["responses_sha256"], "Control journal hash differs")

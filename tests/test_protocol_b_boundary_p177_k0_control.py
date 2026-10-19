@@ -504,6 +504,8 @@ class ControlArtifactTests(unittest.TestCase):
         baseline["scheduler_source"] = scheduler.decode()
         source_auth = boundary.control_scheduler_auth(baseline)
         env["source_hashes"]["src/server/adaptive_scheduler.py"] = source_auth["scheduler_sha256"]
+        for name in ("experiments/protocol_b.py", "experiments/protocol_b_capture.py"):
+            env["source_hashes"][name] = file_sha(boundary.ROOT / name)
         old_env = copy.deepcopy(env)
         old_env["git_sha"] = boundary.CONTROL_BASE_EXECUTION
         old_env["source_hashes"]["src/server/adaptive_scheduler.py"] = hashlib.sha256(scheduler).hexdigest()
@@ -518,11 +520,13 @@ class ControlArtifactTests(unittest.TestCase):
                 request_sha256=fingerprint(request)))
         plan = dict(prompts=prompts)
         baseline["manifest"] = dict(plan=plan)
-        code_paths = ("experiments/protocol_b_boundary.py", "experiments/protocol_b_boundary_observer.py",
-                      "experiments/protocol_b_boundary_sources.py", "src/server/adaptive_scheduler.py")
+        code_paths = boundary.CONTROL_SOURCE_PATHS
+        gpu_selection = dict(raw_selector=env["gpu_uuid"], resolved_gpu_uuid=env["gpu_uuid"],
+            expected_gpu_uuid=env["gpu_uuid"], inventory="0, " + env["gpu_uuid"], boot_id=env["boot_id"])
         manifest = dict(control_profile=observer.CONTROL_PROFILE, non_canonical=True, baseline_archive="fixture.tar.gz",
             baseline_identity=baseline["identity"], source_auth=source_auth, execution_sha=env["git_sha"],
-            session_id=env["session_id"], plan=plan, source_hashes={name: file_sha(boundary.ROOT / name) for name in code_paths})
+            session_id=env["session_id"], plan=plan, gpu_selection=gpu_selection,
+            source_hashes={name: file_sha(boundary.ROOT / name) for name in code_paths})
         (root / "manifest.json").write_text(json.dumps(manifest))
         (root / "packages.txt").write_text("fixture==1\n")
         (root / "server-packages.txt").write_text("fixture==1\n")
@@ -574,6 +578,34 @@ class ControlArtifactTests(unittest.TestCase):
         self.assertFalse(result["task_done"])
         self.assertEqual(result["classification"], "RUNNER_OR_EXECUTION_PATH_STILL_DIFFERENT")
         self.assertFalse((root / "vanilla").exists())
+
+    def test_ordinal_control_artifact_validates_and_keeps_raw_selector(self):
+        root, baseline = self.artifact()
+        manifest_path, run_path = root / "manifest.json", root / "adaptive/run.json"
+        manifest, run = json.loads(manifest_path.read_text()), json.loads(run_path.read_text())
+        manifest["gpu_selection"]["raw_selector"] = "0"
+        run["environment"]["config"]["environment"]["CUDA_VISIBLE_DEVICES"] = "0"
+        run["live_server"]["environment"]["CUDA_VISIBLE_DEVICES"] = "0"
+        manifest_path.write_text(json.dumps(manifest))
+        run_path.write_text(json.dumps(run))
+        from experiments.protocol_b import validate_run
+        expected = {(p["workload"], p["sample_id"]): p for p in manifest["plan"]["prompts"][:46]}
+        with self.assertRaisesRegex(EvidenceError, "GPU/cache selection inconsistent"):
+            validate_run(run, expected, "boundary279", "adaptive", run["environment"])
+        with patch.object(boundary, "control_baseline", return_value=baseline):
+            result = boundary.analyze_control(root)
+        self.assertEqual(result["status"], "INTERPRETABLE", result)
+        self.assertEqual(json.loads(run_path.read_text())["environment"]["config"]["environment"]["CUDA_VISIBLE_DEVICES"], "0")
+
+    def test_gpu_resolution_manifest_tampering_invalidates_control(self):
+        root, baseline = self.artifact()
+        path = root / "manifest.json"
+        manifest = json.loads(path.read_text())
+        manifest["gpu_selection"]["resolved_gpu_uuid"] = "GPU-b306be9c-78ed-b3de-9c67-33130c066b7e"
+        path.write_text(json.dumps(manifest))
+        with patch.object(boundary, "control_baseline", return_value=baseline):
+            result = boundary.analyze_control(root)
+        self.assertEqual(result["status"], "INVALID_EVIDENCE", result)
 
     def test_runtime_provenance_mismatch_invalidates_control(self):
         root, baseline = self.artifact()

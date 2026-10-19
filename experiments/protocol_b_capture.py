@@ -11,6 +11,7 @@ import copy
 import http.client
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -41,7 +42,52 @@ def revision(model):
     return value
 
 
-def runtime(plan, session_id, live):
+def resolve_gpu_selector(selector, inventory):
+    """Resolve one selector against an authenticated nvidia-smi index/UUID list."""
+    require(isinstance(selector, str) and bool(selector) and selector == selector.strip()
+            and "," not in selector, "Require exactly one GPU selector")
+    require(isinstance(inventory, str), "Invalid nvidia-smi GPU inventory")
+    devices = {}
+    for line in inventory.splitlines():
+        fields = [s.strip() for s in line.split(",")]
+        require(len(fields) == 2 and re.fullmatch(r"[0-9]+", fields[0])
+                and re.fullmatch(r"GPU-[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", fields[1]),
+                "Invalid nvidia-smi GPU inventory")
+        index = int(fields[0])
+        require(index not in devices and fields[1] not in devices.values(), "Ambiguous GPU inventory")
+        devices[index] = fields[1]
+    require(bool(devices) and set(devices) == set(range(len(devices))), "Incomplete GPU inventory")
+    if re.fullmatch(r"[0-9]+", selector):
+        require(int(selector) in devices, "GPU ordinal out of range")
+        return devices[int(selector)]
+    # This diagnostic deliberately accepts full UUIDs only, never UUID prefixes.
+    require(selector in devices.values(), "Unknown or non-full GPU UUID selector")
+    return selector
+
+
+def validate_gpu_selection(selection, selector, expected):
+    require(isinstance(selection, dict)
+            and selection.get("raw_selector") == selector
+            and selection.get("expected_gpu_uuid") == expected
+            and resolve_gpu_selector(selector, selection.get("inventory", ""))
+                == selection.get("resolved_gpu_uuid") == expected, "Control physical GPU differs")
+
+
+def control_gpu_selection(expected, boot_id):
+    require(Path("/proc/sys/kernel/random/boot_id").read_text().strip() == boot_id,
+            "Control physical session differs")
+    selector = os.environ.get("CUDA_VISIBLE_DEVICES")
+    try:
+        inventory = command(["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader,nounits"])
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise EvidenceError("Cannot resolve control physical GPU: nvidia-smi failed") from exc
+    selection = dict(raw_selector=selector, inventory=inventory, boot_id=boot_id,
+                     resolved_gpu_uuid=resolve_gpu_selector(selector, inventory), expected_gpu_uuid=expected)
+    validate_gpu_selection(selection, selector, expected)
+    return selection
+
+
+def runtime(plan, session_id, live, *, gpu_selection=None):
     require(not command(["git", "status", "--porcelain", "--untracked-files=no"]),
             "Execution checkout must have no tracked edits")
     settings = live["environment"]
@@ -49,7 +95,13 @@ def runtime(plan, session_id, live):
             "Live process differs from frozen session environment")
     require(settings.get("HF_HUB_OFFLINE") == "1", "Require offline frozen model cache")
     gpu = settings.get("CUDA_VISIBLE_DEVICES", "")
-    require(gpu.startswith("GPU-"), "Pin the physical GPU UUID")
+    if gpu_selection is not None:
+        validate_gpu_selection(gpu_selection, gpu, gpu_selection["expected_gpu_uuid"])
+        require(control_gpu_selection(gpu_selection["expected_gpu_uuid"], gpu_selection["boot_id"])
+                == gpu_selection, "Control GPU selection changed during capture")
+        gpu = gpu_selection["resolved_gpu_uuid"]
+    else:
+        require(gpu.startswith("GPU-"), "Pin the physical GPU UUID")
     info = command(["nvidia-smi", "-i", gpu,
                     "--query-gpu=name,uuid,driver_version", "--format=csv,noheader"]).split(",")
     require(len(info) == 3, "Ambiguous GPU selection")
@@ -261,8 +313,10 @@ def reserve_run(output, pair_id, run_id, lane, session_id):
 
 
 def capture(output, pair_id, run_id, lane, session_id, *, reserved=False,
-            diagnostic_through=None):
+            diagnostic_through=None, gpu_selection=None):
     """Append raw responses, then seal one new run. On failure keep partial evidence."""
+    require(gpu_selection is None or (lane == "adaptive" and diagnostic_through == "w3_business_v2_004"),
+            "GPU selector resolution is scoped to the Adaptive control diagnostic")
     output = Path(output)
     if not reserved:
         reserve_run(output, pair_id, run_id, lane, session_id)
@@ -284,7 +338,7 @@ def capture(output, pair_id, run_id, lane, session_id, *, reserved=False,
             prompts = prompts[:46]
             run.update(diagnostic_only=True, diagnostic_through=diagnostic_through)
         live = server_processes(lane)
-        env = runtime(plan, session_id, live)
+        env = runtime(plan, session_id, live, **({"gpu_selection": gpu_selection} if gpu_selection is not None else {}))
         validate_live_server(live, lane, env)
         run["live_server"] = live
         run["environment"] = env
@@ -331,7 +385,7 @@ def capture(output, pair_id, run_id, lane, session_id, *, reserved=False,
                 if not record["ok"]:
                     raise EvidenceError("Request failed; retained without retry")
         final_live = server_processes(lane)
-        require(runtime(plan, session_id, final_live) == env, "Runtime changed during run")
+        require(runtime(plan, session_id, final_live, **({"gpu_selection": gpu_selection} if gpu_selection is not None else {})) == env, "Runtime changed during run")
         require(final_live == live, "Server restarted/config changed during run")
         run["complete"] = True
     except Exception as exc:
