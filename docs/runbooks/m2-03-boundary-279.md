@@ -362,3 +362,80 @@ scores with different sampled/emitted IDs point further downstream. Review
 row roles, masks and committed prefixes before drawing conclusions. H2 remains
 unresolved unless state is directly discriminated; no automatic root-cause label
 or acceptance decision is emitted.
+
+## Position-177 stored K/V discriminator — 2026-10-19
+
+New preparations enable `postwrite_position177` in the manifest and both lane
+configs. Historical directories without this flag retain their original analysis
+contract. The request order, model revisions, sampling, cache policy, graph modes,
+runner selection and existing boundary/historical observations remain unchanged.
+
+This probe observes only `model.layers.1.self_attn.attn` at logical position 177.
+Vanilla must be ordinary V2 FULL decode with actual positions `[177]`; Adaptive
+must be the first authenticated V1 PIECEWISE speculative target verification with
+actual positions `[177,178,179,180]`. Current early-timeline identities establish
+the first verification; historical schedule numbers are never selection keys.
+No layer-0 hidden states or pre-store Q/K/V intermediates are retained.
+
+The existing `kv_v2_full` observation stays immediately before graph replay.
+A separate `postwrite_v2_full` hook runs immediately after
+`self.graphs[desc].replay()`, before the manager returns. The existing V1 historical
+hook also stays before the target forward. A separate `postwrite_v1` hook runs
+after the complete `model_output = self._model_forward(...)` assignment, inside
+the same surrounding context and before postprocessing, sampling or draft work.
+These are post-target-forward reads of persistent cache storage, not Python
+module hooks inside captured computation and not observations at the store
+instruction itself. Source SHA authentication, exact hook placement checks,
+strip-to-pristine AST validation, and install/authenticate/restore remain required.
+The approved draft-tokenizer runtime fix stays distinct from observer insertions.
+
+Preparation retains metadata and tensor references in dedicated post-write state;
+it never copies K/V values and never overwrites historical `_local.kv_pending`.
+The post hook consumes the prepared state once, checks the same manager/descriptor
+or scheduler-output/runner identity, and revalidates bindings and execution stream.
+FULL requires the exact final capture binding; warm-up/capture cannot qualify.
+Later Adaptive rewrites do not replace the first capture. Duplicate emitted
+captures or missing/stale evidence invalidate the result.
+
+Each lane independently resolves the cache's actual kernel block size `B`:
+`block_table[batch_row, 177 // B]`, offset `177 % B`, and
+`slot = physical_block * B + offset`. The unique actual position-177 row must
+write that slot. Bounds, actual-row aliases, padding aliases over the complete
+consumed slot mapping, target/draft ownership and overlapping cache storage are
+checked. Physical block IDs are not compared between lanes. The existing
+`history_slots()` all-454-position contract is unchanged.
+
+For the supported dense FP16 `[block, kv_head, token_in_block, 2*head_dim]`
+cache, K selects the first `head_dim` values and V the second half. Each component
+uses `detach -> one bounded blocking CPU transfer -> contiguous -> uint8 bytes ->
+SHA-256`, in `[kv_head, head_dimension]` order. Original bits, including signed
+zero, are preserved. Shape, dtype, element count and byte count are recorded.
+Added K/V payload is `4 * heads * head_dim` bytes per lane: 2048 bytes for
+4 heads of dimension 128. Metadata reads are additional; the byte total describes
+K/V payload only. Existing later per-position hashes are reused without another
+later value transfer.
+
+The blocking reads wait for current-stream work and perturb timing. The probe
+records `runtime_probe_changes_timing=true`, `blocking_device_to_cpu=true`, and
+`device_wide_synchronize=false`. It adds no explicit `torch.cuda.synchronize()`,
+stream switch, graph operation, model input change, or graph-mode override.
+
+`boundary_comparison.json.postwrite_position177` is interpretable only after the
+exact mismatch fingerprint (279, 79126/128273, 284/282, stop/stop), authenticated
+historical `STATE_DIFFERENT`, layer-1 `P_K=P_V=P=177`, valid speculative-first early
+timeline, and all existing source/ownership/no-observer-error gates pass.
+
+- If immediate K or V differs: `IMMEDIATE_STORED_KV_DIVERGENCE`. This does not
+  distinguish upstream numerical differences from cache writing.
+- If both immediate components match and later position-177 digests differ:
+  `LATER_STATE_CHANGE`. Per-lane/component `*_same_as_later` fields identify the
+  changed stored values, without assigning an overwrite/rollback mechanism.
+- Missing, duplicate, incompatible or unauthenticated evidence:
+  `INVALID_EVIDENCE`.
+
+The scoped result always keeps `task_done=false`,
+`historical_kv_state_equivalent=false`, `same_kv_cache_state_proven=false`,
+`interpretation_status=NOT_YET_APPROVED`, and `temporal_kv_onset=UNKNOWN`.
+CPU byte/metadata/analyzer regressions do not establish CUDA execution or empirical
+losslessness. GPU verification of this new probe has **NOT RUN** during local
+implementation; any future run needs its own authorization and fresh evidence path.

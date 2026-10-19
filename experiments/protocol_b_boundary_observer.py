@@ -17,6 +17,7 @@ _local = threading.local()
 LAYER1 = "model.layers.1.self_attn.attn"
 LOCALIZATION_SCHEMA = "m203.boundary.layer1.positions.v1"
 EARLY_SCHEMA = "m203.boundary.early.v1"
+POSTWRITE_SCHEMA = "m203.boundary.postwrite.v1"
 _early = {}
 _early_lock = threading.RLock()
 
@@ -185,6 +186,202 @@ def early_account(config, stage, request, output, scheduled, stale, selected):
                num_computed_tokens=request.num_computed_tokens,
                num_in_flight_tokens=request.num_in_flight_tokens,
                num_output_placeholders=request.num_output_placeholders)
+
+
+def postwrite_enabled(config):
+    if config.get("postwrite_position177") is not True:
+        return False
+    require(config["sample_id"] == "w3_business_v2_004" and len(config["prompt_token_ids"]) == 176
+            and config["lane"] in ("vanilla", "adaptive"), "Post-write scope differs")
+    return True
+
+
+def position177_slot(block_table, slots, positions, block_size, num_blocks):
+    """One-position CPU addressing contract; does not relax history_slots()."""
+    require(type(block_size) is int and block_size > 0 and type(num_blocks) is int and num_blocks > 0,
+            "Post-write invalid cache dimensions")
+    require(positions and all(type(p) is int and p >= 0 for p in positions)
+            and positions.count(177) == 1 and len(set(positions)) == len(positions),
+            "Post-write position 177 missing/ambiguous")
+    require(len(slots) >= len(positions) and all(type(s) is int and s < num_blocks * block_size for s in slots),
+            "Post-write slot extent/out of bounds")
+    actual = slots[:len(positions)]
+    require(all(s >= 0 for s in actual) and len(set(actual)) == len(actual), "Post-write actual-row alias")
+    require(len(block_table) > 177 // block_size, "Post-write incomplete block table")
+    physical = block_table[177 // block_size]
+    require(type(physical) is int and 0 <= physical < num_blocks, "Post-write physical block out of bounds")
+    offset = 177 % block_size
+    slot = physical * block_size + offset
+    row = positions.index(177)
+    require(actual[row] == slot and slot not in slots[len(positions):], "Post-write wrong slot/padding alias")
+    return dict(physical_block=physical, offset=offset, slot=slot, selected_row=row, kernel_block_size=block_size)
+
+
+def dense_cache_span(identity):
+    """Exact byte interval for the supported contiguous FP16 cache views."""
+    require(identity["dtype"] == "torch.float16" and len(identity["shape"]) == len(identity["strides"]) == 4,
+            "Post-write unsupported cache representation")
+    elements = 1
+    for dim, stride in zip(reversed(identity["shape"]), reversed(identity["strides"])):
+        require(type(dim) is int and dim > 0 and type(stride) is int
+                and (dim == 1 or stride == elements), "Post-write non-dense cache layout")
+        elements *= dim
+    start = identity["data_ptr"]
+    require(type(start) is int and start > 0, "Post-write invalid cache address")
+    return start, start + elements * 2
+
+
+def postwrite_ownership(binding, peers):
+    require(set(binding["expected_layers"]) <= set(peers) and LAYER1 in binding["expected_layers"] and LAYER1 in peers
+            and peers[LAYER1] == binding["layers"][LAYER1]["cache"], "Post-write wrong target layer")
+    left, right = dense_cache_span(peers[LAYER1])
+    for name, identity in peers.items():
+        start, end = dense_cache_span(identity)
+        require(identity["device"] == peers[LAYER1]["device"], "Post-write mixed cache devices")
+        require(name == LAYER1 or end <= left or start >= right, "Post-write target/draft cache overlap")
+
+
+def hash_position177(cache, physical_block, offset):
+    """Exact original bits; CPU tests exercise bytes/indexing, never GPU behavior."""
+    import hashlib
+    import torch
+    require(str(cache.dtype) == "torch.float16" and cache.ndim == 4 and cache.shape[-1] % 2 == 0
+            and 0 <= physical_block < cache.shape[0] and 0 <= offset < cache.shape[2],
+            "Post-write unsupported FP16 cache row")
+    heads, dim = int(cache.shape[1]), int(cache.shape[3]) // 2
+    result = dict(dtype=str(cache.dtype), shape=[heads, dim], heads=heads, head_dim=dim,
+                  element_count=heads * dim, byte_count=heads * dim * 2,
+                  total_value_bytes=heads * dim * 4, canonical_order=["kv_head", "head_dimension"])
+    for component, start in (("K", 0), ("V", dim)):
+        selected = cache[physical_block, :, offset, start:start + dim]
+        raw = selected.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes()
+        require(len(raw) == result["byte_count"] and sys.byteorder == "little", "Post-write byte accounting differs")
+        result[component] = dict(sha256=hashlib.sha256(raw).hexdigest())
+    return result
+
+
+def postwrite_stream():
+    import torch
+    require(not torch.cuda.is_current_stream_capturing(), "Post-write capture/warmup cannot qualify")
+    stream = torch.cuda.current_stream()
+    return dict(device=str(stream.device), cuda_stream=int(stream.cuda_stream))
+
+
+def postwrite_reset(config, version):
+    if not postwrite_enabled(config):
+        return
+    require(getattr(_local, "postwrite_" + version + "_pending", None) is None, "Stale post-write pending")
+    setattr(_local, "postwrite_" + version + "_phase", "idle")
+
+
+def postwrite_prepare(config, runner, inputs, metadata, slots, positions, rid, index,
+                      mode, write_count, *, scheduled=None, manager=None, desc=None):
+    version = "v2" if manager is not None else "v1"
+    claims = getattr(_local, "postwrite_claims", {})
+    key = fingerprint(config)
+    if key in claims:
+        require(claims[key] == rid, "Post-write request collision")
+        require(version == "v1", "Duplicate Vanilla position-177 forward")
+        return  # Ordered Adaptive rewrites are retained by the early timeline.
+    require(positions == ([177] if version == "v2" else [177, 178, 179, 180]),
+            "Post-write unexpected first position-177 query")
+    require(mode.name == ("FULL" if version == "v2" else "PIECEWISE"), "Post-write graph mode differs")
+    early = None
+    if version == "v1":
+        state = early_state(config)
+        require(state is not None, "Post-write requires early timeline")
+        early = early_step(state, scheduled)
+        require(early["request_id"] == rid and early["positions"] == positions
+                and len(scheduled.scheduled_spec_decode_tokens.get(rid, [])) == 3,
+                "Post-write wrong early scheduler/request")
+    else:
+        require(manager._graphs_captured and manager._capture_mem_samples is None
+                and desc.num_ubatches == 1, "Post-write unready/warmup graph manager")
+    binding = kv_layer_bindings(runner.vllm_config, runner.kv_cache_config, inputs, metadata, slots,
+                               v1_runner=runner if version == "v1" else None)
+    context = runner.vllm_config.compilation_config.static_forward_context
+    peers = {name: tensor_identity(context[name].kv_cache)
+             for group in runner.kv_cache_config.kv_cache_groups for name in group.layer_names}
+    postwrite_ownership(binding, peers)
+    require(context[LAYER1].kv_cache.device.type == "cuda", "Post-write live cache must be CUDA")
+    capture = None
+    if version == "v2":
+        capture = getattr(_local, "kv_captures", {}).get((id(manager), repr(desc)))
+        require(capture is not None, "Post-write missing FULL capture binding")
+        validate_full_binding(capture["bindings"], binding)
+    stream = postwrite_stream()
+    require(stream["device"] == peers[LAYER1]["device"], "Post-write execution/cache device differs")
+    pending = dict(config_key=key, runner=runner, inputs=inputs, metadata=metadata, slots=slots,
+                   positions=positions, request_id=rid, request_state_index=index, binding=binding,
+                   peers=peers, stream=stream, write_count=write_count, scheduled=scheduled,
+                   manager=manager, desc=desc, capture=capture,
+                   schedule_seq=None if early is None else early["schedule_seq"], forward_id=uuid.uuid4().hex,
+                   active_query=(early["active_query"] if early is not None else
+                                 list(map(list, zip(positions, ints(inputs["input_ids"][:len(positions)]))))))
+    # The writer launches over slot_mapping.shape[0], including padding rows.
+    require(type(write_count) is int and len(positions) <= write_count == slots[LAYER1].numel(),
+            "Post-write incomplete consumed slot extent")
+    claims[key] = rid
+    _local.postwrite_claims = claims
+    setattr(_local, "postwrite_" + version + "_pending", pending)
+    setattr(_local, "postwrite_" + version + "_phase", "armed")
+
+
+def postwrite_finish(config, version, owner, execution):
+    if not postwrite_enabled(config):
+        return
+    phase = getattr(_local, "postwrite_" + version + "_phase", "idle")
+    require(phase != "consumed", "Duplicate post-write hook")
+    pending = getattr(_local, "postwrite_" + version + "_pending", None)
+    if pending is None:
+        require(phase == "idle", "Missing post-write pending")
+        return
+    setattr(_local, "postwrite_" + version + "_pending", None)
+    setattr(_local, "postwrite_" + version + "_phase", "consumed")
+    require(pending["config_key"] == fingerprint(config) and pending["stream"] == postwrite_stream(),
+            "Post-write stale config/execution stream")
+    if version == "v2":
+        require(pending["manager"] is owner and pending["desc"] == execution
+                and owner._graphs_captured and owner._capture_mem_samples is None,
+                "Post-write wrong manager/descriptor or warmup")
+    else:
+        require(pending["runner"] is owner and pending["scheduled"] is execution,
+                "Post-write wrong V1 scheduler/runner identity")
+        entry = early_step(early_state(config), execution)
+        require(entry["schedule_seq"] == pending["schedule_seq"] and entry["request_id"] == pending["request_id"],
+                "Post-write early identity drift")
+    runner = pending["runner"]
+    binding = kv_layer_bindings(runner.vllm_config, runner.kv_cache_config, pending["inputs"],
+        pending["metadata"], pending["slots"], v1_runner=runner if version == "v1" else None)
+    require(binding == pending["binding"], "Post-write prepared binding changed")
+    context = runner.vllm_config.compilation_config.static_forward_context
+    peers = {name: tensor_identity(context[name].kv_cache)
+             for group in runner.kv_cache_config.kv_cache_groups for name in group.layer_names}
+    require(peers == pending["peers"], "Post-write cache ownership changed")
+    postwrite_ownership(binding, peers)
+    cache, m = context[LAYER1].kv_cache, pending["metadata"][LAYER1]
+    block_size = int(cache.shape[2])
+    write_slots = ints(pending["slots"][LAYER1][:pending["write_count"]])
+    table = ints(m.block_table[0, :177 // block_size + 1])
+    location = position177_slot(table, write_slots, pending["positions"], block_size, int(cache.shape[0]))
+    auth_id = kv_authenticate(config)
+    content = hash_position177(cache, location["physical_block"], location["offset"])
+    capture = pending["capture"]
+    emit(config, "postwrite_position177", postwrite_schema=POSTWRITE_SCHEMA, phase="post_target_forward",
+         logical_position=177, target_layer=LAYER1, pid=os.getpid(), auth_id=auth_id,
+         request_id=pending["request_id"], request_state_index=pending["request_state_index"], batch_row=0,
+         actual_positions=pending["positions"], active_query=pending["active_query"],
+         input_token_id=pending["active_query"][location["selected_row"]][1],
+         graph_mode="FULL" if version == "v2" else "PIECEWISE", forward_id=pending["forward_id"],
+         hook="postwrite_v2_full" if version == "v2" else "postwrite_v1",
+         schedule_seq=pending["schedule_seq"], scheduler_output_id=None if version == "v2" else id(execution),
+         descriptor=None if version == "v1" else repr(execution),
+         capture_id=None if capture is None else capture["capture_id"],
+         runtime_binding=binding, cache_peers=peers, cache_identity=tensor_identity(cache),
+         write_slots=write_slots, block_table=table, execution_stream=pending["stream"],
+         runtime_probe_changes_timing=True, blocking_device_to_cpu=True, device_wide_synchronize=False,
+         capture_warmup=False,
+         **location, **content)
 
 
 def position_spans(raw, bytes_per_position):
@@ -398,6 +595,7 @@ def kv_capture(config, manager, desc, inputs, metadata, slots, cache_config, war
 
 def kv_v2_prepare(config, runner, batch, desc, inputs, metadata, slots):
     _local.kv_pending = None  # Never reuse a preceding step's mutable views.
+    postwrite_reset(config, "v2")
     ids = list(batch.req_ids or ())
     matching = [rid for rid in ids if rid in runner.req_states.req_id_to_index
                 and int(runner.req_states.prompt_len.np[runner.req_states.req_id_to_index[rid]])
@@ -406,6 +604,18 @@ def kv_v2_prepare(config, runner, batch, desc, inputs, metadata, slots):
         return
     # Position check is from the actual device input, not optimistic CPU counters.
     positions = ints(batch.positions[:batch.num_tokens])
+    if postwrite_enabled(config) and 177 in positions:
+        require(config["lane"] == "vanilla" and len(ids) == len(matching) == batch.num_reqs == 1,
+                "Post-write ambiguous Vanilla request")
+        index = runner.req_states.req_id_to_index[ids[0]]
+        if ints(runner.req_states.all_token_ids.gpu[index, :176]) != config["prompt_token_ids"]:
+            return
+        require(batch.num_draft_tokens == 0 and not batch.is_prefilling_np[0]
+                and list(batch.idx_mapping_np) == ints(batch.idx_mapping) == [index]
+                and type(runner.model_state).__name__ == "DefaultModelState" and runner.pcp_manager is None,
+                "Post-write V2 ownership/decode differs")
+        postwrite_prepare(config, runner, inputs, metadata, slots, positions, ids[0], index,
+                          desc.cg_mode, int(desc.num_tokens), manager=runner.cudagraph_manager, desc=desc)
     if 454 not in positions:
         return
     require(config["lane"] == "vanilla" and len(ids) == len(matching) == batch.num_reqs == 1,
@@ -445,6 +655,7 @@ def kv_v2_observe(config, manager, desc=None):
 
 
 def kv_v1(config, runner, scheduled, input_ids, positions, metadata, slots, mode):
+    postwrite_reset(config, "v1")
     ids = list(runner.input_batch.req_ids[:runner.input_batch.num_reqs])
     matching = [rid for rid in ids if list(runner.requests[rid].prompt_token_ids or [])
                 == config["prompt_token_ids"]]
@@ -453,6 +664,10 @@ def kv_v1(config, runner, scheduled, input_ids, positions, metadata, slots, mode
     n = scheduled.total_num_scheduled_tokens
     actual_positions = ints(positions[:n])
     early_prepare(config, runner, scheduled, input_ids, actual_positions)
+    if postwrite_enabled(config) and 177 in actual_positions:
+        require(config["lane"] == "adaptive" and len(ids) == len(matching) == 1, "Post-write ambiguous Adaptive batch")
+        postwrite_prepare(config, runner, dict(input_ids=input_ids, positions=positions), metadata, slots,
+                          actual_positions, ids[0], 0, mode, int(positions.shape[0]), scheduled=scheduled)
     if 454 not in actual_positions:
         return
     require(config["lane"] == "adaptive" and len(ids) == len(matching) == 1
@@ -782,6 +997,10 @@ def observe(stage, *args):
             early_schedule(config, *args)
         elif stage == "early_produced":
             early_produced(config, *args)
+        elif stage == "postwrite_v2_full":
+            postwrite_finish(config, "v2", *args)
+        elif stage == "postwrite_v1":
+            postwrite_finish(config, "v1", *args)
         elif stage.startswith("kv_"):
             if config.get("kv_probe") is not True:
                 return
@@ -820,6 +1039,10 @@ def observe(stage, *args):
                      num_computed_tokens=request.num_computed_tokens)
     except Exception as exc:
         # A failed observer never becomes usable evidence or changes a result.
+        if config and config.get("postwrite_position177") is True:
+            for version in ("v1", "v2"):
+                setattr(_local, "postwrite_" + version + "_pending", None)
+                setattr(_local, "postwrite_" + version + "_phase", "failed")
         if stage.startswith("kv_"):
             _local.kv_pending = None
         if stage.startswith("v2_"):

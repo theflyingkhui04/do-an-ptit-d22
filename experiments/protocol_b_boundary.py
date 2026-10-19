@@ -13,7 +13,8 @@ from experiments.protocol_b import (ROOT, EvidenceError, canonical_json, file_sh
                                     load_json, load_plan, require, utc_now, write_new)
 from experiments.protocol_b_capture import capture, command, reserve_run, server_processes
 from experiments.protocol_b_boundary_observer import (map_rows, selected_tokens,
-    history_slots, validate_full_binding, LAYER1, LOCALIZATION_SCHEMA, EARLY_SCHEMA)
+    history_slots, validate_full_binding, LAYER1, LOCALIZATION_SCHEMA, EARLY_SCHEMA,
+    POSTWRITE_SCHEMA, position177_slot, postwrite_ownership)
 
 CHECKPOINT = "4372f8b81998e8a50ee2b87ea6d7c4a9c4b523c5"
 BASE_EXECUTION = "a63baa1c42fd75f542f876ab512765149ddd5e20"
@@ -110,7 +111,7 @@ def prepare(directory, session):
                         sorted((ROOT / "experiments").glob("protocol_b_boundary*.py"))},
                     request_position_one_based=46, prelude_count=45,
                     plan=plan, reference_records={r["lane"]: r["records"][:46] for r in runs},
-                    kv_probe=True, layer1_localization=True, early_timeline=True,
+                    kv_probe=True, layer1_localization=True, early_timeline=True, postwrite_position177=True,
                     interpretation_status="NOT_YET_APPROVED", task_done=False)
     for key in ("PROTOCOL_B_TARGET_REVISION", "PROTOCOL_B_DRAFT_REVISION"):
         field = "target_revision" if "TARGET" in key else "draft_revision"
@@ -125,6 +126,7 @@ def prepare(directory, session):
             directory=str(output.resolve()), lane=lane, sample_id=SAMPLE, target=TARGET, kv_probe=True,
             layer1_localization=True,
             early_timeline=lane == "adaptive",
+            postwrite_position177=True,
             execution_sha=execution, session_id=session, gpu_uuid=gpu,
             target_revision=manifest["target_revision"], draft_revision=manifest["draft_revision"],
             prompt_token_ids=runs[0]["records"][45]["prompt_token_ids"]))
@@ -154,6 +156,7 @@ def capture_lane(directory, lane):
             and settings.get("kv_probe") is True and manifest.get("kv_probe") is True
             and settings.get("layer1_localization") == manifest.get("layer1_localization")
             and settings.get("early_timeline", False) == (lane == "adaptive" and manifest.get("early_timeline", False))
+            and settings.get("postwrite_position177", False) == manifest.get("postwrite_position177", False)
             and settings["prompt_token_ids"] == manifest["reference_records"][lane][-1]["prompt_token_ids"]
             and Path(settings["directory"]).resolve() == config.parent,
             "Observer config identity changed")
@@ -666,13 +669,125 @@ def analyze_early(events, record, boundary, historical_kv):
     return result
 
 
+def analyze_postwrite(events, records, boundaries, historical, early):
+    """Scoped inference only after the parent's canonical evidence gates pass."""
+    result = dict(schema=POSTWRITE_SCHEMA, status="INVALID_EVIDENCE", classification="INVALID_EVIDENCE",
+                  task_done=False, historical_kv_state_equivalent=False, same_kv_cache_state_proven=False,
+                  interpretation_status="NOT_YET_APPROVED", temporal_kv_onset="UNKNOWN")
+    try:
+        require(historical["status"] == "STATE_DIFFERENT"
+                and historical["layer1_localization"]["status"] == "LOCALIZED"
+                and all(historical["layer1_localization"][k] == 177 for k in ("P", "P_K", "P_V"))
+                and early["status"] == "INTERPRETABLE" and early["first_coverage_path"] == "speculative",
+                "Post-write prerequisite gates failed")
+        selected, later_linkage = {}, {}
+        for lane in ("vanilla", "adaptive"):
+            require(not any(e["kind"] == "observer_error" for e in events[lane]), "Post-write observer errors")
+            captures = [e for e in events[lane] if e["kind"] == "postwrite_position177"]
+            require(len(captures) == 1, "Post-write missing/duplicate " + lane + " capture")
+            e = captures[0]
+            histories = [s for s in events[lane] if s["kind"] == "kv_history"
+                         and s["request_id"] == boundaries[lane]["request_id"]]
+            require(len(histories) == 1, "Post-write missing/duplicate later snapshot")
+            later = histories[0]
+            require(e["postwrite_schema"] == POSTWRITE_SCHEMA and e["lane"] == lane
+                    and e["phase"] == "post_target_forward" and e["logical_position"] == 177
+                    and e["target_layer"] == LAYER1 and e["request_id"] == boundaries[lane]["request_id"]
+                    and e["pid"] == boundaries[lane]["pid"] and e["auth_id"] == later["auth_id"]
+                    and e["batch_row"] == 0 and e["request_state_index"] == later["request_state_index"]
+                    and isinstance(e["forward_id"], str) and bool(e["forward_id"])
+                    and e["timestamp"] <= later["timestamp"]
+                    and e["runtime_probe_changes_timing"] is True and e["blocking_device_to_cpu"] is True
+                    and e["device_wide_synchronize"] is False and e["capture_warmup"] is False
+                    and same_request(e["request_id"], records[lane]["response_id"]), "Post-write event ownership/phase differs")
+            require(later["snapshot_id"] == historical["snapshot_ids"][lane]
+                    == historical["layer1_localization"]["snapshot_ids"][lane], "Post-write later snapshot linkage differs")
+            expected_positions = [177] if lane == "vanilla" else [177, 178, 179, 180]
+            require(e["actual_positions"] == expected_positions
+                    and [p for p, _ in e["active_query"]] == expected_positions
+                    and e["input_token_id"] == e["active_query"][0][1] == records[lane]["token_ids"][1],
+                    "Post-write actual row/input differs")
+            binding = e["runtime_binding"]
+            require(binding["expected_layers"] == later["runtime_binding"]["expected_layers"]
+                    and binding["layers"][LAYER1]["cache"] == e["cache_identity"]
+                    == later["layers"][LAYER1]["cache_identity"], "Post-write cache/later binding differs")
+            postwrite_ownership(binding, e["cache_peers"])
+            require(e["cache_identity"]["device"].startswith("cuda")
+                    and e["execution_stream"]["device"] == e["cache_identity"]["device"]
+                    and type(e["execution_stream"]["cuda_stream"]) is int
+                    and e["execution_stream"]["cuda_stream"] >= 0, "Post-write execution stream differs")
+            shape = e["cache_identity"]["shape"]
+            location = position177_slot(e["block_table"], e["write_slots"], e["actual_positions"], shape[2], shape[0])
+            require(all(e[k] == v for k, v in location.items())
+                    and len(e["write_slots"]) == binding["inputs"]["positions"]["shape"][0]
+                    and len(e["write_slots"]) == binding["layers"][LAYER1]["metadata"]["slot_mapping"]["shape"][0],
+                    "Post-write physical slot/write extent differs")
+            h, d = shape[1], shape[3] // 2
+            require(shape[3] == 2 * d and e["dtype"] == "torch.float16" and e["shape"] == [h, d]
+                    and e["canonical_order"] == ["kv_head", "head_dimension"]
+                    and all(type(e[k]) is int and e[k] == v for k, v in
+                            dict(heads=h, head_dim=d, element_count=h*d, byte_count=h*d*2, total_value_bytes=h*d*4).items()),
+                    "Post-write dtype/shape/byte count differs")
+            loc = later["layers"][LAYER1]["localization"]
+            require(loc["target_layer"] == LAYER1 and loc["logical_positions"] == list(range(454))
+                    and loc["dtype"] == e["dtype"] and loc["heads"] == h and loc["head_dim"] == d
+                    and loc["bytes_per_position"] == e["byte_count"], "Post-write later digest representation differs")
+            later_linkage[lane] = {}
+            for component in ("K", "V"):
+                digest = e[component]["sha256"]
+                after = loc[component]["position_sha256"][177]
+                require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest)
+                        and isinstance(after, str) and re.fullmatch(r"[0-9a-f]{64}", after)
+                        and loc[component]["prefix_sha256"] == later["layers"][LAYER1]["digests"][component],
+                        "Post-write immediate/later digest linkage differs")
+                later_linkage[lane][component + "_same_as_later"] = digest == after
+            if lane == "vanilla":
+                require(e["graph_mode"] == "FULL" and e["hook"] == "postwrite_v2_full"
+                        and e["schedule_seq"] is None and e["scheduler_output_id"] is None,
+                        "Post-write Vanilla execution differs")
+                full = [c for c in events[lane] if c["kind"] == "kv_capture" and c["capture_id"] == e["capture_id"]]
+                require(len(full) == 1 and full[0]["descriptor"] == e["descriptor"]
+                        and full[0]["pid"] == e["pid"] and full[0]["auth_id"] == e["auth_id"]
+                        and full[0]["timestamp"] <= e["timestamp"],
+                        "Post-write FULL capture identity differs")
+                validate_full_binding(full[0]["bindings"], binding)
+            else:
+                steps = [t for t in early["timeline"] if t["schedule_seq"] == early["first_coverage_step"]]
+                require(len(steps) == 1 and e["graph_mode"] == "PIECEWISE" and e["hook"] == "postwrite_v1"
+                        and e["capture_id"] is None and e["descriptor"] is None
+                        and e["schedule_seq"] == steps[0]["schedule_seq"]
+                        and e["scheduler_output_id"] == steps[0]["accounting_before"]["scheduler_output_id"]
+                        and e["active_query"] == steps[0]["active_query"]
+                        and steps[0]["decoding_path"] == "speculative", "Post-write wrong first Adaptive verification")
+            selected[lane] = e
+        require(all(selected["vanilla"][k] == selected["adaptive"][k] for k in
+                    ("dtype", "shape", "heads", "head_dim", "byte_count", "canonical_order")),
+                "Post-write lane representations differ")
+        immediate = {c + "_equal": selected["vanilla"][c]["sha256"] == selected["adaptive"][c]["sha256"]
+                     for c in ("K", "V")}
+        if all(immediate.values()):
+            require(any(not same for lane in later_linkage.values() for same in lane.values()),
+                    "Post-write equality contradicts later divergence")
+        result.update(status="INTERPRETABLE", immediate=immediate, later_linkage=later_linkage,
+            classification="LATER_STATE_CHANGE" if all(immediate.values()) else "IMMEDIATE_STORED_KV_DIVERGENCE",
+            forward_ids={lane: e["forward_id"] for lane, e in selected.items()})
+    except (EvidenceError, KeyError, TypeError, ValueError, IndexError) as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
 def analyze(directory):
     m = load_json(directory / "manifest.json")
     result = dict(schema=SCHEMA, generated_at=utc_now(), sample_id=SAMPLE,
                   interpretation_status="NOT_YET_APPROVED", task_done=False,
                   temporal_kv_onset="UNKNOWN",
                   status="INVALID_EVIDENCE", same_kv_cache_state_proven=False,
+                  historical_kv_state_equivalent=False,
                   historical_kv=dict(status="INVALID_EVIDENCE", historical_kv_state_equivalent=False))
+    if m.get("postwrite_position177") is True:
+        result["postwrite_position177"] = dict(schema=POSTWRITE_SCHEMA, status="INVALID_EVIDENCE",
+            classification="INVALID_EVIDENCE", task_done=False, historical_kv_state_equivalent=False,
+            same_kv_cache_state_proven=False, interpretation_status="NOT_YET_APPROVED", temporal_kv_onset="UNKNOWN")
     try:
         prompts = m["plan"]["prompts"]
         require(len(prompts) == 54 and len({p["sample_id"] for p in prompts}) == 54
@@ -716,6 +831,8 @@ def analyze(directory):
                     "Observer config fingerprint differs")
             require(load_json(output / "boundary_config.json").get("early_timeline", False)
                     == (lane == "adaptive" and m.get("early_timeline", False)), "Early configuration differs")
+            require(load_json(output / "boundary_config.json").get("postwrite_position177", False)
+                    == m.get("postwrite_position177", False), "Post-write configuration differs")
             require(all(e["schema"] == "m203.boundary.event.v1" and e["lane"] == lane
                         and e["execution_sha"] == m["execution_sha"]
                         and e["config_fingerprint"] == binding["config_fingerprint"] for e in event_sets[lane]),
@@ -755,6 +872,9 @@ def analyze(directory):
                 result["historical_kv"] = analyze_kv(directory, event_sets, result["boundary"])
                 require(result["historical_kv"]["status"] != "INVALID_EVIDENCE",
                         result["historical_kv"].get("error", "KV invalid evidence"))
+                if m.get("postwrite_position177") is True:
+                    require(result["historical_kv"]["status"] == "STATE_DIFFERENT",
+                            "Post-write requires historical STATE_DIFFERENT")
                 result["historical_kv_state_equivalent"] = result["historical_kv"]["historical_kv_state_equivalent"]
                 if m.get("layer1_localization") is True:
                     require(result["historical_kv"]["layer1_localization"]["status"] == "LOCALIZED",
@@ -766,6 +886,12 @@ def analyze(directory):
                     result["boundary"]["adaptive"], result["historical_kv"])
                 require(result["early_timeline"]["status"] == "INTERPRETABLE",
                         result["early_timeline"].get("error", "Early invalid evidence"))
+            if m.get("postwrite_position177") is True:
+                require(m.get("early_timeline") is True, "Post-write cannot bypass early timeline")
+                result["postwrite_position177"] = analyze_postwrite(event_sets, records, result["boundary"],
+                    result["historical_kv"], result["early_timeline"])
+                require(result["postwrite_position177"]["status"] == "INTERPRETABLE",
+                        result["postwrite_position177"].get("error", "Post-write invalid evidence"))
     except (EvidenceError, OSError, ValueError, KeyError, TypeError, IndexError) as exc:
         result.update(status="INVALID_EVIDENCE", error=f"{type(exc).__name__}: {exc}")
         result.pop("boundary", None)

@@ -85,6 +85,22 @@ INSERTIONS = {
     ],
 }
 
+# These are AFTER-statement observations; historical INSERTIONS stay before.
+POSTWRITE_INSERTIONS = {
+    "v1/worker/gpu/cudagraph_utils.py": (
+        "        self.graphs[desc].replay()\n",
+        '        _pb279_observe("postwrite_v2_full", self, desc)\n'),
+    "v1/worker/gpu_model_runner.py": (
+        "            model_output = self._model_forward(\n"
+        "                input_ids=input_ids,\n"
+        "                positions=positions,\n"
+        "                intermediate_tensors=intermediate_tensors,\n"
+        "                inputs_embeds=inputs_embeds,\n"
+        "                **model_kwargs,\n"
+        "            )\n",
+        '            _pb279_observe("postwrite_v1", self, scheduler_output)\n'),
+}
+
 # Keep runtime changes distinct from observation-only INSERTIONS in code and evidence.
 DRAFT_SOURCE = "v1/spec_decode/draft_model.py"
 RUNTIME_FIXES = {DRAFT_SOURCE: "draft-tokenizer-revision-v1"}
@@ -149,6 +165,29 @@ def normalized_transform_ast(name, patched):
 
 def validate_transform(name, raw, patched):
     require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Pristine vLLM source drift: " + name)
+    if name in POSTWRITE_INSERTIONS:
+        anchor, insertion = POSTWRITE_INSERTIONS[name]
+        target = ast.dump(ast.parse(anchor.lstrip()).body[0])
+        hook = ast.dump(ast.parse(insertion.lstrip()).body[0])
+        tree = ast.parse(patched)
+        locations = []
+        for node in ast.walk(tree):
+            for _, value in ast.iter_fields(node):
+                if isinstance(value, list):
+                    locations.extend((value, i) for i, item in enumerate(value)
+                                     if isinstance(item, ast.stmt) and ast.dump(item) == target)
+        stage = ast.parse(insertion.lstrip()).body[0].value.args[0].value
+        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name) and n.func.id == "_pb279_observe"
+                 and n.args and isinstance(n.args[0], ast.Constant) and n.args[0].value == stage]
+        require(len(locations) == len(calls) == 1, "Missing/duplicate post-write source hook")
+        body, index = locations[0]
+        require(index > 0 and index + 1 < len(body)
+                and ast.dump(body[index + 1]) == hook, "Post-write hook is not immediately after execution")
+        before = ('_pb279_observe("kv_v2_full", self, desc)' if stage == "postwrite_v2_full" else
+                  '_pb279_observe("kv_v1", self, scheduler_output, input_ids, positions, attn_metadata, slot_mappings, cudagraph_mode)')
+        require(ast.dump(body[index - 1]) == ast.dump(ast.parse(before).body[0]),
+                "Historical pre-forward hook moved")
     require(ast.dump(normalized_transform_ast(name, patched)) == ast.dump(ast.parse(raw)),
             "Unapproved inference AST change: " + name)
     compile(patched, name, "exec")
@@ -162,6 +201,10 @@ def transform(name, raw):
     for anchor, insertion in INSERTIONS.get(name, ()):
         require(text.count(anchor) == 1, "Nonunique source anchor: " + name)
         text = text.replace(anchor, insertion + anchor, 1)
+    if name in POSTWRITE_INSERTIONS:
+        anchor, insertion = POSTWRITE_INSERTIONS[name]
+        require(text.count(anchor) == 1, "Nonunique post-write source anchor")
+        text = text.replace(anchor, anchor + insertion, 1)
     if name == DRAFT_SOURCE:
         require(text.count(DRAFT_TOKENIZER_CALL) == 1, "Nonunique draft tokenizer anchor")
         text = text.replace(DRAFT_TOKENIZER_CALL,
