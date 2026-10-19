@@ -1,5 +1,30 @@
 # M2-03: targeted boundary 279 on Kaggle/T4
 
+## Diagnostic-time draft tokenizer revision fix (2026-10-19)
+
+The authenticated installer now applies one explicit runtime fix alongside the
+observation hooks. In pristine vLLM 0.30.0 `DraftModelProposer`, only the draft
+`get_tokenizer()` call gains
+`revision=spec.draft_model_config.tokenizer_revision`. The target call and model
+configuration remain unchanged. This fixes the offline heterogeneous-vocabulary
+draft tokenizer lookup; it is not an observation-only transformation.
+
+`instrumentation.json.runtime_fixes` declares
+`v1/spec_decode/draft_model.py: draft-tokenizer-revision-v1`. The pristine hash
+and backup remain required; installed hashes include the fixed source.
+Authentication recomputes the approved transformation and rejects any mismatch.
+Restore accepts only pristine or exactly transformed bytes and restores the
+original file. No manual installed-source edit or cache/ref workaround is needed.
+
+The AST gate strips observer hooks only in observer-instrumented files.
+For the draft source alone, it validates and removes exactly the approved
+revision keyword before requiring equality with pristine AST; any different
+expression or unrelated AST change is rejected. New evidence must record this
+runtime fix explicitly. Historical artifacts are not rewritten.
+
+CPU source/lifecycle verification only; runtime initialization and GPU inference
+with this fix: **NOT RUN**.
+
 ## Layer-1 historical-position localization
 
 New preparations enable `layer1_localization` in the manifest and both lane

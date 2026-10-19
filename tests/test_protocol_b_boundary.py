@@ -21,7 +21,8 @@ from experiments.protocol_b import EvidenceError, file_sha, write_new, fingerpri
 from experiments.protocol_b_boundary import (SAMPLE, first_difference, is_fingerprint,
                                              same_request, validate_boundary, seal, analyze, SCHEMA)
 from experiments.protocol_b_boundary_observer import map_rows, selected_tokens
-from experiments.protocol_b_boundary_sources import HASHES, INSERTIONS, StripObserver, transform
+from experiments.protocol_b_boundary_sources import (HASHES, PATCHED_FILES,
+    normalized_transform_ast, transform)
 
 
 def pinned_sources():
@@ -340,10 +341,10 @@ class SourceTransformTests(unittest.TestCase):
                 raw = text.encode()
                 self.assertEqual(hashlib.sha256(raw).hexdigest(), HASHES[name])
                 patched = transform(name, raw)
-                self.assertEqual(ast.dump(StripObserver().visit(ast.parse(patched))), ast.dump(ast.parse(raw)))
+                self.assertEqual(ast.dump(normalized_transform_ast(name, patched)), ast.dump(ast.parse(raw)))
                 with self.assertRaises(EvidenceError):
                     transform(name, raw + b"\n")
-                if name in INSERTIONS:
+                if name in PATCHED_FILES:
                     with self.assertRaises(EvidenceError):
                         transform(name, patched)
                 else:

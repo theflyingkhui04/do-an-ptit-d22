@@ -261,7 +261,7 @@ class KVSourceTests(unittest.TestCase):
             with self.subTest(name=name):
                 patched = sources.transform(name, text.encode())
                 compile(patched, name, "exec")
-                self.assertEqual(ast.dump(sources.StripObserver().visit(ast.parse(patched))),
+                self.assertEqual(ast.dump(sources.normalized_transform_ast(name, patched)),
                                  ast.dump(ast.parse(text)))
                 with self.assertRaises(EvidenceError):
                     sources.transform(name, text.encode() + b"\n")
@@ -313,7 +313,7 @@ class KVSourceTests(unittest.TestCase):
                 auth = sources.authenticate(run, installed=True)
                 self.assertEqual(set(auth["original_hashes"]), set(sources.HASHES))
                 state = json.loads((run / "instrumentation.json").read_text())
-                self.assertEqual(set(state["patched_hashes"]), set(sources.INSERTIONS))
+                self.assertEqual(set(state["patched_hashes"]), set(sources.PATCHED_FILES))
                 untouched = package / "forward_context.py"
                 untouched.write_bytes(untouched.read_bytes() + b"\n")
                 with self.assertRaises(EvidenceError):

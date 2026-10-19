@@ -1,7 +1,8 @@
-"""Minimal observation-only subset of archive a7b52e7's sources.py.
+"""Pinned boundary observers plus one explicitly approved diagnostic-time runtime fix.
 
 Exact source hashes and strip-to-original AST verification precede installation.
-No attention patches, recompute controls, startup or graph-setting changes.
+The draft-tokenizer revision fix has its own exact AST normalization; observer
+hooks still strip to pristine AST without any runtime-change allowance.
 """
 import ast
 import hashlib
@@ -82,6 +83,18 @@ INSERTIONS = {
     ],
 }
 
+# Keep runtime changes distinct from observation-only INSERTIONS in code and evidence.
+DRAFT_SOURCE = "v1/spec_decode/draft_model.py"
+RUNTIME_FIXES = {DRAFT_SOURCE: "draft-tokenizer-revision-v1"}
+PATCHED_FILES = (*INSERTIONS, *RUNTIME_FIXES)
+DRAFT_TOKENIZER_CALL = (
+    "            draft_tokenizer = get_tokenizer(\n"
+    "                spec.draft_model_config.model,\n"
+    "                trust_remote_code=spec.draft_model_config.trust_remote_code,\n"
+    "            )\n"
+)
+DRAFT_REVISION_LINE = "                revision=spec.draft_model_config.tokenizer_revision,\n"
+
 
 class StripObserver(ast.NodeTransformer):
     def visit_ImportFrom(self, node):
@@ -94,26 +107,58 @@ class StripObserver(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
+def normalized_transform_ast(name, patched):
+    """Strip hooks; only the pinned draft assignment may lose the exact approved keyword."""
+    tree = ast.parse(patched)
+    if name in INSERTIONS:
+        tree = StripObserver().visit(tree)
+    if name == DRAFT_SOURCE:
+        calls = [node.value for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                 and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                 and node.targets[0].id == "draft_tokenizer" and isinstance(node.value, ast.Call)
+                 and isinstance(node.value.func, ast.Name) and node.value.func.id == "get_tokenizer"]
+        require(len(calls) == 1, "Missing/ambiguous draft tokenizer fix")
+        call = calls[0]
+        revisions = [kw for kw in call.keywords if kw.arg == "revision"]
+        expected = ast.parse("spec.draft_model_config.tokenizer_revision", mode="eval").body
+        require(len(revisions) == 1 and ast.dump(revisions[0].value) == ast.dump(expected),
+                "Unapproved draft tokenizer revision expression")
+        call.keywords.remove(revisions[0])
+    return tree
+
+
+def validate_transform(name, raw, patched):
+    require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Pristine vLLM source drift: " + name)
+    require(ast.dump(normalized_transform_ast(name, patched)) == ast.dump(ast.parse(raw)),
+            "Unapproved inference AST change: " + name)
+    compile(patched, name, "exec")
+
+
 def transform(name, raw):
     require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Pristine vLLM source drift: " + name)
-    if name not in INSERTIONS:
+    if name not in PATCHED_FILES:
         return raw
     text = raw.decode("utf-8")
-    for anchor, insertion in INSERTIONS[name]:
+    for anchor, insertion in INSERTIONS.get(name, ()):
         require(text.count(anchor) == 1, "Nonunique source anchor: " + name)
         text = text.replace(anchor, insertion + anchor, 1)
-    nodes = ast.parse(text).body
-    boundary = max([n.end_lineno for n in nodes if isinstance(n, ast.ImportFrom)
-                    and n.module == "__future__"] +
-                   ([nodes[0].end_lineno] if isinstance(nodes[0], ast.Expr)
-                    and isinstance(nodes[0].value, ast.Constant)
-                    and isinstance(nodes[0].value.value, str) else [0]))
-    lines = text.splitlines(keepends=True)
-    lines.insert(boundary, "from experiments.protocol_b_boundary_observer import observe as _pb279_observe\n")
-    patched = "".join(lines).encode()
-    compile(patched, name, "exec")
-    require(ast.dump(StripObserver().visit(ast.parse(patched))) == ast.dump(ast.parse(raw)),
-            "Observer changed inference AST")
+    if name == DRAFT_SOURCE:
+        require(text.count(DRAFT_TOKENIZER_CALL) == 1, "Nonunique draft tokenizer anchor")
+        text = text.replace(DRAFT_TOKENIZER_CALL,
+                            DRAFT_TOKENIZER_CALL.replace("                trust_remote_code=",
+                                                         DRAFT_REVISION_LINE + "                trust_remote_code="), 1)
+    if name in INSERTIONS:
+        nodes = ast.parse(text).body
+        boundary = max([n.end_lineno for n in nodes if isinstance(n, ast.ImportFrom)
+                        and n.module == "__future__"] +
+                       ([nodes[0].end_lineno] if isinstance(nodes[0], ast.Expr)
+                        and isinstance(nodes[0].value, ast.Constant)
+                        and isinstance(nodes[0].value.value, str) else [0]))
+        lines = text.splitlines(keepends=True)
+        lines.insert(boundary, "from experiments.protocol_b_boundary_observer import observe as _pb279_observe\n")
+        text = "".join(lines)
+    patched = text.encode()
+    validate_transform(name, raw, patched)
     return patched
 
 
@@ -143,7 +188,7 @@ def install(directory):
     originals = {name: (root / name).read_bytes() for name in HASHES}
     # Authenticate the whole bounded dependency set before changing any source.
     supported = {name: transform(name, raw) for name, raw in originals.items()}
-    patched = {name: supported[name] for name in INSERTIONS}
+    patched = {name: supported[name] for name in PATCHED_FILES}
     backup = Path(directory) / "vllm-originals"
     backup.mkdir(exist_ok=False)
     for name, raw in originals.items():
@@ -154,6 +199,7 @@ def install(directory):
     write_new(Path(directory) / "instrumentation.json", {
         "vllm_root": str(root), "original_hashes": HASHES,
         "patched_hashes": {name: hashlib.sha256(raw).hexdigest() for name, raw in patched.items()},
+        "runtime_fixes": RUNTIME_FIXES,
         "observer_sha256": hashlib.sha256(
             (ROOT / "experiments/protocol_b_boundary_observer.py").read_bytes()).hexdigest()})
     # Every backup/provenance file exists before the first installed-source write.
@@ -166,9 +212,10 @@ def authenticate(directory, installed=False):
     directory = Path(directory)
     state = json.loads((directory / "instrumentation.json").read_text())
     require(state["original_hashes"] == HASHES, "KV source hash set differs")
+    require(state.get("runtime_fixes") == RUNTIME_FIXES, "Runtime fix declaration differs")
     originals = {name: (directory / "vllm-originals" / name).read_bytes() for name in HASHES}
     supported = {name: transform(name, raw) for name, raw in originals.items()}
-    patched_hashes = {name: hashlib.sha256(supported[name]).hexdigest() for name in INSERTIONS}
+    patched_hashes = {name: hashlib.sha256(supported[name]).hexdigest() for name in PATCHED_FILES}
     require(state["patched_hashes"] == patched_hashes, "KV patched source hashes differ")
     expected = {name: hashlib.sha256(raw).hexdigest() for name, raw in supported.items()}
     if installed:
@@ -182,7 +229,7 @@ def authenticate(directory, installed=False):
             Path(__file__).with_name("protocol_b_boundary_observer.py").read_bytes()).hexdigest(),
             "KV observer source drift")
     return dict(original_hashes=HASHES, installed_hashes=expected,
-                observer_sha256=state["observer_sha256"])
+                observer_sha256=state["observer_sha256"], runtime_fixes=RUNTIME_FIXES)
 
 
 def restore(directory):
@@ -194,6 +241,6 @@ def restore(directory):
     for name, raw in originals.items():
         require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Backup drift")
         require((root / name).read_bytes() in (raw, transform(name, raw)), "Unknown installed source")
-    for name in INSERTIONS:
+    for name in PATCHED_FILES:
         _write_atomically(root / name, originals[name])
-    write_new(directory / "restored.json", {"original_hashes": HASHES})
+    write_new(directory / "restored.json", {"original_hashes": HASHES, "runtime_fixes_removed": RUNTIME_FIXES})
