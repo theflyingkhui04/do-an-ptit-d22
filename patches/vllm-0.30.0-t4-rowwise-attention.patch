@@ -1,0 +1,209 @@
+--- a/vllm/v1/attention/backends/triton_attn.py
++++ b/vllm/v1/attention/backends/triton_attn.py
+@@ -87,6 +87,8 @@
+     prefix_kv_lens: torch.Tensor | None
+     suffix_kv_lens: torch.Tensor | None
+ 
++    rowwise_decode_max_q: int = 0
++
+     # Optional aot scheduling
+     scheduler_metadata: torch.Tensor | None = None
+     prefix_scheduler_metadata: torch.Tensor | None = None
+@@ -113,6 +115,16 @@
+         self.block_size = kv_cache_spec.block_size
+ 
+         model_config = vllm_config.model_config
++        spec = vllm_config.speculative_config
++        # Draft configs replace model_config with draft_model_config. Enable
++        # only the target; ordinary Vanilla decode retains its original path.
++        self.rowwise_decode_max_q = (
++            1 + spec.num_speculative_tokens
++            if spec is not None and model_config is spec.target_model_config
++            and model_config.dtype == torch.float16
++            and vllm_config.compilation_config.cudagraph_mode == CUDAGraphMode.PIECEWISE
++            else 0
++        )
+         # Compatible with models with non-uniform per-layer head counts.
+         self.num_heads_q = get_num_attention_heads_from_layers(
+             vllm_config, layer_names
+@@ -226,6 +238,7 @@
+             prefix_scheduler_metadata = None
+ 
+         attn_metadata = TritonAttentionMetadata(
++            rowwise_decode_max_q=self.rowwise_decode_max_q,
+             num_actual_tokens=num_actual_tokens,
+             max_query_len=max_query_len,
+             query_start_loc=query_start_loc,
+@@ -659,6 +672,7 @@
+             v=value_cache,
+             out=output[:num_actual_tokens],
+             cu_seqlens_q=cu_seqlens_q,
++            rowwise_decode_max_q=attn_metadata.rowwise_decode_max_q,
+             max_seqlen_q=max_seqlen_q,
+             seqused_k=seqused_k,
+             max_seqlen_k=max_seqlen_k,
+--- a/vllm/v1/attention/ops/triton_unified_attention.py
++++ b/vllm/v1/attention/ops/triton_unified_attention.py
+@@ -173,6 +173,14 @@
+         [0, 0, 0],
+         acc.reshape(BLOCK_Q, num_queries_per_kv, HEAD_SIZE_PADDED),
+     )
++
++
++@triton.jit
++def _rowwise_decode_state(query_start_len_ptr, seq_lens_ptr, token_idx, seq_idx):
++    start = tl.load(query_start_len_ptr + seq_idx)
++    stop = tl.load(query_start_len_ptr + seq_idx + 1)
++    final_len = tl.load(seq_lens_ptr + seq_idx)
++    return final_len - (stop - start) + (token_idx - start) + 1
+ 
+ 
+ @triton.jit
+@@ -243,6 +251,7 @@
+     # to ``[segm_idx, segm_idx+1) × tiles_per_segment`` and writes
+     # per-segment partials, finalized by ``reduce_segments``.
+     IS_3D: tl.constexpr,
++    ROWWISE_DECODE: tl.constexpr,
+     # Parameters below default to None so Triton can skip materialising them
+     # on call sites where the corresponding constexpr branch is dead.
+     # Credit: @quinnlp identified this as a perf regression source in
+@@ -306,15 +315,28 @@
+     kv_head_idx = tl.program_id(1)
+     segm_idx = tl.program_id(2) if IS_3D else 0
+ 
+-    (
+-        seq_idx,
+-        q_block_local_idx,
+-        cur_batch_in_all_start_index,
+-        cur_batch_query_len,
+-        seq_len,
+-    ) = resolve_seq_and_query_len(
+-        query_start_len_ptr, seq_lens_ptr, q_block_global_idx, num_seqs, BLOCK_Q
+-    )
++    if ROWWISE_DECODE:
++        # Grid axis 0 is the original flattened query-token index. Present
++        # exactly one logical query to the unchanged decode arithmetic below.
++        seq_idx = find_seq_idx(
++            query_start_len_ptr, q_block_global_idx, num_seqs, BLOCK_Q, False
++        )
++        seq_len = _rowwise_decode_state(
++            query_start_len_ptr, seq_lens_ptr, q_block_global_idx, seq_idx
++        )
++        q_block_local_idx = 0
++        cur_batch_in_all_start_index = q_block_global_idx
++        cur_batch_query_len = 1
++    else:
++        (
++            seq_idx,
++            q_block_local_idx,
++            cur_batch_in_all_start_index,
++            cur_batch_query_len,
++            seq_len,
++        ) = resolve_seq_and_query_len(
++            query_start_len_ptr, seq_lens_ptr, q_block_global_idx, num_seqs, BLOCK_Q
++        )
+ 
+     if q_block_local_idx * BLOCK_Q >= cur_batch_query_len:
+         return
+@@ -707,6 +729,7 @@
+     BLOCK_Q: tl.constexpr,  # int
+     NUM_SEGMENTS_PER_SEQ: tl.constexpr,  # int
+     USE_FP8: tl.constexpr,  # bool
++    ROWWISE_DECODE: tl.constexpr,
+     FP8_MIN: tl.constexpr = float8_info.min,
+     FP8_MAX: tl.constexpr = float8_info.max,
+ ):
+@@ -718,7 +741,12 @@
+     )
+ 
+     # sequence len for this particular sequence
+-    seq_len = tl.load(seq_lens_ptr + seq_idx)
++    if ROWWISE_DECODE:
++        seq_len = _rowwise_decode_state(
++            query_start_len_ptr, seq_lens_ptr, query_token_idx, seq_idx
++        )
++    else:
++        seq_len = tl.load(seq_lens_ptr + seq_idx)
+ 
+     # number of segments for this particular sequence
+     num_segments = NUM_SEGMENTS_PER_SEQ
+@@ -852,6 +880,7 @@
+     # Gemma4: clamp mm_prefix bidirectional ranges by the sliding window.
+     # Default False keeps the original behavior for every other model.
+     mm_prefix_clamp_sliding_window: bool = False,
++    rowwise_decode_max_q: int = 0,
+ ):
+     # Resolve causal: bool or per-seq tensor.
+     use_per_seq_causal = isinstance(causal, torch.Tensor)
+@@ -1054,6 +1083,46 @@
+         or is_batch_invariant
+     )
+ 
++    # Opt-in target-only policy. Shapes/configuration are host-known: no
++    # GPU scalar reads, scratch allocation, or request metadata mutation.
++    rowwise_3d = (
++        rowwise_decode_max_q > 1
++        and 1 < max_seqlen_q <= rowwise_decode_max_q
++        and num_seqs == 1
++        and q.shape[0] == max_seqlen_q
++        and cu_seqlens_q.shape == (2,)
++        and max_seqlen_k >= max_seqlen_q
++        and current_platform.is_cuda()
++        and current_platform.get_device_capability() is not None
++        and current_platform.get_device_capability().to_int() == 75
++        and q.device.type == "cuda"
++        and q.dtype == k.dtype == v.dtype == out.dtype == torch.float16
++        and q.device == k.device == v.device == out.device
++        and q.shape[1:] == (28, 128) and num_kv_heads == 4
++        and causal is True
++        and tuple(window_size) == (-1, -1)
++        and kv_quant_mode == KVQuantMode.NONE
++        and q_descale is None and output_scale is None
++        and alibi_slopes is None and not use_alibi_sqrt
++        and qq_bias is None and sinks is None and softcap == 0
++        and mm_prefix_range is None
++        and rswa_prefix_lens is None and rswa_window is None
++        and chunk_lookback == -1 and not use_td
++        and not mm_prefix_clamp_sliding_window
++        and not is_batch_invariant
++        and seq_threshold_3D is not None and num_seqs <= seq_threshold_3D
++        and num_par_softmax_segments == 16
++        and all(t is not None for t in
++                (softmax_segm_output, softmax_segm_max, softmax_segm_expsum))
++        and softmax_segm_output.shape[1:] == (28, 16, 128)
++        and softmax_segm_max.shape[1:] == softmax_segm_expsum.shape[1:] == (28, 16)
++        and all(t.shape[0] >= q.shape[0] and t.dtype == torch.float32
++                and t.device == q.device and t.is_contiguous() for t in
++                (softmax_segm_output, softmax_segm_max, softmax_segm_expsum))
++        and cu_seqlens_q.device == seqused_k.device == block_table.device == q.device
++    )
++    use_3d = use_3d or rowwise_3d
++
+     # The kernel signature is the same for 2D and 3D — only the launch
+     # grid + a handful of constexpr toggles differ.  Per-token-head scale
+     # caches and their strides are passed as ``None`` when the
+@@ -1077,6 +1146,9 @@
+     segm_max_ptr = softmax_segm_max if use_3d else None
+     segm_expsum_ptr = softmax_segm_expsum if use_3d else None
+     num_segments = num_par_softmax_segments if use_3d else 1
++
++    if rowwise_3d:
++        total_num_q_blocks = q.shape[0]
+ 
+     grid: tuple[Any, ...]
+     if not use_3d:
+@@ -1161,6 +1233,7 @@
+         NUM_SEGMENTS_PER_SEQ=num_segments,
+         USE_FP8=output_scale is not None,
+         IS_3D=use_3d,
++        ROWWISE_DECODE=rowwise_3d,
+         KV_QUANT_MODE=kv_quant_mode,
+         Q_IS_FP8=(q.dtype == current_platform.fp8_dtype()),
+         CHUNK_LOOKBACK=chunk_lookback,
+@@ -1191,4 +1264,5 @@
+             BLOCK_Q=BLOCK_Q,
+             NUM_SEGMENTS_PER_SEQ=num_par_softmax_segments,
+             USE_FP8=output_scale is not None,
+-        )
++            ROWWISE_DECODE=rowwise_3d,
++        )
