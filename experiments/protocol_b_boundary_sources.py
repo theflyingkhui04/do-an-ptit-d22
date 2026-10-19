@@ -64,6 +64,8 @@ INSERTIONS = {
          '        _pb279_observe("begin", self, scheduler_output, logits, spec_decode_metadata, grammar_output)\n'),
         ("        self._update_states_after_model_execute(\n",
          '        _pb279_observe("end", self, sampler_output)\n'),
+        ("                self._copy_draft_token_ids_to_cpu(scheduler_output)\n",
+         '                _pb279_observe("early_produced", self, scheduler_output)\n'),
     ],
     "v1/sample/sampler.py": [
         ("        if sampling_metadata.all_random:\n",
@@ -77,9 +79,9 @@ INSERTIONS = {
         ("                    # Total computed tokens (local + external).\n",
          '                    _pb279_observe("cache_lookup", request, num_new_local_computed_tokens, num_external_computed_tokens)\n'),
         ("            # Check for stop and update request status.\n",
-         '            _pb279_observe("account_before", request, new_token_ids, scheduler_output, output_is_stale)\n'),
+         '            _pb279_observe("account_before", request, new_token_ids, scheduler_output, output_is_stale, generated_token_ids)\n'),
         ("            elif request.pooling_params and pooler_output is not None:\n",
-         '                _pb279_observe("account_after", request, new_token_ids, scheduler_output, output_is_stale)\n'),
+         '                _pb279_observe("account_after", request, new_token_ids, scheduler_output, output_is_stale, generated_token_ids)\n'),
     ],
 }
 
@@ -105,6 +107,24 @@ class StripObserver(ast.NodeTransformer):
                 and node.value.func.id == "_pb279_observe"):
             return None
         return self.generic_visit(node)
+
+
+def validate_scheduler_observation(raw, patched):
+    """Permit only the two scoped observations in the frozen scheduler glue."""
+    tree = ast.parse(patched)
+    imports = [n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)
+               and n.module == "experiments.protocol_b_boundary_observer"]
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Name) and n.func.id == "_pb279_observe"]
+    expected_import = ast.parse(
+        "from experiments.protocol_b_boundary_observer import observe as _pb279_observe").body[0]
+    expected_call = ast.parse('_pb279_observe("early_schedule", self, scheduler_output)').body[0].value
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+            and len(calls) == 2 and all(ast.dump(c) == ast.dump(expected_call) for c in calls),
+            "Unapproved scheduler observation")
+    require(ast.dump(StripObserver().visit(tree)) == ast.dump(ast.parse(raw)),
+            "Frozen adaptive scheduler inference AST changed")
+    compile(patched, "adaptive_scheduler.py", "exec")
 
 
 def normalized_transform_ast(name, patched):

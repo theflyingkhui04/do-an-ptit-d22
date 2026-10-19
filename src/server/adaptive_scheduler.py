@@ -23,6 +23,7 @@ from vllm.logger import init_logger
 from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 
 from src.server.budget_planner import AdaptiveBudgetPlanner, StepPlan, _env_flag
+from experiments.protocol_b_boundary_observer import observe as _pb279_observe
 
 logger = init_logger(__name__)
 
@@ -73,6 +74,7 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
     def _update_after_schedule(self, scheduler_output) -> None:
         super()._update_after_schedule(scheduler_output)
         if not self._planner.per_request:
+            _pb279_observe("early_schedule", self, scheduler_output)
             return
         scheduled = scheduler_output.num_scheduled_tokens
         for req_id, k in self._plan.per_request_k.items():
@@ -82,6 +84,7 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             # Only shrink: placeholders were sized to the batch K.
             if k < len(request.spec_token_ids):
                 request.spec_token_ids = [-1] * k
+        _pb279_observe("early_schedule", self, scheduler_output)
 
     def make_spec_decoding_stats(
         self,

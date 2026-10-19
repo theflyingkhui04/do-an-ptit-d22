@@ -1,5 +1,61 @@
 # M2-03: targeted boundary 279 on Kaggle/T4
 
+## Early Adaptive timeline extension (2026-10-19; CPU implementation only)
+
+New preparations enable `early_timeline` in the manifest and Adaptive config
+only. Keep the existing execution commands, 45 conditioning requests per lane,
+sample 004, complete response capture, boundary fingerprint, and all K/V and
+layer-1 localization gates. No launcher, metrics mode, runner, speculative budget,
+model, cache, graph, sampling or request-order override is added.
+
+The scoped result is `boundary_comparison.json.early_timeline`, schema
+`m203.boundary.early.v1`. Raw `early_*` events reuse the existing observer
+directory/envelope. They retain the prefill producer, attempts intersecting
+positions 176..180 (whole speculative attempts, including rows beyond 180),
+associated production/accounting, and the first forward beyond the window.
+Rejected attempts and later rewrites remain separate events.
+
+Pinned vLLM's `Scheduler.current_step` is monotonic but not carried in
+`SchedulerOutput`; `sched_step_seq` is a conditional deferred-free fence.
+The observer preserves `current_step` against the exact output object and
+records its process-local identity through worker execution and accounting.
+This requires the unchanged same-process executor; lost identity fails closed.
+No step identifier is inserted into engine objects. Native counter gaps are
+allowed; observer `event_seq` must be complete and unique.
+The initial actual prefill suffix is reconciled with the existing cache-lookup
+event (including a naturally cached prefix); no full-prompt recomputation is
+assumed or requested. Scheduling, rejection rollback and commit counters are
+replayed in event order, allowing a later schedule before an earlier commit.
+
+One metadata-only hook immediately after actual draft proposal binds the
+producer step, tensor identity, row and produced count. Consumption must match
+that tensor and the previous request row, the earlier plan/placeholder origin,
+actual verification draft IDs, actual input IDs, and scheduler commits. Future
+plan(T) is reported separately from the plan that produced drafts consumed by T.
+An initial prefill without a per-request planner decision retains a null budget
+and its explicit zero batch budget; no per-request decision is invented.
+
+Actual inputs use bounded existing observer-style GPU-to-CPU reads; the V1
+pre-forward positions read is reused at verification. Production copies no
+tensor values, selected IDs come from normal CPU accounting, and early events
+copy no logits or K/V. No explicit CUDA synchronization, model forward, cache
+operation or policy change is added. Blocking small reads and serialization
+change timing: `runtime_probe_changes_timing=true` is mandatory.
+
+`diagnostic_generated_index = position - 176 + 1` labels logits rows; input
+positions/token ordinals and committed output ordinals remain separate.
+Scheduled `-1` slots require count and producer provenance, not literal equality
+with real draft IDs. Real scheduled IDs must agree. Ambiguous/missing events,
+wrong ownership, counter/commit disagreements, observer errors, a missing unique
+first coverage of 177, or failed boundary/KV/localization gates yield
+`INVALID_EVIDENCE`. Valid evidence yields `INTERPRETABLE`, never a scientific
+PASS: `task_done=false`, `interpretation_status=NOT_YET_APPROVED`, and
+`temporal_kv_onset=UNKNOWN`. First coverage does not date K/V divergence or prove
+corruption. Historical evidence and prior decisions remain unchanged.
+
+GPU verification of this extension: **NOT RUN**. Stop after local CPU checks;
+execution and publication require separate authorization.
+
 ## Correction to draft tokenizer revision fix (2026-10-19)
 
 This update supersedes the revision expression in the original entry below.

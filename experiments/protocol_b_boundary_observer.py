@@ -16,6 +16,175 @@ from experiments.protocol_b import require, utc_now, write_new, fingerprint
 _local = threading.local()
 LAYER1 = "model.layers.1.self_attn.attn"
 LOCALIZATION_SCHEMA = "m203.boundary.layer1.positions.v1"
+EARLY_SCHEMA = "m203.boundary.early.v1"
+_early = {}
+_early_lock = threading.RLock()
+
+
+def early_state(config):
+    if config.get("early_timeline") is not True:
+        return None
+    require(config["lane"] == "adaptive" and config["sample_id"] == "w3_business_v2_004"
+            and len(config["prompt_token_ids"]) == 176, "Early scope differs")
+    return _early.setdefault(fingerprint(config), dict(steps={}, producers={}, origins={}, sequence=0,
+                                                     closed=False, request_id=None))
+
+
+def early_emit(config, state, kind, **fields):
+    with _early_lock:
+        entries = [e for e in state["steps"].values() if e["schedule_seq"] == fields["schedule_seq"]]
+        require(len(entries) == 1, "Early event has no unique live output")
+        state["sequence"] += 1
+        emit(config, "early_" + kind, early_schema=EARLY_SCHEMA, pid=os.getpid(),
+             scheduler_output_id=id(entries[0]["output"]),
+             event_seq=state["sequence"], runtime_probe_changes_timing=True, **fields)
+
+
+def early_step(state, scheduled):
+    entry = state["steps"].get(id(scheduled))
+    require(entry is not None and entry["output"] is scheduled,
+            "Early scheduler output identity lost (requires same-process executor)")
+    return entry
+
+
+def early_schedule(config, scheduler, scheduled):
+    state = early_state(config)
+    if state is None or state["closed"]:
+        return
+    matches = [r for rid in scheduled.num_scheduled_tokens
+               if (r := scheduler.requests.get(rid)) is not None
+               and list(r.prompt_token_ids or []) == config["prompt_token_ids"]]
+    if not matches:
+        return
+    require(len(matches) == len(scheduled.num_scheduled_tokens) == 1, "Early ambiguous batch")
+    request = matches[0]
+    require(state["request_id"] in (None, request.request_id), "Early request collision")
+    state["request_id"] = request.request_id
+    # current_step is monotonic in pinned Scheduler.schedule(), but is not in
+    # SchedulerOutput. Preserve its value against the exact live output object.
+    seq = scheduler.current_step
+    require(type(seq) is int and seq > 0 and id(scheduled) not in state["steps"]
+            and all(seq > e["schedule_seq"] for e in state["steps"].values()),
+            "Early nonmonotonic scheduling identity")
+    origin = state["origins"].get(request.request_id)
+    entry = dict(output=scheduled, schedule_seq=seq, request_id=request.request_id,
+                 placeholder_origin_schedule_seq=origin)
+    state["steps"][id(scheduled)] = entry
+    state["origins"][request.request_id] = seq
+    early_emit(config, state, "schedule", schedule_seq=seq, request_id=request.request_id,
+               identity_source="Scheduler.current_step+same-output-object",
+               placeholder_origin_schedule_seq=origin,
+               planned_k=scheduler._plan.per_request_k.get(request.request_id),
+               planner_request_id=request.request_id if request.request_id in scheduler._plan.per_request_k else None,
+               batch_k=scheduler._plan.batch_k,
+               num_spec_tokens_to_schedule=scheduled.num_spec_tokens_to_schedule,
+               next_placeholders=list(request.spec_token_ids),
+               scheduled_spec_decode_tokens=list(scheduled.scheduled_spec_decode_tokens.get(request.request_id, [])),
+               scheduled_tokens=scheduled.num_scheduled_tokens[request.request_id],
+               num_computed_tokens=request.num_computed_tokens,
+               num_in_flight_tokens=request.num_in_flight_tokens,
+               num_output_placeholders=request.num_output_placeholders)
+
+
+def early_prepare(config, runner, scheduled, input_ids, positions):
+    state = early_state(config)
+    if state is None or state["closed"]:
+        return
+    entry = early_step(state, scheduled)
+    require(list(runner.input_batch.req_ids[:runner.input_batch.num_reqs]) == [entry["request_id"]],
+            "Early worker request ownership differs")
+    require(positions and positions == list(range(positions[0], positions[-1] + 1)),
+            "Early noncontiguous actual positions")
+    if min(positions) > 180:
+        state["closed"] = True
+        early_emit(config, state, "complete", schedule_seq=entry["schedule_seq"],
+                   request_id=entry["request_id"], first_outside_position=positions[0])
+        return
+    require(positions[-1] <= 175 or (positions[0] >= 176 and len(positions) <= 5),
+            "Early unsupported prefill/decode crossing")
+    # Prefill is a producer too. Only its last input row is needed; never copy
+    # the entire prompt. Decode retains the whole intersecting attempt.
+    start = len(positions) - 1 if positions[-1] < 176 else 0
+    entry.update(positions=positions, active_query=list(map(list, zip(
+        positions[start:], ints(input_ids[start:len(positions)])))), runner=id(runner))
+
+
+def early_verify(config, runner, scheduled, rows, spec):
+    state = early_state(config)
+    if state is None:
+        return
+    entry = state["steps"].get(id(scheduled))
+    if entry is None or "active_query" not in entry:
+        return
+    require(entry["output"] is scheduled and "verified" not in entry, "Early duplicate forward")
+    entry["verified"] = True
+    n = 0 if spec is None else int(spec.num_draft_tokens[0])
+    drafts = [] if spec is None else ints(spec.draft_token_ids)
+    producer = state["producers"].get((id(runner), entry["request_id"]))
+    # Explicit tensor identity and prior-batch row mapping, not event adjacency.
+    if n:
+        require(producer is not None and producer["tensor"] is runner._draft_token_ids
+                and producer["schedule_seq"] == entry["placeholder_origin_schedule_seq"]
+                and runner.input_batch.prev_req_id_to_index.get(entry["request_id"]) == producer["row"],
+                "Early draft producer ownership lost")
+    invalid = (scheduled.num_invalid_spec_tokens or {}).get(entry["request_id"], 0)
+    early_emit(config, state, "verify", schedule_seq=entry["schedule_seq"],
+               request_id=entry["request_id"],
+               producer_schedule_seq=None if producer is None else producer["schedule_seq"],
+               producer_tensor_id=None if producer is None else id(runner._draft_token_ids),
+               previous_request_row=runner.input_batch.prev_req_id_to_index.get(entry["request_id"]),
+               actual_position_span=[entry["positions"][0], entry["positions"][-1] + 1],
+               active_query=entry["active_query"], rows=rows,
+               actual_draft_token_ids=drafts, verification_draft_slots=n,
+               num_invalid=invalid, effective_num_drafted=n - invalid,
+               decoding_path="speculative" if n else "ordinary")
+
+
+def early_produced(config, runner, scheduled):
+    state = early_state(config)
+    if state is None:
+        return
+    entry = state["steps"].get(id(scheduled))
+    if entry is None or "active_query" not in entry:
+        return
+    require(entry["output"] is scheduled and entry.get("verified") is True,
+            "Early production without verification")
+    ids = list(runner.input_batch.req_ids[:runner.input_batch.num_reqs])
+    require(ids == [entry["request_id"]], "Early draft producer batch changed")
+    tensor = runner._draft_token_ids
+    require(tensor is not None and tensor.ndim == 2 and tensor.shape[0] == 1
+            and 0 <= tensor.shape[1] <= 4, "Early unsupported produced drafts")
+    # Metadata only. Actual consumed IDs are captured once from the existing
+    # verification observer read; never force the drafter's optional D2H path.
+    state["producers"][(id(runner), ids[0])] = dict(
+        tensor=tensor, row=0, schedule_seq=entry["schedule_seq"])
+    early_emit(config, state, "produced", request_id=ids[0], schedule_seq=entry["schedule_seq"],
+               produced_count=int(tensor.shape[1]), producer_tensor_id=id(tensor), producer_row=0)
+
+
+def early_account(config, stage, request, output, scheduled, stale, selected):
+    state = early_state(config)
+    if state is None:
+        return
+    entry = state["steps"].get(id(scheduled))
+    if entry is None or "active_query" not in entry:
+        return
+    require(entry["output"] is scheduled and request.request_id == entry["request_id"],
+            "Early accounting ownership lost")
+    slots = len(scheduled.scheduled_spec_decode_tokens.get(request.request_id, []))
+    invalid = (scheduled.num_invalid_spec_tokens or {}).get(request.request_id, 0)
+    accepted = max(len(selected) - 1, 0)
+    early_emit(config, state, stage, request_id=request.request_id,
+               schedule_seq=entry["schedule_seq"], selected_token_ids=list(selected),
+               output_token_ids=list(output), committed_ids=list(request._output_token_ids),
+               output_count=len(request._output_token_ids), stale=stale,
+               num_invalid=invalid, num_drafted=slots - invalid,
+               num_accepted=accepted, num_rejected=slots - invalid - accepted,
+               scheduler_rejected_slots=slots - accepted,
+               scheduled_spec_decode_tokens=list(scheduled.scheduled_spec_decode_tokens.get(request.request_id, [])),
+               num_computed_tokens=request.num_computed_tokens,
+               num_in_flight_tokens=request.num_in_flight_tokens,
+               num_output_placeholders=request.num_output_placeholders)
 
 
 def position_spans(raw, bytes_per_position):
@@ -282,10 +451,12 @@ def kv_v1(config, runner, scheduled, input_ids, positions, metadata, slots, mode
     if not matching:
         return
     n = scheduled.total_num_scheduled_tokens
-    if 454 not in ints(positions[:n]):
+    actual_positions = ints(positions[:n])
+    early_prepare(config, runner, scheduled, input_ids, actual_positions)
+    if 454 not in actual_positions:
         return
     require(config["lane"] == "adaptive" and len(ids) == len(matching) == 1
-            and n == 1 and ints(positions[:n]) == [454] and ints(input_ids[:n]) == [128367]
+            and n == 1 and actual_positions == [454] and ints(input_ids[:n]) == [128367]
             and not scheduled.scheduled_spec_decode_tokens, "KV unexpected V1 boundary query")
     # The approved Adaptive execution is PIECEWISE. FULL requires its own capture binding.
     require(mode.name == "PIECEWISE", "KV unsupported V1 dispatched mode")
@@ -415,7 +586,9 @@ def begin(config, runner, scheduled, logits, spec, grammar):
     lo, hi = map(int, runner.query_start_loc.np[:2])
     require(lo == 0 and hi == scheduled.total_num_scheduled_tokens and hi > 0,
             "Ambiguous query bounds")
-    positions = ints(runner.positions[:hi])
+    state = early_state(config)
+    early = None if state is None else state["steps"].get(id(scheduled))
+    positions = early["positions"] if early is not None and "positions" in early else ints(runner.positions[:hi])
     if spec is None:
         n, indices, targets, bonus = 0, [hi - 1], [], [0]
     else:
@@ -427,6 +600,7 @@ def begin(config, runner, scheduled, logits, spec, grammar):
     rows = map_rows(len(config["prompt_token_ids"]), positions, indices, n, targets, bonus)
     require(logits is not None and logits.ndim == 2 and logits.shape[0] == len(rows),
             "Missing/misaligned logits")
+    early_verify(config, runner, scheduled, rows, spec)
     target = [r for r in rows if r["generated_index"] == 279]
     if not target:
         return
@@ -579,9 +753,10 @@ def v2_end(output):
     emit(config, "forward", **record)
 
 
-def accounting(config, stage, request, output, scheduled, stale):
+def accounting(config, stage, request, output, scheduled, stale, selected=None):
     if list(request.prompt_token_ids or []) != config["prompt_token_ids"]:
         return
+    early_account(config, stage, request, output, scheduled, stale, selected)
     count = len(request._output_token_ids)
     if 267 <= count <= 291:
         emit(config, stage, request_id=request.request_id, output_count=count,
@@ -603,7 +778,11 @@ def observe(stage, *args):
         require(isinstance(config, dict) and all(key in config for key in
                 ("directory", "lane", "execution_sha", "prompt_token_ids")),
                 "Incomplete observer config")
-        if stage.startswith("kv_"):
+        if stage == "early_schedule":
+            early_schedule(config, *args)
+        elif stage == "early_produced":
+            early_produced(config, *args)
+        elif stage.startswith("kv_"):
             if config.get("kv_probe") is not True:
                 return
             if stage == "kv_capture":

@@ -13,7 +13,7 @@ from experiments.protocol_b import (ROOT, EvidenceError, canonical_json, file_sh
                                     load_json, load_plan, require, utc_now, write_new)
 from experiments.protocol_b_capture import capture, command, reserve_run, server_processes
 from experiments.protocol_b_boundary_observer import (map_rows, selected_tokens,
-    history_slots, validate_full_binding, LAYER1, LOCALIZATION_SCHEMA)
+    history_slots, validate_full_binding, LAYER1, LOCALIZATION_SCHEMA, EARLY_SCHEMA)
 
 CHECKPOINT = "4372f8b81998e8a50ee2b87ea6d7c4a9c4b523c5"
 BASE_EXECUTION = "a63baa1c42fd75f542f876ab512765149ddd5e20"
@@ -83,7 +83,14 @@ def prepare(directory, session):
     require(gpu.startswith("GPU-"), "Pin physical GPU UUID")
     for path, digest in runs[0]["environment"]["source_hashes"].items():
         if path != "experiments/protocol_b_capture.py":
-            require(file_sha(ROOT / path) == digest, "Baseline inference/plan source changed: " + path)
+            if path == "src/server/adaptive_scheduler.py":
+                from experiments.protocol_b_boundary_sources import validate_scheduler_observation
+                raw = subprocess.check_output(["git", "show", CHECKPOINT + ":" + path], cwd=ROOT)
+                import hashlib
+                require(hashlib.sha256(raw).hexdigest() == digest, "Frozen scheduler source drift")
+                validate_scheduler_observation(raw, (ROOT / path).read_bytes())
+            else:
+                require(file_sha(ROOT / path) == digest, "Baseline inference/plan source changed: " + path)
     for path, digest in runs[0]["environment"]["launcher_hashes"].items():
         current = file_sha(ROOT / path)
         if path == "scripts/switch_lane.sh":
@@ -103,7 +110,7 @@ def prepare(directory, session):
                         sorted((ROOT / "experiments").glob("protocol_b_boundary*.py"))},
                     request_position_one_based=46, prelude_count=45,
                     plan=plan, reference_records={r["lane"]: r["records"][:46] for r in runs},
-                    kv_probe=True, layer1_localization=True,
+                    kv_probe=True, layer1_localization=True, early_timeline=True,
                     interpretation_status="NOT_YET_APPROVED", task_done=False)
     for key in ("PROTOCOL_B_TARGET_REVISION", "PROTOCOL_B_DRAFT_REVISION"):
         field = "target_revision" if "TARGET" in key else "draft_revision"
@@ -117,6 +124,7 @@ def prepare(directory, session):
         write_new(output / "boundary_config.json", dict(
             directory=str(output.resolve()), lane=lane, sample_id=SAMPLE, target=TARGET, kv_probe=True,
             layer1_localization=True,
+            early_timeline=lane == "adaptive",
             execution_sha=execution, session_id=session, gpu_uuid=gpu,
             target_revision=manifest["target_revision"], draft_revision=manifest["draft_revision"],
             prompt_token_ids=runs[0]["records"][45]["prompt_token_ids"]))
@@ -145,6 +153,7 @@ def capture_lane(directory, lane):
             and settings["target"] == TARGET
             and settings.get("kv_probe") is True and manifest.get("kv_probe") is True
             and settings.get("layer1_localization") == manifest.get("layer1_localization")
+            and settings.get("early_timeline", False) == (lane == "adaptive" and manifest.get("early_timeline", False))
             and settings["prompt_token_ids"] == manifest["reference_records"][lane][-1]["prompt_token_ids"]
             and Path(settings["directory"]).resolve() == config.parent,
             "Observer config identity changed")
@@ -455,10 +464,213 @@ def analyze_kv(directory, events, boundaries):
     return whole
 
 
+def analyze_early(events, record, boundary, historical_kv):
+    """Validate the scoped timeline; callers must first pass canonical boundary gates."""
+    result = dict(schema=EARLY_SCHEMA, status="INVALID_EVIDENCE", task_done=False,
+                  interpretation_status="NOT_YET_APPROVED", temporal_kv_onset="UNKNOWN")
+    try:
+        require(historical_kv["status"] == "STATE_DIFFERENT"
+                and historical_kv["layer1_localization"]["status"] == "LOCALIZED"
+                and all(historical_kv["layer1_localization"][k] == 177 for k in ("P_K", "P_V", "P")),
+                "Early timeline requires reproduced layer-1 position 177")
+        require(record["sample_id"] == SAMPLE and len(record["prompt_token_ids"]) == 176
+                and same_request(boundary["request_id"], record["response_id"]), "Early request identity differs")
+        require(not any(e["kind"] == "observer_error" for e in events), "Early observer errors")
+        cache = [e for e in events if e["kind"] == "cache_lookup" and e["request_id"] == boundary["request_id"]]
+        require(len(cache) == 1 and cache[0]["num_computed_tokens"] == 0
+                and all(type(cache[0][k]) is int and cache[0][k] >= 0 for k in
+                        ("cached_prefix_tokens", "external_cached_tokens")), "Early cache/prefill origin ambiguous")
+        prefill_start = cache[0]["cached_prefix_tokens"] + cache[0]["external_cached_tokens"]
+        require(prefill_start < 176, "Early missing prefill row")
+        early = [e for e in events if e["kind"].startswith("early_")]
+        require(early and all(e["early_schema"] == EARLY_SCHEMA and e["lane"] == "adaptive"
+                and e["request_id"] == boundary["request_id"] and e["pid"] == boundary["pid"]
+                and e["runtime_probe_changes_timing"] is True for e in early), "Early event identity differs")
+        require(all(type(e["event_seq"]) is int for e in early), "Early order is not integral")
+        early.sort(key=lambda e: e["event_seq"])
+        require([e["event_seq"] for e in early] == list(range(1, len(early) + 1)),
+                "Early event order missing/duplicated")
+        kinds = {"early_schedule", "early_verify", "early_produced", "early_account_before",
+                 "early_account_after", "early_complete"}
+        require(all(e["kind"] in kinds and type(e["schedule_seq"]) is int
+                    and e["schedule_seq"] > 0 for e in early), "Early unknown event/step")
+
+        def unique(kind):
+            rows = [e for e in early if e["kind"] == kind]
+            require(len({e["schedule_seq"] for e in rows}) == len(rows), "Early duplicate " + kind)
+            return {e["schedule_seq"]: e for e in rows}
+
+        schedules, verifies, produced, before, after, complete = [unique(k) for k in
+            ("early_schedule", "early_verify", "early_produced", "early_account_before",
+             "early_account_after", "early_complete")]
+        schedule_order = list(schedules)
+        require(schedule_order == sorted(schedule_order)
+                and len({s["scheduler_output_id"] for s in schedules.values()}) == len(schedules)
+                and all(type(s["scheduler_output_id"]) is int and s["scheduler_output_id"] > 0
+                        for s in schedules.values()), "Early schedule order/identity differs")
+        require(all(e["schedule_seq"] in schedules and e["scheduler_output_id"]
+                    == schedules[e["schedule_seq"]]["scheduler_output_id"] for e in early),
+                "Early output object linkage differs")
+        require(len(complete) == 1, "Early window not closed uniquely")
+        stop, close = next(iter(complete.items()))
+        require(stop in schedules and schedules[stop]["event_seq"] < close["event_seq"]
+                and close["first_outside_position"] > 180, "Early close linkage differs")
+        require(set(verifies) == {s for s in schedules if s < stop}
+                and list(verifies) == sorted(verifies)
+                and set(before) == set(after) == set(verifies)
+                and set(produced) <= set(verifies), "Early incomplete step lifecycle")
+        # Replay actual observation order, including scheduling ahead of prior
+        # results. A simple per-forward counter comparison would be wrong here.
+        counters = dict(num_computed_tokens=prefill_start, num_in_flight_tokens=0,
+                        num_output_placeholders=0)
+        for e in early:
+            kind = e["kind"]
+            if kind == "early_schedule":
+                count = e["scheduled_tokens"]
+                require(type(count) is int and count > 0, "Early scheduled count malformed")
+                counters["num_computed_tokens"] += count
+                counters["num_in_flight_tokens"] += count
+                counters["num_output_placeholders"] += 1 + len(e["scheduled_spec_decode_tokens"])
+            elif kind == "early_account_before":
+                counters["num_in_flight_tokens"] -= schedules[e["schedule_seq"]]["scheduled_tokens"]
+                rejected = len(e["scheduled_spec_decode_tokens"]) - len(e["selected_token_ids"]) + 1
+                counters["num_computed_tokens"] -= rejected
+                counters["num_output_placeholders"] -= rejected
+            elif kind == "early_account_after":
+                counters["num_output_placeholders"] -= len(e["output_token_ids"])
+            else:
+                continue
+            require(all(type(e[k]) is int and e[k] == value and value >= 0
+                        for k, value in counters.items()), "Early scheduling/rejection counter ledger differs")
+        timeline, covers, prior_count, prior_after = [], [], 0, 0
+        for index, seq in enumerate(sorted(verifies)):
+            s, v, b, a = (table[seq] for table in (schedules, verifies, before, after))
+            require(s["identity_source"] == "Scheduler.current_step+same-output-object"
+                    and s["event_seq"] < v["event_seq"] < b["event_seq"] < a["event_seq"]
+                    and b["event_seq"] > prior_after, "Early malformed lifecycle ordering")
+            require(b["stale"] is False and a["stale"] is False, "Early stale output")
+            query, drafts = v["active_query"], v["actual_draft_token_ids"]
+            slots, invalid, n = (v[k] for k in
+                                ("verification_draft_slots", "num_invalid", "effective_num_drafted"))
+            require(all(type(x) is int for x in (slots, invalid, n))
+                    and 0 <= invalid <= slots <= 4 and n == slots - invalid
+                    and len(drafts) == slots, "Early drafted/invalid count mismatch")
+            require(all(type(t) is int and t >= 0 for t in drafts[:n])
+                    and all(t == -1 for t in drafts[n:]), "Early invalid draft padding")
+            require(query and all(len(row) == 2 and all(type(x) is int and x >= 0 for x in row)
+                                  for row in query), "Early actual inputs malformed")
+            positions = [p for p, _ in query]
+            require(v["decoding_path"] == ("speculative" if slots else "ordinary"), "Early path differs")
+            if index == 0:
+                require(v["actual_position_span"] == [prefill_start, 176]
+                        and query == [[175, record["prompt_token_ids"][-1]]]
+                        and slots == 0 and s["scheduled_tokens"] == 176 - prefill_start, "Early prefill origin missing")
+                expected_rows = map_rows(176, list(range(prefill_start, 176)), [175 - prefill_start], 0, [], [0])
+            else:
+                require(positions == list(range(175 + prior_count, 176 + prior_count + slots))
+                        and v["actual_position_span"] == [positions[0], positions[-1] + 1]
+                        and positions[0] <= 180 and positions[-1] >= 176
+                        and s["scheduled_tokens"] == slots + 1
+                        and [t for _, t in query[1:]] == drafts,
+                        "Early actual position/draft mapping differs")
+                require(query[0][1] == record["token_ids"][prior_count - 1], "Early base input differs from committed prefix")
+                expected_rows = map_rows(176, positions, list(range(slots + 1)), slots,
+                                         list(range(slots)), [slots])
+            require(v["rows"] == expected_rows, "Early logits/generated mapping differs")
+            require(s["placeholder_origin_schedule_seq"] == (None if index == 0 else schedule_order[index - 1]),
+                    "Early placeholder producer differs")
+            k, batch, budget = (s[x] for x in ("planned_k", "batch_k", "num_spec_tokens_to_schedule"))
+            require(all(type(x) is int and 0 <= x <= 4 for x in (batch, budget)) and budget == batch
+                    and (k is None and index == 0 and batch == 0 or type(k) is int and 0 <= k <= batch)
+                    and s["planner_request_id"] == (None if k is None else s["request_id"])
+                    and s["next_placeholders"] == [-1] * (batch if k is None else k), "Early plan/placeholder mismatch")
+            if seq in produced:
+                p = produced[seq]
+                require(v["event_seq"] < p["event_seq"] < b["event_seq"]
+                        and type(p["producer_tensor_id"]) is int and p["producer_tensor_id"] > 0
+                        and p["producer_row"] == 0
+                        and type(p["produced_count"]) is int and p["produced_count"] == budget,
+                        "Early produced draft budget/order differs")
+            else:
+                require(budget == 0, "Early missing draft production")
+            origin = s["placeholder_origin_schedule_seq"]
+            producer = v["producer_schedule_seq"]
+            if slots:
+                require(producer == origin and producer in produced and producer < seq
+                        and produced[producer]["event_seq"] < v["event_seq"]
+                        and produced[producer]["producer_tensor_id"] == v["producer_tensor_id"]
+                        and v["previous_request_row"] == produced[producer]["producer_row"]
+                        and slots <= len(schedules[origin]["next_placeholders"])
+                        and slots <= produced[producer]["produced_count"],
+                        "Early planner/producer/verification linkage differs")
+            elif producer is not None:
+                require(producer == origin and producer in produced
+                        and produced[producer]["event_seq"] < v["event_seq"], "Early ordinary producer differs")
+            if index and not slots:
+                require(not schedules[origin]["next_placeholders"], "Early lost scheduled drafts")
+            scheduled = s["scheduled_spec_decode_tokens"]
+            require(len(scheduled) == slots, "Early scheduled draft count differs")
+            selected = b["selected_token_ids"]
+            accepted = len(selected) - 1
+            require(selected and all(type(t) is int and t >= 0 for t in selected)
+                    and 0 <= accepted <= n and selected[:accepted] == drafts[:accepted],
+                    "Early acceptance mismatch")
+            for accounting in (b, a):
+                ids = accounting["scheduled_spec_decode_tokens"]
+                require(len(ids) == slots and all(type(t) is int and (t == -1 or t == drafts[i])
+                            for i, t in enumerate(ids)) and accounting["num_invalid"] == invalid
+                        and accounting["selected_token_ids"] == selected
+                        and accounting["num_drafted"] == n
+                        and accounting["num_accepted"] == accepted
+                        and accounting["num_rejected"] == n - accepted
+                        and accounting["scheduler_rejected_slots"] == slots - accepted
+                        and accounting["output_token_ids"] == selected
+                        and accounting["output_count"] == len(accounting["committed_ids"]),
+                        "Early scheduled IDs/output accounting differs")
+                require(all(type(accounting[k]) is int and accounting[k] >= 0 for k in
+                            ("output_count", "num_computed_tokens", "num_in_flight_tokens", "num_output_placeholders")),
+                        "Early accounting counters malformed")
+            require(all(type(t) is int and (t == -1 or t == drafts[i]) for i, t in enumerate(scheduled)),
+                    "Early real scheduled IDs differ")
+            require(b["output_count"] == prior_count and a["output_count"] == prior_count + len(selected)
+                    and b["committed_ids"] == record["token_ids"][:prior_count]
+                    and a["committed_ids"] == b["committed_ids"] + selected
+                    and a["committed_ids"] == record["token_ids"][:a["output_count"]]
+                    and a["num_computed_tokens"] == b["num_computed_tokens"]
+                    and a["num_in_flight_tokens"] == b["num_in_flight_tokens"]
+                    and a["num_output_placeholders"] == b["num_output_placeholders"] - len(selected),
+                    "Early scheduler commit/counter linkage differs")
+            covers_177 = 177 in positions
+            if covers_177:
+                covers.append(seq)
+            timeline.append(dict(request_id=s["request_id"], schedule_seq=seq, planner_producer_step=origin,
+                draft_producer_step=producer, planned_k=None if origin is None else schedules[origin]["planned_k"],
+                producing_plan_k=k, producing_batch_k=batch,
+                batch_k=None if origin is None else schedules[origin]["batch_k"], active_query=query, rows=v["rows"],
+                scheduled_spec_decode_tokens=scheduled, draft_token_ids=drafts,
+                effective_num_drafted=n, num_invalid=invalid, num_accepted=accepted,
+                num_rejected=n - accepted, scheduler_rejected_slots=slots - accepted,
+                selected_token_ids=selected, committed_token_ids=selected,
+                committed_token_ordinals_zero_based=list(range(prior_count, a["output_count"])),
+                input_token_ordinals_zero_based=[p - 176 for p in positions],
+                output_count=a["output_count"], decoding_path=v["decoding_path"], covers_position_177=covers_177,
+                accounting_before=b, accounting_after=a))
+            prior_count, prior_after = a["output_count"], a["event_seq"]
+        require(covers and prior_count >= 6 and close["first_outside_position"] == 175 + prior_count
+                and close["event_seq"] > max(v["event_seq"] for v in verifies.values()),
+                "Early position 177/window coverage missing")
+        result.update(status="INTERPRETABLE", first_coverage_step=covers[0],
+                      first_coverage_path=verifies[covers[0]]["decoding_path"], timeline=timeline)
+    except (EvidenceError, KeyError, TypeError, ValueError, IndexError) as exc:
+        result.update(error=f"{type(exc).__name__}: {exc}")
+    return result
+
+
 def analyze(directory):
     m = load_json(directory / "manifest.json")
     result = dict(schema=SCHEMA, generated_at=utc_now(), sample_id=SAMPLE,
                   interpretation_status="NOT_YET_APPROVED", task_done=False,
+                  temporal_kv_onset="UNKNOWN",
                   status="INVALID_EVIDENCE", same_kv_cache_state_proven=False,
                   historical_kv=dict(status="INVALID_EVIDENCE", historical_kv_state_equivalent=False))
     try:
@@ -502,6 +714,8 @@ def analyze(directory):
                     "Observer config hash differs")
             require(fingerprint(load_json(output / "boundary_config.json")) == binding["config_fingerprint"],
                     "Observer config fingerprint differs")
+            require(load_json(output / "boundary_config.json").get("early_timeline", False)
+                    == (lane == "adaptive" and m.get("early_timeline", False)), "Early configuration differs")
             require(all(e["schema"] == "m203.boundary.event.v1" and e["lane"] == lane
                         and e["execution_sha"] == m["execution_sha"]
                         and e["config_fingerprint"] == binding["config_fingerprint"] for e in event_sets[lane]),
@@ -545,6 +759,13 @@ def analyze(directory):
                 if m.get("layer1_localization") is True:
                     require(result["historical_kv"]["layer1_localization"]["status"] == "LOCALIZED",
                             result["historical_kv"]["layer1_localization"].get("error", "Layer-1 invalid evidence"))
+            if m.get("early_timeline") is True:
+                require(m.get("kv_probe") is True and m.get("layer1_localization") is True,
+                        "Early timeline cannot bypass KV/localization gates")
+                result["early_timeline"] = analyze_early(event_sets["adaptive"], a,
+                    result["boundary"]["adaptive"], result["historical_kv"])
+                require(result["early_timeline"]["status"] == "INTERPRETABLE",
+                        result["early_timeline"].get("error", "Early invalid evidence"))
     except (EvidenceError, OSError, ValueError, KeyError, TypeError, IndexError) as exc:
         result.update(status="INVALID_EVIDENCE", error=f"{type(exc).__name__}: {exc}")
         result.pop("boundary", None)
