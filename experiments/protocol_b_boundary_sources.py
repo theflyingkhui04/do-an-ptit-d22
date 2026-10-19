@@ -93,7 +93,7 @@ DRAFT_TOKENIZER_CALL = (
     "                trust_remote_code=spec.draft_model_config.trust_remote_code,\n"
     "            )\n"
 )
-DRAFT_REVISION_LINE = "                revision=spec.draft_model_config.tokenizer_revision,\n"
+DRAFT_REVISION_LINE = "                revision=spec.draft_model_config.revision,\n"
 
 
 class StripObserver(ast.NodeTransformer):
@@ -120,7 +120,7 @@ def normalized_transform_ast(name, patched):
         require(len(calls) == 1, "Missing/ambiguous draft tokenizer fix")
         call = calls[0]
         revisions = [kw for kw in call.keywords if kw.arg == "revision"]
-        expected = ast.parse("spec.draft_model_config.tokenizer_revision", mode="eval").body
+        expected = ast.parse("spec.draft_model_config.revision", mode="eval").body
         require(len(revisions) == 1 and ast.dump(revisions[0].value) == ast.dump(expected),
                 "Unapproved draft tokenizer revision expression")
         call.keywords.remove(revisions[0])

@@ -1,5 +1,19 @@
 # M2-03: targeted boundary 279 on Kaggle/T4
 
+## Correction to draft tokenizer revision fix (2026-10-19)
+
+This update supersedes the revision expression in the original entry below.
+**FACT (reported EngineArgs reproduction):** the draft model revision is
+`7ae557604adf67be50417f59c2c2f167def9a775`, but its `tokenizer_revision` inherits
+the target revision `b25037543e9394b818fdfca67ab2a00ecc7dd641`.
+The draft `get_tokenizer()` call must therefore use exactly
+`revision=spec.draft_model_config.revision`. The target call is unchanged.
+The authenticated transformer and AST validator now require this expression;
+pristine hashes, observer guarantees, `runtime_fixes` metadata and the
+install/authenticate/restore lifecycle remain unchanged. Historical evidence
+is preserved. **UNKNOWN:** corrected EngineCore startup on GPU; GPU NOT RUN
+for this correction.
+
 ## Diagnostic-time draft tokenizer revision fix (2026-10-19)
 
 The authenticated installer now applies one explicit runtime fix alongside the

@@ -46,17 +46,18 @@ class DraftTokenizerRevisionTests(unittest.TestCase):
         call = tokenizer_call(self.patched, "draft_tokenizer")
         revisions = [kw for kw in call.keywords if kw.arg == "revision"]
         self.assertEqual(len(revisions), 1)
-        self.assertEqual(ast.unparse(revisions[0].value), "spec.draft_model_config.tokenizer_revision")
+        self.assertEqual(ast.unparse(revisions[0].value), "spec.draft_model_config.revision")
         self.assertEqual(len(call.keywords), len(tokenizer_call(self.raw, "draft_tokenizer").keywords) + 1)
 
     def test_target_tokenizer_call_is_unchanged(self):
         self.assertEqual(ast.dump(tokenizer_call(self.raw, "target_tokenizer")),
                          ast.dump(tokenizer_call(self.patched, "target_tokenizer")))
 
-    def test_draft_call_passes_tokenizer_revision_value_not_model_revision(self):
+    def test_draft_call_passes_model_revision_despite_inherited_target_tokenizer_revision(self):
         revision = "7ae557604adf67be50417f59c2c2f167def9a775"
-        spec = NS(draft_model_config=NS(model="cached-draft", revision="different-model-revision",
-                                       tokenizer_revision=revision, trust_remote_code=False))
+        target_revision = "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+        spec = NS(draft_model_config=NS(model="cached-draft", revision=revision,
+                                       tokenizer_revision=target_revision, trust_remote_code=False))
         received = []
         def get_tokenizer(*args, **kwargs):
             received.append((args, kwargs))
@@ -72,10 +73,12 @@ class DraftTokenizerRevisionTests(unittest.TestCase):
         sources.validate_transform(self.name, self.raw, self.patched)
 
     def test_wrong_missing_or_duplicate_revision_fails_closed(self):
-        for expression in ("None", "'main'", "spec.draft_model_config.revision",
+        for expression in ("None", "'main'", "spec.draft_model_config.tokenizer_revision",
+                           "spec.target_model_config.revision",
                            "spec.target_model_config.tokenizer_revision",
-                           "getattr(spec.draft_model_config, 'tokenizer_revision', None)"):
-            changed = self.patched.replace(b"revision=spec.draft_model_config.tokenizer_revision,",
+                           "getattr(spec.draft_model_config, 'revision', None)",
+                           "spec.draft_model_config.revision or 'main'", "draft_revision"):
+            changed = self.patched.replace(b"revision=spec.draft_model_config.revision,",
                                           ("revision=" + expression + ",").encode())
             with self.subTest(expression=expression), self.assertRaises(EvidenceError):
                 sources.validate_transform(self.name, self.raw, changed)
@@ -172,8 +175,8 @@ class TokenizerFixLifecycleTests(unittest.TestCase):
         state_path.write_text(json.dumps(original))
         path = self.package / sources.DRAFT_SOURCE
         path.write_bytes(path.read_bytes().replace(
-            b"revision=spec.draft_model_config.tokenizer_revision,",
-            b"revision=spec.draft_model_config.revision,"))
+            b"revision=spec.draft_model_config.revision,",
+            b"revision=spec.draft_model_config.tokenizer_revision,"))
         with self.assertRaises(EvidenceError):
             sources.authenticate(self.run, installed=True)
         with self.assertRaises(EvidenceError):
