@@ -167,6 +167,101 @@ class SlotAndBytesTests(unittest.TestCase):
                 observer.postwrite_ownership(e["runtime_binding"], peers)
 
 
+class StorageOwnershipTests(unittest.TestCase):
+    def ownership(self, selected, peer):
+        binding = dict(expected_layers=[LAYER1], layers={LAYER1: dict(cache=selected)})
+        observer.postwrite_ownership(binding, {LAYER1: selected, "peer.attn": peer})
+
+    def test_strided_and_contiguous_caches_with_separate_storage_are_accepted(self):
+        peer = torch.zeros(64, 2, 16, 6, dtype=torch.float16)
+        base = torch.zeros(64, 2, 16, 12, dtype=torch.float16)
+        token_major = torch.zeros(64, 16, 2, 6, dtype=torch.float16).transpose(1, 2)
+        for cache in (base[..., ::2], token_major, base[..., :6].contiguous()):
+            with self.subTest(strides=cache.stride()):
+                self.ownership(observer.tensor_identity(cache), observer.tensor_identity(peer))
+
+    def test_identity_records_entire_backing_storage_for_offset_strided_view(self):
+        base = torch.zeros(64, 2, 16, 12, dtype=torch.float16)
+        view = base[1:, ..., ::2]
+        identity = observer.tensor_identity(view)
+        self.assertEqual(identity["storage_nbytes"], base.untyped_storage().nbytes())
+        self.assertEqual(identity["storage_ptr"], base.untyped_storage().data_ptr())
+        self.assertNotEqual(identity["data_ptr"], identity["storage_ptr"])
+        self.assertGreater(identity["storage_nbytes"], view.numel() * view.element_size())
+
+    def test_shared_storage_disjoint_contiguous_and_strided_view_intervals_are_accepted(self):
+        base = torch.zeros(64, 2, 16, 12, dtype=torch.float16)
+        for left, right in ((base[:32], base[32:]), (base[:32, ..., ::2], base[32:, ..., ::2])):
+            selected, peer = observer.tensor_identity(left), observer.tensor_identity(right)
+            self.assertEqual(selected["storage_ptr"], peer["storage_ptr"])
+            with self.subTest(strides=left.stride()):
+                self.ownership(selected, peer)
+
+    def test_shared_storage_overlapping_views_rejected_despite_different_data_pointers(self):
+        base = torch.zeros(64, 2, 16, 6, dtype=torch.float16)
+        selected, peer = observer.tensor_identity(base[:32]), observer.tensor_identity(base[1:33])
+        self.assertNotEqual(selected["data_ptr"], peer["data_ptr"])
+        with self.assertRaises(EvidenceError):
+            self.ownership(selected, peer)
+
+    def test_interleaved_disjoint_elements_with_overlapping_bounds_fail_closed(self):
+        base = torch.zeros(64, 2, 2, 16, 6, dtype=torch.float16)
+        # Synthetic block-outermost layer views: distinct elements, overlapping bounds.
+        selected, peer = observer.tensor_identity(base[:, 0]), observer.tensor_identity(base[:, 1])
+        self.assertNotEqual(selected["data_ptr"], peer["data_ptr"])
+        with self.assertRaises(EvidenceError):
+            self.ownership(selected, peer)
+
+    def test_partial_backing_overlap_rejected_and_adjacent_ranges_accepted(self):
+        selected = observer.tensor_identity(torch.zeros(4, 2, 16, 6, dtype=torch.float16))
+        selected.update(storage_ptr=100000, data_ptr=100000)
+        peer = copy.deepcopy(selected)
+        peer.update(storage_ptr=100000 + selected["storage_nbytes"] // 2, data_ptr=900000)
+        with self.assertRaises(EvidenceError):
+            self.ownership(selected, peer)
+        peer["storage_ptr"] = 100000 + selected["storage_nbytes"]
+        self.ownership(selected, peer)
+
+    def test_invalid_storage_bounds_and_different_device_are_rejected(self):
+        selected = observer.tensor_identity(torch.zeros(4, 2, 16, 6, dtype=torch.float16))
+        peer = dict(selected, storage_ptr=selected["storage_ptr"] + 100000,
+                    data_ptr=selected["data_ptr"] + 100000)
+        self.ownership(selected, peer)
+        for field, values in (("storage_nbytes", (0, -1, None, True, 1.5)),
+                              ("storage_ptr", (0, -1, None, True, 1.5)),
+                              ("storage_offset", (-1, None, True, 1.5)),
+                              ("strides", ([-1, 96, 6, 1], [True, 96, 6, 1], [192, 96, 6])),
+                              ("device", ("cuda:1",)),
+                              ("dtype", ("torch.float32",)),
+                              ("shape", ([0, 2, 16, 6], [4, 2, 16]))):
+            for value in values:
+                with self.subTest(field=field, value=value), self.assertRaises(EvidenceError):
+                    self.ownership(selected, dict(peer, **{field: value}))
+
+    def test_reachable_interval_must_fit_inside_backing_storage(self):
+        cache = torch.zeros(4, 2, 16, 6, dtype=torch.float16)
+        selected = observer.tensor_identity(cache)
+        peer = dict(selected, storage_ptr=selected["storage_ptr"] + 100000,
+                    data_ptr=selected["data_ptr"] + 100000)
+        for change in (dict(storage_nbytes=selected["storage_nbytes"] - 1),
+                       dict(storage_offset=1), dict(storage_offset=selected["storage_nbytes"] // 2),
+                       dict(strides=[100000, 96, 6, 1])):
+            with self.subTest(change=change), self.assertRaises(EvidenceError):
+                self.ownership(selected, dict(peer, **change))
+
+    def test_strided_position177_hashes_match_contiguous_exact_bytes(self):
+        dense, table, expected, _ = kv_tests.cache_fixture(3)
+        strided, strided_table, _, _ = kv_tests.cache_fixture(3, noncontiguous=True)
+        self.assertFalse(strided.is_contiguous())
+        self.assertEqual(table.tolist(), strided_table.tolist())
+        block, offset = int(table[0, 177 // 16]), 177 % 16
+        result = observer.hash_position177(strided, block, offset)
+        self.assertEqual(result, observer.hash_position177(dense, block, offset))
+        for component, values in (("K", expected[177]), ("V", -expected[177])):
+            raw = values.contiguous().view(torch.uint8).numpy().tobytes()
+            self.assertEqual(result[component]["sha256"], hashlib.sha256(raw).hexdigest())
+
+
 class PostwriteEvidenceTests(unittest.TestCase):
     def report(self, data):
         return boundary.analyze_postwrite(*data)

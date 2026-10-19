@@ -217,26 +217,31 @@ def position177_slot(block_table, slots, positions, block_size, num_blocks):
     return dict(physical_block=physical, offset=offset, slot=slot, selected_row=row, kernel_block_size=block_size)
 
 
-def dense_cache_span(identity):
-    """Exact byte interval for the supported contiguous FP16 cache views."""
+def cache_view_span(identity):
+    """Bounding bytes reachable by a non-negative-stride FP16 cache view."""
     require(identity["dtype"] == "torch.float16" and len(identity["shape"]) == len(identity["strides"]) == 4,
             "Post-write unsupported cache representation")
-    elements = 1
-    for dim, stride in zip(reversed(identity["shape"]), reversed(identity["strides"])):
-        require(type(dim) is int and dim > 0 and type(stride) is int
-                and (dim == 1 or stride == elements), "Post-write non-dense cache layout")
-        elements *= dim
-    start = identity["data_ptr"]
-    require(type(start) is int and start > 0, "Post-write invalid cache address")
-    return start, start + elements * 2
+    require(all(type(dim) is int and dim > 0 for dim in identity["shape"])
+            and all(type(stride) is int and stride >= 0 for stride in identity["strides"]),
+            "Post-write invalid cache shape/strides")
+    storage_start, nbytes = identity["storage_ptr"], identity["storage_nbytes"]
+    require(type(storage_start) is int and storage_start > 0 and type(nbytes) is int and nbytes > 0,
+            "Post-write invalid backing storage bounds")
+    offset = identity["storage_offset"]
+    require(type(offset) is int and offset >= 0, "Post-write invalid storage offset")
+    maximum = offset + sum((dim - 1) * stride for dim, stride in zip(identity["shape"], identity["strides"]))
+    start, end = storage_start + offset * 2, storage_start + (maximum + 1) * 2
+    require(storage_start <= start < end <= storage_start + nbytes,
+            "Post-write reachable view outside backing storage")
+    return start, end
 
 
 def postwrite_ownership(binding, peers):
     require(set(binding["expected_layers"]) <= set(peers) and LAYER1 in binding["expected_layers"] and LAYER1 in peers
             and peers[LAYER1] == binding["layers"][LAYER1]["cache"], "Post-write wrong target layer")
-    left, right = dense_cache_span(peers[LAYER1])
+    left, right = cache_view_span(peers[LAYER1])
     for name, identity in peers.items():
-        start, end = dense_cache_span(identity)
+        start, end = cache_view_span(identity)
         require(identity["device"] == peers[LAYER1]["device"], "Post-write mixed cache devices")
         require(name == LAYER1 or end <= left or start >= right, "Post-write target/draft cache overlap")
 
@@ -398,6 +403,7 @@ def position_spans(raw, bytes_per_position):
 def tensor_identity(tensor):
     """Metadata only: never copy tensor values or allocate CUDA storage at capture."""
     return dict(data_ptr=tensor.data_ptr(), storage_ptr=tensor.untyped_storage().data_ptr(),
+                storage_nbytes=tensor.untyped_storage().nbytes(),
                 storage_offset=tensor.storage_offset(), shape=list(tensor.shape),
                 strides=list(tensor.stride()), dtype=str(tensor.dtype), device=str(tensor.device))
 
