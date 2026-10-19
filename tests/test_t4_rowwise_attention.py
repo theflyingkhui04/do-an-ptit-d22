@@ -6,6 +6,7 @@ import ast
 import copy
 import enum
 import gzip
+import hashlib
 import json
 import subprocess
 import sys
@@ -373,8 +374,72 @@ def test_exact_source_auth_and_historical_profiles_unchanged():
         assert patch.HASHES[name]==historical.HASHES[name]
         raw=ORIGINALS[name]
         historical.validate_transform(name,raw,historical.transform(name,raw,attention=True),attention=True)
-        with pytest.raises(EvidenceError,match="Unapproved inference AST|Missing/duplicate attention diagnostic hook"):
-            historical.validate_transform(name,raw,patch.transform(name,raw),attention=True)
+        if name != patch.DRAFT:
+            with pytest.raises(EvidenceError,match="Unapproved inference AST|Missing/duplicate attention diagnostic hook"):
+                historical.validate_transform(name,raw,patch.transform(name,raw),attention=True)
+        else:
+            assert patch.transform(name,raw)==historical.transform(name,raw)
+
+
+def test_attention_bytes_match_reviewed_checkpoint_346b1ad():
+    reviewed = {
+        patch.BACKEND: "dfc19beeb6e6b24cdca4143b0099d5e4c05ded7abdabf0a34e5f02d23efdd612",
+        patch.OPS: "5ff89d101e0f785e0b83e02f9b87bc506d45e7c816efba6baa1e640a546c0cd7",
+    }
+    for name,digest in reviewed.items():
+        assert hashlib.sha256(patch.transform(name,ORIGINALS[name])).hexdigest()==digest
+
+
+def tokenizer_call(raw,assignment):
+    return next(n.value for n in ast.walk(ast.parse(raw)) if isinstance(n,ast.Assign)
+                and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)
+                and n.targets[0].id==assignment)
+
+
+def test_exact_approved_draft_keyword_and_unchanged_target():
+    raw=ORIGINALS[patch.DRAFT]
+    patched=patch.transform(patch.DRAFT,raw)
+    assert patched==historical.transform(patch.DRAFT,raw)
+    assert patch.DRAFT_TOKENIZER_CALL==historical.DRAFT_TOKENIZER_CALL
+    assert patch.DRAFT_REVISION_LINE==historical.DRAFT_REVISION_LINE
+    call=tokenizer_call(patched,"draft_tokenizer")
+    revisions=[kw for kw in call.keywords if kw.arg=="revision"]
+    assert len(revisions)==1
+    assert ast.dump(revisions[0].value)==ast.dump(ast.parse("spec.draft_model_config.revision",mode="eval").body)
+    assert ast.dump(tokenizer_call(raw,"target_tokenizer"))==ast.dump(tokenizer_call(patched,"target_tokenizer"))
+    # Execute the actual call expression with an offline recorder, no download.
+    received=[]
+    spec=NS(draft_model_config=NS(model="draft",revision="pinned-draft",trust_remote_code=False))
+    eval(compile(ast.Expression(call),"<draft-call>","eval"),
+         dict(spec=spec,get_tokenizer=lambda *a,**kw:received.append((a,kw))))
+    assert received==[(("draft",),dict(revision="pinned-draft",trust_remote_code=False))]
+
+
+@pytest.mark.parametrize("mutation", ["wrong", "duplicate", "missing", "partial"])
+def test_draft_mutations_rejected_by_transform_and_installed_verifier(tmp_path,mutation):
+    root=source_root(tmp_path)
+    evidence=tmp_path/"evidence"
+    cli(tmp_path,"install",root,evidence)
+    patched=(root/patch.DRAFT).read_bytes()
+    line=patch.DRAFT_REVISION_LINE.encode()
+    replacement={"wrong":line.replace(b"draft_model_config.revision",b"draft_model_config.tokenizer_revision"),
+                 "duplicate":line*2,"missing":b"","partial":line.replace(b".revision,",b".revision or 'main',")}[mutation]
+    changed=patched.replace(line,replacement)
+    with pytest.raises(ValueError,match="Unapproved production"):
+        patch.validate_transform(patch.DRAFT,ORIGINALS[patch.DRAFT],changed)
+    (root/patch.DRAFT).write_bytes(changed)
+    cli(tmp_path,"verify",root,evidence,ok=False)
+    # Restore permits known pristine bytes after interrupted installation only.
+    if mutation!="missing":
+        cli(tmp_path,"restore",root,evidence,ok=False)
+        assert (root/patch.BACKEND).read_bytes()==patch.transform(patch.BACKEND,ORIGINALS[patch.BACKEND])
+
+
+def test_no_observer_in_any_production_source():
+    for name,raw in ORIGINALS.items():
+        patched=patch.transform(name,raw)
+        assert b"protocol_b_boundary_observer" not in patched
+        assert b"_pb279_observe" not in patched and b"_pb177_" not in patched
 
 
 def test_review_diff_is_exact_generated_transform():
@@ -420,8 +485,12 @@ def test_install_verify_restore_and_dependency_auth(tmp_path):
     root=source_root(tmp_path)
     evidence=tmp_path/"evidence"
     diff=cli(tmp_path,"diff",root).stdout
-    assert diff.count("--- a/vllm/")==2
+    assert diff.count("--- a/vllm/")==3
     cli(tmp_path,"install",root,evidence)
+    manifest=json.loads((evidence/"manifest.json").read_text())
+    assert manifest["original_hashes"][patch.DRAFT]==patch.HASHES[patch.DRAFT]
+    assert manifest["patched_hashes"][patch.DRAFT]==hashlib.sha256((root/patch.DRAFT).read_bytes()).hexdigest()
+    assert manifest["runtime_fixes"]==patch.RUNTIME_FIXES
     cli(tmp_path,"verify",root,evidence)
     cli(tmp_path,"install",root,evidence,ok=False)
     cli(tmp_path,"restore",root,evidence)
@@ -432,11 +501,22 @@ def test_install_verify_restore_and_dependency_auth(tmp_path):
     assert all((root/n).read_bytes()==ORIGINALS[n] for n in patch.HASHES)
 
 
-def test_restore_recovers_authenticated_partial_install(tmp_path):
+def test_draft_pristine_drift_prevents_all_install_writes(tmp_path):
+    root=source_root(tmp_path)
+    (root/patch.DRAFT).write_bytes(ORIGINALS[patch.DRAFT]+b"\n")
+    evidence=tmp_path/"invalid"
+    cli(tmp_path,"install",root,evidence,ok=False)
+    assert not evidence.exists()
+    for name in (patch.BACKEND,patch.OPS):
+        assert (root/name).read_bytes()==ORIGINALS[name]
+
+
+@pytest.mark.parametrize("source", [patch.OPS,patch.DRAFT])
+def test_restore_recovers_authenticated_partial_install(tmp_path,source):
     root=source_root(tmp_path)
     evidence=tmp_path/"evidence"
     cli(tmp_path,"install",root,evidence)
-    (root/patch.OPS).write_bytes(ORIGINALS[patch.OPS])
+    (root/source).write_bytes(ORIGINALS[source])
     cli(tmp_path,"verify",root,evidence,ok=False)
     cli(tmp_path,"restore",root,evidence)
     assert all((root/n).read_bytes()==raw for n,raw in ORIGINALS.items())

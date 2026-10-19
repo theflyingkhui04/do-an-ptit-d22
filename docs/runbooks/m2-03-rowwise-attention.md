@@ -1,12 +1,13 @@
 # M2-03: bounded T4 row-wise segmented attention
 
-Implementation profile: `m203.t4-rowwise-segmented3d.v1` (2026-10-19).
+Implementation profile: `m203.t4-rowwise-segmented3d.v2` (2026-10-20).
+This composes the reviewed attention transform with `draft-tokenizer-revision-v1`.
 GPU targeted verification **NOT RUN**. Canonical 54 **NOT RUN**.
 
 ## Review boundary
 
 `src/server/t4_rowwise_attention.py` produces an exact production transform of
-two pinned vLLM 0.30.0 files. The generated upstream diff is
+three pinned vLLM 0.30.0 files. The generated upstream diff is
 `patches/vllm-0.30.0-t4-rowwise-attention.patch`. Historical source snapshots,
 observer transforms, diagnostic profiles, and raw evidence are unchanged.
 
@@ -72,7 +73,8 @@ python -m src.server.t4_rowwise_attention diff --source-root /path/to/vllm
 
 The same module has explicit `install`, `verify`, and `restore` commands, each
 requiring `--source-root` and `--evidence-dir`. Installation authenticates all
-three sources before any installed-source write, requires a fresh evidence
+four sources (three modified files and the unchanged helper) before any
+installed-source write, requires a fresh evidence
 directory, preserves original bytes and hashes, and records exact patched hashes.
 Restore accepts only authenticated original/patched bytes, so a partial install
 can be recovered but an unknown modification cannot be overwritten.
@@ -85,6 +87,39 @@ Historical diagnostic authentication deliberately rejects this production
 transform. Do not bypass that check or reuse an old diagnostic manifest to
 describe a patched run. Production verification uses this explicit profile;
 any future observer integration must declare its exact composed transform.
+
+## 2026-10-20: compose the existing draft tokenizer revision fix
+
+Reported blocker: Adaptive startup failed before targeted capture. Pristine
+`v1/spec_decode/draft_model.py` omits the draft model revision when constructing
+the draft tokenizer for heterogeneous vocabularies. This composition adds only:
+
+```python
+revision=spec.draft_model_config.revision,
+```
+
+The pristine source SHA-256 is
+`6b884f49a75f01d1aa6b2d27159b63fa27f7ba7f0518d2810d1a5b565e14f026`.
+The result is byte-identical to the already-approved historical
+`draft-tokenizer-revision-v1` transform. The target tokenizer call is unchanged.
+No historical installer, observer hook, or observer import is installed.
+
+Profile v2 records the draft source's original and patched hashes and the explicit
+runtime-fix identity. `verify` requires the exact composed bytes for all three
+modified files and the unchanged helper. `restore` restores all three modified
+files. Unknown, duplicate, wrong-expression, or partially edited draft fixes are
+rejected before restore writes any file. As in v1, authenticated pristine/patched
+file mixtures after an interrupted installation may be restored, but cannot pass
+`verify`. A v1 manifest is not a valid v2 manifest; do not reuse its run directory.
+If v1 is still installed, restore it with the checkpoint's v1 installer and its
+original manifest before installing v2. The v2 installer requires every source
+to be pristine and does not silently upgrade an already-patched installation.
+
+The two attention outputs remain byte-identical to checkpoint
+`346b1ad4b6b795ffa0b4b981e6347523badea70b`; focused tests pin their reviewed
+SHA-256 values. No scheduler, planner, sampling, cache, graph, or protocol change
+is part of this composition. Startup recovery and GPU token equality remain
+unverified until separately authorized runtime testing.
 
 ## Validation and next gate
 
@@ -123,3 +158,22 @@ All commands above exited zero. Transformed upstream sources were also compiled
 in memory. New Python/document files were separately checked for trailing
 whitespace, since ordinary `git diff --check` does not inspect untracked files.
 The helper fixture's Git blob hash matches the official tag's blob exactly.
+
+## Local composition validation record — 2026-10-20
+
+Focused tests ran first: **79 passed**. Existing relevant suites then passed:
+**138 tests and 47 subtests**, including historical tokenizer-revision tests.
+
+```text
+python -m pytest tests/test_t4_rowwise_attention.py -q
+python -m pytest tests/test_protocol_b_boundary_tokenizer_revision.py tests/test_protocol_b_boundary_kv.py tests/test_protocol_b_boundary_p177_k0_control.py tests/test_protocol_b_boundary_p177_attention_substitution.py -q
+python -m py_compile src/server/t4_rowwise_attention.py tests/test_t4_rowwise_attention.py
+git -c safe.directory=D:/Document/Four-year/do_an/do-an-ptit-d22 diff --check
+git -c safe.directory=D:/Document/Four-year/do_an/do-an-ptit-d22 diff --exit-code HEAD -- experiments/protocol_b_boundary_sources.py experiments/runs experiments/results experiments/configs logs tests/test_protocol_b_boundary_tokenizer_revision.py tests/fixtures
+```
+
+All commands exited zero. The generated artifact exactly matches the composed
+transform, and its attention diff prefix is byte-identical to checkpoint
+`346b1ad4b6b795ffa0b4b981e6347523badea70b`. All transformed upstream sources
+compile in memory. No live installation, server launch, GPU run, canonical 54,
+commit, push, or Trello change was performed. GPU targeted verification **NOT RUN**.

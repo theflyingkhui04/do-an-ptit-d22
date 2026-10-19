@@ -13,13 +13,23 @@ import json
 from pathlib import Path
 
 
-PROFILE = "m203.t4-rowwise-segmented3d.v1"
+PROFILE = "m203.t4-rowwise-segmented3d.v2"
 BACKEND = "v1/attention/backends/triton_attn.py"
 OPS = "v1/attention/ops/triton_unified_attention.py"
+DRAFT = "v1/spec_decode/draft_model.py"
 HASHES = {
     BACKEND: "1057663d110e1d5229495a799027b27277c1eca325d5b6780fa2259afbf58a1a",
     OPS: "65d0fbcf33d00789df8ca688c0a1c908e710cfaef53471178747ecae11f05829",
+    DRAFT: "6b884f49a75f01d1aa6b2d27159b63fa27f7ba7f0518d2810d1a5b565e14f026",
 }
+RUNTIME_FIXES = {DRAFT: "draft-tokenizer-revision-v1"}
+DRAFT_TOKENIZER_CALL = (
+    "            draft_tokenizer = get_tokenizer(\n"
+    "                spec.draft_model_config.model,\n"
+    "                trust_remote_code=spec.draft_model_config.trust_remote_code,\n"
+    "            )\n"
+)
+DRAFT_REVISION_LINE = "                revision=spec.draft_model_config.revision,\n"
 HELPER = "v1/attention/ops/triton_attention_helpers.py"
 DEPENDENCY_HASHES = {
     HELPER: "35aa993d01345f535d2641cf9dcabb8b64c51b20a19707bc5987e616aaa87ddd",
@@ -94,7 +104,12 @@ def transform(name: str, raw: bytes) -> bytes:
     if name in DEPENDENCY_HASHES:
         return raw
     text = raw.decode("utf-8")
-    if name == BACKEND:
+    if name == DRAFT:
+        # Exact previously approved runtime fix, without diagnostic hooks.
+        text = _replace(text, DRAFT_TOKENIZER_CALL,
+                        DRAFT_TOKENIZER_CALL.replace("                trust_remote_code=",
+                                                     DRAFT_REVISION_LINE + "                trust_remote_code="))
+    elif name == BACKEND:
         text = _replace(text, "    # Optional aot scheduling\n",
                         "    rowwise_decode_max_q: int = 0\n\n    # Optional aot scheduling\n")
         text = _replace(text, "        model_config = vllm_config.model_config\n", '''        model_config = vllm_config.model_config
@@ -216,6 +231,7 @@ def main() -> None:
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(raw)
         manifest = dict(profile=PROFILE, source_root=str(root), original_hashes=SOURCE_HASHES,
+                        runtime_fixes=RUNTIME_FIXES,
                         patched_hashes={n: hashlib.sha256(b).hexdigest() for n, b in patched.items()})
         (evidence / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
         for name, raw in patched.items():
@@ -226,6 +242,7 @@ def main() -> None:
         expected = {name: transform(name, originals[name]) for name in HASHES}
         if (manifest.get("profile") != PROFILE or manifest.get("source_root") != str(root)
                 or manifest.get("original_hashes") != SOURCE_HASHES
+                or manifest.get("runtime_fixes") != RUNTIME_FIXES
                 or manifest.get("patched_hashes") != {n: hashlib.sha256(b).hexdigest() for n, b in expected.items()}):
             raise ValueError("Production source manifest drift")
         # Preflight all files before restoring any; unknown mutations fail closed.
