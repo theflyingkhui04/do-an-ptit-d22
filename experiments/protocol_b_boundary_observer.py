@@ -1,7 +1,8 @@
 """Read-only vLLM 0.30.0 observer, narrowly ported from archive a7b52e7.
 
 Reuses m2_03_targeted/observer.py row/score/accounting hooks and A3/V8's
-actual-position mapping. No cache, scheduler, graph or sampling interventions.
+actual-position mapping. One explicitly gated, non-canonical control changes only
+the P176 producer's next-step draft budget. Observation hooks never mutate inputs.
 Errors are retained as evidence; inference results are never replaced.
 """
 import json
@@ -18,8 +19,148 @@ LAYER1 = "model.layers.1.self_attn.attn"
 LOCALIZATION_SCHEMA = "m203.boundary.layer1.positions.v1"
 EARLY_SCHEMA = "m203.boundary.early.v1"
 POSTWRITE_SCHEMA = "m203.boundary.postwrite.v1"
+CONTROL_PROFILE = "m203.p177-producer-k0.v1"
+_controls = {}
 _early = {}
 _early_lock = threading.RLock()
+
+
+def control_settings(config):
+    settings = config.get("p177_k0_control")
+    if settings is None:
+        return None
+    require(os.environ.get("M203_P177_PRODUCER_K0") == "1"
+            and config.get("non_canonical") is True and config.get("lane") == "adaptive"
+            and settings["profile"] == CONTROL_PROFILE and config.get("early_timeline") is True
+            and config.get("postwrite_position177") is True, "Unauthenticated control profile/env")
+    require(settings["request_sha256"] == fingerprint(settings["request"]), "Control request hash differs")
+    return settings
+
+
+def control_event(config, state, kind, **fields):
+    emit(config, "p177_control_" + kind, control_profile=CONTROL_PROFILE, non_canonical=True,
+         control_id=state["control_id"], request_id=state["request_id"], pid=os.getpid(), **fields)
+
+
+def control_producer(scheduler, scheduled):
+    """Sole intervention; outside observer/planner exception fallbacks, before native super."""
+    if os.environ.get("M203_P177_PRODUCER_K0") != "1":
+        return
+    config = json.loads(Path(os.environ["PROTOCOL_B_BOUNDARY_CONFIG"]).read_text())
+    settings = control_settings(config)
+    require(settings is not None, "Control env requires explicit non-canonical profile")
+    if config.get("sample_id") != "w3_business_v2_004" or len(config["prompt_token_ids"]) != 176:
+        return
+    early = early_state(config)
+    candidates = [r for rid in scheduled.num_scheduled_tokens
+                  if (r := scheduler.requests.get(rid)) is not None
+                  and r.request_id == early["request_id"]
+                  and list(r.prompt_token_ids or []) == config["prompt_token_ids"]
+                  and not r.is_prefill_chunk and r.num_computed_tokens == 176]
+    if not candidates:
+        return
+    require(len(candidates) == len(scheduled.num_scheduled_tokens) == 1, "Ambiguous control producer")
+    request = candidates[0]
+    rid = request.request_id
+    require(scheduled.num_scheduled_tokens[rid] == scheduled.total_num_scheduled_tokens == 1
+            and not scheduled.scheduled_spec_decode_tokens.get(rid), "Control producer must be ordinary [176]")
+    original = scheduled.num_spec_tokens_to_schedule
+    require(type(original) is int and original == settings["normal_producer_budget"] > 0
+            and scheduler._plan.batch_k == original
+            and scheduler._plan.per_request_k.get(rid) == original, "Control normal planner decision differs")
+    key = fingerprint(config)
+    with _early_lock:
+        require(key not in _controls, "Second control override attempted")
+        state = dict(control_id=uuid.uuid4().hex, request_id=rid, producer=scheduled,
+                     producer_seq=scheduler.current_step, original_budget=original,
+                     original_plan=dict(batch_k=scheduler._plan.batch_k,
+                                        per_request_k=dict(scheduler._plan.per_request_k)))
+        _controls[key] = state
+        scheduled.num_spec_tokens_to_schedule = 0
+    control_event(config, state, "override", producer_seq=state["producer_seq"],
+        scheduler_output_id=id(scheduled), original_budget=original, effective_budget=0,
+        original_plan=state["original_plan"], override_count=1,
+        request_sha256=settings["request_sha256"], baseline_sha256=settings["baseline_sha256"])
+
+
+def control_native(config, scheduler, scheduled):
+    if control_settings(config) is None:
+        return
+    state = _controls.get(fingerprint(config))
+    if state is None or state["producer"] is not scheduled:
+        return
+    rid = state["request_id"]
+    require(not state.get("native") and scheduled.num_spec_tokens_to_schedule == 0
+            and list(scheduler.requests[rid].spec_token_ids) == []
+            and dict(batch_k=scheduler._plan.batch_k, per_request_k=dict(scheduler._plan.per_request_k))
+                == state["original_plan"], "Native zero placeholders/planner proof failed")
+    state["native"] = True
+    control_event(config, state, "native", producer_seq=state["producer_seq"],
+                  scheduler_output_id=id(scheduled), effective_budget=0, next_placeholders=[])
+
+
+def control_query(config, runner, scheduled, positions):
+    settings = control_settings(config)
+    if settings is None or not ({176, 177} & set(positions)):
+        return
+    state = _controls.get(fingerprint(config))
+    require(state is not None and state.get("native"), "Missing authenticated control producer")
+    entry = early_step(early_state(config), scheduled)
+    require(entry["request_id"] == state["request_id"], "Control query request changed")
+    if scheduled is state["producer"]:
+        require(not state.get("producer_verified") and positions == [176]
+                and entry["active_query"] == [[176, settings["token_prefix"][0]]], "Wrong actual control producer")
+        state["producer_verified"] = True
+        control_event(config, state, "producer", producer_seq=entry["schedule_seq"],
+                      scheduler_output_id=id(scheduled), actual_positions=positions, active_query=entry["active_query"])
+    else:
+        require(state.get("producer_verified") and state.get("drafts_verified")
+                and not state.get("consumer") and positions == [177]
+                and entry["placeholder_origin_schedule_seq"] == state["producer_seq"]
+                and not scheduled.scheduled_spec_decode_tokens.get(state["request_id"])
+                and entry["active_query"] == [[177, settings["token_prefix"][1]]], "Wrong first control consumer/rewrite")
+        state["consumer"] = scheduled
+        control_event(config, state, "consumer", producer_seq=state["producer_seq"],
+            schedule_seq=entry["schedule_seq"], scheduler_output_id=id(scheduled),
+            actual_positions=positions, active_query=entry["active_query"], scheduled_spec_tokens=[])
+
+
+def control_drafts(config, runner, scheduled):
+    if control_settings(config) is None:
+        return
+    state = _controls.get(fingerprint(config))
+    if state is None or state["producer"] is not scheduled:
+        return
+    require(state.get("producer_verified") and not state.get("drafts_verified")
+            and list(runner._draft_token_ids.shape) == [1, 0], "Control producer did not produce zero drafts")
+    state["drafts_verified"] = True
+    control_event(config, state, "drafts", producer_seq=state["producer_seq"],
+                  scheduler_output_id=id(scheduled), produced_count=0)
+
+
+def hash_control_prefix(cache, table, write_slots):
+    """Exactly layer-1 logical positions 0..176; history_slots remains all-454."""
+    import hashlib
+    import torch
+    require(cache.dtype == torch.float16 and cache.ndim == 4 and cache.shape[-1] % 2 == 0
+            and sys.byteorder == "little", "Unsupported control prefix representation")
+    block_size, heads, dim = int(cache.shape[2]), int(cache.shape[1]), int(cache.shape[3]) // 2
+    require(len(table) > 176 // block_size, "Incomplete control prefix table")
+    blocks = [table[p // block_size] for p in range(177)]
+    require(all(type(b) is int and 0 <= b < cache.shape[0] for b in blocks), "Prefix block out of bounds")
+    slots = [b * block_size + p % block_size for p, b in enumerate(blocks)]
+    require(len(set(slots)) == 177 and not set(slots).intersection(s for s in write_slots if s >= 0),
+            "Control prefix aliases history/current/padded writes")
+    indices = torch.tensor(slots, dtype=torch.long, device=cache.device)
+    result = dict(logical_positions=list(range(177)), dtype=str(cache.dtype), shape=[177, heads, dim],
+                  bytes_per_position=heads * dim * 2, canonical_order=["kv_head", "head_dimension"])
+    for component, start in (("K", 0), ("V", dim)):
+        selected = cache[indices // block_size, :, indices % block_size, start:start + dim]
+        raw = selected.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes()
+        size = result["bytes_per_position"]
+        require(len(raw) == 177 * size, "Control prefix byte count differs")
+        result[component] = [hashlib.sha256(raw[p*size:(p+1)*size]).hexdigest() for p in range(177)]
+    return result
 
 
 def early_state(config):
@@ -85,6 +226,7 @@ def early_schedule(config, scheduler, scheduled):
                num_computed_tokens=request.num_computed_tokens,
                num_in_flight_tokens=request.num_in_flight_tokens,
                num_output_placeholders=request.num_output_placeholders)
+    control_native(config, scheduler, scheduled)
 
 
 def early_prepare(config, runner, scheduled, input_ids, positions):
@@ -161,6 +303,7 @@ def early_produced(config, runner, scheduled):
         tensor=tensor, row=0, schedule_seq=entry["schedule_seq"])
     early_emit(config, state, "produced", request_id=ids[0], schedule_seq=entry["schedule_seq"],
                produced_count=int(tensor.shape[1]), producer_tensor_id=id(tensor), producer_row=0)
+    control_drafts(config, runner, scheduled)
 
 
 def early_account(config, stage, request, output, scheduled, stale, selected):
@@ -288,7 +431,8 @@ def postwrite_prepare(config, runner, inputs, metadata, slots, positions, rid, i
         require(claims[key] == rid, "Post-write request collision")
         require(version == "v1", "Duplicate Vanilla position-177 forward")
         return  # Ordered Adaptive rewrites are retained by the early timeline.
-    require(positions == ([177] if version == "v2" else [177, 178, 179, 180]),
+    control = control_settings(config)
+    require(positions == ([177] if version == "v2" or control is not None else [177, 178, 179, 180]),
             "Post-write unexpected first position-177 query")
     require(mode.name == ("FULL" if version == "v2" else "PIECEWISE"), "Post-write graph mode differs")
     early = None
@@ -297,8 +441,10 @@ def postwrite_prepare(config, runner, inputs, metadata, slots, positions, rid, i
         require(state is not None, "Post-write requires early timeline")
         early = early_step(state, scheduled)
         require(early["request_id"] == rid and early["positions"] == positions
-                and len(scheduled.scheduled_spec_decode_tokens.get(rid, [])) == 3,
+                and len(scheduled.scheduled_spec_decode_tokens.get(rid, [])) == (0 if control is not None else 3),
                 "Post-write wrong early scheduler/request")
+        if control is not None:
+            require(_controls[fingerprint(config)].get("consumer") is scheduled, "Unbound control consumer")
     else:
         require(manager._graphs_captured and manager._capture_mem_samples is None
                 and desc.num_ubatches == 1, "Post-write unready/warmup graph manager")
@@ -371,6 +517,12 @@ def postwrite_finish(config, version, owner, execution):
     location = position177_slot(table, write_slots, pending["positions"], block_size, int(cache.shape[0]))
     auth_id = kv_authenticate(config)
     content = hash_position177(cache, location["physical_block"], location["offset"])
+    extra = {}
+    if control_settings(config) is not None:
+        state = _controls[fingerprint(config)]
+        require(state.get("consumer") is execution, "Control post-write identity differs")
+        extra = dict(control_profile=CONTROL_PROFILE, control_id=state["control_id"], non_canonical=True,
+                     prefix_0_176=hash_control_prefix(cache, table, write_slots))
     capture = pending["capture"]
     emit(config, "postwrite_position177", postwrite_schema=POSTWRITE_SCHEMA, phase="post_target_forward",
          logical_position=177, target_layer=LAYER1, pid=os.getpid(), auth_id=auth_id,
@@ -386,7 +538,7 @@ def postwrite_finish(config, version, owner, execution):
          write_slots=write_slots, block_table=table, execution_stream=pending["stream"],
          runtime_probe_changes_timing=True, blocking_device_to_cpu=True, device_wide_synchronize=False,
          capture_warmup=False,
-         **location, **content)
+         **location, **content, **extra)
 
 
 def position_spans(raw, bytes_per_position):
@@ -670,10 +822,13 @@ def kv_v1(config, runner, scheduled, input_ids, positions, metadata, slots, mode
     n = scheduled.total_num_scheduled_tokens
     actual_positions = ints(positions[:n])
     early_prepare(config, runner, scheduled, input_ids, actual_positions)
+    control_query(config, runner, scheduled, actual_positions)
     if postwrite_enabled(config) and 177 in actual_positions:
         require(config["lane"] == "adaptive" and len(ids) == len(matching) == 1, "Post-write ambiguous Adaptive batch")
         postwrite_prepare(config, runner, dict(input_ids=input_ids, positions=positions), metadata, slots,
                           actual_positions, ids[0], 0, mode, int(positions.shape[0]), scheduled=scheduled)
+    if control_settings(config) is not None:
+        return  # Control owns its P177/prefix contract, never the canonical boundary454 gate.
     if 454 not in actual_positions:
         return
     require(config["lane"] == "adaptive" and len(ids) == len(matching) == 1
@@ -822,6 +977,8 @@ def begin(config, runner, scheduled, logits, spec, grammar):
     require(logits is not None and logits.ndim == 2 and logits.shape[0] == len(rows),
             "Missing/misaligned logits")
     early_verify(config, runner, scheduled, rows, spec)
+    if control_settings(config) is not None:
+        return
     target = [r for r in rows if r["generated_index"] == 279]
     if not target:
         return

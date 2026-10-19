@@ -439,3 +439,128 @@ The scoped result always keeps `task_done=false`,
 CPU byte/metadata/analyzer regressions do not establish CUDA execution or empirical
 losslessness. GPU verification of this new probe has **NOT RUN** during local
 implementation; any future run needs its own authorization and fresh evidence path.
+
+## One-shot P177 producer-k0 control — non-canonical
+
+**NON-CANONICAL DIAGNOSTIC CONTROL. NOT VALID FOR 54/54 ACCEPTANCE BY ITSELF.**
+This section is separate from the canonical exact-execution block above. Do not
+execute that block to prepare this control: it would rerun both reference arms.
+Local implementation stops after CPU tests. The following commands are a future,
+separately authorized GPU procedure, not authorization to run GPU now.
+
+Reuse the immutable archive at evidence commit
+`9c0f15e8ebcef4d3fff3bd4aa07b6f41d3288ff2`:
+`experiments/runs/m2_03/diagnostics/postwrite-position177-c306aef-20261019T041028Z.tar.gz`.
+Its execution baseline is `c306aef3c8ffea97aa2e045507c2245ee77df220`;
+its Git blob is pinned as `b5590f982b97c0aa6a05ea0217eb6413f7bb2510`.
+Preparation checks that exact blob, every internal SHA256SUMS entry, and the
+canonical boundary/KV/localization/early/post-write validators in a temporary
+verification copy. The archive itself is never rewritten. Its SHA-256 is retained
+in the new manifest and config. No fresh Vanilla or normal Adaptive arm is run.
+
+Keep the baseline physical GPU/boot, models, packages, graph configuration,
+sampling/seed, prefix-cache policy and frozen workload/prelude. Use the same
+execution-root/import-path environment. Only fresh run/session identifiers,
+diagnostic source changes, and the telemetry output path may differ. Preparation
+and analysis reject incompatible provenance; no new environment or model rebuild
+is part of this procedure.
+
+The sole mutation is an explicitly authenticated call immediately before native
+`super()._update_after_schedule(scheduler_output)`. For the unique P176 producer,
+it sets only `scheduler_output.num_spec_tokens_to_schedule=0`. The normal planner
+decision and lookup table remain untouched. Native AsyncScheduler must see zero
+and create zero next-step placeholders; the producer must execute `[176]`, produce
+zero drafts, and lead to the first ordinary consumer `[177]`. Exact live output
+objects and early-timeline origins bind the chain; schedule numbers are not
+selection keys. A second override, wrong query, missing native proof, or ambiguous
+request invalidates the control. The native AsyncScheduler source is an additional
+control-only pinned dependency; the canonical 19-file source set is unchanged.
+
+The existing P177 post-write hook retains its original FP16 K/V byte contract.
+Only this profile accepts V1 `[177]` with zero scheduled drafts. It also hashes
+layer-1 logical positions 0..176 at that same observation and compares every K/V
+position digest with sealed normal localization. Prefix slots must be unique and
+disjoint from all current/padded writes. Added prefix payload is
+`177 * heads * head_dim * 2 components * 2 bytes` (362496 bytes for 4x128 FP16),
+using two bounded blocking D2H transfers. This perturbs timing after the target
+forward and proves scoped layer-1 prefix equality only. No all-layer probe, graph
+override, stream change, or explicit device-wide synchronization is added.
+
+After review and separate GPU authorization, use an idle baseline environment:
+
+```bash
+set -euo pipefail
+set -o noclobber
+: "${APPROVED_DIAGNOSTIC_SHA:?Set the reviewed control implementation SHA}"
+test "$(git rev-parse HEAD)" = "$APPROVED_DIAGNOSTIC_SHA"
+test -z "$(git status --porcelain --untracked-files=no)"
+test "$(git branch --show-current)" = fix/m2-03-lossless-clean
+test "$PWD" = "$(git rev-parse --show-toplevel)"
+# Retain the exact frozen exports/PYTHONPATH from the sealed session.
+# Do NOT invoke the earlier canonical two-lane execution block.
+python -c 'import experiments.protocol_b_boundary_observer'
+export M203_P177_PRODUCER_K0=1
+BASELINE="$PWD/experiments/runs/m2_03/diagnostics/postwrite-position177-c306aef-20261019T041028Z.tar.gz"
+test -f "$BASELINE"
+SESSION_ID=$(cat /proc/sys/kernel/random/uuid)
+RUN_ROOT="/kaggle/working/m2-03-p177-k0-$(date -u +%Y%m%dT%H%M%SZ)-$SESSION_ID"
+export ADAPTIVE_TELEMETRY_PATH="$RUN_ROOT/adaptive_telemetry.jsonl"
+python -m experiments.protocol_b_boundary prepare-control "$RUN_ROOT" \
+  --session "$SESSION_ID" --baseline "$BASELINE"
+export PROTOCOL_B_BOUNDARY_CONFIG="$RUN_ROOT/adaptive/boundary_config.json"
+
+finish_control() {
+  local prior=$?
+  trap - EXIT
+  set +e
+  bash scripts/switch_lane.sh stop > "$RUN_ROOT/final-stop.log" 2>&1
+  local stopped=$?
+  if [ "$stopped" -eq 0 ] && ! grep -Fq 'GPU vẫn còn' "$RUN_ROOT/final-stop.log" \
+      && [ -f "$RUN_ROOT/instrumentation.json" ]; then
+    python -m experiments.protocol_b_boundary restore "$RUN_ROOT" > "$RUN_ROOT/restore.log" 2>&1
+    if [ "$?" -ne 0 ]; then prior=1; fi
+  else
+    prior=1
+  fi
+  python -m experiments.protocol_b_boundary analyze-control "$RUN_ROOT" > "$RUN_ROOT/analysis.log" 2>&1
+  if [ "$?" -ne 0 ]; then prior=1; fi
+  printf '%s\n' "$prior" > "$RUN_ROOT/workflow-exit-code.txt"
+  python -m experiments.protocol_b_boundary seal "$RUN_ROOT"
+  if [ "$?" -ne 0 ]; then prior=1; fi
+  unset M203_P177_PRODUCER_K0
+  exit "$prior"
+}
+trap finish_control EXIT
+git ls-files src scripts tests 'experiments/*.py' experiments/configs > "$RUN_ROOT/source-files.txt"
+tar -czf "$RUN_ROOT/execution-sources.tar.gz" -T "$RUN_ROOT/source-files.txt"
+python -m pip freeze > "$RUN_ROOT/packages.txt"
+nvidia-smi -q > "$RUN_ROOT/nvidia-before.txt"
+bash scripts/switch_lane.sh stop > "$RUN_ROOT/initial-stop.log" 2>&1
+if grep -Fq 'GPU vẫn còn' "$RUN_ROOT/initial-stop.log"; then exit 1; fi
+python -m experiments.protocol_b_boundary install "$RUN_ROOT"
+bash scripts/switch_lane.sh lane3 > "$RUN_ROOT/adaptive/switch.log" 2>&1
+python -m experiments.protocol_b_boundary capture-control "$RUN_ROOT" > "$RUN_ROOT/adaptive/capture.log" 2>&1
+cat logs/vllm_lane3.log > "$RUN_ROOT/adaptive/server.log"
+nvidia-smi -q > "$RUN_ROOT/nvidia-after.txt"
+```
+
+Only Adaptive is launched; the existing collector sends the 45 conditioning
+requests followed by sample 004, never all 54. Failure paths retain partial data,
+stop, restore known instrumentation, analyze once, and seal once. No retries.
+Never resume inference after a stop/restore failure. The environment gate must be
+unset before returning to canonical operation.
+
+Read `p177_k0_control.json`, raw events, journals, source/provenance bindings and
+exit logs. Control K/V equal to sealed Vanilla supports
+`SPECULATIVE_MULTI_TOKEN_FORWARD_DIVERGENCE`; unequal control K or V yields
+`RUNNER_OR_EXECUTION_PATH_STILL_DIFFERENT`, only after all gates pass. A missing
+or mismatched prefix/lineage/provenance/source record yields `INVALID_EVIDENCE`.
+The control need not retain the later mismatch-279 fingerprint. That fingerprint
+remains mandatory for the sealed canonical reference and ordinary canonical
+analysis; this separate result never grants canonical acceptance.
+
+Always retain `non_canonical=true`, `task_done=false`,
+`same_kv_cache_state_proven=false`, `historical_kv_state_equivalent=false`,
+`temporal_kv_onset=UNKNOWN`, and `interpretation_status=NOT_YET_APPROVED`.
+The classification does not isolate projection arithmetic from cache writing,
+establish all-layer equality, or prove general speculative-decoding incorrectness.

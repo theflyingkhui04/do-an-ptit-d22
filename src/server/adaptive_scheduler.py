@@ -24,6 +24,7 @@ from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 
 from src.server.budget_planner import AdaptiveBudgetPlanner, StepPlan, _env_flag
 from experiments.protocol_b_boundary_observer import observe as _pb279_observe
+from experiments.protocol_b_boundary_observer import control_producer as _pb177_control
 
 logger = init_logger(__name__)
 
@@ -72,6 +73,7 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         return super().schedule(*args, **kwargs)
 
     def _update_after_schedule(self, scheduler_output) -> None:
+        _pb177_control(self, scheduler_output)
         super()._update_after_schedule(scheduler_output)
         if not self._planner.per_request:
             _pb279_observe("early_schedule", self, scheduler_output)

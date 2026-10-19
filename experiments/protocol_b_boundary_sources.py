@@ -104,6 +104,8 @@ POSTWRITE_INSERTIONS = {
 # Keep runtime changes distinct from observation-only INSERTIONS in code and evidence.
 DRAFT_SOURCE = "v1/spec_decode/draft_model.py"
 RUNTIME_FIXES = {DRAFT_SOURCE: "draft-tokenizer-revision-v1"}
+CONTROL_DEPENDENCIES = {"v1/core/sched/async_scheduler.py":
+    "e586a0ef3c6778be56a93e7f9bb712d4de9de6e7d7fe7e3e1d51dae83ecfc508"}
 PATCHED_FILES = (*INSERTIONS, *RUNTIME_FIXES)
 DRAFT_TOKENIZER_CALL = (
     "            draft_tokenizer = get_tokenizer(\n"
@@ -125,9 +127,33 @@ class StripObserver(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
+def normalize_scheduler_control(patched):
+    """Remove only the declared env/profile-gated control entry, never an arbitrary mutation."""
+    tree = ast.parse(patched)
+    expected_import = ast.parse(
+        "from experiments.protocol_b_boundary_observer import control_producer as _pb177_control").body[0]
+    imports = [n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)
+               and any(a.name == "control_producer" or a.asname == "_pb177_control" for a in n.names)]
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Name) and n.func.id == "_pb177_control"]
+    if not imports and not calls:
+        return tree  # Historical observation-only scheduler source.
+    require(len(imports) == len(calls) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+            and imports[0] in tree.body, "Unapproved diagnostic scheduler control import")
+    methods = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_update_after_schedule"]
+    hook = ast.parse("_pb177_control(self, scheduler_output)").body[0]
+    native = ast.parse("super()._update_after_schedule(scheduler_output)").body[0]
+    require(len(methods) == 1 and len(methods[0].body) >= 2
+            and ast.dump(methods[0].body[0]) == ast.dump(hook)
+            and ast.dump(methods[0].body[1]) == ast.dump(native), "Control must immediately precede native super")
+    tree.body.remove(imports[0])
+    methods[0].body.pop(0)
+    return tree
+
+
 def validate_scheduler_observation(raw, patched):
     """Permit only the two scoped observations in the frozen scheduler glue."""
-    tree = ast.parse(patched)
+    tree = normalize_scheduler_control(patched)
     imports = [n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)
                and n.module == "experiments.protocol_b_boundary_observer"]
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
@@ -259,12 +285,29 @@ def install(directory):
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("xb") as handle:
             handle.write(raw)
-    write_new(Path(directory) / "instrumentation.json", {
+    metadata = {
         "vllm_root": str(root), "original_hashes": HASHES,
         "patched_hashes": {name: hashlib.sha256(raw).hexdigest() for name, raw in patched.items()},
         "runtime_fixes": RUNTIME_FIXES,
         "observer_sha256": hashlib.sha256(
-            (ROOT / "experiments/protocol_b_boundary_observer.py").read_bytes()).hexdigest()})
+            (ROOT / "experiments/protocol_b_boundary_observer.py").read_bytes()).hexdigest()}
+    manifest_path = Path(directory) / "manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text())
+        if manifest.get("control_profile"):
+            from experiments.protocol_b_boundary_observer import CONTROL_PROFILE
+            require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
+                    "Unsupported source control profile")
+            metadata["scheduler_control"] = manifest["source_auth"]
+            for name, digest in CONTROL_DEPENDENCIES.items():
+                data = (root / name).read_bytes()
+                require(hashlib.sha256(data).hexdigest() == digest, "Control native scheduler source drift")
+                path = backup / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("xb") as handle:
+                    handle.write(data)
+            metadata["control_dependencies"] = CONTROL_DEPENDENCIES
+    write_new(Path(directory) / "instrumentation.json", metadata)
     # Every backup/provenance file exists before the first installed-source write.
     for name, raw in patched.items():
         _write_atomically(root / name, raw)
@@ -281,6 +324,25 @@ def authenticate(directory, installed=False):
     patched_hashes = {name: hashlib.sha256(supported[name]).hexdigest() for name in PATCHED_FILES}
     require(state["patched_hashes"] == patched_hashes, "KV patched source hashes differ")
     expected = {name: hashlib.sha256(raw).hexdigest() for name, raw in supported.items()}
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+    if manifest.get("control_profile"):
+        from experiments.protocol_b_boundary_observer import CONTROL_PROFILE
+        require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
+                "Unsupported authenticated control profile")
+        require(state.get("scheduler_control") == manifest["source_auth"], "Scheduler control source binding differs")
+        require(state.get("control_dependencies") == CONTROL_DEPENDENCIES, "Control dependency declaration differs")
+        for name, digest in CONTROL_DEPENDENCIES.items():
+            require(hashlib.sha256((directory / "vllm-originals" / name).read_bytes()).hexdigest() == digest,
+                    "Preserved control dependency drift")
+            if installed:
+                require(hashlib.sha256((Path(state["vllm_root"]) / name).read_bytes()).hexdigest() == digest,
+                        "Installed control dependency drift")
+        if installed:
+            require(hashlib.sha256((ROOT / "src/server/adaptive_scheduler.py").read_bytes()).hexdigest()
+                    == state["scheduler_control"]["scheduler_sha256"], "Installed scheduler control source drift")
+    else:
+        require("scheduler_control" not in state, "Control source declaration on canonical run")
     if installed:
         spec = importlib.util.find_spec("vllm")
         require(spec is not None and Path(spec.origin).parent.resolve()
@@ -291,8 +353,11 @@ def authenticate(directory, installed=False):
         require(state["observer_sha256"] == hashlib.sha256(
             Path(__file__).with_name("protocol_b_boundary_observer.py").read_bytes()).hexdigest(),
             "KV observer source drift")
-    return dict(original_hashes=HASHES, installed_hashes=expected,
-                observer_sha256=state["observer_sha256"], runtime_fixes=RUNTIME_FIXES)
+    result = dict(original_hashes=HASHES, installed_hashes=expected,
+                  observer_sha256=state["observer_sha256"], runtime_fixes=RUNTIME_FIXES)
+    if manifest.get("control_profile"):
+        result["control_dependencies"] = CONTROL_DEPENDENCIES
+    return result
 
 
 def restore(directory):
@@ -300,6 +365,12 @@ def restore(directory):
     directory = Path(directory)
     state = json.loads((directory / "instrumentation.json").read_text())
     root = Path(state["vllm_root"])
+    if "scheduler_control" in state:
+        require(state.get("control_dependencies") == CONTROL_DEPENDENCIES, "Control restore dependency declaration differs")
+        for name, digest in CONTROL_DEPENDENCIES.items():
+            require(hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
+                    and hashlib.sha256((directory / "vllm-originals" / name).read_bytes()).hexdigest() == digest,
+                    "Control native dependency changed before restoration")
     originals = {name: (directory / "vllm-originals" / name).read_bytes() for name in HASHES}
     for name, raw in originals.items():
         require(hashlib.sha256(raw).hexdigest() == HASHES[name], "Backup drift")

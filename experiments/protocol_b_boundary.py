@@ -15,6 +15,7 @@ from experiments.protocol_b_capture import capture, command, reserve_run, server
 from experiments.protocol_b_boundary_observer import (map_rows, selected_tokens,
     history_slots, validate_full_binding, LAYER1, LOCALIZATION_SCHEMA, EARLY_SCHEMA,
     POSTWRITE_SCHEMA, position177_slot, postwrite_ownership)
+from experiments.protocol_b_boundary_observer import CONTROL_PROFILE
 
 CHECKPOINT = "4372f8b81998e8a50ee2b87ea6d7c4a9c4b523c5"
 BASE_EXECUTION = "a63baa1c42fd75f542f876ab512765149ddd5e20"
@@ -22,6 +23,10 @@ EVIDENCE = "experiments/runs/m2_03/protocol_b_20261018T085118Z_2aad4c00"
 SAMPLE = "w3_business_v2_004"
 TARGET = 279
 SCHEMA = "m203.boundary.comparison.v1"
+CONTROL_CHECKPOINT = "9c0f15e8ebcef4d3fff3bd4aa07b6f41d3288ff2"
+CONTROL_BASELINE_NAME = "postwrite-position177-c306aef-20261019T041028Z.tar.gz"
+CONTROL_BASELINE_BLOB = "b5590f982b97c0aa6a05ea0217eb6413f7bb2510"
+CONTROL_BASE_EXECUTION = "c306aef3c8ffea97aa2e045507c2245ee77df220"
 
 # Approved orchestration-only fix:
 # switch_lane.sh must invoke tracked launchers via `bash` instead of chmod +x,
@@ -907,15 +912,403 @@ def seal(directory):
             handle.write(f"{file_sha(path)}  {path.relative_to(directory).as_posix()}\n")
 
 
+def control_packages(text):
+    return sorted(line.strip() for line in text.splitlines() if line.strip())
+
+
+def control_baseline(archive):
+    """Read the pinned sealed artifact; replay CPU validators in a disposable copy only."""
+    import hashlib
+    import io
+    import tarfile
+    import tempfile
+    from pathlib import PurePosixPath
+    archive = Path(archive)
+    raw = archive.read_bytes()
+    require(archive.name == CONTROL_BASELINE_NAME and hashlib.sha1(
+        b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest() == CONTROL_BASELINE_BLOB,
+        "Control baseline archive identity differs")
+    files = {}
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            path = PurePosixPath(member.name)
+            require(not path.is_absolute() and ".." not in path.parts and "\\" not in member.name,
+                    "Unsafe baseline archive path")
+            if member.isdir():
+                continue
+            require(member.isfile() and str(path) not in files, "Unsupported/duplicate archive member")
+            files[str(path)] = tar.extractfile(member).read()
+    manifests = [p for p in files if p.endswith("/manifest.json") or p == "manifest.json"]
+    require(len(manifests) == 1, "Ambiguous baseline manifest")
+    prefix = manifests[0][:-len("manifest.json")]
+    require(all(p.startswith(prefix) for p in files), "Baseline archive has unrelated roots")
+    files = {p[len(prefix):]: value for p, value in files.items()}
+    seals = {}
+    for line in files["SHA256SUMS"].decode().splitlines():
+        digest, name = line.split("  ", 1)
+        require(name not in seals and re.fullmatch(r"[0-9a-f]{64}", digest), "Invalid baseline seal")
+        seals[name] = digest
+    require(set(seals) == set(files) - {"SHA256SUMS"}
+            and all(hashlib.sha256(files[p]).hexdigest() == digest for p, digest in seals.items()),
+            "Baseline seal mismatch")
+    with tempfile.TemporaryDirectory(prefix="m203-baseline-read-") as tmp:
+        root = Path(tmp)
+        for name, data in files.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        original_report = load_json(root / "boundary_comparison.json")
+        (root / "boundary_comparison.json").unlink()  # Derived verification copy, never historical evidence.
+        report = analyze(root)
+        require(original_report["status"] == report["status"] == "INTERPRETABLE"
+                and report["postwrite_position177"]["classification"] == "IMMEDIATE_STORED_KV_DIVERGENCE"
+                and report["postwrite_position177"]["immediate"] == dict(K_equal=False, V_equal=False)
+                and all(all(link.values()) for link in report["postwrite_position177"]["later_linkage"].values()),
+                "Sealed baseline no longer validates")
+        manifest = load_json(root / "manifest.json")
+        require(manifest["execution_sha"] == CONTROL_BASE_EXECUTION, "Baseline execution differs")
+        runs = {lane: load_json(root / lane / "run.json") for lane in ("vanilla", "adaptive")}
+        events = {lane: [load_json(p) for p in (root / lane / "observer").glob("*.json")] for lane in runs}
+        posts = {lane: next(e for e in events[lane] if e["kind"] == "postwrite_position177") for lane in runs}
+        history = next(e for e in events["adaptive"] if e["kind"] == "kv_history")
+        step = report["early_timeline"]["first_coverage_step"]
+        consumer = next(e for e in events["adaptive"] if e["kind"] == "early_verify" and e["schedule_seq"] == step)
+        producer = next(e for e in events["adaptive"] if e["kind"] == "early_schedule"
+                        and e["schedule_seq"] == consumer["producer_schedule_seq"])
+        require(producer["num_spec_tokens_to_schedule"] == 3, "Baseline producer budget differs")
+        with tarfile.open(fileobj=io.BytesIO(files["execution-sources.tar.gz"]), mode="r:gz") as tar:
+            scheduler = tar.extractfile("src/server/adaptive_scheduler.py").read()
+        require(hashlib.sha256(scheduler).hexdigest() == runs["adaptive"]["environment"]["source_hashes"]
+                ["src/server/adaptive_scheduler.py"], "Sealed scheduler source differs")
+        return dict(identity=dict(evidence_checkpoint=CONTROL_CHECKPOINT, archive_name=archive.name,
+                    archive_sha256=hashlib.sha256(raw).hexdigest(), git_blob=CONTROL_BASELINE_BLOB,
+                    execution_sha=CONTROL_BASE_EXECUTION), manifest=manifest, runs=runs, postwrites=posts,
+                    prefix={c: history["layers"][LAYER1]["localization"][c]["position_sha256"][:177] for c in ("K", "V")},
+                    normal_producer_budget=producer["num_spec_tokens_to_schedule"], scheduler_source=scheduler.decode(),
+                    packages=control_packages(files["packages.txt"].decode()))
+
+
+def control_scheduler_auth(baseline):
+    import ast
+    from experiments.protocol_b_boundary_sources import StripObserver, validate_scheduler_observation
+    raw = ast.unparse(StripObserver().visit(ast.parse(baseline["scheduler_source"]))).encode()
+    path = ROOT / "src/server/adaptive_scheduler.py"
+    validate_scheduler_observation(raw, path.read_bytes())
+    return dict(profile=CONTROL_PROFILE, scheduler_sha256=file_sha(path),
+                mutation="one P176 producer SchedulerOutput.num_spec_tokens_to_schedule=0")
+
+
+def prepare_control(directory, session, archive):
+    from experiments.protocol_b import CONFIG_ENV
+    require(os.environ.get("M203_P177_PRODUCER_K0") == "1", "Explicit control env gate required")
+    require(not command(["git", "status", "--porcelain", "--untracked-files=no"]), "Require reviewed clean checkout")
+    baseline = control_baseline(archive)
+    source_auth = control_scheduler_auth(baseline)
+    original = baseline["runs"]["adaptive"]
+    require([i for i, r in enumerate(original["records"][:46])
+             if r["prompt_token_ids"] == original["records"][45]["prompt_token_ids"]] == [45],
+            "Control prompt identity is ambiguous in the conditioning prefix")
+    env = original["environment"]
+    require(load_plan() == baseline["manifest"]["plan"], "Control frozen plan differs")
+    require(os.environ["CUDA_VISIBLE_DEVICES"] == env["gpu_uuid"]
+            and Path("/proc/sys/kernel/random/boot_id").read_text().strip() == env["boot_id"], "Control physical session differs")
+    for key in CONFIG_ENV:
+        if key != "ADAPTIVE_TELEMETRY_PATH":
+            require(os.environ.get(key) == env["config"]["environment"][key], "Control environment differs: " + key)
+    for path, digest in env["source_hashes"].items():
+        if path != "src/server/adaptive_scheduler.py":
+            require(file_sha(ROOT / path) == digest, "Frozen inference source differs: " + path)
+    require(all(file_sha(ROOT / path) == digest for path, digest in env["launcher_hashes"].items()), "Control launcher changed")
+    directory.mkdir(exist_ok=False)
+    manifest = dict(schema="m203.p177-k0.manifest.v1", non_canonical=True, control_profile=CONTROL_PROFILE,
+        created_at=utc_now(), execution_sha=command(["git", "rev-parse", "HEAD"]), session_id=session,
+        baseline_archive=str(Path(archive).resolve()), baseline_identity=baseline["identity"],
+        source_auth=source_auth, plan=baseline["manifest"]["plan"],
+        source_hashes={p: file_sha(ROOT / p) for p in ("experiments/protocol_b_boundary.py",
+            "experiments/protocol_b_boundary_observer.py", "experiments/protocol_b_boundary_sources.py",
+            "src/server/adaptive_scheduler.py")}, task_done=False)
+    write_new(directory / "manifest.json", manifest)
+    output = directory / "adaptive"
+    reserve_run(output, "boundary279", "adaptive", "adaptive", session)
+    (output / "observer").mkdir()
+    prompt = manifest["plan"]["prompts"][45]
+    write_new(output / "boundary_config.json", dict(directory=str(output.resolve()), lane="adaptive", sample_id=SAMPLE,
+        target=TARGET, non_canonical=True, early_timeline=True, postwrite_position177=True, kv_probe=True,
+        layer1_localization=False, execution_sha=manifest["execution_sha"],
+        prompt_token_ids=original["records"][45]["prompt_token_ids"], p177_k0_control=dict(profile=CONTROL_PROFILE,
+            request=prompt["request"], request_sha256=prompt["request_sha256"],
+            baseline_sha256=baseline["identity"]["archive_sha256"], normal_producer_budget=baseline["normal_producer_budget"],
+            token_prefix=original["records"][45]["token_ids"][:2])))
+
+
+def capture_control(directory):
+    require(os.environ.get("M203_P177_PRODUCER_K0") == "1", "Control env gate required")
+    manifest = load_json(directory / "manifest.json")
+    require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
+            "Not a control run")
+    config = directory / "adaptive/boundary_config.json"
+    require(Path(os.environ["PROTOCOL_B_BOUNDARY_CONFIG"]).resolve() == config.resolve(), "Control config path differs")
+    require(all(file_sha(ROOT / p) == sha for p, sha in manifest["source_hashes"].items()), "Control execution source drift")
+    baseline = control_baseline(manifest["baseline_archive"])
+    require(baseline["identity"] == manifest["baseline_identity"]
+            and control_scheduler_auth(baseline) == manifest["source_auth"], "Control baseline/source drift")
+    require(os.environ["CUDA_VISIBLE_DEVICES"] == baseline["runs"]["adaptive"]["environment"]["gpu_uuid"]
+            and Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+                == baseline["runs"]["adaptive"]["environment"]["boot_id"], "Control physical session changed")
+    live = server_processes("adaptive")
+    require(live["_process_environment"].get("M203_P177_PRODUCER_K0") == "1"
+            and live["_process_environment"].get("PROTOCOL_B_BOUNDARY_CONFIG") == str(config.resolve()),
+            "Server did not inherit control env/config")
+    packages = command([live["executable"], "-m", "pip", "freeze"], env=live["_process_environment"])
+    require(control_packages(packages) == baseline["packages"], "Control serving packages differ from sealed baseline")
+    with (directory / "server-packages.txt").open("x", encoding="utf-8") as handle:
+        handle.write(packages + "\n")
+    write_new(directory / "adaptive/observer_binding.json", dict(config_sha256=file_sha(config),
+        config_fingerprint=fingerprint(load_json(config)), server_pid=live["pid"],
+        process_start_ticks=live["process_start_ticks"], control_env="1"))
+    verify_instrumentation(directory)
+    try:
+        return capture(directory / "adaptive", "boundary279", "adaptive", "adaptive", manifest["session_id"],
+                       reserved=True, diagnostic_through=SAMPLE)
+    finally:
+        verify_instrumentation(directory)
+
+
+def control_result():
+    return dict(status="INVALID_EVIDENCE", classification="INVALID_EVIDENCE", non_canonical=True,
+        task_done=False, same_kv_cache_state_proven=False, historical_kv_state_equivalent=False,
+        temporal_kv_onset="UNKNOWN", interpretation_status="NOT_YET_APPROVED")
+
+
+def compare_control(events, record, settings, baseline, authenticated):
+    """Separate diagnostic contract: never relax the canonical fingerprint/first-speculative gates."""
+    result = control_result()
+    try:
+        require(settings["non_canonical"] is True and settings["lane"] == "adaptive"
+                and settings["p177_k0_control"]["profile"] == CONTROL_PROFILE
+                and settings["p177_k0_control"]["baseline_sha256"] == baseline["identity"]["archive_sha256"],
+                "Control profile/baseline differs")
+        require(record["sample_id"] == SAMPLE and record["ok"] is True
+                and record["prompt_token_ids"] == settings["prompt_token_ids"]
+                == baseline["runs"]["adaptive"]["records"][45]["prompt_token_ids"]
+                and len(record["prompt_token_ids"]) == 176
+                and record["request_sha256"] == settings["p177_k0_control"]["request_sha256"]
+                == fingerprint(settings["p177_k0_control"]["request"])
+                and record["token_ids"][:2] == baseline["runs"]["adaptive"]["records"][45]["token_ids"][:2],
+                "Control request/token prefix differs")
+        require(not any(e["kind"] == "observer_error" for e in events), "Control observer errors")
+        require(all(e["schema"] == "m203.boundary.event.v1" and e["lane"] == "adaptive"
+                    and e["execution_sha"] == settings["execution_sha"]
+                    and e["config_fingerprint"] == fingerprint(settings) for e in events), "Control event config identity differs")
+        def one(kind):
+            selected = [e for e in events if e["kind"] == kind]
+            require(len(selected) == 1, "Missing/duplicate " + kind)
+            return selected[0]
+        override, native, producer, drafts, consumer = [one("p177_control_" + k)
+                                                       for k in ("override", "native", "producer", "drafts", "consumer")]
+        post = one("postwrite_position177")
+        selected = (override, native, producer, drafts, consumer, post)
+        require(all(e["non_canonical"] is True and e["control_profile"] == CONTROL_PROFILE
+                    and e["control_id"] == override["control_id"] and e["pid"] == override["pid"]
+                    and e["request_id"] == override["request_id"] for e in selected)
+                and same_request(post["request_id"], record["response_id"]), "Control lineage identity differs")
+        require(all(isinstance(e["timestamp"], str) and e["timestamp"] for e in selected)
+                and [e["timestamp"] for e in selected] == sorted(e["timestamp"] for e in selected),
+                "Control runtime event order differs")
+        seq = override["producer_seq"]
+        require(type(override["override_count"]) is int and override["override_count"] == 1
+                and type(override["original_budget"]) is int
+                and override["original_budget"] == baseline["normal_producer_budget"] > 0
+                and override["effective_budget"] == native["effective_budget"] == 0
+                and override["original_plan"]["batch_k"] == override["original_budget"]
+                and override["original_plan"]["per_request_k"][post["request_id"]] == override["original_budget"]
+                and override["request_sha256"] == record["request_sha256"]
+                and override["baseline_sha256"] == baseline["identity"]["archive_sha256"]
+                and native["next_placeholders"] == [] and drafts["produced_count"] == 0,
+                "Control zero-budget/native draft proof failed")
+        require(all(e["producer_seq"] == seq for e in selected[:-1])
+                and all(e["scheduler_output_id"] == override["scheduler_output_id"] for e in (native, producer, drafts))
+                and consumer["scheduler_output_id"] != override["scheduler_output_id"]
+                and consumer["scheduler_output_id"] == post["scheduler_output_id"]
+                and consumer["schedule_seq"] == post["schedule_seq"] > seq,
+                "Control producer/consumer object linkage differs")
+        require(producer["actual_positions"] == [176] and consumer["actual_positions"] == post["actual_positions"] == [177]
+                and producer["active_query"] == [[176, record["token_ids"][0]]]
+                and consumer["active_query"] == post["active_query"] == [[177, record["token_ids"][1]]]
+                and post["input_token_id"] == record["token_ids"][1]
+                and consumer["scheduled_spec_tokens"] == [], "Control actual queries differ")
+        schedules = [e for e in events if e["kind"] == "early_schedule" and e["request_id"] == post["request_id"]]
+        ps = [e for e in schedules if e["schedule_seq"] == seq]
+        cs = [e for e in schedules if e["schedule_seq"] == post["schedule_seq"]]
+        require(len(ps) == len(cs) == 1 and ps[0]["scheduler_output_id"] == override["scheduler_output_id"]
+                and ps[0]["num_spec_tokens_to_schedule"] == 0 and ps[0]["next_placeholders"] == []
+                and ps[0]["planned_k"] == ps[0]["batch_k"] == override["original_budget"]
+                and cs[0]["placeholder_origin_schedule_seq"] == seq
+                and cs[0]["scheduled_spec_decode_tokens"] == [], "Control native early timeline differs")
+        verifies = sorted([e for e in events if e["kind"] == "early_verify" and e["request_id"] == post["request_id"]],
+                          key=lambda e: e["schedule_seq"])
+        covering = [e for e in verifies if any(p == 177 for p, _ in e["active_query"])]
+        require(covering and covering[0]["schedule_seq"] == post["schedule_seq"]
+                and covering[0]["scheduler_output_id"] == post["scheduler_output_id"]
+                and covering[0]["decoding_path"] == "ordinary" and covering[0]["verification_draft_slots"] == 0
+                and covering[0]["active_query"] == [[177, record["token_ids"][1]]]
+                and len({e["schedule_seq"] for e in covering}) == len(covering), "First ordinary coverage not proven")
+        auth = [e for e in events if e["kind"] == "kv_sources" and e["auth_id"] == post["auth_id"] and e["pid"] == post["pid"]]
+        require(len(auth) == 1 and all(auth[0][k] == v for k, v in authenticated.items()), "Control source auth differs")
+        require(post["postwrite_schema"] == POSTWRITE_SCHEMA and post["target_layer"] == LAYER1
+                and post["phase"] == "post_target_forward" and post["logical_position"] == 177
+                and post["hook"] == "postwrite_v1" and post["graph_mode"] == "PIECEWISE"
+                and post["batch_row"] == post["request_state_index"] == post["selected_row"] == 0
+                and post["capture_id"] is None and post["descriptor"] is None
+                and post["capture_warmup"] is False and post["device_wide_synchronize"] is False
+                and post["runtime_probe_changes_timing"] is True and post["blocking_device_to_cpu"] is True,
+                "Control post-write phase/binding differs")
+        binding, identity = post["runtime_binding"], post["cache_identity"]
+        require(binding["layers"][LAYER1]["cache"] == identity and identity["device"].startswith("cuda")
+                and post["execution_stream"]["device"] == identity["device"]
+                and type(post["execution_stream"]["cuda_stream"]) is int
+                and post["execution_stream"]["cuda_stream"] >= 0, "Control cache/stream differs")
+        postwrite_ownership(binding, post["cache_peers"])
+        shape = identity["shape"]
+        location = position177_slot(post["block_table"], post["write_slots"], [177], shape[2], shape[0])
+        require(all(post[k] == v for k, v in location.items())
+                and len(post["write_slots"]) == binding["inputs"]["positions"]["shape"][0]
+                == binding["layers"][LAYER1]["metadata"]["slot_mapping"]["shape"][0], "Control slot extent differs")
+        h, d = shape[1], shape[3] // 2
+        require(shape[3] == 2*d and post["dtype"] == "torch.float16" and post["shape"] == [h, d]
+                and post["heads"] == h and post["head_dim"] == d
+                and post["element_count"] == h*d and post["byte_count"] == h*d*2
+                and post["total_value_bytes"] == h*d*4
+                and post["canonical_order"] == ["kv_head", "head_dimension"], "Control byte representation differs")
+        prefix = post["prefix_0_176"]
+        require(prefix["logical_positions"] == list(range(177)) and prefix["dtype"] == post["dtype"]
+                and prefix["shape"] == [177, h, d] and prefix["bytes_per_position"] == post["byte_count"]
+                and prefix["canonical_order"] == post["canonical_order"]
+                and all(prefix[c] == baseline["prefix"][c] for c in ("K", "V")), "Control prefix K/V mismatch")
+        prefix_slots = [post["block_table"][p // shape[2]] * shape[2] + p % shape[2] for p in range(177)]
+        require(len(set(prefix_slots)) == 177 and all(0 <= s < shape[0]*shape[2] for s in prefix_slots)
+                and not set(prefix_slots).intersection(s for s in post["write_slots"] if s >= 0), "Control prefix slot alias")
+        for lane, reference in baseline["postwrites"].items():
+            require(all(post[k] == reference[k] for k in ("dtype", "shape", "heads", "head_dim", "byte_count", "canonical_order")),
+                    "Control/baseline digest representation differs")
+            require(all(re.fullmatch(r"[0-9a-f]{64}", reference[c]["sha256"])
+                        and re.fullmatch(r"[0-9a-f]{64}", post[c]["sha256"]) for c in ("K", "V")), "Malformed control digest")
+        require(any(baseline["postwrites"]["vanilla"][c] != baseline["postwrites"]["adaptive"][c] for c in ("K", "V")),
+                "Baseline normal does not differ from Vanilla")
+        comparisons = {lane: {c + "_equal": post[c]["sha256"] == reference[c]["sha256"] for c in ("K", "V")}
+                       for lane, reference in baseline["postwrites"].items()}
+        result.update(status="INTERPRETABLE", override_count=1,
+            producer=dict(actual_positions=[176], original_budget=override["original_budget"], effective_budget=0),
+            consumer=dict(actual_positions=[177], scheduled_spec_tokens=[]),
+            prefix_0_176=dict(K_all_equal=True, V_all_equal=True), control_vs_vanilla=comparisons["vanilla"],
+            control_vs_adaptive_normal=comparisons["adaptive"], classification="SPECULATIVE_MULTI_TOKEN_FORWARD_DIVERGENCE"
+                if all(comparisons["vanilla"].values()) else "RUNNER_OR_EXECUTION_PATH_STILL_DIFFERENT")
+    except (EvidenceError, KeyError, TypeError, ValueError, IndexError) as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def analyze_control(directory):
+    import tarfile
+    result = control_result()
+    try:
+        from experiments.protocol_b import validate_run
+        from experiments.protocol_b_capture import parse_completion
+        from experiments.protocol_b_boundary_sources import authenticate
+        manifest = load_json(directory / "manifest.json")
+        require(manifest["control_profile"] == CONTROL_PROFILE and manifest["non_canonical"] is True,
+                "Not a control manifest")
+        baseline = control_baseline(manifest["baseline_archive"])
+        require(baseline["identity"] == manifest["baseline_identity"], "Control archive binding differs")
+        require(control_packages((directory / "packages.txt").read_text())
+                == control_packages((directory / "server-packages.txt").read_text()) == baseline["packages"],
+                "Control package identity differs from sealed baseline")
+        output = directory / "adaptive"
+        run, config = load_json(output / "run.json"), load_json(output / "boundary_config.json")
+        require(config["execution_sha"] == run["environment"]["git_sha"] == manifest["execution_sha"], "Control execution differs")
+        require(run["session_id"] == manifest["session_id"] if "session_id" in run else
+                run["environment"]["session_id"] == manifest["session_id"], "Control session differs")
+        expected = {(p["workload"], p["sample_id"]): p for p in manifest["plan"]["prompts"][:46]}
+        require(manifest["plan"] == baseline["manifest"]["plan"], "Control plan differs")
+        validate_run(run, expected, "boundary279", "adaptive", run["environment"])
+        require(run["diagnostic_only"] is True and run["diagnostic_through"] == SAMPLE
+                and [r["sample_id"] for r in run["records"]] == [p["sample_id"] for p in manifest["plan"]["prompts"][:46]],
+                "Control replay order/count differs")
+        old, new = baseline["runs"]["adaptive"]["environment"], run["environment"]
+        require({k: v for k, v in new.items() if k not in ("git_sha", "session_id", "source_hashes", "config")}
+                == {k: v for k, v in old.items() if k not in ("git_sha", "session_id", "source_hashes", "config")},
+                "Control runtime/package/model identity differs")
+        def comparable_config(value):
+            import copy
+            value = copy.deepcopy(value)
+            value["environment"].pop("ADAPTIVE_TELEMETRY_PATH", None)
+            return value
+        require(comparable_config(new["config"]) == comparable_config(old["config"]), "Control sampling/cache/graph config differs")
+        require(set(new["source_hashes"]) == set(old["source_hashes"])
+                and all(digest == old["source_hashes"][p] for p, digest in new["source_hashes"].items()
+                        if p != "src/server/adaptive_scheduler.py")
+                and new["source_hashes"]["src/server/adaptive_scheduler.py"] == manifest["source_auth"]["scheduler_sha256"],
+                "Control frozen source hashes differ")
+        require(file_sha(output / "responses.jsonl") == run["responses_sha256"], "Control journal hash differs")
+        journal = [json.loads(line) for line in (output / "responses.jsonl").read_text().splitlines()]
+        require(len(journal) == 92, "Incomplete control journal")
+        for i, (r, p) in enumerate(zip(run["records"], manifest["plan"]["prompts"][:46])):
+            attempt, response = journal[i*2:i*2+2]
+            payload = dict(p["request"], model=attempt["request"]["model"], return_token_ids=True)
+            require(attempt["event"] == "attempt" and response["event"] == "result"
+                    and response["http_status"] == 200 and response["record"] == r
+                    and attempt["request"] == response["request"] == payload
+                    and all(r[k] == v for k, v in parse_completion(json.loads(response["raw_response_body"]), payload["model"]).items()),
+                    "Control raw request/response differs")
+        binding = load_json(output / "observer_binding.json")
+        require(binding["config_sha256"] == file_sha(output / "boundary_config.json")
+                and binding["config_fingerprint"] == fingerprint(config) and binding["control_env"] == "1"
+                and binding["server_pid"] == run["live_server"]["pid"]
+                and binding["process_start_ticks"] == run["live_server"]["process_start_ticks"], "Control live/config binding differs")
+        require(manifest["source_auth"]["profile"] == CONTROL_PROFILE, "Missing scheduler control auth")
+        import ast
+        import hashlib
+        import tarfile
+        from experiments.protocol_b_boundary_sources import StripObserver, validate_scheduler_observation
+        with tarfile.open(directory / "execution-sources.tar.gz", mode="r:gz") as tar:
+            code = {name: tar.extractfile(name).read() for name in manifest["source_hashes"]}
+        require(all(hashlib.sha256(code[name]).hexdigest() == digest for name, digest in manifest["source_hashes"].items()),
+                "Control execution source bundle differs")
+        original_scheduler = ast.unparse(StripObserver().visit(ast.parse(baseline["scheduler_source"]))).encode()
+        validate_scheduler_observation(original_scheduler, code["src/server/adaptive_scheduler.py"])
+        require(hashlib.sha256(code["src/server/adaptive_scheduler.py"]).hexdigest()
+                == manifest["source_auth"]["scheduler_sha256"]
+                and hashlib.sha256(code["experiments/protocol_b_boundary_observer.py"]).hexdigest()
+                == authenticate(directory)["observer_sha256"], "Control scheduler/helper source auth differs")
+        events = [load_json(p) for p in (output / "observer").glob("*.json")]
+        result = compare_control(events, run["records"][-1], config, baseline, authenticate(directory))
+    except (EvidenceError, OSError, KeyError, TypeError, ValueError, IndexError, tarfile.TarError, EOFError) as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    write_new(directory / "p177_k0_control.json", result)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("prepare", "install", "capture", "analyze", "restore", "seal"))
+    parser.add_argument("action", choices=("prepare", "install", "capture", "analyze", "restore", "seal",
+                                          "prepare-control", "capture-control", "analyze-control"))
     parser.add_argument("directory", type=Path)
     parser.add_argument("--session")
     parser.add_argument("--lane", choices=("vanilla", "adaptive"))
+    parser.add_argument("--baseline", type=Path)
     args = parser.parse_args()
     directory = args.directory.resolve()
-    if args.action == "prepare":
+    if args.action == "prepare-control":
+        require(args.session and args.baseline, "Control session/baseline required")
+        prepare_control(directory, args.session, args.baseline)
+    elif args.action == "capture-control":
+        capture_control(directory)
+    elif args.action == "analyze-control":
+        result = analyze_control(directory)
+        print(canonical_json(result))
+        if result["status"] != "INTERPRETABLE":
+            raise SystemExit(1)
+    elif args.action == "prepare":
         require(args.session, "Session required")
         prepare(directory, args.session)
     elif args.action in ("install", "restore"):
