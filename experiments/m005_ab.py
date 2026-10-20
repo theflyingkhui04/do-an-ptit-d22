@@ -39,6 +39,7 @@ def conditioned_prompts(plan):
 
 
 def prepare(directory, session, gpu, boot):
+    from experiments.protocol_b_capture import reserve_run
     plan = load_plan()
     conditioned_prompts(plan)
     reference = load_json(REFERENCE / 'pair1-vanilla/run.json')['records'][4]
@@ -51,7 +52,7 @@ def prepare(directory, session, gpu, boot):
               session_id=session, gpu_uuid=gpu, boot_id=boot, non_canonical=True, task_done=False))
     for condition in PROFILES:
         arm = directory / condition
-        arm.mkdir()
+        reserve_run(arm, 'm005-' + condition, 'm005-' + condition, 'adaptive', session)
         (arm / 'observer').mkdir()
         config = dict(profile=PROFILES[condition], condition=condition, sample_id=SAMPLE, index=INDEX,
                       prompt_token_ids=reference['prompt_token_ids'], request_sha256=REQUEST,
@@ -77,7 +78,7 @@ def capture_arm(directory, condition):
     arm = Path(directory).resolve() / condition
     config = load_json(arm / 'observer_config.json')
     capture(arm, 'm005-' + condition, 'm005-' + condition, 'adaptive', config['session_id'],
-            diagnostic_through=SAMPLE)
+            reserved=True, diagnostic_through=SAMPLE)
     authenticate(config['source_directory'])
 
 

@@ -21,6 +21,86 @@ from src.proposer.controller import AdaptiveDraftController
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture
+def prepared_reservations(tmp_path, monkeypatch):
+    # Preserve frozen input bytes; this test exercises lifecycle, not live capture.
+    plan = ab.load_json(ab.REFERENCE / 'frozen_plan.json')
+    monkeypatch.setattr(ab, 'load_plan', lambda: plan)
+    directory = tmp_path / 'run'
+    ab.prepare(directory, 'frozen-session', 'GPU-frozen', 'frozen-boot')
+    return directory
+
+
+@pytest.mark.parametrize('condition', ['A', 'B'])
+def test_prepare_creates_exact_arm_reservation(prepared_reservations, condition):
+    arm = prepared_reservations / condition
+    assert (arm / 'observer').is_dir()
+    assert (arm / 'observer_config.json').is_file()
+    assert ab.load_json(arm / 'reservation.json') == dict(
+        pair_id='m005-' + condition, run_id='m005-' + condition,
+        lane='adaptive', session_id='frozen-session')
+
+
+@pytest.mark.parametrize('condition', ['A', 'B'])
+def test_capture_arm_consumes_prepared_reservation(prepared_reservations, monkeypatch, condition):
+    from experiments import protocol_b_capture as capture
+    calls = []
+    monkeypatch.setattr(capture, 'capture', lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(ab, 'authenticate', lambda *_: None)
+    ab.capture_arm(prepared_reservations, condition)
+    assert calls == [((prepared_reservations / condition, 'm005-' + condition,
+                      'm005-' + condition, 'adaptive', 'frozen-session'),
+                     dict(reserved=True, diagnostic_through=ab.SAMPLE))]
+
+
+@pytest.mark.parametrize('condition', ['A', 'B'])
+def test_precreated_arm_reaches_capture_claim_without_mkdir(prepared_reservations, monkeypatch, condition):
+    from experiments import protocol_b_capture as capture
+    reached = []
+    def stop_before_runtime():
+        reached.append(True)
+        raise EvidenceError('CPU lifecycle probe: reservation accepted')
+    monkeypatch.setattr(capture, 'load_plan', stop_before_runtime)
+    with pytest.raises(EvidenceError, match='CPU lifecycle probe: reservation accepted'):
+        ab.capture_arm(prepared_reservations, condition)
+    assert reached == [True]
+    assert (prepared_reservations / condition / 'capture.claim').is_file()
+
+
+@pytest.mark.parametrize('field', ['pair_id', 'run_id', 'lane', 'session_id'])
+def test_wrong_m005_reservation_fails_before_claim(prepared_reservations, monkeypatch, field):
+    from experiments import protocol_b_capture as capture
+    path = prepared_reservations / 'A' / 'reservation.json'
+    reservation = ab.load_json(path)
+    reservation[field] = 'wrong'
+    path.write_text(json.dumps(reservation), encoding='utf-8')
+    monkeypatch.setattr(capture, 'load_plan', lambda: pytest.fail('Reached capture with wrong reservation'))
+    with pytest.raises(EvidenceError, match='Reservation mismatch'):
+        ab.capture_arm(prepared_reservations, 'A')
+    assert not (path.parent / 'capture.claim').exists()
+
+
+@pytest.mark.parametrize('completed', [False, True])
+def test_claimed_or_completed_m005_arm_cannot_be_reused(prepared_reservations, monkeypatch, completed):
+    from experiments import protocol_b_capture as capture
+    arm = prepared_reservations / 'A'
+    write_new(arm / 'capture.claim', {'timestamp': 'original'})
+    if completed:
+        write_new(arm / 'run.json', {'complete': True})
+    before = {p.name: p.read_bytes() for p in arm.iterdir() if p.is_file()}
+    monkeypatch.setattr(capture, 'load_plan', lambda: pytest.fail('Retried already claimed arm'))
+    with pytest.raises(FileExistsError): ab.capture_arm(prepared_reservations, 'A')
+    assert before == {p.name: p.read_bytes() for p in arm.iterdir() if p.is_file()}
+
+
+def test_generic_capture_still_rejects_arbitrary_existing_directory(tmp_path):
+    from experiments import protocol_b_capture as capture
+    arm = tmp_path / 'arbitrary'; arm.mkdir()
+    with pytest.raises(FileExistsError):
+        capture.capture(arm, 'pair1', 'run1', 'adaptive', 'session')
+    assert list(arm.iterdir()) == []
+
+
 @pytest.fixture(scope='module')
 def originals():
     data = {}
