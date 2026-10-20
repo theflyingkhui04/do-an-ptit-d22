@@ -88,8 +88,12 @@ def control_gpu_selection(expected, boot_id):
 
 
 def runtime(plan, session_id, live, *, gpu_selection=None):
-    require(not command(["git", "status", "--porcelain", "--untracked-files=no"]),
-            "Execution checkout must have no tracked edits")
+    if live.get('_process_environment', {}).get('M203_M005_CONFIG'):
+        from experiments.m005_ab import validate_execution_checkout
+        validate_execution_checkout(live['_process_environment']['M203_M005_CONFIG'])
+    else:
+        require(not command(["git", "status", "--porcelain", "--untracked-files=no"]),
+                "Execution checkout must have no tracked edits")
     settings = live["environment"]
     require(all(settings[k] == os.environ.get(k) for k in CONFIG_ENV),
             "Live process differs from frozen session environment")
@@ -332,12 +336,21 @@ def capture(output, pair_id, run_id, lane, session_id, *, reserved=False,
         plan = load_plan()
         prompts = plan["prompts"]
         if diagnostic_through is not None:
-            require(diagnostic_through == "w3_business_v2_004"
+            if diagnostic_through == "m0_04_005":
+                from experiments.m005_ab import conditioned_prompts
+                prompts = conditioned_prompts(plan)
+            else:
+                require(diagnostic_through == "w3_business_v2_004"
                     and len(prompts) == 54 and prompts[45]["sample_id"] == diagnostic_through,
                     "Only the approved 46-request boundary diagnostic is supported")
-            prompts = prompts[:46]
+                prompts = prompts[:46]
             run.update(diagnostic_only=True, diagnostic_through=diagnostic_through)
         live = server_processes(lane)
+        require(not live.get('_process_environment', {}).get('M203_M005_CONFIG')
+                or diagnostic_through == 'm0_04_005', 'M005 observer cannot capture another scope')
+        if diagnostic_through == "m0_04_005":
+            from experiments.m005_ab import validate_capture_scope
+            validate_capture_scope(output, session_id, lane, live)
         env = runtime(plan, session_id, live, **({"gpu_selection": gpu_selection} if gpu_selection is not None else {}))
         validate_live_server(live, lane, env)
         run["live_server"] = live
