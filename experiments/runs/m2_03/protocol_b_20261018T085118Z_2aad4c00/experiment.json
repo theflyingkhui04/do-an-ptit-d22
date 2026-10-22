@@ -1,0 +1,4 @@
+{"pairs":[
+  {"pair_id":"pair1","vanilla":"pair1-vanilla/run.json","adaptive":"pair1-adaptive/run.json"},
+  {"pair_id":"pair2","vanilla":"pair2-vanilla/run.json","adaptive":"pair2-adaptive/run.json"}
+]}

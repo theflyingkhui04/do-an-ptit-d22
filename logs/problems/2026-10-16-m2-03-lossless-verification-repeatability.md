@@ -99,3 +99,19 @@ Khi tiến hành kiểm tra chéo tính lặp lại độc lập giữa các phi
 3. **Điều khoản chốt chặn (Fallback gate ngày 23/10):**
    - Nếu Phase 1 đạt 54/54 -> Tiến hành Phase 2 để chốt kết luận lossless 100%.
    - Nếu sau khi bật toàn bộ cờ deterministic mà kernel lượng tử hóa AWQ Marlin trên T4 vẫn cố hữu lệch ở các token tie điểm (như logit 12.500 vs 12.500) khiến Vanilla chỉ đạt 45-50/54 -> Nhóm sẽ tự tin kích hoạt **phương án B (paired comparison)** và đưa chính bản phân tích này vào Chương 4 và Chương 5 của quyển đồ án như một đóng góp thực nghiệm sâu sắc về giới hạn vật lý của phần cứng GPU phổ thông.
+
+## Cập nhật quyết định PM — 17/10/2026
+
+Ghi bổ sung ngày 18/10/2026 từ quyết định trực tiếp mới nhất của PM Cấn Đức Khôi:
+
+> Đại ơi tớ xem rồi, cậu cứ làm cái B trước đi, xong sau đó khi mình deploy lên nền tảng khác thì mình sang C nhá
+
+- Quyết định cũ tại mục 5 ghi nhận C trước. Quyết định mới thay thế **thứ tự thực hiện** đó: triển khai **B trước** trên nền tảng hiện tại; **C hoãn** tới khi triển khai trên nền tảng khác.
+- B là so sánh cặp có kiểm soát: cùng GPU vật lý (UUID), cùng phiên VM/notebook, cùng runtime/config đã đóng băng; chạy Vanilla, giải phóng GPU qua workflow chuyển làn hiện có, rồi chạy Adaptive **tuần tự**. Không chạy hai server đồng thời; cách diễn đạt “đồng thời” tại mô tả B cũ không phải chỉ dẫn vận hành hiện hành.
+- Báo cáo riêng Vanilla repeatability, Adaptive repeatability và từng cặp Vanilla–Adaptive. Hai cặp tuần tự V1 → A1 → V2 → A2 là thiết kế tối thiểu để tính cả ba nhóm phép đo; đây không phải sweep hiệu năng M2-04.
+- B tạo bằng chứng, không tự đặt quy tắc `adaptive drift <= vanilla drift => PASS`. Trạng thái diễn giải là `interpretation_status = NOT_YET_APPROVED`; M2-03 vẫn **NOT DONE** khi chưa có bằng chứng GPU và phê duyệt cách diễn giải nghiệm thu.
+- Không yêu cầu baseline 54/54 để được chạy B; không thêm `CUBLAS_WORKSPACE_CONFIG`, `torch.use_deterministic_algorithms(True)` hoặc deterministic qualification làm gate hiện tại. C chỉ là công việc hoãn lại.
+- Bằng chứng lịch sử được giữ nguyên. Thay đổi này điều chỉnh thứ tự giao thức, không sửa dữ liệu thô, không xóa các quan sát hoặc quyết định trước đó.
+- **FACT/OBSERVATION:** các kết quả lịch sử ghi nhận Vanilla A/B 45/54, Adaptive A/B 45/54, Vanilla/Adaptive r03 và prodq3 44/54. Chúng chưa cô lập được lỗi chỉ thuộc Adaptive. **UNKNOWN:** nguyên nhân số học chính xác của biến thiên giữa các lần chạy. Các cơ chế tie số thực, khác GPU, lựa chọn kernel hoặc thứ tự CUDA graph vẫn là **HYPOTHESIS** nếu chưa có phép thử phân biệt; phần giải thích nhân quả ở mục 3 không được coi là bằng chứng xác lập nguyên nhân.
+
+Triển khai cục bộ và hướng dẫn thu thập bằng chứng: [Runbook Protocol B](../../docs/runbooks/m2-03-protocol-b.md). Không chạy GPU trong nhiệm vụ triển khai này.
