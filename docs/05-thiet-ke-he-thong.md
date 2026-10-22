@@ -59,30 +59,55 @@ $$C(N, B) = \text{Thời gian thực thi trung vị một bước (ms)}$$
 * **Đặc điểm then chốt:** $N = 0$ tương ứng với việc **tắt hoàn toàn suy đoán** (quay về vanilla). Đây chính là **cơ chế sàn an toàn (safety fallback)** đảm bảo hệ thống không bao giờ chạy chậm hơn chế độ mặc định.
 * **Rời rạc hóa ngân sách:** Tập giá trị của $N$ được cố định thành các mốc rời rạc để tensor kích thước ổn định, tránh việc biên dịch lại CUDA Graph liên tục làm giảm hiệu năng.
 
-### 2.2. Giai đoạn phục vụ — Ra quyết định ngân sách theo thời gian thực
-Tại mỗi bước sinh token của request:
+### 2.2. Giai đoạn phục vụ — Ra quyết định ngân sách theo thời gian thực (Adaptive Controller v0)
+Tại mỗi bước sinh token của request, bộ điều khiển `AdaptiveDraftController` quyết định độ sâu nháp k trong tập {0, 2, 3, 4}:
+
 ```python
-# 1. Thu thập thông số thời gian thực
-alpha_hat = get_rolling_acceptance_rate(window=W)  # Tỉ lệ chấp nhận trượt
-B = get_current_running_requests()                 # Số request đồng thời
-free_vram = get_available_vram()                   # VRAM còn trống (MB)
+# 1. Thu thập thông số thời gian thực từ telemetry
+alpha_ema = get_rolling_acceptance_rate(window=10)   # EMA alpha kết hợp warm-up unbiased
+batch_size = get_current_running_requests()          # Số request đồng thời
+free_vram_mb = get_available_vram()                  # VRAM vật lý còn trống (MB)
+kv_cache_usage_pct = get_kv_cache_usage_percentage() # vllm:kv_cache_usage_perc (0.0 .. 100.0)
 
-# 2. Xác định trần ngân sách an toàn theo VRAM
-N_max = calculate_max_safe_budget(free_vram)
+# 2. Memory Pressure Rule (Ngắt nhị phân chống OOM)
+# Giám sát 2 điều kiện: KV-cache > 90.0% HOẶC free VRAM < 1500 MB (kèm cờ enable_vram_guard).
+# Áp dụng máy trạng thái Cooldown & Hysteresis:
+# - Kích hoạt: Ép k = 0 ngay lập tức, đếm bước cooldown.
+# - Cooldown: Giữ tối thiểu 3 bước liên tiếp (memory_cooldown_steps = 3).
+# - Hysteresis: Sau cooldown, chỉ khôi phục khi KV-cache giảm sâu dưới 80.0% (kv_cache_recover_pct)
+#   nhằm triệt tiêu hiện tượng ping-pong dao động quanh ngưỡng.
+if is_memory_pressure_active(kv_cache_usage_pct, free_vram_mb):
+    return 0, "Memory pressure fallback (cooldown/hysteresis active)"
 
-# 3. Tối ưu hóa tỉ số lợi ích / chi phí đo thực
-N_star = argmax(
-    N <= N_max,
-    expected_gain(N, alpha_hat) / C(N, B)
-)
+# 3. Safety Fallback Gate & Periodic Probing (Chống tăng tốc âm & giải phóng Deadlock)
+# Khi chất lượng nháp kém (alpha < 0.65), chuyển về Vanilla (k = 0) để không lãng phí GPU.
+# Để tránh bẫy "đóng băng alpha" (vì k = 0 thì không có token nháp để verify -> alpha không cập nhật),
+# cơ chế Periodic Probing định kỳ phát động 1 bước thăm dò với k = 2 sau mỗi probe_interval bước:
+if alpha_ema < 0.65:
+    consecutive_fallback_steps += 1
+    if consecutive_fallback_steps >= 20:
+        # Periodic Probing (probe_interval = 20, probe_k = 2):
+        # Thiết lập probe_interval = 20 (thay vì 5) giúp giảm tần suất thăm dò trên workload W3 khó đoán
+        # từ ~33% xuống dưới 5% số bước giải mã, triệt tiêu độ trễ dư thừa mà vẫn đảm bảo thoát Deadlock.
+        consecutive_fallback_steps = 0
+        return 2, "Periodic probe (k=2) after 20 fallback steps"
+    return 0, "Low acceptance fallback (alpha < 0.65)"
 
-# 4. Fallback an toàn nếu không có lợi
-if N_star == 0:
-    skip_speculative_for_this_step()
+consecutive_fallback_steps = 0  # Reset bộ đếm khi alpha phục hồi >= 0.65
+
+# 4. Tối ưu hóa tỉ số lợi ích / chi phí đo thực (Cost-Model Argmax) kết hợp Heuristic Guards
+# - alpha_ema >= 0.80: duy trì k = 3 (hoặc mở rộng k = 4 nếu alpha_ema >= 0.90)
+# - 0.65 <= alpha_ema < 0.80: hạ về k = 2 để giảm tải GPU
+k = select_budget_argmax(alpha_ema, batch_size, cost_profile)
 ```
 
-* **Tử số:** Lợi ích kỳ vọng (số token dự kiến được chấp nhận $\mathbb{E}[\tau]$) tính theo tỉ lệ trúng $\hat{\alpha}$.
-* **Mẫu số:** Chi phí thời gian $C(N, B)$ lấy trực tiếp từ bảng đo thực nghiệm phần cứng, không dùng hằng số lý thuyết.
+* **Tử số:** Lợi ích kỳ vọng (số token dự kiến được sinh E[tau]) tính theo tỉ lệ trúng: `E[tau] = 1 + sum_(i=1..k) alpha^i`.
+* **Mẫu số:** Chi phí thời gian `C(k, B)` lấy trực tiếp từ bảng đo thực nghiệm phần cứng, không dùng hằng số lý thuyết.
+* **Tích hợp tầng Serving (vLLM v0.30.0 V1 Engine):**
+  Lớp `AdaptiveAsyncScheduler` (kế thừa `vllm.v1.core.sched.async_scheduler.AsyncScheduler`) được nạp trực tiếp qua cờ `--scheduler-cls`. Tại mỗi chu kỳ scheduling:
+  - `AdaptiveBudgetPlanner` chạy `select_budget` cho từng request để xác định mảng `k_i`.
+  - Batch K được gán bằng `max(k_i)` qua bảng tra cứu `dynamic_sd_lookup` của vLLM.
+  - Từng request được cắt placeholder nháp (`spec_token_ids`) khớp đúng ngân sách `k_i` riêng biệt trước khi chuyển sang runner.
 
 ---
 
@@ -102,12 +127,16 @@ Máy chủ phơi dữ liệu telemetry của từng request qua endpoint `/metri
   "itl_ms":          [19.1, 17.8, ...], // Mảng độ trễ giữa từng token (để tính p50/p95)
   "output_tokens":   256,
   "acceptance_rate": 0.71,              // Tỉ lệ chấp nhận alpha
-  "mean_accept_len": 3.42,              // Chiều dài chấp nhận trung bình tau
-  "tree_budgets":    [60, 60, 32, 0],   // Ngân sách N* qua từng bước (bằng chứng thích ứng)
+  "effective_alpha": 0.71,              // Tỉ lệ chấp nhận sau hiệu chỉnh warm-up
+  "mean_accept_len": 3.42,              // Chiều dài chấp nhận trung bình thực tế tau (số token nháp Target chấp nhận)
+  "mean_k":          3.75,              // Chiều sâu ngân sách nháp trung bình được đề xuất (mean của tree_budgets)
+  "tree_budgets":    [3, 3, 4, 2, 0],   // Ngân sách k* qua từng bước (bằng chứng thích ứng)
   "vram_peak_mb":    13820,             // Đỉnh VRAM sử dụng
-  "batch_size_avg":  8.0
+  "batch_size_avg":  8.0,
+  "is_warmed_up":    true
 }
 ```
+* **Lưu ý quan trọng cho Luồng Benchmark:** `mean_accept_len` phản ánh số token nháp thực tế được Target Model chấp nhận (`tau`), dùng cho các công thức tính toán tốc độ chấp nhận. `mean_k` là giá trị trung bình của ngân sách đề xuất (`k`). Hai trường này đã được phân định độc lập từ bản vá M2-02.
 * **Ý nghĩa:** Luồng Benchmark (Đại lead, Khôi/Dương hỗ trợ) chỉ cần đọc cấu trúc JSON này để phân tích và vẽ biểu đồ, hoàn toàn độc lập với việc can thiệp sâu vào nhân vLLM.
 
 ### 3.2. Giao diện B — Giữa Luồng Core-Engine (Khôi chủ trì) và Luồng Pipeline Ứng dụng (Dương chủ trì)
@@ -137,17 +166,25 @@ Content-Type: application/json
 
 ---
 
-## 4. Cấu trúc Module Mã nguồn dự kiến
+## 4. Cấu trúc Module Mã nguồn Hiện thực (Cập nhật sau M2)
 
 ```text
 src/
-├── server/               # Khởi tạo vLLM, quản lý chế độ phục vụ, phơi API & /metrics
-├── proposer/             # Module điều khiển cây nháp thích ứng (Adaptive Proposer)
-│   ├── profiler.py       # HardwareProfiler: Đo phần cứng lúc bật máy → Bảng C(N, B)
-│   ├── telemetry.py      # TelemetryCollector: Theo dõi α trượt, VRAM, batch
-│   ├── controller.py     # BudgetController: Giải thuật chọn ngân sách N*
-│   └── adapter.py        # Lớp adapter tích hợp vào custom_class của vLLM
-└── pipeline/             # Pipeline xử lý hóa đơn tiếng Việt MC-OCR (3 nodes)
+├── server/                       # Tích hợp vLLM v0.30.0 V1 Engine
+│   ├── adaptive_scheduler.py     # AdaptiveAsyncScheduler: Lớp scheduler kế thừa AsyncScheduler
+│   └── budget_planner.py         # AdaptiveBudgetPlanner: Chuyển quyết định per-request sang batch plan
+├── proposer/                     # Module điều khiển cây nháp thích ứng (Adaptive Proposer)
+│   ├── controller.py             # BudgetController & AdaptiveDraftController (Budget Rule + Memory Pressure)
+│   └── adapter.py                # AdaptiveProposerAdapter: Quản lý session per-request & Giao diện A telemetry
+├── pipeline/                     # Pipeline xử lý hóa đơn tiếng Việt MC-OCR (3 nodes)
+│   ├── extractor.py              # Node 1: Schema normalization
+│   └── validation.py             # Data contract validation
+scripts/
+├── launch_lane1_vanilla.sh       # Khởi động Làn 1 (cổng 8001)
+├── launch_lane2_static.sh        # Khởi động Làn 2 (cổng 8002, K=4 cố định)
+├── launch_lane3_adaptive.sh      # Khởi động Làn 3 (cổng 8003, Adaptive Scheduler)
+├── switch_lane.sh                # Chuyển đổi an toàn giữa 3 làn trên 1 GPU T4 duy nhất
+└── smoke_lane3_adaptive.py       # Kịch bản kiểm chứng 10 requests tự động so sánh output
 ```
 
 ---

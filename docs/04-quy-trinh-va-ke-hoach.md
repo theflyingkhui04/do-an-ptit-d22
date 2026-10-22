@@ -125,50 +125,50 @@ Chủ động phân loại ngay từ đầu để biết cái gì bắt buộc p
 * Bản đồ trường hợp sử dụng (Use-case Map): Chỉ rõ những tình huống nào nên bật tối ưu và tình huống nào nên tắt để tránh giảm tốc độ.
 * Pipeline xử lý hóa đơn tiếng Việt (MC-OCR) tối thiểu 2 node (Trích xuất JSON và Text-to-SQL) để kiểm thử luồng thực tế.
 
-### COULD — Chỉ làm nếu hoàn thành MUST và SHOULD trước ngày 01/11 (~15% công sức)
+### COULD — Chỉ làm nếu hoàn thành MUST và SHOULD trước ngày 23/10 (~15% công sức)
+* **[ADDITIONAL WORK] Huấn luyện Draft Head chuẩn EAGLE-3 cho Qwen 3.5 9B (Domain-Adapted Head):** Mượn GPU A100 (Google Colab Pro / RunPod) huấn luyện 2–3 giờ trên tập dữ liệu MC-OCR / chuẩn EAGLE-3. Chạy đo đạc đối chứng (Ablation Study) để chứng minh khả năng tổng quát hóa của thuật toán trên thế hệ mô hình mới nhất Qwen 3.5 9B.
 * Mở rộng thêm Node 3 (Tự động sinh báo cáo phân tích tài chính) kèm giao diện web demo trực quan (Streamlit/Gradio).
 * Tích hợp thử nghiệm với nền tảng Dify hoặc LangGraph.
 * Mượn thêm GPU cao cấp (như A100) chạy thử nghiệm đối chứng để chứng minh khả năng tự thích ứng trên nhiều loại phần cứng khác nhau.
 
 ### WON'T — Dứt khoát không làm (Tránh mất thời gian và lạc hướng)
-* ❌ **Không tự huấn luyện (train/fine-tune) lại mô hình nháp EAGLE:** Tận dụng checkpoint công bố sẵn. Đóng góp cốt lõi của đề tài nằm ở **bộ điều khiển thuật toán**, không nằm ở việc train mô hình.
+* ❌ **Không tự huấn luyện (train/fine-tune) lại mô hình đích (Target Model 7B/9B):** Chỉ huấn luyện đầu nháp phụ trợ (Draft Head) ở tầng COULD trong Sprint 5 mở rộng, tuyệt đối không sa đà vào việc pretrain/finetune full weights mô hình đích gây quá tải tài nguyên.
 * ❌ **Không tự viết ứng dụng quản lý mô hình (Launcher/Web UI phức tạp):** Tận dụng các công cụ có sẵn.
 
 ---
 
 ## 6. Lộ trình 6 Mốc phát triển (Milestones)
 
-Mỗi mốc thời gian tập trung kiểm chứng và giải quyết dứt điểm một câu hỏi kỹ thuật quan trọng nhất:
+Mỗi mốc thời gian tập trung kiểm chứng và giải quyết dứt điểm một câu hỏi kỹ thuật quan trọng nhất (Đã cập nhật theo lịch trình ép tiến độ tối ưu):
 
 | Mốc | Thời hạn | Mục tiêu kỹ thuật cốt lõi | Đầu ra tối thiểu cần đạt |
 |---|---|---|---|
-| **M0 · PoC Nền tảng** | **20/09** (Tuần 1) | *Đề tài có thực sự chạy được trên GPU T4 16GB không?* | vLLM và Qwen chạy được trên T4; chạy thử được EAGLE-2 mặc định; in ra tốc độ tok/s; chốt xong 2 giao diện đóng băng. |
-| **M1 · Baseline Benchmark** | **04/10** (Tuần 3) | *Hệ thống đo lường có đáng tin cậy không? Chuẩn so sánh ban đầu thế nào?* | Bộ đo tự động hoàn thành; có bảng số liệu đo 2 làn (vanilla & static) trên các mức tải concurrency 1 $\rightarrow$ 32. |
-| **M2 · Adaptive v0** | **18/10** (Tuần 5) | *Việc can thiệp điều khiển cây nháp lúc đang chạy có thực hiện được không?* | Bộ điều khiển co/giãn cây theo tỉ lệ đoán trúng $\alpha$; script test chứng minh lossless khớp 100% từng ký tự. |
-| **M3 · Hardware-Aware v1** | **01/11** (Tuần 7) | *Đưa bảng chi phí đo từ phần cứng vào thuật toán có giúp cải thiện tốc độ không?* | Hoàn thành module profiler phần cứng lúc bật máy; chạy đối chứng hiệu năng; thực hiện đánh giá tại Cổng kiểm soát 01/11. |
-| **M4 · Đóng băng Số liệu** | **15/11** (Tuần 9) | *Dữ liệu thực nghiệm đã đủ độ dày dặn và tin cậy để bảo vệ chưa?* | **Đóng băng toàn bộ code và số liệu**; xuất xong toàn bộ các biểu đồ so sánh; quay video chạy thử pipeline hóa đơn. |
-| **M5 · Quyển & Bảo vệ** | **30/11** (Tuần 11) | *Sản phẩm báo cáo và slide đã chỉn chu chưa?* | Hoàn thiện quyển báo cáo nộp trường; hoàn thành slide thuyết trình; tổng duyệt thử trả lời câu hỏi phản biện. |
+| **M0 · PoC Nền tảng** | **20/09** | *Đề tài có thực sự chạy được trên GPU T4 16GB không?* | [ĐÃ HOÀN THÀNH] vLLM và Qwen chạy được trên T4; chạy thử được EAGLE-2 mặc định; chốt xong 2 giao diện đóng băng. |
+| **M1 · Baseline Benchmark** | **04/10** | *Hệ thống đo lường có đáng tin cậy không? Chuẩn so sánh ban đầu thế nào?* | [ĐÃ HOÀN THÀNH] Bộ đo tự động hoàn thành; có bảng số liệu đo 2 làn (vanilla & static) trên concurrency 1 $\rightarrow$ 32. |
+| **M2 · Adaptive v0 & Lossless** | **14/10** *(Ép sớm)* | *Việc can thiệp điều khiển cây nháp lúc đang chạy có thực hiện được không?* | Bộ điều khiển co/giãn cây theo tỉ lệ đoán trúng $\alpha$; script test chứng minh lossless khớp 100% từng ký tự; sweep 54 ô đối chứng M2. |
+| **M3 · Hardware-Aware v1** | **23/10** *(Ép sớm)* | *Đưa bảng chi phí đo từ phần cứng vào thuật toán có giúp cải thiện tốc độ không?* | Hoàn thành module profiler phần cứng lúc bật máy; chạy đối chứng hiệu năng; vượt qua Cổng kiểm soát 23/10; bản thảo quyển $\ge 20$ trang. |
+| **M4 · Train 9B & Đóng băng** | **15/11** *(Mở rộng)* | *Dữ liệu thực nghiệm đã đủ độ dày dặn và tin cậy để bảo vệ chưa?* | **Train xong EAGLE-3 Draft Head cho Qwen 3.5 9B trên A100**; xuất biểu đồ Ablation Study; tích hợp E2E Pipeline; **ĐÓNG BĂNG TOÀN BỘ CODE & SỐ LIỆU (15/11)**; quyển $\ge 35$ trang. |
+| **M5 · Quyển & Bảo vệ** | **30/11** | *Sản phẩm báo cáo và slide đã chỉn chu chưa?* | Hoàn thiện quyển báo cáo $\ge 50$ trang nộp trường; hoàn thành slide thuyết trình; tổng duyệt thử trả lời 20+ câu hỏi phản biện. |
 
-### Kế hoạch theo từng tuần
+### Kế hoạch theo từng tuần (Timesheet Mới)
 ```text
 Tuần 1  (14–20/09):   ▲ M0: PoC Nền tảng · Chốt 2 giao diện · Viết nháp Chương 1
 Tuần 2  (21–27/09):   Xây dựng harness benchmark tự động · Đo thử làn vanilla
 Tuần 3  (28/09–04/10): ▲ M1: Baseline Benchmark · Đo làn EAGLE-2 tĩnh · Quét concurrency
-Tuần 4  (05–11/10):   Viết khung bộ điều khiển Proposer · Đọc telemetry · Lọc dữ liệu MC-OCR
-Tuần 5  (12–18/10):   ▲ M2: Adaptive v0 · Chạy kiểm thử Lossless
-Tuần 6  (19–25/10):   Viết Profiler đo phần cứng · Xây dựng pipeline hóa đơn Node 1–2
-Tuần 7  (26/10–01/11): ▲ M3: Hardware-Aware v1 · Đánh giá cổng kiểm soát 01/11
-Tuần 8  (02–08/11):   Chạy toàn bộ ma trận 60 ô thí nghiệm · Lập bản đồ use-case
-Tuần 9  (09–15/11):   ▲ M4: ĐÓNG BĂNG TOÀN BỘ CODE & SỐ LIỆU · Xuất biểu đồ · Quay video demo
-Tuần 10 (16–22/11):   Cả 3 người tập trung ráp và hoàn thiện quyển báo cáo
-Tuần 11 (23–29/11):   ▲ M5: Nộp quyển chính thức · Thiết kế slide bảo vệ
-Tuần 12 (30/11–06/12): Tập dượt thuyết trình · Chuẩn bị câu hỏi phản biện
-Tuần 13 (07–13/12):   Tuần đệm dự phòng / Chờ ngày bảo vệ chính thức
+Tuần 4  (05–14/10):   ▲ M2: ADAPTIVE v0 & LOSSLESS · Ép tiến độ (Profiler T4, Lossless 100%, Sweep 3 làn M2)
+Tuần 5  (15–23/10):   ▲ M3: HARDWARE-AWARE v1 & CỔNG SINH TỬ 23/10 (Cost Model, Sweep M3, Quyển >= 20 trang)
+Tuần 6  (24–31/10):   🚀 SPRINT 5 (Mở rộng P1): Train EAGLE-3 Draft Head cho Qwen 3.5 9B trên A100
+Tuần 7  (01–07/11):   🚀 SPRINT 5 (Mở rộng P2): Benchmark Ablation Study Qwen 3.5 9B & Bản đồ Use-case
+Tuần 8  (08–15/11):   ▲ M4: ĐÓNG BĂNG TOÀN BỘ CODE & SỐ LIỆU (15/11 FREEZE) · E2E Pipeline · Quyển >= 35 trang
+Tuần 9  (16–22/11):   Ráp và hoàn thiện quyển báo cáo >= 50 trang chuẩn PTIT
+Tuần 10 (23–29/11):   ▲ M5: Nộp quyển chính thức · Thiết kế slide bảo vệ chuyên nghiệp
+Tuần 11 (30/11–06/12): Tập dượt thuyết trình · Chuẩn bị 20+ câu hỏi phản biện hội đồng
+Tuần 12 (07–13/12):   Tuần đệm dự phòng / Chờ ngày bảo vệ chính thức
 ```
 
 ### Ba cổng đánh giá & Điều chỉnh phạm vi (Checkpoints)
-1. **Ngày 04/10:** Nếu chưa có kết quả đo ổn định của 2 làn cơ sở → Cắt bỏ toàn bộ các mục ở tầng COULD, thu nhỏ pipeline hóa đơn về 1 node duy nhất.
-2. **Ngày 01/11 (Quan trọng nhất):** Nếu phương pháp Adaptive không giúp tăng tốc hơn so với cấu hình tĩnh → **Chủ động chuyển hướng góc kể chuyện của đồ án**: Đề tài trở thành *"Nghiên cứu thực nghiệm chuyên sâu về các ranh giới suy hao và giới hạn vật lý của giải mã suy đoán trên GPU phổ thông"*. Đây vẫn là một kết quả khoa học giá trị và hoàn toàn đủ điều kiện bảo vệ điểm cao.
+1. **Ngày 04/10:** [ĐÃ QUA] Nếu chưa có kết quả đo ổn định của 2 làn cơ sở → Cắt bỏ toàn bộ các mục ở tầng COULD, thu nhỏ pipeline hóa đơn về 1 node duy nhất.
+2. **Ngày 23/10 (Cổng kiểm soát sống còn - Sớm 9 ngày):** Nếu phương pháp Adaptive không giúp tăng tốc hơn so với cấu hình tĩnh → **Chủ động chuyển hướng góc kể chuyện của đồ án**: Đề tài trở thành *"Nghiên cứu thực nghiệm chuyên sâu về các ranh giới suy hao và giới hạn vật lý của giải mã suy đoán trên GPU phổ thông"*. Nếu vượt qua thành công, lập tức kích hoạt task huấn luyện Qwen 3.5 9B ở Sprint 5.
 3. **Ngày 15/11:** Bất kể tính năng nào chưa xong đều phải dừng lại để đóng băng mã nguồn; các tính năng dở dang sẽ được đưa vào phần "Hạn chế & Hướng phát triển trong tương lai".
 
 ---
@@ -180,7 +180,7 @@ Tuần 13 (07–13/12):   Tuần đệm dự phòng / Chờ ngày bảo vệ ch�
 | **R1** | vLLM không hỗ trợ đổi kích thước cây nháp theo từng bước sinh | Trung bình | Rất cao | Kiểm tra ngay trong Tuần 1 (M0). Nếu không hỗ trợ trực tiếp, nhóm sẽ fork nhẹ vLLM hoặc chuyển sang vòng lặp suy luận độc lập. |
 | **R2** | GPU T4 16GB bị tràn bộ nhớ (OOM) khi chạy tải lớn | Trung bình | Cao | Dùng mô hình lượng tử hóa 4-bit (AWQ/GPTQ) để giải phóng VRAM cho KV cache. Hạ trần concurrency nếu cần và nêu rõ giới hạn phần cứng trong báo cáo. |
 | **R3** | Môi trường máy chủ (Colab/Kaggle) bị nhiễu thời gian đo | Cao | Cao | Bỏ qua 3 request đầu (warm-up), lặp lại ít nhất 5 lần mỗi cấu hình và lấy giá trị trung vị (median). Đan xen các lần chạy giữa các làn để triệt tiêu độ trôi phần cứng. |
-| **R4** | Thuật toán Adaptive không chạy nhanh hơn bản mặc định | Trung bình | Cao | Sử dụng phương án tại Cổng kiểm soát 01/11: Chuyển hướng thành đề tài nghiên cứu thực nghiệm đánh giá ranh giới hiệu quả. |
+| **R4** | Thuật toán Adaptive không chạy nhanh hơn bản mặc định | Trung bình | Cao | Sử dụng phương án tại Cổng kiểm soát 23/10: Chuyển hướng thành đề tài nghiên cứu thực nghiệm đánh giá ranh giới hiệu quả. |
 | **R5** | Một thành viên bận việc riêng hoặc thi cử trong 1–2 tuần | Cao | Trung bình | Nhờ cơ chế Ghép cặp Luân phiên 70/30 và 2 giao diện đóng băng, người Partner trong cặp của tuần đó có thể gánh tiếp phần việc mà không làm nghẽn tiến độ chung. |
 | **R6** | Xung đột mã nguồn khi làm việc chung theo cặp | Trung bình | Trung bình | Luôn làm việc trên nhánh tính năng riêng (`feat/...`), tuân thủ chuẩn giao tiếp module; Partner review chéo PR trước khi Khôi merge vào nhánh `main`. |
 | **R7** | Nhà trường thông báo lịch bảo vệ sớm hơn dự kiến | Trung bình | Cao | Toàn bộ kế hoạch đã được thiết kế để đóng băng vào 15/11, tạo sẵn 2–3 tuần đệm an toàn trước ngày bảo vệ. |
@@ -192,7 +192,7 @@ Tuần 13 (07–13/12):   Tuần đệm dự phòng / Chờ ngày bảo vệ ch�
 Nhóm không dùng các chỉ số lý thuyết như điểm story points hay số lượng commit. Tiến độ được đánh giá bằng **3 con số cụ thể**:
 1. **Số rủi ro kỹ thuật đã được gỡ bỏ:** Đã kiểm chứng xong bao nhiêu câu hỏi chặn (M-01, M-02, M-03...).
 2. **Số ô dữ liệu đã đo được:** Tiến độ điền đầy ma trận kết quả thí nghiệm (60 ô kết hợp giữa 3 làn, 4 bài test và 5 mức tải).
-3. **Số trang bản thảo quyển báo cáo:** Đến ngày **01/11**, nếu bản thảo quyển chưa đạt tối thiểu **20 trang** thì nhóm phải dừng việc phát triển tính năng mới để tập trung viết báo cáo.
+3. **Số trang bản thảo quyển báo cáo:** Đến ngày **23/10**, nếu bản thảo quyển chưa đạt tối thiểu **20 trang** thì nhóm phải dừng việc phát triển tính năng mới để tập trung viết báo cáo.
 
 ---
 

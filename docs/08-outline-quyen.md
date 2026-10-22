@@ -26,7 +26,7 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 | | 2.5 Các trục khác: PEARL (lịch chạy), D-cut (phần cứng) | [05](paper_summary/05-pearl-liu2025.md), [06](paper_summary/06-dcut-liu2026.md) | | |
 | | 2.6 Các hướng đã cân nhắc và loại | [02-tong-quan](02-tong-quan-tai-lieu.md) | | |
 | | 2.7 **Khoảng trống nghiên cứu** | [paper_summary/README](paper_summary/) §"Ba điều rút ra" | | |
-| **3** | **Thiết kế hệ thống** | | Khôi (Lead) + Đại | **sau M2 (18/10)** |
+| **3** | **Thiết kế hệ thống** | | Khôi (Lead) + Đại | **sau M2 (14/10)** |
 | | 3.1 Kiến trúc tổng thể | [05 §1](05-thiet-ke-he-thong.md) | | |
 | | 3.2 Đo hồ sơ phần cứng | [05 §2.1](05-thiet-ke-he-thong.md) | | |
 | | 3.3 Bộ điều khiển ngân sách cây | [05 §2.2](05-thiet-ke-he-thong.md) | | |
@@ -57,14 +57,14 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 ```
 T1        Chương 1 nháp xong  ·  Chương 2 bắt đầu
 T3        Chương 2 nháp xong  ·  Chương 4.1–4.3 (thiết lập — viết được ngay sau M1)
-T5        Chương 3 nháp (sau M2)
+T5        Chương 3 nháp (sau M2 - 14/10)
 T7–T8     Chương 3 hoàn chỉnh  ·  Chương 4 hoàn chỉnh
 T9        ▲ M4 đóng băng → số liệu chốt
 T10       Chương 5 + 6  ·  ráp toàn bộ  ·  thống nhất thuật ngữ theo [07]
 T11       ▲ Nộp
 ```
 
-**Cột mốc kiểm tra:** tới **01/11** mà bản nháp dưới **20 trang** là đang trễ, bất kể code chạy tốt cỡ nào ([04 §8](04-quy-trinh-va-ke-hoach.md)).
+**Cột mốc kiểm tra:** tới **23/10** (sau M3) mà bản nháp dưới **20 trang** là đang trễ, bất kể code chạy tốt cỡ nào ([04 §8](04-quy-trinh-va-ke-hoach.md)).
 
 ## Chuẩn bị bảo vệ — câu hỏi phản biện dự kiến
 

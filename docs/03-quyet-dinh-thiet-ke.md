@@ -55,17 +55,49 @@ Ghi lại các quyết định lớn và **lý do** — để bảo vệ trướ
 - **Quyết định:** dù tính lossless được bảo toàn theo thiết kế (không đụng vào tiêu chí chấp nhận), vẫn chạy một phép xác minh khớp-từng-ký-tự giữa làn vanilla và làn optimized, và đưa vào quyển.
 - **Lý do:** đây là điểm phản biện dễ đoán nhất của hội đồng (*"tăng tốc 3× thì có mất chất lượng không?"*). Một bảng so khớp đầu ra chấm dứt tranh luận trong 10 giây. Chi phí gần như bằng không, giá trị phòng thủ rất cao. Giao thức: [06 §4](06-ke-hoach-thuc-nghiem.md).
 
+## QĐ-12 — Chiến lược hai luồng song song (Dual-Track Pivot) & Cụ thể hóa cấu trúc cây nháp ở M2
+- **Quyết định:**
+  1. **Luồng 1 — Main Production Track (Đường găng tốt nghiệp - Critical Path):**
+     - Cấu hình: Target Model `Qwen2.5-7B-Instruct-AWQ` kết hợp Draft Model độc lập `Qwen2.5-0.5B-Instruct` trên GPU T4 16GB.
+     - Phạm vi: Bám sát tiến độ Sprint 3 (M2 Adaptive Controller v0 & Lossless Verification). Toàn bộ 36 ô thực nghiệm M1 và 54 ô đối chứng 3 làn M2 sử dụng cấu hình này.
+     - Mục tiêu: Bảo đảm 100% an toàn tiến độ bảo vệ tốt nghiệp, ổn định trên hạ tầng T4 mà không phụ thuộc vào rủi ro huấn luyện.
+  2. **Luồng 2 — R&D / Outsource Effort Track (Tự huấn luyện mở rộng EAGLE-3.1 Head):**
+     - Cấu hình: Tự huấn luyện một draft head EAGLE-3.1 chuyên biệt cho `Qwen2.5-7B-Instruct` trên GPU A100 mượn/thuê.
+     - Vai trò: Đóng vai trò là bài đo đối chứng nâng cao (Ablation Study) trong Chương 5 nhằm so sánh chéo hiệu năng của bộ điều khiển `AdaptiveDraftController` khi gắn với Draft Model độc lập 0.5B so với khi gắn với EAGLE-3.1 Head; đồng thời phục vụ demo trực quan tại buổi bảo vệ.
+     - Cơ chế cô lập: Chạy hoàn toàn song song bên ngoài đường găng, không chặn hay làm trễ tiến độ Luồng 1.
+  3. **Cụ thể hóa cấu trúc cây nháp (Tree Degeneration):**
+     - Do nhân vLLM 0.30.0 chưa hỗ trợ thay đổi cấu trúc ma trận cây nháp (tree topology) linh hoạt theo từng bước suy luận, nhóm quyết định "ép phẳng" cây nháp thành chuỗi tuần tự đơn nhánh (single-branch degenerate tree).
+     - Khi đó, ngân sách cây N* tương đương với độ sâu nháp k* trong tập ứng viên {0, 2, 3, 4}.
+- **Lý do & Giá trị:**
+  - *Triệt tiêu rủi ro:* Huấn luyện mô hình luôn tiềm ẩn rủi ro hội tụ và tương thích kernel vLLM trên GPU Turing sm_75. Phân tách hai luồng giúp bảo toàn tuyệt đối hạn nộp đồ án.
+  - *Tính độc lập kiến trúc:* Bộ điều khiển `AdaptiveDraftController` và adapter hoàn toàn training-free và độc lập với mô hình nháp. Khi checkpoint EAGLE-3.1 hoàn tất, việc tích hợp chỉ là thay đổi cấu hình launcher mà không cần sửa đổi thuật toán điều khiển.
+
+## QĐ-13 — Bộ điều khiển Thích ứng Làn 3 & Cơ chế An toàn (Memory Pressure & Periodic Probing)
+- **Quyết định:**
+  1. **Tích hợp Serving Engine V1 (vLLM v0.30.0):**
+     - Kế thừa `AsyncScheduler` qua lớp tùy biến `AdaptiveAsyncScheduler` (nạp qua cờ `--scheduler-cls`) và kích hoạt Dynamic Speculative Decoding (`num_speculative_tokens_per_batch_size`).
+     - Tầng `AdaptiveBudgetPlanner` chuyển quyết định per-request (`k_i`) sang batch level (`K = max(k_i)`), đồng thời cắt placeholder nháp (`spec_token_ids`) cho từng request để tương thích với async scheduling.
+  2. **Memory Pressure Rule (Ngắt nhị phân chống OOM):**
+     - Giám sát 2 điều kiện OR: Tỉ lệ chiếm dụng KV-cache > 90% (trích xuất từ `vllm:kv_cache_usage_perc`) HOẶC VRAM trống < 1500 MB (kèm cờ `enable_vram_guard`).
+     - Máy trạng thái Cooldown & Hysteresis: Ép `k = 0` ngay khi chạm ngưỡng, giữ tối thiểu 3 bước liên tiếp (`memory_cooldown_steps = 3`), và chỉ giải phóng phục hồi khi KV-cache giảm sâu dưới 80% (`kv_cache_recover_pct = 80.0`).
+  3. **Thoát bẫy bế tắc (Deadlock) bằng Periodic Probing:**
+     - Khi `alpha < 0.65`, hệ thống fallback về `k = 0`. Để tránh đóng băng `alpha` vĩnh viễn (do `k = 0` không sinh token nháp nên không có phản hồi verify), controller tự động phát động 1 bước thăm dò nháp nhỏ `k = 2` sau mỗi `probe_interval` bước fallback.
+     - Giá trị `probe_interval` được điều chỉnh từ 5 lên 20: Dữ liệu smoke test T4 cho thấy `probe_interval = 5` làm ~33% bước trên W3 bị ép nháp vô ích, kéo độ trễ Làn 3 xuống 0.78x. Việc nâng lên 20 bước giúp giảm tần suất probing xuống dưới 5%, triệt tiêu overhead trên workload khó mà vẫn giữ nguyên khả năng tự phục hồi.
+- **Lý do & Giá trị:**
+  - Bảo đảm an toàn tuyệt đối trước nguy cơ OOM khi tải cao hoặc context dài.
+  - Phục hồi động sau vùng ngữ cảnh khó mà không cần can thiệp thủ công từ bên ngoài.
+
 ---
 
 ## Câu hỏi còn mở (phải đóng, kèm hạn)
 
-| # | Câu hỏi | Vì sao quan trọng | Hạn chốt | Ai |
-|---|---|---|---|---|
-| **M-01** | **Vì sao neo EAGLE-2 mà không phải EAGLE-3?** | EAGLE-3 (`arXiv:2503.01840`) là bản mạnh nhất của dòng này và là baseline mà [Talon](paper_summary/04-talon-liu2026.md) dùng. Hội đồng gần như chắc chắn sẽ hỏi *"sao không dùng bản mới nhất?"*. **Hiện chưa có câu trả lời.** Giả thuyết cần kiểm chứng: EAGLE-3 đòi training-time test nên nặng hơn, và checkpoint/tích hợp vLLM ít sẵn hơn — nếu đúng thì đó là lý do chính đáng; nếu sai thì phải cân nhắc đổi anchor. | **M0 · 20/09** | Khôi |
-| **M-02** | Có checkpoint EAGLE-2 cho Qwen2.5-7B không, và có chạy được với bản 4-bit không? | Chặn QĐ-10. Nếu không có → phải đổi mô hình đích. | **M0 · 20/09** | Khôi |
-| **M-03** | vLLM `custom_class` proposer có cho đổi cấu hình cây **theo từng bước** không? | Rủi ro R1, mức chí mạng. Nếu không → phải fork vLLM hoặc tự viết vòng lặp suy luận. | **M0 · 20/09** | Khôi |
-| **M-04** | GVHD có chấp nhận **kết quả âm tính** (adaptive không thắng stock) không? | Quyết định có cần phương án xoay góc kể chuyện ở cổng 01/11 hay không. Hỏi sớm thì rẻ. | **Tuần 1** | Khôi |
-| **M-05** | Ngày bảo vệ và hạn nộp quyển chính thức | Toàn bộ lịch đang chạy theo giả định xấu nhất | khi khoa thông báo | TV3 |
+| # | Câu hỏi | Vì sao quan trọng | Hạn chốt | Ai | Trạng thái |
+|---|---|---|---|---|---|
+| **M-01** | **Vì sao neo EAGLE-2 mà không phải EAGLE-3?** | EAGLE-3 (`arXiv:2503.01840`) là bản mạnh nhất nhưng checkpoint ít sẵn và khó tích hợp trên sm_75. Đã chuyển hóa thành Luồng 2 (Dual-Track) tự train EAGLE-3.1 làm Ablation Study. | **Đã đóng (10/10)** | Khôi | ✅ Đã chốt theo QĐ-12 |
+| **M-02** | Có checkpoint EAGLE-2 cho Qwen2.5-7B không, và có chạy được với bản 4-bit không? | Thử nghiệm Sprint 1 cho thấy checkpoint cộng đồng lỗi kiến trúc trên vLLM và CUDA 13 bỏ sm_75 trên SGLang. Đã thay thế chuẩn xác bằng Luồng 1 (Draft 0.5B) chạy 100% ổn định trên T4. | **Đã đóng (10/10)** | Khôi | ✅ Đã chốt theo QĐ-12 |
+| **M-03** | vLLM `custom_class` proposer có cho đổi cấu hình cây **theo từng bước** không? | Đã giải quyết ở M2 bằng giải pháp ép phẳng cây tuần tự k in {0, 2, 3, 4} và điều phối qua `AdaptiveScheduler` / `AdaptiveProposerAdapter`. | **Đã đóng (11/10)** | Khôi, Dương | ✅ Đã chốt |
+| **M-04** | GVHD có chấp nhận **kết quả âm tính** (adaptive không thắng stock) không? | Quyết định có cần phương án xoay góc kể chuyện ở cổng 01/11 hay không. Hỏi sớm thì rẻ. | **Tuần 1** | Khôi | Đang theo dõi |
+| **M-05** | Ngày bảo vệ và hạn nộp quyển chính thức | Toàn bộ lịch đang chạy theo giả định xấu nhất | khi khoa thông báo | TV3 | Đang chờ |
 
 ---
 

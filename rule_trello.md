@@ -32,7 +32,7 @@ Mỗi thành viên giữ vai trò Chủ trì (Lead) mảng cốt lõi của mìn
 | Thành viên | Trello Account | Trello Member ID | Label Assignee trên Board | Phụ trách chính trong đồ án (70% effort) |
 | :--- | :--- | :--- | :--- | :--- |
 | **Khôi** | `@canduckhoi` *(Can Duc Khoi)* | `6aa7bdc54e08e522e0de8ae0` | `Assignee: Khôi (Dev + PM)` | **Luồng A (Core-Engine & Thuật toán):** Thuật toán điều khiển cây nháp (`src/proposer/`), tích hợp vLLM, API server (`src/server/`), quản lý dự án, review/merge `main`. Viết Chương 2 & 3. |
-| **Đại** | `@buithien7` *(Bùi Thiên)* | `67da7e55b3c12bffa1c90b83` | `Assignee: Đại (Dev + IT)` | **Luồng B (Hạ tầng & Đo kiểm):** Xây dựng harness benchmark tự động, quản trị GPU T4 (`experiments/`), đo sweep concurrency, log JSONL, vẽ biểu đồ F1–F6. Viết Chương 4 & 5. |
+| **Đại** (Bùi Đức Đại) | `@buithien7` *(Trello: Bùi Thiên)* | `67da7e55b3c12bffa1c90b83` | `Assignee: Đại (Dev + IT)` | **Luồng B (Hạ tầng & Đo kiểm):** Xây dựng harness benchmark tự động, quản trị GPU T4 (`experiments/`), đo sweep concurrency, log JSONL, vẽ biểu đồ F1–F6. Viết Chương 4 & 5. |
 | **Dương** | `@dngnguynth` *(Dương Nguyễn Thế)* | `6aa7c7af7d1c825db392f1a0` | `Assignee: Dương (Dev + BA)` | **Luồng C (Ứng dụng & Dữ liệu):** Phân tích nghiệp vụ hóa đơn VAT, thiết kế schema JSON/SQLite, xây dựng pipeline 3 node MC-OCR (`src/pipeline/`), định dạng chuẩn quyển PTIT & slide. Viết Chương 1 & 6. |
 
 ### 2.2. Cơ chế Ghép cặp Luân phiên 70/30 (Pair-Rotation System)
@@ -103,6 +103,24 @@ Mọi card khi tạo mới PHẢI dùng khung Markdown sau:
 - [ ] Đã có log/kết quả lưu tại `experiments/` hoặc commit Git.
 - [ ] Đã cập nhật tài liệu hoặc viết vào bản thảo quyển báo cáo.
 ```
+
+---
+
+### 3.3. Quy định TUYỆT ĐỐI KHÔNG dùng ký tự LaTeX (No LaTeX in Trello)
+Trello Markdown **hoàn toàn KHÔNG hỗ trợ** trình biên dịch LaTeX (MathJax/KaTeX). Việc viết các ký tự `$ ... $` hoặc `$$ ... $$` sẽ hiển thị nguyên văn mã nguồn thô, gây rối mắt và làm vỡ định dạng thẻ.
+
+**Quy tắc bắt buộc:**
+1. **Cấm tuyệt đối:** Không dùng `$`, `$$`, `\alpha`, `\ge`, `\in`, `\text{...}` trong tiêu đề thẻ, mô tả thẻ, tên checklist và tên từng subtask con.
+2. **Quy đổi chuẩn sang Văn bản Phổ thông (Plain Text):**
+   - Thay vì `$C_T$`, `$C_D$`, `$C_V$` ➔ viết `C_T`, `C_D`, `C_V`
+   - Thay vì `$\alpha$`, `$\alpha_{\text{ema}}$` ➔ viết `alpha`, `alpha_ema`
+   - Thay vì `$N^*$` ➔ viết `N*`
+   - Thay vì `$k \in [0, 2, 3, 4]$` ➔ viết `k = 0, 2, 3, 4`
+   - Thay vì `$\ge$`, `$\le$` ➔ viết `>=`, `<=`
+   - Thay vì `$\tau$` ➔ viết `tau`
+   - Thay vì `$\approx$` ➔ viết `~` hoặc `xấp xỉ`
+   - Thay vì `$$\text{TokenMatchRate} = ...$$` ➔ viết `TokenMatchRate = 100% (so khớp 50/50 prompts)`
+3. **Định dạng trực quan:** Ưu tiên dùng gạch ngang `---`, bullet points `*`, in đậm `**Mục tiêu:**` kèm thụt đầu dòng hợp lý để thẻ hiển thị đẹp, dễ nhìn trên cả giao diện Web và Trello Mobile App.
 
 ---
 
@@ -277,4 +295,10 @@ Sau khi hoàn tất thao tác trên Trello, AI Agent luôn xuất bảng tổng 
 - Timeline (Start Date → Due Date, Số ngày ước lượng)
 - Nhánh Git / PR
 - Danh sách 5–6 subtasks kèm phân vai và deadline chi tiết từng mục.
+
+### 8.3. Kỷ luật Định dạng & Bộ lọc No-LaTeX dành cho AI Agent
+Trước khi gửi bất kỳ payload nào (tiêu đề, mô tả thẻ, tên checklist, tên check-item) lên Trello thông qua MCP Server, AI Agent **BẮT BUỘC** phải tự kiểm duyệt và áp dụng các nguyên tắc sau:
+1. **Khử sạch ký tự LaTeX:** Tuyệt đối không sinh bất kỳ biểu thức `$ ... $` hoặc `$$ ... $$` nào. Luôn tự động chuyển đổi sang chữ viết phổ thông (Plain Text) theo bảng quy đổi tại mục 3.3 (vd: `$C_T$` ➔ `C_T`, `$\alpha$` ➔ `alpha`, `$N^*$` ➔ `N*`).
+2. **Không dùng cấu trúc công thức phức tạp:** Không viết `\frac{...}{...}`, `\sum`, `\mathbb{I}`, `\in`, `\ge` lên Trello. Thay vào đó, mô tả logic bằng lời văn kỹ thuật trong sáng và dễ hiểu.
+3. **Đảm bảo tính tương thích hiển thị:** Tối ưu hóa khoảng cách dòng, dùng các gạch đầu dòng `*` hoặc `-` rõ ràng, tránh lạm dụng quá nhiều cấp heading `#` để thẻ luôn hiển thị đẹp mắt, chỉn chu trên mọi thiết bị.
 

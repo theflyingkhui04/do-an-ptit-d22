@@ -14,9 +14,14 @@ else
 fi
 
 # 3. Khởi chạy máy chủ vLLM OpenAI-compatible.
+REVISION_ARGS=()
+if [ -n "${PROTOCOL_B_TARGET_REVISION:-}" ]; then
+  REVISION_ARGS=(--revision "$PROTOCOL_B_TARGET_REVISION")
+fi
 # PM-approved M1 canonical protocol pins vLLM neutral generation defaults so
 # model-side generation_config.json does not silently inject sampling settings.
 $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
+  "${REVISION_ARGS[@]}" \
   --host 0.0.0.0 \
   --port 8001 \
   --served-model-name qwen2.5-7b-vanilla \

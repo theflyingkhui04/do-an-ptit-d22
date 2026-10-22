@@ -12,7 +12,7 @@ Tài liệu nghiệm thu tổng kết toàn bộ Cột mốc M1 (Sprint 2 · Bas
 ### 2. Kế Hoạch Phân Rã Chi Tiết Sprint 3 (M2):
 👉 **[`docs/sprint_3_plan.md`](../../../docs/sprint_3_plan.md)**
 - Phân rã 4 task con: M2-01 (Hardware Profiler), M2-02 (Adaptive Controller v0), M2-03 (Lossless Verification), M2-04 (Harness 3 làn đối chứng).
-- Timeline chi tiết từ 05/10/2026 đến 18/10/2026.
+- Timeline chi tiết từ 05/10/2026 đến 14/10/2026 (Timesheet ép tiến độ tối ưu).
 
 ### 3. Bản Thảo Chương 4 Quyển Đồ Án (Thực Nghiệm M1 Baseline):
 👉 **[`docs/chuong-4-thuc-nghiem.md`](../../../docs/chuong-4-thuc-nghiem.md)**
