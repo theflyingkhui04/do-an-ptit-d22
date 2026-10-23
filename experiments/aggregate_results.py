@@ -837,6 +837,54 @@ def apply_speedup_vs_vanilla(
 
     return rows
 
+def check_m2_cells(summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Check campaign completeness and identify noisy cells for rerun.
+
+    This readiness check does not change aggregation, export an analysis CSV,
+    or decide the empirical W3 speedup gate. All raw evidence stays intact.
+    """
+    expected = {
+        (lane, workload, concurrency)
+        for lane in ("vanilla", "static", "adaptive")
+        for workload in ("W1", "W2", "W3")
+        for concurrency in (1, 2, 4, 8, 16, 32)
+    }
+    seen = set()
+    errors = []
+    noisy = []
+    for row in summaries:
+        key = _cell_key(row)
+        if key in seen:
+            errors.append(f"Duplicate cell: {key}")
+        seen.add(key)
+        if _required_int(row.get("n_runs"), "n_runs") < 5:
+            errors.append(f"{key}: requires >=5 measured repeats")
+        minimum = _finite_number(row.get("_tpot_min"), "_tpot_min")
+        maximum = _finite_number(row.get("_tpot_max"), "_tpot_max")
+        median = _finite_number(row.get("tpot_p50"), "tpot_p50")
+        if not 0 < minimum <= median <= maximum:
+            errors.append(f"{key}: invalid repeat-level TPOT range")
+            continue
+        ratio = (maximum - minimum) / median
+        if row.get("variance_flag") is not (ratio > 0.15):
+            errors.append(f"{key}: variance_flag must equal variance_ratio > 0.15")
+        if ratio > 0.15:
+            noisy.append({"cell": key, "variance_ratio": ratio})
+    if seen != expected or len(summaries) != 54:
+        errors.append(
+            f"Expected exactly 54 cells; missing={sorted(expected - seen)}; "
+            f"unexpected={sorted(seen - expected)}"
+        )
+    return {
+        "status": "PASS" if not errors and not noisy else "FAIL",
+        "cell_count": len(summaries),
+        "errors": errors,
+        "noisy_cells_rerun_required": noisy,
+        "variance_threshold": 0.15,
+        "w3_speedup_gate": "REQUIRES_EMPIRICAL_ANALYSIS",
+    }
+
+
 def append_to_summary_csv(
     summaries: Sequence[dict[str, Any]],
     csv_path: Path,
@@ -994,11 +1042,23 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "--check-m2", action="store_true",
+        help="Check 54 cells, >=5 repeats and >15%% noise; print JSON without writing CSV.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+
+    if args.check_m2:
+        try:
+            report = check_m2_cells(aggregate_raw_jsonls(args.raw))
+        except (OSError, ValueError) as exc:
+            report = {"status": "FAIL", "errors": [str(exc)]}
+        print(json.dumps(report, indent=2))
+        return 0 if report["status"] == "PASS" else 1
 
     print(
         "\n===== ĐỐI SOÁT VÀ TỔNG HỢP SỐ LIỆU M1-02 ====="
