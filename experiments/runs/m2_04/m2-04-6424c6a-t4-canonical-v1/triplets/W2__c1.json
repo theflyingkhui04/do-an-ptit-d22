@@ -1,0 +1,24 @@
+{
+  "status": "COMPLETE_VALID",
+  "experiment_id": "m2-04-6424c6a-t4-canonical-v1",
+  "execution_sha": "6424c6ab309749f6159250fd3fd74d3dafb2cdd2",
+  "workload": "W2",
+  "concurrency": 1,
+  "lanes": [
+    "vanilla",
+    "static",
+    "adaptive"
+  ],
+  "cells": [
+    "vanilla__W2__c1",
+    "static__W2__c1",
+    "adaptive__W2__c1"
+  ],
+  "raw_sha256": {
+    "vanilla__W2__c1": "2c17fe52958e4e2b7d5bd4fab40d549318f405ad6c961eafd86c9d0f58f34c79",
+    "static__W2__c1": "96bbfc487a8d35d7ea4ed4ded77c8248c33b0f634af3060cf880bee0711018dd",
+    "adaptive__W2__c1": "f68d25c1cf0db81c3d325db553f25997824f5828497b4745c04301f878c1b528"
+  },
+  "variance_threshold": 0.15,
+  "completed_at": "2026-10-23T08:07:52.806775+00:00"
+}
