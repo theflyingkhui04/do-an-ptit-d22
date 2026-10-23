@@ -1,0 +1,171 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W3
+workload_file        : /kaggle/working/do-an-ptit-d22/experiments/configs/w3_v2/chat_requests.jsonl
+sample_count         : 12
+sample_policy        : cycle-rotate
+package_workload_id  : w3_free_analysis
+dataset_version      : w3.m1_03.v2
+prompt_version       : w3_business_analysis.v2
+manifest_path        : /kaggle/working/do-an-ptit-d22/experiments/configs/w3_v2/package_manifest.json
+artifact_key         : chat_requests_jsonl
+workload_file_sha256 : 57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b
+manifest_package_sha256: 657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : m1-t4-cu130-v1
+gpu                  : Tesla T4
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [16]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : m2-04-6424c6a-t4-canonical-v1
+lane                 : vanilla
+workload             : W3
+canonical_samples    : 12
+sample_policy        : cycle-rotate
+concurrencies        : [16]
+repeats_per_cell     : 5
+requests_per_repeat  : 32
+===================================
+
+========================================
+START CELL
+experiment_id : m2-04-6424c6a-t4-canonical-v1
+cell_id       : vanilla__W3__c16
+concurrency   : 16
+repeats       : 5
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : option-b-concurrency-matched
+experiment_id        : m2-04-6424c6a-t4-canonical-v1
+cell_id              : vanilla__W3__c16
+requested_minimum    : 3
+warmup_requests      : 16
+warmup_concurrency   : 16
+measured_concurrency : 16
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : vanilla__W3__c16
+requests             : 16
+successes            : 16
+concurrency_limit    : 16
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m2-04-6424c6a-t4-canonical-v1
+cell_id             : vanilla__W3__c16
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-90e16b1f-b35c-4a67-b9e3-3516240b6026
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 44.655
+request_throughput  : 0.717 req/s
+output_throughput   : 348.473 tok/s
+run_vram_peak_mb    : 13139.19
+raw_jsonl           : /kaggle/working/m2-04-6424c6a-t4-canonical-v1/vanilla__W3__c16/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m2-04-6424c6a-t4-canonical-v1
+cell_id             : vanilla__W3__c16
+repeat_id           : r002
+sample_offset       : 8
+run_id              : run-6703c9b4-26bf-4eb4-a759-8ca9b12a0d03
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 43.908
+request_throughput  : 0.729 req/s
+output_throughput   : 362.417 tok/s
+run_vram_peak_mb    : 13139.19
+raw_jsonl           : /kaggle/working/m2-04-6424c6a-t4-canonical-v1/vanilla__W3__c16/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m2-04-6424c6a-t4-canonical-v1
+cell_id             : vanilla__W3__c16
+repeat_id           : r003
+sample_offset       : 4
+run_id              : run-932435f7-c941-4814-ae8e-a0697bae8ecf
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 44.513
+request_throughput  : 0.719 req/s
+output_throughput   : 359.358 tok/s
+run_vram_peak_mb    : 13139.19
+raw_jsonl           : /kaggle/working/m2-04-6424c6a-t4-canonical-v1/vanilla__W3__c16/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m2-04-6424c6a-t4-canonical-v1
+cell_id             : vanilla__W3__c16
+repeat_id           : r004
+sample_offset       : 0
+run_id              : run-99dd1b58-ed6a-41be-8007-8e6552c31e50
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 43.717
+request_throughput  : 0.732 req/s
+output_throughput   : 358.141 tok/s
+run_vram_peak_mb    : 13139.19
+raw_jsonl           : /kaggle/working/m2-04-6424c6a-t4-canonical-v1/vanilla__W3__c16/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m2-04-6424c6a-t4-canonical-v1
+cell_id             : vanilla__W3__c16
+repeat_id           : r005
+sample_offset       : 8
+run_id              : run-4ffc4e70-e4ba-4c95-9888-761f77dfcbd0
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 44.225
+request_throughput  : 0.724 req/s
+output_throughput   : 359.819 tok/s
+run_vram_peak_mb    : 13139.19
+raw_jsonl           : /kaggle/working/m2-04-6424c6a-t4-canonical-v1/vanilla__W3__c16/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : vanilla__W3__c16
+measured_repeats     : 5
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : m2-04-6424c6a-t4-canonical-v1
+cells_completed      : 1
+concurrencies        : [16]
+repeats_per_cell     : 5
+======================
