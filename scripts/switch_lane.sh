@@ -9,7 +9,7 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-LOG_DIR="$PROJECT_ROOT/logs"
+LOG_DIR="${LANE_LOG_DIR:-$PROJECT_ROOT/logs}"
 
 # Thời gian chờ server sẵn sàng (giây). Lần đầu trên runtime Colab mới phải tải model
 # từ HuggingFace (~3 phút) + torch.compile, nên mặc định 900 s; ghi đè: HEALTH_TIMEOUT=1200
