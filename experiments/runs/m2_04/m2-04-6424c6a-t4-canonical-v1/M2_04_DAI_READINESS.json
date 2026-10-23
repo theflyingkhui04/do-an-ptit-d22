@@ -1,0 +1,21 @@
+{
+  "status": "COMPLETE_VALID",
+  "experiment_id": "m2-04-6424c6a-t4-canonical-v1",
+  "execution_sha": "6424c6ab309749f6159250fd3fd74d3dafb2cdd2",
+  "triplets": 18,
+  "cells": 54,
+  "minimum_measured_repeats": 270,
+  "variance_threshold": 0.15,
+  "scope": "DAI_EXECUTION_AND_NOISE_READINESS",
+  "w3_speedup_gate": "NOT_EVALUATED_BY_DAI_READINESS",
+  "downstream_owner": "DUONG_ANALYSIS_SUMMARY_PLOTS",
+  "completed_at": "2026-10-23T13:37:48.798279+00:00",
+  "readiness_report": {
+    "status": "PASS",
+    "cell_count": 54,
+    "errors": [],
+    "noisy_cells_rerun_required": [],
+    "variance_threshold": 0.15,
+    "w3_speedup_gate": "REQUIRES_EMPIRICAL_ANALYSIS"
+  }
+}
