@@ -59,6 +59,8 @@ Do server tự tắt khi không có tải để tiết kiệm chi phí, thời g
 
 *Nguồn: `experiments/runs/m3_00/20261024-m300-startup/startup.json`; KV-cache từ log vLLM trong `experiments/runs/m3_00/20261024-m300-3lanes-check/`.*
 
+**Phương pháp đo khi máy chủ ở xa.** Bộ đo `benchmark_harness.py` vốn được thiết kế để chạy cùng máy với máy chủ vLLM: nó đọc GPU, phiên bản thư viện và VRAM bằng NVML ngay tại máy đo. Khi máy chủ nằm trên Modal, đo từ máy cá nhân sẽ ghi nhầm GPU của máy cá nhân và cộng thêm độ trễ mạng Việt Nam – `us-east` vào TTFT. Vì vậy nhóm bổ sung hồ sơ môi trường `m3-l4-modal-v1` (hồ sơ T4 `m1-t4-cu130-v1` giữ nguyên làm mặc định) với ba nguyên tắc: (1) bộ đo chạy trong một hàm CPU của Modal **cùng vùng** với máy chủ, dùng đúng các tham số và gói workload đã đóng băng của chiến dịch M2-04; (2) thông tin môi trường (GPU, driver, phiên bản vLLM/PyTorch, kiểu dữ liệu, kernel lượng tử hoá) do **chính container máy chủ** ghi lại khi khởi động; (3) VRAM được container máy chủ lấy mẫu bằng NVML mỗi 0,25 giây, sau đó ghép vào từng lượt đo theo cửa sổ thời gian UTC của lượt đó (dung sai ±0,5 giây; lượt nào không có mẫu thì báo lỗi thay vì ước đoán). Lần chạy kiểm chứng (làn Vanilla, W1, một lượt 8 yêu cầu — cấu hình rút gọn, không dùng làm số liệu so sánh) ghi nhận môi trường `NVIDIA L4`/vLLM 0.30.0 và VRAM đỉnh 19 850,6 MB ghép từ 347 mẫu của máy chủ (`experiments/runs/m3_01/20261024-m301-vanilla-W1-c1/`).
+
 ---
 
 ## 4.2. Thiết Kế và Chuẩn Hóa Bộ Workload Đánh Giá (W1, W2, W3)
