@@ -128,8 +128,9 @@ def test_bearer_header_sent():
 def test_401_error_does_not_leak_token():
     t = FakeTransport(FakeResponse(401, b"missing credentials"))
 
+    lane = client(t)
     with pytest.raises(mc.ModalAuthError) as err:
-        client(t).chat([{"role": "user", "content": "x"}])
+        lane.chat([{"role": "user", "content": "x"}])
 
     assert "ws-testsecret" not in str(err.value)
     assert "wk-testid" not in str(err.value)
@@ -166,15 +167,17 @@ def test_503_times_out():
     clock = FakeClock()
     t = FakeTransport(FakeResponse(503))
 
+    lane = client(t, clock=clock, poll_s=5, ready_timeout_s=20)
     with pytest.raises(mc.ModalReadyTimeout):
-        client(t, clock=clock, poll_s=5, ready_timeout_s=20).chat([{"role": "user", "content": "x"}])
+        lane.chat([{"role": "user", "content": "x"}])
 
 
 def test_other_http_error_raises_client_error():
     t = FakeTransport(FakeResponse(400, b'{"error": "bad model"}'))
 
+    lane = client(t)
     with pytest.raises(mc.ModalClientError, match="400"):
-        client(t).chat([{"role": "user", "content": "x"}])
+        lane.chat([{"role": "user", "content": "x"}])
 
 
 # ---------------------------------------------------------------- stream
@@ -253,5 +256,6 @@ def test_margin_tie_is_zero():
 def test_margin_unsupported_when_top_logprobs_missing(choice):
     t = FakeTransport(FakeResponse(200, {"choices": [choice]}))
 
+    lane = client(t)
     with pytest.raises(mc.LogitMarginUnsupported):
-        client(t).margins([{"role": "user", "content": "x"}])
+        lane.margins([{"role": "user", "content": "x"}])

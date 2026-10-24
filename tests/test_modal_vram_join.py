@@ -48,8 +48,9 @@ def test_epsilon_excludes_sample_beyond_tolerance():
 
 
 def test_no_sample_in_window_is_an_error_naming_run():
+    records = [rec("r1", "10:00:00", "10:00:30"), rec("r2", "11:00:00", "11:00:05")]
     with pytest.raises(vj.VramJoinError, match="r2"):
-        vj.join_vram([rec("r1", "10:00:00", "10:00:30"), rec("r2", "11:00:00", "11:00:05")], SAMPLES)
+        vj.join_vram(records, SAMPLES)
 
 
 def test_other_fields_untouched_and_input_not_mutated():

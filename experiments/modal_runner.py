@@ -61,6 +61,8 @@ SERVER_VOLUMES = {
     lanes.ARTIFACTS_ROOT: artifacts_volume,
 }
 MANIFEST_NAME = "ptit_weights_manifest.json"
+SERVER_ENV_FILE = "server_env.json"
+RAW_FILE = "raw.jsonl"
 
 app = modal.App(APP_NAME, image=image)
 
@@ -136,7 +138,7 @@ def _write_server_env(lane: str, run_dir: Path) -> None:
         profile=os.environ["PTIT_DTYPE_PROFILE"],
     )
     env["started_at_utc"] = datetime.now(timezone.utc).isoformat()
-    (run_dir / "server_env.json").write_text(json.dumps(env, indent=2) + "\n", encoding="utf-8")
+    (run_dir / SERVER_ENV_FILE).write_text(json.dumps(env, indent=2) + "\n", encoding="utf-8")
     artifacts_volume.commit()
 
 
@@ -307,7 +309,6 @@ def _lane_base_url(lane: str) -> str:
 
 
 def _wait_server_ready(base_url: str, token: str, timeout_s: float = 1200.0) -> float:
-    import urllib.error
     import urllib.request
 
     start = time.monotonic()
@@ -318,7 +319,7 @@ def _wait_server_ready(base_url: str, token: str, timeout_s: float = 1200.0) -> 
             with urllib.request.urlopen(req, timeout=30) as resp:
                 if resp.status == 200:
                     return time.monotonic() - start
-        except (urllib.error.URLError, OSError):
+        except OSError:  # URLError is an OSError
             pass
         if time.monotonic() - start > timeout_s:
             raise TimeoutError(f"{health} not ready after {timeout_s:.0f} s")
@@ -349,13 +350,14 @@ def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_comm
     args = lanes.bench_harness_args(
         lane,
         base_url=base_url,
-        server_env_json=str(server_dir / "server_env.json"),
-        raw_out=str(out_dir / "raw.jsonl"),
+        server_env_json=str(server_dir / SERVER_ENV_FILE),
+        raw_out=str(out_dir / RAW_FILE),
         summary_csv=str(out_dir / "harness_header.csv"),
         experiment_id=bench_run_id,
         **cell,
     )
-    env = {**os.environ, "OPENAI_API_KEY": token, "PTIT_GIT_COMMIT": git_commit, "PYTHONIOENCODING": "utf-8"}
+    env = {**os.environ, "OPENAI_API_KEY": token, "PTIT_GIT_COMMIT": git_commit,
+           "PTIT_SERVER_ENV_ROOT": lanes.ARTIFACTS_ROOT, "PYTHONIOENCODING": "utf-8"}
     proc = subprocess.run([sys.executable, "-m", "experiments.benchmark_harness", *args],
                           cwd=BENCH_ROOT, env=env, capture_output=True, text=True)
     (out_dir / "harness.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
@@ -363,9 +365,9 @@ def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_comm
     result = {"lane": lane, "returncode": proc.returncode, "server_ready_wait_s": round(ready_s, 2),
               "harness_log": proc.stdout[-6000:] + proc.stderr[-4000:], "raw": None, "joined": None,
               "server_env": None, "join_error": None}
-    if (server_dir / "server_env.json").exists():
-        result["server_env"] = json.loads((server_dir / "server_env.json").read_text(encoding="utf-8"))
-    raw_path = out_dir / "raw.jsonl"
+    if (server_dir / SERVER_ENV_FILE).exists():
+        result["server_env"] = json.loads((server_dir / SERVER_ENV_FILE).read_text(encoding="utf-8"))
+    raw_path = out_dir / RAW_FILE
     if proc.returncode == 0 and raw_path.exists():
         result["raw"] = raw_path.read_text(encoding="utf-8")
         time.sleep(12)  # let the server's periodic commit publish the last VRAM samples
@@ -392,9 +394,9 @@ def bench_cell(lane: str = "vanilla", server_run_id: str = "", workload: str = "
     out.mkdir(parents=True, exist_ok=True)
     (out / "harness.log").write_text(result["harness_log"], encoding="utf-8")
     if result["server_env"]:
-        (out / "server_env.json").write_text(json.dumps(result["server_env"], indent=2) + "\n", encoding="utf-8")
+        (out / SERVER_ENV_FILE).write_text(json.dumps(result["server_env"], indent=2) + "\n", encoding="utf-8")
     if result["raw"]:
-        (out / "raw.jsonl").write_text(result["raw"], encoding="utf-8")
+        (out / RAW_FILE).write_text(result["raw"], encoding="utf-8")
     if result["joined"]:
         (out / "raw.vram.jsonl").write_text(result["joined"], encoding="utf-8")
     summary = {k: result[k] for k in ("lane", "returncode", "server_ready_wait_s", "join_error")}

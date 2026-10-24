@@ -30,6 +30,11 @@ SERVER_ENV = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _server_env_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("PTIT_SERVER_ENV_ROOT", str(tmp_path))
+
+
 def write_env(tmp_path, **override):
     path = tmp_path / "server_env.json"
     path.write_text(json.dumps({**SERVER_ENV, **override}), encoding="utf-8")
@@ -169,3 +174,12 @@ def test_main_stops_before_requests_when_server_env_missing(tmp_path):
     with patch.object(harness, "run_sweep", side_effect=AssertionError("requests sent")), \
          patch.object(harness, "nvmlShutdown", side_effect=AssertionError("NVML never initialised")):
         assert asyncio.run(harness.async_main(args)) == 5
+
+
+def test_server_env_outside_allowed_root_rejected(tmp_path, monkeypatch):
+    inside = tmp_path / "root"
+    inside.mkdir()
+    monkeypatch.setenv("PTIT_SERVER_ENV_ROOT", str(inside))
+
+    with pytest.raises(harness.ServerEnvError, match="outside"):
+        harness.load_server_env(write_env(tmp_path))

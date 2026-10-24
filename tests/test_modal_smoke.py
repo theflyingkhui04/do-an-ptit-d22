@@ -70,7 +70,8 @@ def test_smoke_runs_5_prompts_per_lane_with_canonical_params():
         assert key in first
     _, messages, params = make.made["vanilla"].calls[0]
     assert messages  # same messages as the frozen request
-    assert "model" not in params and "stream" not in params
+    assert "model" not in params
+    assert "stream" not in params
     assert "max_completion_tokens" in params
 
 
@@ -116,3 +117,14 @@ def test_main_writes_evidence(tmp_path, monkeypatch):
     data = json.loads((tmp_path / "experiments/runs/m3_01/t1/smoke.json").read_text(encoding="utf-8"))
     assert data["summary"] == {"total": 5, "ok": 5}
     assert "ws-" not in json.dumps(data)
+
+
+@pytest.mark.parametrize("text, valid", [
+    ('{"a": 1}', True),
+    ('```json\n{"a": 1}\n```', True),
+    ('```\n{"a": 1}\n```', True),
+    ("not json", False),
+    ("```json\n{broken\n```", False),
+])
+def test_json_valid_handles_markdown_fences(text, valid):
+    assert smoke._json_valid(text) is valid

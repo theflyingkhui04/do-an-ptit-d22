@@ -52,11 +52,17 @@ def _params(row: dict, model: str) -> tuple[list[dict], dict]:
     return messages, payload
 
 
+def _strip_fence(body: str) -> str:
+    """Remove a surrounding ```json ... ``` markdown fence, if any."""
+    newline = body.find("\n")
+    if body.startswith("```") and body.endswith("```") and newline != -1:
+        return body[newline + 1 : -3].strip()
+    return body
+
+
 def _json_valid(text: str) -> bool:
-    body = text.strip()
-    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", body, flags=re.S)
     try:
-        json.loads(fenced.group(1) if fenced else body)
+        json.loads(_strip_fence(text.strip()))
         return True
     except ValueError:
         return False

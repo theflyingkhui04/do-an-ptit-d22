@@ -147,6 +147,24 @@ def lane_base_url(lane: str) -> str:
     return f"https://{workspace}--{APP_NAME}-{lane}.us-east.modal.direct/v1"
 
 
+def _sse_chunks(lines: Iterator[str]) -> Iterator[dict[str, Any]]:
+    """Parsed JSON payloads of ``data:`` lines until ``[DONE]``."""
+    for line in lines:
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            return
+        yield json.loads(data)
+
+
+def _delta_texts(chunk: dict[str, Any]) -> Iterator[str]:
+    for choice in chunk.get("choices") or []:
+        content = (choice.get("delta") or {}).get("content")
+        if content:
+            yield content
+
+
 class ModalLaneClient:
     def __init__(
         self,
@@ -216,20 +234,12 @@ class ModalLaneClient:
         parts: list[str] = []
         usage = metrics = None
         ttft = None
-        for line in response.lines():
-            if not line.startswith("data:"):
-                continue
-            data = line[5:].strip()
-            if data == "[DONE]":
-                break
-            chunk = json.loads(data)
-            for choice in chunk.get("choices") or []:
-                content = (choice.get("delta") or {}).get("content")
-                if content:
-                    if ttft is None:
-                        ttft = self._clock() - start
-                    parts.append(content)
-                    yield StreamEvent("delta", content)
+        for chunk in _sse_chunks(response.lines()):
+            for content in _delta_texts(chunk):
+                if ttft is None:
+                    ttft = self._clock() - start
+                parts.append(content)
+                yield StreamEvent("delta", content)
             if chunk.get("usage"):
                 usage, metrics = chunk["usage"], chunk.get("metrics")
         yield StreamEvent("final", "".join(parts), usage=usage, metrics=metrics,

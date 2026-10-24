@@ -58,8 +58,9 @@ def make(**kwargs):
 def test_default_does_not_wait_on_503():
     opener = scripted(http_503(), {"data": [{"id": "m"}]})
     with patch.object(oc, "urlopen", opener):
+        client = make()
         with pytest.raises(oc.OpenAICompatibleError, match="503"):
-            make().list_models()
+            client.list_models()
     assert len(opener.calls) == 1
 
 
@@ -73,21 +74,23 @@ def test_waits_through_503_when_ready_timeout_set():
 def test_ready_timeout_exceeded_reports_503():
     opener = scripted(http_503())
     with patch.object(oc, "urlopen", opener):
+        client = make(ready_timeout_seconds=30, poll_seconds=10)
         with pytest.raises(oc.OpenAICompatibleError, match="503"):
-            make(ready_timeout_seconds=30, poll_seconds=10).list_models()
+            client.list_models()
     assert 3 <= len(opener.calls) <= 5
 
 
 def test_other_http_errors_are_not_retried():
     opener = scripted(HTTPError("u", 401, "Unauthorized", {}, io.BytesIO(b"no")), {"data": []})
     with patch.object(oc, "urlopen", opener):
+        client = make(ready_timeout_seconds=600)
         with pytest.raises(oc.OpenAICompatibleError, match="401"):
-            make(ready_timeout_seconds=600).list_models()
+            client.list_models()
     assert len(opener.calls) == 1
 
 
 def test_node1_cli_exposes_ready_timeout(monkeypatch):
-    sys.path.insert(0, "scripts")
+    monkeypatch.syspath_prepend("scripts")
     import run_node1_extractor as node1
 
     monkeypatch.setattr(sys, "argv", ["run_node1_extractor.py", "--ready-timeout", "1200"])

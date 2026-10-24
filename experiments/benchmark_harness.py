@@ -168,8 +168,15 @@ def git_commit() -> str | None:
 
 
 def load_server_env(path: Path) -> dict:
-    """Read the environment written by the remote server container."""
-    path = Path(path)
+    """Read the environment written by the remote server container.
+
+    The file must sit under PTIT_SERVER_ENV_ROOT (default: the working
+    directory); the in-Modal benchmark sets it to the artifacts volume.
+    """
+    root = Path(os.environ.get("PTIT_SERVER_ENV_ROOT") or Path.cwd()).resolve()
+    path = Path(path).resolve()
+    if not path.is_relative_to(root):
+        raise ServerEnvError(f"server environment file {path} is outside {root}")
     if not path.is_file():
         raise ServerEnvError(f"server environment file not found: {path}")
     try:
