@@ -220,7 +220,7 @@ def test_token_never_written_to_records():
     assert "ws-secret" not in json.dumps(record)
 
 
-@pytest.mark.parametrize("run_id", ["../escape", "a/b", "..", "", "x\y"])
+@pytest.mark.parametrize("run_id", ["../escape", "a/b", "..", "", r"x\y"])
 def test_evidence_path_rejects_unsafe_run_id(run_id):
     with pytest.raises(ValueError, match="run-id"):
         probe._evidence_path(run_id, "check.json")
