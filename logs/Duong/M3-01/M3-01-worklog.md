@@ -47,6 +47,9 @@ Làn vanilla, W1, c = 1, 1 repeat × 8 request (**non-canonical**, chỉ kiểm 
 - Workload W1 SHA256 `0de2387c…` (trùng M2-04); commit ghi `194327e` (qua `PTIT_GIT_COMMIT`).
 - Server sẵn sàng sau 203.6 s (cold start). TPOT ≈ 19.3 ms (1 cell non-canonical — **không** dùng so với T4).
 
+### 3.1b Kiểm lại sau khi sửa SonarCloud — `experiments/runs/m3_01/20261025-m301-recheck-vanilla-W1-c1/`
+Sau commit `cc03e08` (chặn đường dẫn `--server-env-json` ngoài `PTIT_SERVER_ENV_ROOT`, tách hàm SSE…), deploy lại (run-id `20261025-m301-server2`) và chạy lại đúng cell trên: 8/8 OK, profile `m3-l4-modal-v1`, `NVIDIA L4`, VRAM peak 19 850.81 MB từ 359 mẫu server (lần đầu 19 850.62 MB), commit `cc03e08`.
+
 ### 3.2 Client check — `experiments/runs/m3_01/20261025-m301-client/client_check.json`
 - Cả 3 làn: chat OK, stream có `usage`; static/adaptive có `metrics.speculative_decoding`.
 - **Logit margin chạy được trên cả 3 làn** (kể cả khi bật speculative decoding) — rủi ro lớn nhất của thiết kế không xảy ra. Margin cùng câu gần như trùng giữa các làn (lệch ≤ 0.25 logit).
@@ -61,7 +64,7 @@ Làn vanilla, W1, c = 1, 1 repeat × 8 request (**non-canonical**, chỉ kiểm 
 
 ## 4. Kiểm thử
 
-- Full suite (`conda run -n doan-d22 python -m pytest tests -q`, 25/10): **916 passed, 1 failed** — chỉ `test_t4_rowwise_attention.py::test_review_diff_is_exact_generated_transform` (CRLF trên Windows, đã biết từ trước). Test mới M3-01: 56 test + bổ sung config.
+- Full suite (`conda run -n doan-d22 python -m pytest tests -q`, 25/10): **922 passed, 1 failed** — chỉ `test_t4_rowwise_attention.py::test_review_diff_is_exact_generated_transform` (CRLF trên Windows, đã biết từ trước). Test mới M3-01: 56 test + bổ sung config.
 - Phát hiện có sẵn trên `develop`: `python -m experiments.benchmark_harness --help` lỗi `TypeError: not enough arguments for format string` (chuỗi help có `%`) — kiểm trên bản `origin/develop`, không do M3-01; chưa sửa (ngoài phạm vi).
 
 ## 5. Vận hành & chi phí
