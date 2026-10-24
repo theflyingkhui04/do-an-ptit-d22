@@ -179,7 +179,8 @@ def test_pin_main_ref_makes_offline_main_resolve_to_pinned_snapshot(tmp_path):
     found = huggingface_hub.try_to_load_from_cache(
         "Qwen/Qwen2.5-0.5B-Instruct", "config.json", cache_dir=tmp_path, revision="main"
     )
-    assert isinstance(found, str) and ("b" * 40) in found
+    assert isinstance(found, str)
+    assert ("b" * 40) in found
 
 
 def test_pin_main_ref_rejects_missing_snapshot(tmp_path):
