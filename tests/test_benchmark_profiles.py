@@ -181,5 +181,6 @@ def test_server_env_outside_allowed_root_rejected(tmp_path, monkeypatch):
     inside.mkdir()
     monkeypatch.setenv("PTIT_SERVER_ENV_ROOT", str(inside))
 
+    path = write_env(tmp_path)
     with pytest.raises(harness.ServerEnvError, match="outside"):
-        harness.load_server_env(write_env(tmp_path))
+        harness.load_server_env(path)
