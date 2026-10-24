@@ -113,6 +113,12 @@ def build_campaign(root: Path, *, tpot_fn=default_tpot, skip_cells=()):
     return root
 
 
+@pytest.fixture(autouse=True)
+def _work_in_tmp(tmp_path, monkeypatch):
+    # Outputs must stay inside the working directory.
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def campaign(tmp_path):
     return build_campaign(tmp_path / "campaign")
@@ -334,4 +340,19 @@ def test_cli_validation_error_returns_nonzero(tmp_path):
     ])
 
     assert code == 1
+    assert not (tmp_path / "s.csv").exists()
+
+
+@pytest.mark.parametrize("flag", ["--output-csv", "--gate-json"])
+def test_cli_refuses_output_outside_working_directory(campaign, tmp_path, flag):
+    args = {
+        "--output-csv": str(tmp_path / "s.csv"),
+        "--gate-json": str(tmp_path / "g.json"),
+    }
+    args[flag] = str(tmp_path.parent / "escape.out")
+
+    code = m2.main(["--campaign-root", str(campaign), *sum(args.items(), ())])
+
+    assert code == 1
+    assert not (tmp_path.parent / "escape.out").exists()
     assert not (tmp_path / "s.csv").exists()

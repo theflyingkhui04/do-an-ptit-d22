@@ -60,6 +60,43 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def safe_output_path(path: Path, base: Path | None = None) -> Path:
+    """Resolve an output path and refuse anything outside ``base`` (default: cwd)."""
+    base = (base or Path.cwd()).resolve()
+    resolved = Path(path).resolve()
+    if not resolved.is_relative_to(base):
+        raise ValueError(f"Output path {resolved} is outside {base}")
+    return resolved
+
+
+def _marker_errors(name: str, marker: Any, expected: tuple[str, int]) -> list[str]:
+    """Structural problems of one triplet marker (empty list if usable)."""
+    if not isinstance(marker, dict):
+        return [f"{name}: marker must be a JSON object"]
+    if marker.get("status") != "COMPLETE_VALID":
+        return [f"{name}: status={marker.get('status')!r}"]
+    if (marker.get("workload"), marker.get("concurrency")) != expected:
+        return [f"{name}: marker describes "
+                f"{marker.get('workload')!r}/c{marker.get('concurrency')!r}"]
+    expected_cells = [_cell_id(lane, *expected) for lane in LANES]
+    if sorted(marker.get("cells") or []) != sorted(expected_cells):
+        return [f"{name}: cells={marker.get('cells')!r}"]
+
+    errors = [
+        f"{name}: missing {field}"
+        for field in ("experiment_id", "execution_sha")
+        if not isinstance(marker.get(field), str) or not marker.get(field)
+    ]
+    raw_sha = marker.get("raw_sha256")
+    if not isinstance(raw_sha, dict):
+        return errors + [f"{name}: raw_sha256 must be an object"]
+    errors += [
+        f"{name}: marker has no raw_sha256 for {cell}"
+        for cell in expected_cells if cell not in raw_sha
+    ]
+    return errors
+
+
 def load_triplet_markers(root: Path) -> dict[str, Any]:
     """Validate the 18 triplet markers and return campaign identity."""
     errors: list[str] = []
@@ -76,49 +113,22 @@ def load_triplet_markers(root: Path) -> dict[str, Any]:
                 continue
 
             marker = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(marker, dict):
-                errors.append(f"{name}: marker must be a JSON object")
-                continue
-            if marker.get("status") != "COMPLETE_VALID":
-                errors.append(f"{name}: status={marker.get('status')!r}")
+            marker_errors = _marker_errors(name, marker, (workload, concurrency))
+            errors += marker_errors
+            if marker_errors:
                 continue
 
-            expected_cells = [_cell_id(lane, workload, concurrency) for lane in LANES]
-            if (marker.get("workload"), marker.get("concurrency")) != (workload, concurrency):
-                errors.append(
-                    f"{name}: marker describes "
-                    f"{marker.get('workload')!r}/c{marker.get('concurrency')!r}"
-                )
-                continue
-            if sorted(marker.get("cells") or []) != sorted(expected_cells):
-                errors.append(f"{name}: cells={marker.get('cells')!r}")
-                continue
-
-            for field, seen in (
-                ("experiment_id", experiment_ids),
-                ("execution_sha", execution_shas),
-            ):
-                value = marker.get(field)
-                if not isinstance(value, str) or not value:
-                    errors.append(f"{name}: missing {field}")
-                seen.add(value)
-
-            raw_sha = marker.get("raw_sha256")
-            if not isinstance(raw_sha, dict):
-                errors.append(f"{name}: raw_sha256 must be an object")
-                continue
-
-            for cell in expected_cells:
-                if cell not in raw_sha:
-                    errors.append(f"{name}: marker has no raw_sha256 for {cell}")
-                    continue
-                expected_sha[cell] = raw_sha[cell]
+            experiment_ids.add(marker["experiment_id"])
+            execution_shas.add(marker["execution_sha"])
+            for lane in LANES:
+                cell = _cell_id(lane, workload, concurrency)
+                expected_sha[cell] = marker["raw_sha256"][cell]
 
     if len(experiment_ids) > 1 or len(execution_shas) > 1:
         errors.append(
             "Triplets mix campaigns: "
-            f"experiment_id={sorted(map(str, experiment_ids))}, "
-            f"execution_sha={sorted(map(str, execution_shas))}"
+            f"experiment_id={sorted(experiment_ids)}, "
+            f"execution_sha={sorted(execution_shas)}"
         )
 
     if errors:
@@ -157,50 +167,56 @@ def _summarize_cell(raw_path: Path, lane: str) -> dict[str, Any]:
     return row
 
 
+def _summarize_verified_cell(
+    root: Path,
+    identity: dict[str, Any],
+    cell_key: tuple[str, str, int],
+) -> dict[str, Any]:
+    """Check one cell's bytes and identity against the campaign, then aggregate."""
+    lane = cell_key[0]
+    cell = _cell_id(*cell_key)
+    raw_path = root / "cells" / cell / "raw.jsonl"
+    if not raw_path.exists():
+        raise ValueError(f"{cell}: missing raw.jsonl at {raw_path}")
+
+    actual = _sha256(raw_path)
+    expected = identity["raw_sha256"][cell]
+    if actual != expected:
+        raise ValueError(
+            f"{cell}: raw.jsonl SHA256 {actual} does not match triplet marker "
+            f"{expected} (CRLF checkout? extract with `git cat-file blob`)"
+        )
+
+    row = _summarize_cell(raw_path, lane)
+    observed = {
+        "cell": (row["lane"], row["workload"], row["concurrency"]),
+        "experiment_id": row["_experiment_id"],
+        "commit": row["commit"],
+    }
+    wanted = {
+        "cell": cell_key,
+        "experiment_id": identity["experiment_id"],
+        "commit": identity["execution_sha"],
+    }
+    for field, value in wanted.items():
+        if observed[field] != value:
+            raise ValueError(f"{cell}: {field} {observed[field]!r} != campaign {value!r}")
+
+    row["experiment_id"] = identity["experiment_id"]
+    row["raw_sha256"] = actual
+    return row
+
+
 def summarize_campaign(root: Path) -> list[dict[str, Any]]:
     """Validate provenance and aggregate all 54 cells with matched speedup."""
     root = Path(root)
     identity = load_triplet_markers(root)
-    rows: list[dict[str, Any]] = []
-
-    for workload in WORKLOADS:
-        for concurrency in CONCURRENCY_LEVELS:
-            for lane in LANES:
-                cell = _cell_id(lane, workload, concurrency)
-                raw_path = root / "cells" / cell / "raw.jsonl"
-                if not raw_path.exists():
-                    raise ValueError(f"{cell}: missing raw.jsonl at {raw_path}")
-
-                actual = _sha256(raw_path)
-                if actual != identity["raw_sha256"][cell]:
-                    raise ValueError(
-                        f"{cell}: raw.jsonl SHA256 {actual} does not match "
-                        f"triplet marker {identity['raw_sha256'][cell]} "
-                        "(CRLF checkout? extract with `git cat-file blob`)"
-                    )
-
-                row = _summarize_cell(raw_path, lane)
-                if (row["lane"], row["workload"], row["concurrency"]) != (
-                    lane, workload, concurrency
-                ):
-                    raise ValueError(
-                        f"{cell}: raw identity is "
-                        f"{row['lane']}/{row['workload']}/c{row['concurrency']}"
-                    )
-                if row["_experiment_id"] != identity["experiment_id"]:
-                    raise ValueError(
-                        f"{cell}: experiment_id {row['_experiment_id']!r} != "
-                        f"campaign {identity['experiment_id']!r}"
-                    )
-                if row["commit"] != identity["execution_sha"]:
-                    raise ValueError(
-                        f"{cell}: commit {row['commit']!r} != "
-                        f"execution_sha {identity['execution_sha']!r}"
-                    )
-
-                row["experiment_id"] = identity["experiment_id"]
-                row["raw_sha256"] = actual
-                rows.append(row)
+    rows = [
+        _summarize_verified_cell(root, identity, (lane, workload, concurrency))
+        for workload in WORKLOADS
+        for concurrency in CONCURRENCY_LEVELS
+        for lane in LANES
+    ]
 
     readiness = agg.check_m2_cells(rows)
     if readiness["status"] != "PASS":
@@ -245,6 +261,7 @@ def evaluate_w3_gate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_m2_summary_csv(rows: Sequence[dict[str, Any]], csv_path: Path) -> None:
+    csv_path = safe_output_path(csv_path)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=M2_SUMMARY_COLUMNS)
@@ -280,19 +297,21 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        output_csv = safe_output_path(args.output_csv)
+        gate_json = safe_output_path(args.gate_json)
         rows = summarize_campaign(args.campaign_root)
         gate = evaluate_w3_gate(rows)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 1
 
-    write_m2_summary_csv(rows, args.output_csv)
+    write_m2_summary_csv(rows, output_csv)
     gate["generated_at"] = datetime.now(timezone.utc).isoformat()
-    args.gate_json.parent.mkdir(parents=True, exist_ok=True)
-    args.gate_json.write_text(json.dumps(gate, indent=2) + "\n", encoding="utf-8")
+    gate_json.parent.mkdir(parents=True, exist_ok=True)
+    gate_json.write_text(json.dumps(gate, indent=2) + "\n", encoding="utf-8")
 
     _print_table(rows, gate)
-    print(f"Wrote {len(rows)} rows -> {args.output_csv}; gate -> {args.gate_json}")
+    print(f"Wrote {len(rows)} rows -> {output_csv}; gate -> {gate_json}")
     return 0
 
 

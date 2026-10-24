@@ -25,7 +25,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from experiments.analyze_m2 import CONCURRENCY_LEVELS, LANES, WORKLOADS
+from experiments.analyze_m2 import CONCURRENCY_LEVELS, LANES, WORKLOADS, safe_output_path
 
 
 plt.rcParams.update({
@@ -118,7 +118,7 @@ def _errorbar(ax, sub: pd.DataFrame, lane: str, value: str) -> None:
 
 def plot_f1(df: pd.DataFrame, output_dir: Path) -> Path:
     """Row 1: throughput (tok/s); row 2: TPOT p50 (ms/token)."""
-    output_dir = Path(output_dir)
+    output_dir = safe_output_path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(2, 3, figsize=(16, 9), sharex=True)
     fig.suptitle(
@@ -169,7 +169,7 @@ def label_offsets(static: float, adaptive: float, gap: int = 8) -> tuple[int, in
 
 
 def plot_f2(df: pd.DataFrame, output_dir: Path) -> Path:
-    output_dir = Path(output_dir)
+    output_dir = safe_output_path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(1, 3, figsize=(16, 5.5), sharey=True)
     fig.suptitle(

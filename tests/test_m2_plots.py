@@ -11,6 +11,12 @@ from experiments import analyze_m2 as m2
 from experiments import plot_m2
 
 
+@pytest.fixture(autouse=True)
+def _work_in_tmp(tmp_path, monkeypatch):
+    # Outputs must stay inside the working directory.
+    monkeypatch.chdir(tmp_path)
+
+
 def write_summary(path, *, adaptive_w3_speedup=0.6, drop=None):
     rows = []
     for workload in m2.WORKLOADS:
@@ -104,4 +110,12 @@ def test_writes_f1_and_f2_figures(tmp_path):
 
     assert f1.name == "F1_m2_tpot_throughput_3lanes.png"
     assert f2.name == "F2_m2_speedup_vs_vanilla.png"
-    assert f1.stat().st_size > 0 and f2.stat().st_size > 0
+    assert f1.stat().st_size > 0
+    assert f2.stat().st_size > 0
+
+
+def test_refuses_output_outside_working_directory(tmp_path):
+    df = plot_m2.load_m2_summary(write_summary(tmp_path / "s.csv"))
+
+    with pytest.raises(ValueError, match="outside"):
+        plot_m2.plot_f1(df, tmp_path.parent / "escape")
