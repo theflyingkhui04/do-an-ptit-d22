@@ -1,0 +1,200 @@
+{
+  "commit": "194327eea771386fc7af2f4a45f238e74475ff11",
+  "timestamp_utc": "2026-10-24T17:01:38.987700+00:00",
+  "note": "latency measured from the caller's machine; includes network round trip",
+  "lanes": [
+    {
+      "lane": "vanilla",
+      "chat_ok": true,
+      "stream_usage": {
+        "prompt_tokens": 44,
+        "total_tokens": 55,
+        "completion_tokens": 11
+      },
+      "stream_metrics": null,
+      "margins": [
+        {
+          "token": "Th",
+          "logprob": -0.00031418632715940475,
+          "margin": 8.749999572522938
+        },
+        {
+          "token": "ủ",
+          "logprob": -0.00030501006403937936,
+          "margin": 8.50000016571721
+        },
+        {
+          "token": " đô",
+          "logprob": -0.001016576774418354,
+          "margin": 8.37500004004687
+        },
+        {
+          "token": " của",
+          "logprob": -3.158996332786046e-05,
+          "margin": 10.999999881289114
+        },
+        {
+          "token": " Việt",
+          "logprob": -6.48477507638745e-05,
+          "margin": 9.875000002102752
+        },
+        {
+          "token": " Nam",
+          "logprob": -0.00016282663273159415,
+          "margin": 8.750000251675374
+        },
+        {
+          "token": " là",
+          "logprob": -0.0006762839620932937,
+          "margin": 7.374999871128239
+        },
+        {
+          "token": " Hà",
+          "logprob": -0.003702097339555621,
+          "margin": 5.875000066356733
+        }
+      ],
+      "margins_unsupported": null,
+      "error": null
+    },
+    {
+      "lane": "static",
+      "chat_ok": true,
+      "stream_usage": {
+        "prompt_tokens": 44,
+        "total_tokens": 55,
+        "completion_tokens": 11
+      },
+      "stream_metrics": {
+        "speculative_decoding": {
+          "mean_acceptance_length": 4.0,
+          "draft_acceptance_rate": 1.0,
+          "acceptance_histogram": [
+            0,
+            0,
+            0,
+            3
+          ],
+          "num_spec_steps": 3,
+          "num_accepted_draft_tokens": 9,
+          "num_draft_tokens": 9,
+          "num_spec_tokens": 3
+        }
+      },
+      "margins": [
+        {
+          "token": "Th",
+          "logprob": -0.00030310326837934554,
+          "margin": 8.750000165164238
+        },
+        {
+          "token": "ủ",
+          "logprob": -0.0003002431185450405,
+          "margin": 8.500000164291123
+        },
+        {
+          "token": " đô",
+          "logprob": -0.0010151476599276066,
+          "margin": 8.374999561812729
+        },
+        {
+          "token": " của",
+          "logprob": -3.194758028257638e-05,
+          "margin": 10.999999523672159
+        },
+        {
+          "token": " Việt",
+          "logprob": -5.8887653722194955e-05,
+          "margin": 10.000000240153895
+        },
+        {
+          "token": " Nam",
+          "logprob": -0.00018463814922142774,
+          "margin": 8.625000374668161
+        },
+        {
+          "token": " là",
+          "logprob": -0.0005283151986077428,
+          "margin": 7.625000020372681
+        },
+        {
+          "token": " Hà",
+          "logprob": -0.0037025725468993187,
+          "margin": 5.875000067986548
+        }
+      ],
+      "margins_unsupported": null,
+      "error": null
+    },
+    {
+      "lane": "adaptive",
+      "chat_ok": true,
+      "stream_usage": {
+        "prompt_tokens": 44,
+        "total_tokens": 55,
+        "completion_tokens": 11
+      },
+      "stream_metrics": {
+        "speculative_decoding": {
+          "mean_acceptance_length": 3.6666666666666665,
+          "draft_acceptance_rate": 0.8888888888888888,
+          "acceptance_histogram": [
+            0,
+            0,
+            1,
+            2,
+            0
+          ],
+          "num_spec_steps": 3,
+          "num_accepted_draft_tokens": 8,
+          "num_draft_tokens": 9,
+          "num_spec_tokens": 4
+        }
+      },
+      "margins": [
+        {
+          "token": "Th",
+          "logprob": -0.0003449321957305074,
+          "margin": 8.625000297906809
+        },
+        {
+          "token": "ủ",
+          "logprob": -0.00031382881570607424,
+          "margin": 8.499999930034392
+        },
+        {
+          "token": " đô",
+          "logprob": -0.0010057396721094847,
+          "margin": 8.375000386731699
+        },
+        {
+          "token": " của",
+          "logprob": -2.586808113846928e-05,
+          "margin": 11.249999881125404
+        },
+        {
+          "token": " Việt",
+          "logprob": -6.496695277746767e-05,
+          "margin": 9.874999882900738
+        },
+        {
+          "token": " Nam",
+          "logprob": -0.00018463814922142774,
+          "margin": 8.625000374668161
+        },
+        {
+          "token": " là",
+          "logprob": -0.0006723527330905199,
+          "margin": 7.374999987659976
+        },
+        {
+          "token": " Hà",
+          "logprob": -0.0036965152248740196,
+          "margin": 5.874999926425517
+        }
+      ],
+      "margins_unsupported": null,
+      "error": null
+    }
+  ]
+}

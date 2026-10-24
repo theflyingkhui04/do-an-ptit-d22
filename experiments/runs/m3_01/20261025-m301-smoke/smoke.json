@@ -1,0 +1,176 @@
+{
+  "commit": "194327eea771386fc7af2f4a45f238e74475ff11",
+  "timestamp_utc": "2026-10-24T17:11:13.612580+00:00",
+  "note": "latency measured from the caller's machine; includes network round trip",
+  "summary": {
+    "total": 15,
+    "ok": 15
+  },
+  "records": [
+    {
+      "lane": "vanilla",
+      "workload": "W1",
+      "sample_id": "m0_04_001",
+      "ok": true,
+      "ttft_s": 217.31200000003446,
+      "total_s": 229.53100000007544,
+      "completion_tokens": 635,
+      "json_valid": true,
+      "error": null
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W1",
+      "sample_id": "m0_04_002",
+      "ok": true,
+      "ttft_s": 0.8439999999245629,
+      "total_s": 13.327999999979511,
+      "completion_tokens": 648,
+      "json_valid": true,
+      "error": null
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W2",
+      "sample_id": "w2_sql_v2_001",
+      "ok": true,
+      "ttft_s": 0.9220000000204891,
+      "total_s": 2.030999999959022,
+      "completion_tokens": 59,
+      "json_valid": null,
+      "error": null
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W2",
+      "sample_id": "w2_sql_v2_002",
+      "ok": true,
+      "ttft_s": 0.8599999999860302,
+      "total_s": 1.922000000020489,
+      "completion_tokens": 57,
+      "json_valid": null,
+      "error": null
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W3",
+      "sample_id": "w3_business_v2_001",
+      "ok": true,
+      "ttft_s": 0.8129999999655411,
+      "total_s": 10.375,
+      "completion_tokens": 505,
+      "json_valid": null,
+      "error": null
+    },
+    {
+      "lane": "static",
+      "workload": "W1",
+      "sample_id": "m0_04_001",
+      "ok": true,
+      "ttft_s": 401.030999999959,
+      "total_s": 409.5470000000205,
+      "completion_tokens": 614,
+      "json_valid": true,
+      "error": null
+    },
+    {
+      "lane": "static",
+      "workload": "W1",
+      "sample_id": "m0_04_002",
+      "ok": true,
+      "ttft_s": 1.172000000020489,
+      "total_s": 9.905999999959022,
+      "completion_tokens": 648,
+      "json_valid": true,
+      "error": null
+    },
+    {
+      "lane": "static",
+      "workload": "W2",
+      "sample_id": "w2_sql_v2_001",
+      "ok": true,
+      "ttft_s": 1.0320000000065193,
+      "total_s": 1.8910000000614673,
+      "completion_tokens": 59,
+      "json_valid": null,
+      "error": null
+    },
+    {
+      "lane": "static",
+      "workload": "W2",
+      "sample_id": "w2_sql_v2_002",
+      "ok": true,
+      "ttft_s": 1.1089999999385327,
+      "total_s": 1.9689999999245629,
+      "completion_tokens": 57,
+      "json_valid": null,
+      "error": null
+    },
+    {
+      "lane": "static",
+      "workload": "W3",
+      "sample_id": "w3_business_v2_001",
+      "ok": true,
+      "ttft_s": 1.0150000000139698,
+      "total_s": 10.39000000001397,
+      "completion_tokens": 483,
+      "json_valid": null,
+      "error": null
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W1",
+      "sample_id": "m0_04_001",
+      "ok": true,
+      "ttft_s": 218.23399999993853,
+      "total_s": 227.39099999994505,
+      "completion_tokens": 635,
+      "json_valid": true,
+      "error": null
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W1",
+      "sample_id": "m0_04_002",
+      "ok": true,
+      "ttft_s": 0.9059999999590218,
+      "total_s": 9.905999999959022,
+      "completion_tokens": 648,
+      "json_valid": true,
+      "error": null
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W2",
+      "sample_id": "w2_sql_v2_001",
+      "ok": true,
+      "ttft_s": 0.9370000000344589,
+      "total_s": 1.9060000000754371,
+      "completion_tokens": 59,
+      "json_valid": null,
+      "error": null
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W2",
+      "sample_id": "w2_sql_v2_002",
+      "ok": true,
+      "ttft_s": 0.8279999999795109,
+      "total_s": 1.672000000020489,
+      "completion_tokens": 57,
+      "json_valid": null,
+      "error": null
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W3",
+      "sample_id": "w3_business_v2_001",
+      "ok": true,
+      "ttft_s": 0.9529999999795109,
+      "total_s": 14.75,
+      "completion_tokens": 508,
+      "json_valid": null,
+      "error": null
+    }
+  ]
+}
