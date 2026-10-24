@@ -52,6 +52,37 @@ def test_rejects_incomplete_matrix(tmp_path):
         plot_m2.load_m2_summary(path)
 
 
+@pytest.mark.parametrize(
+    "column, bad_value",
+    [("tpot_p50_min", 1000.0), ("throughput_max", 0.0)],
+)
+def test_rejects_value_outside_min_max(tmp_path, column, bad_value):
+    path = write_summary(tmp_path / "s.csv")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = lines[0].split(",")
+    first = lines[1].split(",")
+    first[header.index(column)] = str(bad_value)
+    lines[1] = ",".join(first)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=column.rsplit("_", 1)[0]):
+        plot_m2.load_m2_summary(path)
+
+
+@pytest.mark.parametrize(
+    "static, adaptive, expected",
+    [
+        (1.284, 1.314, (-1, 1)),  # W1/c1: adaptive above static
+        (0.969, 0.752, (1, -1)),
+        (1.0, 1.0, (1, -1)),
+    ],
+)
+def test_higher_lane_label_goes_above(static, adaptive, expected):
+    static_offset, adaptive_offset = plot_m2.label_offsets(static, adaptive)
+
+    assert (static_offset > 0, adaptive_offset > 0) == (expected[0] > 0, expected[1] > 0)
+
+
 @pytest.mark.parametrize("w3_speedup", [0.3, 0.6, 1.9])
 def test_speedup_axis_never_clips_points_and_shows_parity(tmp_path, w3_speedup):
     df = plot_m2.load_m2_summary(

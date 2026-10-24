@@ -193,6 +193,63 @@ def test_incomplete_triplet_marker_is_rejected(campaign):
         m2.summarize_campaign(campaign)
 
 
+def _edit_marker(campaign, name, mutate):
+    marker = campaign / "triplets" / f"{name}.json"
+    data = json.loads(marker.read_text(encoding="utf-8"))
+    marker.write_text(json.dumps(mutate(data)), encoding="utf-8")
+
+
+@pytest.mark.parametrize("field", ["experiment_id", "execution_sha"])
+def test_marker_without_campaign_identity_is_rejected(campaign, field):
+    for workload in WORKLOADS:
+        for concurrency in CONCURRENCY:
+            _edit_marker(
+                campaign, f"{workload}__c{concurrency}",
+                lambda data: {k: v for k, v in data.items() if k != field},
+            )
+
+    with pytest.raises(ValueError, match=field):
+        m2.summarize_campaign(campaign)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda data: [data],
+        lambda data: {**data, "raw_sha256": list(data["raw_sha256"].values())},
+    ],
+    ids=["marker-not-object", "raw-sha-not-object"],
+)
+def test_malformed_marker_fails_cleanly(campaign, tmp_path, mutate):
+    _edit_marker(campaign, "W2__c8", mutate)
+
+    code = m2.main([
+        "--campaign-root", str(campaign),
+        "--output-csv", str(tmp_path / "s.csv"),
+        "--gate-json", str(tmp_path / "g.json"),
+    ])
+
+    assert code == 1
+    with pytest.raises(ValueError, match="W2__c8"):
+        m2.summarize_campaign(campaign)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda data: {**data, "workload": "W2"},
+        lambda data: {**data, "concurrency": 8},
+        lambda data: {**data, "cells": data["cells"][:2]},
+    ],
+    ids=["workload", "concurrency", "cells"],
+)
+def test_marker_metadata_must_match_file_name(campaign, mutate):
+    _edit_marker(campaign, "W1__c4", mutate)
+
+    with pytest.raises(ValueError, match="W1__c4"):
+        m2.summarize_campaign(campaign)
+
+
 def test_w3_gate_passes_only_when_all_six_cells_reach_one(campaign):
     gate = m2.evaluate_w3_gate(m2.summarize_campaign(campaign))
 

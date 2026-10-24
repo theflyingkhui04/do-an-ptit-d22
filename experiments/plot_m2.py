@@ -83,6 +83,12 @@ def load_m2_summary(csv_path: Path) -> pd.DataFrame:
         raise ValueError(
             f"{csv_path}: expected 54 unique cells; missing={missing}, rows={len(df)}"
         )
+
+    for value in ("tpot_p50", "throughput"):
+        bad = df[(df[f"{value}_min"] > df[value]) | (df[value] > df[f"{value}_max"])]
+        if not bad.empty:
+            cells = list(zip(bad["lane"], bad["workload"], bad["concurrency"]))
+            raise ValueError(f"{csv_path}: {value} outside [min, max] for {cells}")
     return df
 
 
@@ -155,6 +161,13 @@ def speedup_ylim(df: pd.DataFrame, margin: float = 0.08) -> tuple[float, float]:
     return low - pad, high + pad
 
 
+def label_offsets(static: float, adaptive: float, gap: int = 8) -> tuple[int, int]:
+    """Point offsets for value labels: the higher lane above, the lower below."""
+    if adaptive > static:
+        return -gap - 6, gap
+    return gap, -gap - 6
+
+
 def plot_f2(df: pd.DataFrame, output_dir: Path) -> Path:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -172,18 +185,23 @@ def plot_f2(df: pd.DataFrame, output_dir: Path) -> Path:
         ax.axhline(1.0, color="#d62728", linestyle="--", linewidth=1.8,
                    label="Parity 1.0× (Vanilla)")
 
+        wl_df = df[df["workload"] == workload]
+        speedups = {
+            lane: wl_df[wl_df["lane"] == lane].set_index("concurrency")["speedup_vs_vanilla"]
+            for lane in ("static", "adaptive")
+        }
         for lane in ("static", "adaptive"):
             cfg = LANE_CONFIG[lane]
-            sub = df[(df["workload"] == workload) & (df["lane"] == lane)]
-            sub = sub.sort_values("concurrency")
-            ax.plot(sub["concurrency"], sub["speedup_vs_vanilla"], label=cfg["label"],
+            series = speedups[lane].sort_index()
+            ax.plot(series.index, series.values, label=cfg["label"],
                     color=cfg["color"], marker=cfg["marker"], linestyle=cfg["linestyle"])
-            offset = 8 if lane == "static" else -14
-            for _, row in sub.iterrows():
-                ax.annotate(f"{row['speedup_vs_vanilla']:.2f}×",
-                            xy=(row["concurrency"], row["speedup_vs_vanilla"]),
-                            xytext=(0, offset), textcoords="offset points",
-                            ha="center", fontsize=8, color=cfg["color"])
+            for concurrency, value in series.items():
+                offsets = label_offsets(speedups["static"][concurrency],
+                                        speedups["adaptive"][concurrency])
+                ax.annotate(f"{value:.2f}×", xy=(concurrency, value),
+                            xytext=(0, offsets[0] if lane == "static" else offsets[1]),
+                            textcoords="offset points", ha="center", fontsize=8,
+                            color=cfg["color"])
 
         ax.set_title(WORKLOAD_TITLES[workload], fontweight="bold")
         ax.set_xlabel("Concurrency")

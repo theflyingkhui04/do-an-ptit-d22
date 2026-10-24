@@ -76,16 +76,39 @@ def load_triplet_markers(root: Path) -> dict[str, Any]:
                 continue
 
             marker = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(marker, dict):
+                errors.append(f"{name}: marker must be a JSON object")
+                continue
             if marker.get("status") != "COMPLETE_VALID":
                 errors.append(f"{name}: status={marker.get('status')!r}")
                 continue
 
-            experiment_ids.add(marker.get("experiment_id"))
-            execution_shas.add(marker.get("execution_sha"))
-            raw_sha = marker.get("raw_sha256") or {}
+            expected_cells = [_cell_id(lane, workload, concurrency) for lane in LANES]
+            if (marker.get("workload"), marker.get("concurrency")) != (workload, concurrency):
+                errors.append(
+                    f"{name}: marker describes "
+                    f"{marker.get('workload')!r}/c{marker.get('concurrency')!r}"
+                )
+                continue
+            if sorted(marker.get("cells") or []) != sorted(expected_cells):
+                errors.append(f"{name}: cells={marker.get('cells')!r}")
+                continue
 
-            for lane in LANES:
-                cell = _cell_id(lane, workload, concurrency)
+            for field, seen in (
+                ("experiment_id", experiment_ids),
+                ("execution_sha", execution_shas),
+            ):
+                value = marker.get(field)
+                if not isinstance(value, str) or not value:
+                    errors.append(f"{name}: missing {field}")
+                seen.add(value)
+
+            raw_sha = marker.get("raw_sha256")
+            if not isinstance(raw_sha, dict):
+                errors.append(f"{name}: raw_sha256 must be an object")
+                continue
+
+            for cell in expected_cells:
                 if cell not in raw_sha:
                     errors.append(f"{name}: marker has no raw_sha256 for {cell}")
                     continue
