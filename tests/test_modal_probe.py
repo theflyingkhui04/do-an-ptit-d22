@@ -118,7 +118,8 @@ def test_check_lane_ok_and_unauthenticated_rejected():
     authed = [c for c in http.calls if c[1] == "/v1/chat/completions"][0]
     assert authed[2]["Authorization"] == "Bearer wk-x.ws-y"
     sent = json.loads(authed[3])
-    assert sent["model"] == "qwen2.5-7b-vanilla" and sent["temperature"] == 0
+    assert sent["model"] == "qwen2.5-7b-vanilla"
+    assert sent["temperature"] == 0
 
 
 def test_check_lane_fails_when_auth_not_enforced():
@@ -171,7 +172,8 @@ def test_measure_startup_cold_record_has_contract_fields():
         assert field in record, field
     assert record["kind"] == "cold"
     assert record["observed_cold"] is True
-    assert record["dtype"] == "bfloat16" and record["quantization"] == "awq_marlin"
+    assert record["dtype"] == "bfloat16"
+    assert record["quantization"] == "awq_marlin"
     assert record["vllm_version"] == "0.30.0"
     assert 0 < record["seconds_to_ready"] < record["first_response_seconds"]
     assert record["status"] == "ok"
@@ -216,3 +218,32 @@ def test_token_never_written_to_records():
     )
 
     assert "ws-secret" not in json.dumps(record)
+
+
+@pytest.mark.parametrize("run_id", ["../escape", "a/b", "..", "", "x\y"])
+def test_evidence_path_rejects_unsafe_run_id(run_id):
+    with pytest.raises(ValueError, match="run-id"):
+        probe._evidence_path(run_id, "check.json")
+
+
+def test_evidence_path_stays_under_runs_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(probe, "REPO_ROOT", tmp_path)
+
+    path = probe._evidence_path("20261025-m300.ok_1", "check.json")
+
+    assert path == tmp_path / "experiments" / "runs" / "m3_00" / "20261025-m300.ok_1" / "check.json"
+    assert path.parent.is_dir()
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [["--run-id", "../escape"], ["--run-id", "ok", "--env-file", "OUTSIDE"]],
+    ids=["bad-run-id", "env-file-outside-repo"],
+)
+def test_main_rejects_unsafe_paths_before_network(tmp_path, monkeypatch, extra):
+    called = []
+    monkeypatch.setattr(probe, "resolve_url", lambda lane: called.append(lane))
+    args = [str(tmp_path / ".env") if a == "OUTSIDE" else a for a in extra]
+
+    assert probe.main(["check", "--lanes", "vanilla", *args]) == 2
+    assert called == []

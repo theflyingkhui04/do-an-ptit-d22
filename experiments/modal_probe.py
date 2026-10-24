@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -94,7 +95,7 @@ def wait_ready(
         attempts += 1
         try:
             status, _ = request("GET", f"{base_url}/health", headers=headers)
-        except (ConnectionError, OSError):
+        except OSError:  # includes ConnectionError
             status = None
         if first_status is None and status is not None:
             first_status = status
@@ -250,10 +251,27 @@ def _git_commit() -> str:
         return "unknown"
 
 
+RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
 def _evidence_path(run_id: str, name: str) -> Path:
-    path = REPO_ROOT / "experiments" / "runs" / "m3_00" / run_id / name
+    """Evidence file under experiments/runs/m3_00/<run-id>/; rejects path tricks."""
+    if not RUN_ID_PATTERN.fullmatch(run_id) or ".." in run_id:
+        raise ValueError(f"Invalid run-id {run_id!r}: use letters, digits, '.', '_' or '-'")
+    root = (REPO_ROOT / "experiments" / "runs" / "m3_00").resolve()
+    path = (root / run_id / name).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError(f"Invalid run-id {run_id!r}: evidence must stay under {root}")
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _repo_file(path: Path) -> Path:
+    """Resolve a user-supplied file and refuse anything outside the repository."""
+    resolved = Path(path).resolve()
+    if not resolved.is_relative_to(REPO_ROOT.resolve()):
+        raise ValueError(f"{resolved} is outside the repository {REPO_ROOT}")
+    return resolved
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -272,18 +290,24 @@ def main(argv: list[str] | None = None) -> int:
     startup.add_argument("--profile", choices=sorted(lanes.DTYPE_PROFILES), default=lanes.DEFAULT_PROFILE)
     args = parser.parse_args(argv)
 
-    token = load_token(args.env_file)
+    # Validate every path from the command line before touching the network.
+    try:
+        env_file = _repo_file(args.env_file)
+        out = _evidence_path(args.run_id, "check.json" if args.command == "check" else "startup.json")
+    except ValueError as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        return 2
+
+    token = load_token(env_file)
     selected = [lane for lane in args.lanes.split(",") if lane]
     urls = {lane: resolve_url(lane) for lane in selected}
 
     if args.command == "check":
         results = [check_lane(lane, urls[lane], token) for lane in selected]
-        out = _evidence_path(args.run_id, "check.json")
         out.write_text(json.dumps({"commit": _git_commit(), "lanes": results}, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(results, indent=2))
         return 0 if all(r["ok"] for r in results) else 1
 
-    out = _evidence_path(args.run_id, "startup.json")
     existing = json.loads(out.read_text(encoding="utf-8"))["records"] if out.exists() else []
     commit = _git_commit()
     for lane in selected:
