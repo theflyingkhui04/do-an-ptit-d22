@@ -144,6 +144,99 @@ def lane_env(lane: str, run_id: str) -> dict[str, str]:
     return env
 
 
+# --------------------------------------------------------------------------
+# [M3-01] server-reported environment and in-region benchmark
+# --------------------------------------------------------------------------
+L4_ENVIRONMENT_PROFILE = "m3-l4-modal-v1"
+
+# Same frozen workload artifacts as the canonical M2-04 campaign (experiments/run_m2_campaign.py).
+BENCH_WORKLOADS = {
+    "W1": "experiments/configs/w1/node1_chat_requests.jsonl",
+    "W2": "experiments/configs/w2_v2/chat_requests.jsonl",
+    "W3": "experiments/configs/w3_v2/chat_requests.jsonl",
+}
+
+
+def server_artifact_dir(lane: str, run_id: str) -> str:
+    """Volume folder holding a server's vllm.log, server_env.json and vram.jsonl."""
+    return f"{ARTIFACTS_ROOT}/{lane}/{run_id}"
+
+
+def build_server_env(
+    *,
+    gpu: str,
+    driver_version: str,
+    gpu_memory_total_mb: float,
+    torch_version: str,
+    torch_cuda_version: str,
+    vllm_version: str,
+    lane: str,
+    run_id: str,
+    profile: str,
+) -> dict[str, Any]:
+    """Environment record written by a server container (read by the harness)."""
+    _lane(lane)
+    dtype = DTYPE_PROFILES[profile]
+    return {
+        "gpu": gpu,
+        "driver_version": driver_version,
+        "gpu_memory_total_mb": gpu_memory_total_mb,
+        "torch_version": torch_version,
+        "torch_cuda_version": torch_cuda_version,
+        "vllm_version": vllm_version,
+        "dtype": dtype["dtype"],
+        "quantization": dtype["quantization"],
+        "dtype_profile": profile,
+        "lane": lane,
+        "run_id": run_id,
+        "served_model_name": LANES[lane].served_model_name,
+        "target_revision": TARGET_REVISION,
+        "draft_revision": DRAFT_REVISION if LANES[lane].speculative_config else None,
+    }
+
+
+def bench_harness_args(
+    lane: str,
+    *,
+    base_url: str,
+    server_env_json: str,
+    raw_out: str,
+    summary_csv: str,
+    experiment_id: str,
+    workload: str,
+    concurrency: int,
+    repeats: int,
+    num_requests: int,
+    warmup_requests: int = 3,
+) -> list[str]:
+    """benchmark_harness arguments for one cell against a Modal lane.
+
+    Mirrors the canonical M2-04 command (run_m2_campaign.build_plan) and only swaps
+    the endpoint and environment profile. The proxy token is passed through the
+    OPENAI_API_KEY environment variable, never on the command line.
+    """
+    cfg = _lane(lane)
+    if workload not in BENCH_WORKLOADS:
+        raise ValueError(f"Unknown workload {workload!r}; expected one of {sorted(BENCH_WORKLOADS)}")
+    return [
+        "--lane", lane,
+        "--workload", workload,
+        "--endpoint", f"{base_url.rstrip('/')}/chat/completions",
+        "--model", cfg.served_model_name,
+        "--workload-file", BENCH_WORKLOADS[workload],
+        "--sample-policy", "cycle-rotate",
+        "--concurrency", str(concurrency),
+        "--repeats", str(repeats),
+        "--num-requests", str(num_requests),
+        "--warmup-requests", str(warmup_requests),
+        "--experiment-id", experiment_id,
+        "--raw-out", raw_out,
+        "--summary-csv", summary_csv,
+        "--environment-profile", L4_ENVIRONMENT_PROFILE,
+        "--server-env-json", server_env_json,
+    ]
+
+
 def pin_main_ref(hub_cache: Path, repo: str, sha: str) -> Path:
     """Point the cached ``main`` ref of ``repo`` at the pinned ``sha``.
 
