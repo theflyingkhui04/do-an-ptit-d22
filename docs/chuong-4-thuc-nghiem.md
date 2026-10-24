@@ -44,6 +44,21 @@ Hệ thống suy luận cơ sở được thiết lập với hai làn độc l�
    - Tổng VRAM chiếm dụng cho cả hai mô hình: **6.27 GiB** (VRAM còn dư cho KV-cache là **4.81 GiB**, hoàn toàn nằm dưới ngưỡng cảnh báo an toàn 14.0 GiB trên T4).
    - Cổng phục vụ nội bộ: `http://127.0.0.1:8002/v1`.
 
+### 4.1.4. Hạ tầng Thực nghiệm Mở rộng trên Modal.com (NVIDIA L4 24GB) — Sprint 4
+Từ Sprint 4, nhóm chuyển các chiến dịch đo mới sang nền tảng GPU serverless **Modal.com** với GPU **NVIDIA L4 24GB** (kiến trúc Ada Lovelace, sm_89). Khác với T4, L4 hỗ trợ BF16 và FlashAttention-2, nên đây là cơ hội quan sát cùng một thuật toán điều khiển cây nháp trên một thế hệ phần cứng khác. Ba làn (Vanilla, Static, Adaptive) được khai báo bằng mã nguồn trong [`experiments/modal_runner.py`](../experiments/modal_runner.py), với cấu hình làn ([`experiments/modal_lanes.py`](../experiments/modal_lanes.py)) được kiểm thử tự động để luôn khớp với các launcher T4 (`scripts/launch_lane*.sh`) về mô hình, độ sâu nháp và giới hạn phục vụ; chỉ kiểu dữ liệu được đổi sang `bfloat16`. Phần mềm giữ nguyên vLLM `0.30.0` / PyTorch `2.13.0+cu130` / CUDA `13.0` như hợp đồng `m1-t4-cu130-v1`, vì bộ lập lịch thích ứng của Làn 3 kế thừa `AsyncScheduler` của vLLM 0.30.0. Theo log khởi động, trên L4 vLLM tự chọn kernel lượng tử hoá AWQ Marlin và backend `FLASH_ATTN`; trọng số được ghim theo revision (`Qwen2.5-7B-Instruct-AWQ@b250375`, `Qwen2.5-0.5B-Instruct@7ae5576`) và lưu trong ổ bền của nền tảng, mỗi endpoint đều yêu cầu xác thực.
+
+Do server tự tắt khi không có tải để tiết kiệm chi phí, thời gian khởi động trở thành một thông số vận hành cần báo cáo. Bảng 4.1b tổng hợp số đo thực tế (3 lần lặp mỗi ô, đồng hồ phía client, đo đến khi nhận phản hồi đầu tiên). Khởi động lạnh mất từ khoảng 3.5 đến 5.5 phút, chủ yếu do bước khởi tạo engine vLLM (profile bộ nhớ, chụp CUDA graph, warmup — đặc biệt dài khi có mô hình nháp), trong khi khởi động ấm chỉ khoảng 1.8–2.2 giây. Vì vậy, các phép đo hiệu năng trên L4 phải chạy ở chế độ giữ ấm container. Lưu ý: số liệu L4 là một bộ dữ liệu riêng và **không được trộn** với số liệu T4 (M1/M2) trong cùng bảng speedup; việc chính thức hoá L4 thành nền tảng thực nghiệm đang được đề xuất thành QĐ-14 và chờ nhóm phê duyệt.
+
+*Bảng 4.1b: Thời gian khởi động của ba làn trên Modal L4, profile `l4-bf16` (median, min–max; đo ngày 24/10/2026)*
+
+| Làn | Khởi động lạnh (s) | Khởi động ấm (s) | KV-cache khả dụng (tokens) |
+| :--- | :---: | :---: | :---: |
+| Làn 1 — Vanilla | 200.9 (200.6–226.1) | 1.84 (1.73–2.78) | 242,192 |
+| Làn 2 — Static (k = 3) | 321.7 (288.4–406.7) | 2.17 (1.80–3.36) | 179,040 |
+| Làn 3 — Adaptive (k ≤ 4) | 221.9 (207.0–242.4) | 1.77 (1.64–1.78) | 178,368 |
+
+*Nguồn: `experiments/runs/m3_00/20261024-m300-startup/startup.json`; KV-cache từ log vLLM trong `experiments/runs/m3_00/20261024-m300-3lanes-check/`.*
+
 ---
 
 ## 4.2. Thiết Kế và Chuẩn Hóa Bộ Workload Đánh Giá (W1, W2, W3)
