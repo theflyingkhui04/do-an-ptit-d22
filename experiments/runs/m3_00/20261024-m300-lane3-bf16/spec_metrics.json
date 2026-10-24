@@ -1,0 +1,27 @@
+[
+  {
+    "lane": "adaptive",
+    "request_id": "chatcmpl-0f311002-8a27-41a1-8a2a-4372ea12b4af",
+    "usage": {
+      "prompt_tokens": 40,
+      "total_tokens": 88,
+      "completion_tokens": 48
+    },
+    "speculative_decoding": {
+      "mean_acceptance_length": 2.333333333333333,
+      "draft_acceptance_rate": 0.5925925925925926,
+      "acceptance_histogram": [
+        3,
+        3,
+        5,
+        1,
+        0
+      ],
+      "num_spec_steps": 12,
+      "num_accepted_draft_tokens": 16,
+      "num_draft_tokens": 27,
+      "num_spec_tokens": 4
+    },
+    "num_spec_tokens_ok": true
+  }
+]
