@@ -1,0 +1,9 @@
+{
+  "vllm_version": "0.30.0",
+  "torch_version": "2.13.0+cu130",
+  "torch_cuda_version": "13.0",
+  "gpu": "NVIDIA L4",
+  "python": "3.11.5",
+  "commit": "0b13ae82005adfe3d637c4beaf8b7d745fe36b09",
+  "timestamp_utc": "2026-10-24T11:24:19.323740+00:00"
+}

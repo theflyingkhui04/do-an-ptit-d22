@@ -1,0 +1,16 @@
+{
+  "commit": "0b13ae82005adfe3d637c4beaf8b7d745fe36b09",
+  "lanes": [
+    {
+      "lane": "adaptive",
+      "ok": true,
+      "health": 200,
+      "unauthenticated_status": 401,
+      "models": [
+        "qwen2.5-7b-adaptive"
+      ],
+      "chat_status": 200,
+      "chat_content_nonempty": true
+    }
+  ]
+}
