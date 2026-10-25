@@ -1,0 +1,4 @@
+{"model": "target", "context_len": 256, "batch_size": 1, "repeat": 1, "decode_tokens": 64, "t_prefill_s": 0.078574, "t_full_s": 1.30224, "step_ms": 19.1198, "status": "ok"}
+{"model": "target", "context_len": 256, "batch_size": 1, "repeat": 2, "decode_tokens": 64, "t_prefill_s": 0.077883, "t_full_s": 1.306228, "step_ms": 19.1929, "status": "ok"}
+{"model": "draft", "context_len": 256, "batch_size": 1, "repeat": 1, "decode_tokens": 64, "t_prefill_s": 0.030699, "t_full_s": 0.336473, "step_ms": 4.7777, "status": "ok"}
+{"model": "draft", "context_len": 256, "batch_size": 1, "repeat": 2, "decode_tokens": 64, "t_prefill_s": 0.028343, "t_full_s": 0.337548, "step_ms": 4.8313, "status": "ok"}
