@@ -143,7 +143,7 @@ modal app stop ptit-vllm -y        # dừng tất cả (URL ngừng hoạt độ
 | `401` | Thiếu/sai token trong `.env` |
 | Deploy chỉ còn 1 làn | Lần deploy trước đặt `PTIT_LANES` — xoá biến rồi deploy lại |
 | `modal_probe` báo không có URL | App chưa deploy hoặc đã `app stop` |
-| Benchmark harness từ chối GPU | `experiments/benchmark_harness.py` ghi cứng `EXPECTED_GPU = "Tesla T4"` — cần thêm profile L4 (M3-01/M3-05) |
+| Benchmark harness từ chối GPU | Chạy trên Modal mà thiếu `--environment-profile m3-l4-modal-v1 --server-env-json ...` — dùng `bench_cell` (§10) |
 
 ## 8. Thông số tham khảo (24/10/2026, profile `l4-bf16`)
 
