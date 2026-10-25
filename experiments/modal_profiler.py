@@ -19,7 +19,7 @@ summary: experiments/results/m3_02_forward_costs_l4.json.
 
 from __future__ import annotations
 
-import random
+import hashlib
 import re
 import statistics
 import time
@@ -100,9 +100,10 @@ def prompt_token_ids(length: int, batch: int, seed: int = 0) -> list[list[int]]:
     low, high = TOKEN_ID_RANGE
     prompts = []
     for index in range(batch):
-        # Benchmark input only, not security: a seeded PRNG keeps prompts reproducible.
-        rng = random.Random(f"{seed}-{length}-{batch}-{index}")  # NOSONAR
-        prompts.append([rng.randrange(low, high) for _ in range(length)])
+        # Hash-derived ids: deterministic per (seed, L, B, index), no PRNG involved.
+        digest = hashlib.shake_256(f"{seed}-{length}-{batch}-{index}".encode()).digest(4 * length)
+        prompts.append([low + int.from_bytes(digest[4 * i : 4 * i + 4], "little") % (high - low)
+                        for i in range(length)])
     return prompts
 
 

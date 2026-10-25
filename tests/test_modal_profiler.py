@@ -192,3 +192,8 @@ def test_parse_int_list():
     assert prof.parse_int_list("256, 1024", (1,)) == (256, 1024)
     with pytest.raises(ValueError):
         prof.parse_int_list("0,5", (1,))
+
+
+def test_prompt_ids_are_pinned_for_evidence_reproducibility():
+    # Changing the generator invalidates experiments/runs/m3_02/20261025-m302-l4-v2.
+    assert prof.prompt_token_ids(6, 1, seed=0)[0] == [8840, 7103, 10947, 8927, 6115, 12324]
