@@ -406,3 +406,126 @@ def bench_cell(lane: str = "vanilla", server_run_id: str = "", workload: str = "
     print(result["harness_log"][-2500:])
     print(json.dumps(summary, indent=2))
     print(f"Wrote {out}")
+
+
+# --------------------------------------------------------------------------
+# [M3-02] Forward cost of target / draft on L4 (one container per model)
+# --------------------------------------------------------------------------
+profile_image = image.add_local_file(
+    REPO_ROOT / "experiments" / "modal_profiler.py", "/root/experiments/modal_profiler.py"
+)
+
+
+def _kv_capacity_tokens(llm) -> int | None:
+    try:
+        cache = llm.llm_engine.vllm_config.cache_config
+        return int(cache.num_gpu_blocks) * int(cache.block_size)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+@app.function(
+    image=profile_image,
+    gpu=GPU,
+    timeout=3 * 60 * 60,
+    volumes=SERVER_VOLUMES,
+    env={"HF_HOME": lanes.HF_HOME, "HF_HUB_OFFLINE": "1", "VLLM_CACHE_ROOT": lanes.VLLM_CACHE_ROOT},
+)
+def profile_forward(model: str, run_id: str, contexts: list[int], batches: list[int],
+                    warmup: int, repeats: int, decode_tokens: int) -> dict:
+    """Measure step_ms for every (L, B) cell of one model with vLLM offline LLM."""
+    import pynvml
+    import torch
+    import vllm
+    from vllm import LLM, SamplingParams
+    from vllm.inputs import TokensPrompt
+
+    from experiments import modal_profiler as prof
+
+    kwargs = prof.engine_kwargs(model)
+    started = time.monotonic()
+    llm = LLM(**kwargs)
+    load_s = time.monotonic() - started
+    capacity = _kv_capacity_tokens(llm)
+
+    pynvml.nvmlInit()
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    name = pynvml.nvmlDeviceGetName(handle)
+    env = {
+        "model": model, "engine_kwargs": kwargs, "gpu": name.decode() if isinstance(name, bytes) else str(name),
+        "driver_version": pynvml.nvmlSystemGetDriverVersion(),
+        "gpu_memory_total_mb": round(pynvml.nvmlDeviceGetMemoryInfo(handle).total / 2**20, 1),
+        "vllm_version": vllm.__version__, "torch_version": torch.__version__,
+        "torch_cuda_version": torch.version.cuda, "kv_capacity_tokens": capacity,
+        "engine_load_s": round(load_s, 2), "run_id": run_id,
+    }
+    print(json.dumps({"event": "engine_ready", **env}), flush=True)
+
+    def generate(prompts: list[list[int]], max_tokens: int) -> None:
+        params = SamplingParams(max_tokens=max_tokens, temperature=0.0, ignore_eos=True)
+        llm.generate([TokensPrompt(prompt_token_ids=p) for p in prompts], params, use_tqdm=False)
+
+    records = []
+    out_dir = Path(lanes.ARTIFACTS_ROOT) / "profile" / run_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = out_dir / f"{model}.jsonl"
+    with raw_path.open("w", encoding="utf-8") as raw:
+        for length, batch in prof.grid(contexts, batches):
+            if not prof.fits_kv(length, batch, decode_tokens, capacity):
+                cell = [{"model": model, "context_len": length, "batch_size": batch, "status": "skipped",
+                         "reason": f"B*(L+N+1)={batch * (length + decode_tokens + 1)} > kv {capacity}",
+                         "step_ms": None}]
+            else:
+                cell = prof.measure_cell(generate, model, length, batch, warmup=warmup, repeats=repeats,
+                                         decode_tokens=decode_tokens)
+            for record in cell:
+                raw.write(json.dumps(record) + "\n")
+            raw.flush()
+            records.extend(cell)
+            medians = [r["step_ms"] for r in cell if r["step_ms"] is not None]
+            print(json.dumps({"event": "cell", "model": model, "L": length, "B": batch,
+                              "step_ms": sorted(medians)[len(medians) // 2] if medians else None}), flush=True)
+            artifacts_volume.commit()
+    (out_dir / f"{model}.env.json").write_text(json.dumps(env, indent=2), encoding="utf-8")
+    artifacts_volume.commit()
+    return {"env": env, "records": records}
+
+
+@app.local_entrypoint()
+def profile_costs(run_id: str = "", models: str = "target,draft", contexts: str = "", batches: str = "",
+                  warmup: int = 3, repeats: int = 5, decode_tokens: int = 64) -> None:
+    """modal run -m experiments.modal_runner::profile_costs --run-id <id> [--contexts 256 --batches 1]"""
+    from experiments import modal_profiler as prof
+
+    run_id = run_id or RUN_ID
+    out = prof.evidence_dir(run_id)
+    ctx = prof.parse_int_list(contexts, prof.CONTEXT_LENGTHS)
+    bs = prof.parse_int_list(batches, prof.BATCH_SIZES)
+    selected = [m for m in models.split(",") if m]
+    for model in selected:
+        prof.engine_kwargs(model)  # reject unknown names before spending GPU time
+
+    calls = {m: profile_forward.spawn(m, run_id, list(ctx), list(bs), warmup, repeats, decode_tokens)
+             for m in selected}
+    results = {m: call.get() for m, call in calls.items()}
+
+    out.mkdir(parents=True, exist_ok=True)
+    records = [r for m in selected for r in results[m]["records"]]
+    (out / "forward_costs.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    meta = {"run_id": run_id, "commit": _git_commit(), "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "grid": {"contexts": list(ctx), "batches": list(bs), "warmup": warmup, "repeats": repeats,
+                     "decode_tokens": decode_tokens},
+            "method": "step_ms = (T(1+N) - T(1)) / N, vLLM offline LLM, prefix caching off",
+            "models": {m: results[m]["env"] for m in selected}}
+    (out / "env.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    summary = {**meta, "cells": prof.summarize(records)}
+    (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    full_grid = ctx == prof.CONTEXT_LENGTHS and bs == prof.BATCH_SIZES and set(selected) == set(prof.MODELS)
+    if full_grid and repeats >= prof.REPEATS:
+        results_path = REPO_ROOT / "experiments" / "results" / "m3_02_forward_costs_l4.json"
+        results_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        print(f"Wrote {results_path}")
+    for cell in summary["cells"]:
+        print(cell["model"], cell["context_len"], cell["batch_size"], cell["status"],
+              cell["step_ms_median"], cell["variance_flag"])
+    print(f"Wrote {out}")
