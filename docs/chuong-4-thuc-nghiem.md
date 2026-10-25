@@ -67,14 +67,14 @@ Do server tự tắt khi không có tải để tiết kiệm chi phí, thời g
 
 | Mô hình | $L$ | $B = 1$ | $B = 8$ | $B = 32$ |
 | :--- | :---: | :---: | :---: | :---: |
-| Đích 7B AWQ ($C_T$) | 256 | 19,02 | 20,03 | 23,17 |
-| Đích 7B AWQ ($C_T$) | 3072 | 19,35 | 24,92 | 52,63 |
-| Nháp 0,5B ($C_D$) | 256 | 4,89 | 5,18 | 6,00 |
-| Nháp 0,5B ($C_D$) | 3072 | 5,21 | 6,08 | 10,74 |
+| Đích 7B AWQ ($C_T$) | 256 | 19,15 | 19,80 | 23,44 |
+| Đích 7B AWQ ($C_T$) | 3072 | 19,35 | 25,72 | 52,96 |
+| Nháp 0,5B ($C_D$) | 256 | 4,79 | 5,08 | 5,72 |
+| Nháp 0,5B ($C_D$) | 3072 | 5,19 | 6,14 | 11,40 |
 
-*Nguồn: `experiments/results/m3_02_forward_costs_l4.json` (đủ lưới $L \in \{256, 512, 1024, 2048, 3072\}$, $B \in \{1, 2, 4, 8, 16, 32\}$); dữ liệu thô `experiments/runs/m3_02/20261025-m302-l4/`.*
+*Nguồn: `experiments/results/m3_02_forward_costs_l4.json` (đủ lưới $L \in \{256, 512, 1024, 2048, 3072\}$, $B \in \{1, 2, 4, 8, 16, 32\}$); dữ liệu thô `experiments/runs/m3_02/20261025-m302-l4-v2/`.*
 
-Kết quả cho thấy hai điểm. Thứ nhất, khi lô nhỏ, thời gian một bước gần như không đổi theo độ dài ngữ cảnh (khoảng 19 ms với mô hình đích và 5 ms với mô hình nháp từ 256 đến 3072 token): bước decode bị giới hạn bởi việc đọc trọng số từ bộ nhớ, còn chi phí attention trên KV cache chỉ nổi lên khi lô lớn và ngữ cảnh dài (52,6 ms ở $L = 3072$, $B = 32$). Thứ hai, một lượt forward của mô hình nháp tốn khoảng 26% một bước của mô hình đích ($C_D/C_T \approx 0{,}26$ ở $B = 1$). Con số này quan trọng với bộ điều khiển thích ứng: trong vLLM, khi chọn ngân sách $k = 0$, mô hình nháp vẫn chạy một lượt forward để giữ KV cache của nó đồng bộ, nên một bước "tắt suy đoán" vẫn tốn khoảng $C_T + C_D$ chứ không phải $C_T$. Đây là một nguyên nhân khả dĩ khiến Làn 3 chậm hơn Vanilla trên W3 ở chiến dịch M2-04 (đo trên T4, nên chỉ so sánh được về xu hướng); kết luận định lượng cần phép đo tách riêng ở Sprint sau. Các giới hạn của phép đo: mỗi ô là trung bình trên ngữ cảnh $[L, L+64]$, và với $L \cdot B$ lớn, prefill chia nhỏ có thể chồng lấn với vài bước decode đầu. Chi phí xác thực nhiều token $C_V(k)$ và ma trận $C(N, B)$ hoàn chỉnh thuộc phần việc tiếp theo của M3-02.
+Kết quả cho thấy hai điểm. Thứ nhất, khi lô nhỏ, thời gian một bước gần như không đổi theo độ dài ngữ cảnh (khoảng 19 ms với mô hình đích và 5 ms với mô hình nháp từ 256 đến 3072 token): bước decode bị giới hạn bởi việc đọc trọng số từ bộ nhớ, còn chi phí attention trên KV cache chỉ nổi lên khi lô lớn và ngữ cảnh dài (53,0 ms ở $L = 3072$, $B = 32$). Thứ hai, một lượt forward của mô hình nháp tốn khoảng 26% một bước của mô hình đích ($C_D/C_T \approx 0{,}26$ ở $B = 1$). Con số này quan trọng với bộ điều khiển thích ứng: trong vLLM, khi chọn ngân sách $k = 0$, mô hình nháp vẫn chạy một lượt forward để giữ KV cache của nó đồng bộ, nên một bước "tắt suy đoán" vẫn tốn khoảng $C_T + C_D$ chứ không phải $C_T$. Đây là một nguyên nhân khả dĩ khiến Làn 3 chậm hơn Vanilla trên W3 ở chiến dịch M2-04 (đo trên T4, nên chỉ so sánh được về xu hướng); kết luận định lượng cần phép đo tách riêng ở Sprint sau. Các giới hạn của phép đo: mỗi ô là trung bình trên ngữ cảnh $[L, L+64]$, và với $L \cdot B$ lớn, prefill chia nhỏ có thể chồng lấn với vài bước decode đầu. Chi phí xác thực nhiều token $C_V(k)$ và ma trận $C(N, B)$ hoàn chỉnh thuộc phần việc tiếp theo của M3-02.
 
 ---
 
