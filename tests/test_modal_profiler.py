@@ -58,8 +58,12 @@ def test_prompts_have_exact_length_and_are_distinct():
 
 
 def test_prompts_are_deterministic_per_seed():
-    assert prof.prompt_token_ids(256, 2, seed=7) == prof.prompt_token_ids(256, 2, seed=7)
-    assert prof.prompt_token_ids(256, 2, seed=7) != prof.prompt_token_ids(256, 2, seed=8)
+    first = prof.prompt_token_ids(256, 2, seed=7)
+    again = prof.prompt_token_ids(256, 2, seed=7)
+    other_seed = prof.prompt_token_ids(256, 2, seed=8)
+
+    assert first == again
+    assert first != other_seed
 
 
 def test_prompt_ids_stay_in_safe_vocab_range():
@@ -119,7 +123,8 @@ def test_measure_cell_runs_warmup_then_repeats():
     assert [r["repeat"] for r in records] == [1, 2, 3, 4, 5]
     assert all(r["step_ms"] == pytest.approx(20.0) for r in records)
     assert records[0]["model"] == "target"
-    assert records[0]["context_len"] == 256 and records[0]["batch_size"] == 2
+    assert records[0]["context_len"] == 256
+    assert records[0]["batch_size"] == 2
 
 
 # ------------------------------------------------------------- summary
@@ -133,7 +138,8 @@ def test_summarize_median_p90_and_variance():
     cell = prof.summarize(records)[0]
 
     assert cell["step_ms_median"] == pytest.approx(20.0)
-    assert cell["step_ms_min"] == 19.0 and cell["step_ms_max"] == 21.0
+    assert cell["step_ms_min"] == pytest.approx(19.0)
+    assert cell["step_ms_max"] == pytest.approx(21.0)
     assert cell["variance_ratio"] == pytest.approx(0.1)
     assert cell["variance_flag"] is False
     assert cell["n_repeats"] == 5

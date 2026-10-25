@@ -100,7 +100,8 @@ def prompt_token_ids(length: int, batch: int, seed: int = 0) -> list[list[int]]:
     low, high = TOKEN_ID_RANGE
     prompts = []
     for index in range(batch):
-        rng = random.Random(f"{seed}-{length}-{batch}-{index}")
+        # Benchmark input only, not security: a seeded PRNG keeps prompts reproducible.
+        rng = random.Random(f"{seed}-{length}-{batch}-{index}")  # NOSONAR
         prompts.append([rng.randrange(low, high) for _ in range(length)])
     return prompts
 
