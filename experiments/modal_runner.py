@@ -24,6 +24,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,6 +61,8 @@ SERVER_VOLUMES = {
     lanes.ARTIFACTS_ROOT: artifacts_volume,
 }
 MANIFEST_NAME = "ptit_weights_manifest.json"
+SERVER_ENV_FILE = "server_env.json"
+RAW_FILE = "raw.jsonl"
 
 app = modal.App(APP_NAME, image=image)
 
@@ -113,9 +116,60 @@ def download_weights() -> dict:
 # --------------------------------------------------------------------------
 # Lane servers
 # --------------------------------------------------------------------------
+def _write_server_env(lane: str, run_dir: Path) -> None:
+    """[M3-01] Record the server's real environment for the remote-mode harness."""
+    import pynvml
+    import torch
+    import vllm
+
+    pynvml.nvmlInit()
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    name = pynvml.nvmlDeviceGetName(handle)
+    driver = pynvml.nvmlSystemGetDriverVersion()
+    env = lanes.build_server_env(
+        gpu=name.decode() if isinstance(name, bytes) else str(name),
+        driver_version=driver.decode() if isinstance(driver, bytes) else str(driver),
+        gpu_memory_total_mb=round(pynvml.nvmlDeviceGetMemoryInfo(handle).total / 1024**2, 2),
+        torch_version=torch.__version__,
+        torch_cuda_version=torch.version.cuda,
+        vllm_version=vllm.__version__,
+        lane=lane,
+        run_id=os.environ["PTIT_RUN_ID"],
+        profile=os.environ["PTIT_DTYPE_PROFILE"],
+    )
+    env["started_at_utc"] = datetime.now(timezone.utc).isoformat()
+    (run_dir / SERVER_ENV_FILE).write_text(json.dumps(env, indent=2) + "\n", encoding="utf-8")
+    artifacts_volume.commit()
+
+
+def _sample_vram(run_dir: Path, stop: threading.Event, interval_s: float = 0.25, commit_every_s: float = 10.0) -> None:
+    """[M3-01] Append whole-GPU NVML memory samples ({ts_utc, used_mb, total_mb}) to vram.jsonl."""
+    import pynvml
+
+    pynvml.nvmlInit()
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    last_commit = time.monotonic()
+    with (run_dir / "vram.jsonl").open("a", encoding="utf-8") as out:
+        while not stop.is_set():
+            mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            out.write(json.dumps({
+                "ts_utc": datetime.now(timezone.utc).isoformat(),
+                "used_mb": round(mem.used / 1024**2, 2),
+                "total_mb": round(mem.total / 1024**2, 2),
+            }) + "\n")
+            out.flush()
+            if time.monotonic() - last_commit >= commit_every_s:
+                artifacts_volume.commit()
+                last_commit = time.monotonic()
+            stop.wait(interval_s)
+
+
 def _start_vllm(lane: str) -> subprocess.Popen:
-    run_dir = Path(lanes.ARTIFACTS_ROOT) / lane / os.environ["PTIT_RUN_ID"]
+    run_dir = Path(lanes.server_artifact_dir(lane, os.environ["PTIT_RUN_ID"]))
     run_dir.mkdir(parents=True, exist_ok=True)
+    _write_server_env(lane, run_dir)
+    _VRAM_STOP.clear()
+    threading.Thread(target=_sample_vram, args=(run_dir, _VRAM_STOP), daemon=True).start()
     telemetry = os.environ.get("ADAPTIVE_TELEMETRY_PATH")
     if telemetry:
         Path(telemetry).parent.mkdir(parents=True, exist_ok=True)
@@ -135,7 +189,11 @@ def _start_vllm(lane: str) -> subprocess.Popen:
     return proc
 
 
+_VRAM_STOP = threading.Event()
+
+
 def _stop_vllm(proc: subprocess.Popen) -> None:
+    _VRAM_STOP.set()
     proc.terminate()
     try:
         proc.wait(timeout=60)
@@ -230,4 +288,121 @@ def weights() -> None:
     out = _evidence_dir() / "weights_manifest.json"
     out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(manifest, indent=2))
+    print(f"Wrote {out}")
+
+
+# --------------------------------------------------------------------------
+# [M3-01] Benchmark from inside Modal (same region as the servers)
+# --------------------------------------------------------------------------
+BENCH_ROOT = "/root/bench"
+
+bench_image = image.add_local_dir(
+    REPO_ROOT / "experiments",
+    f"{BENCH_ROOT}/experiments",
+    ignore=["runs/**", "results/**", "notebooks/**", "**/__pycache__/**", "**/*.ipynb"],
+)
+
+
+def _lane_base_url(lane: str) -> str:
+    workspace = os.environ.get("PTIT_MODAL_WORKSPACE", "nguyenduonghb940")
+    return f"https://{workspace}--{APP_NAME}-{lane}.us-east.modal.direct/v1"
+
+
+def _wait_server_ready(base_url: str, token: str, timeout_s: float = 1200.0) -> float:
+    import urllib.request
+
+    start = time.monotonic()
+    health = base_url[: -len("/v1")] + "/health"
+    while True:
+        try:
+            req = urllib.request.Request(health, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status == 200:
+                    return time.monotonic() - start
+        except OSError:  # URLError is an OSError
+            pass
+        if time.monotonic() - start > timeout_s:
+            raise TimeoutError(f"{health} not ready after {timeout_s:.0f} s")
+        time.sleep(10)
+
+
+@app.function(
+    image=bench_image,
+    cpu=2,
+    timeout=4 * 60 * 60,
+    volumes={lanes.ARTIFACTS_ROOT: artifacts_volume},
+    secrets=[modal.Secret.from_name("ptit-proxy-token")],
+)
+def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_commit: str) -> dict:
+    """Run one benchmark_harness cell against a deployed lane and join server VRAM."""
+    sys.path.insert(0, BENCH_ROOT)
+    from experiments.modal_vram_join import join_vram, load_jsonl
+
+    token = f"{os.environ['MODAL_PROXY_TOKEN_ID']}.{os.environ['MODAL_PROXY_TOKEN_SECRET']}"
+    base_url = _lane_base_url(lane)
+    ready_s = _wait_server_ready(base_url, token)
+
+    server_dir = Path(lanes.server_artifact_dir(lane, server_run_id))
+    out_dir = Path(lanes.ARTIFACTS_ROOT) / "bench" / bench_run_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    artifacts_volume.reload()
+
+    args = lanes.bench_harness_args(
+        lane,
+        base_url=base_url,
+        server_env_json=str(server_dir / SERVER_ENV_FILE),
+        raw_out=str(out_dir / RAW_FILE),
+        summary_csv=str(out_dir / "harness_header.csv"),
+        experiment_id=bench_run_id,
+        **cell,
+    )
+    env = {**os.environ, "OPENAI_API_KEY": token, "PTIT_GIT_COMMIT": git_commit,
+           "PTIT_SERVER_ENV_ROOT": lanes.ARTIFACTS_ROOT, "PYTHONIOENCODING": "utf-8"}
+    proc = subprocess.run([sys.executable, "-m", "experiments.benchmark_harness", *args],
+                          cwd=BENCH_ROOT, env=env, capture_output=True, text=True)
+    (out_dir / "harness.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
+
+    result = {"lane": lane, "returncode": proc.returncode, "server_ready_wait_s": round(ready_s, 2),
+              "harness_log": proc.stdout[-6000:] + proc.stderr[-4000:], "raw": None, "joined": None,
+              "server_env": None, "join_error": None}
+    if (server_dir / SERVER_ENV_FILE).exists():
+        result["server_env"] = json.loads((server_dir / SERVER_ENV_FILE).read_text(encoding="utf-8"))
+    raw_path = out_dir / RAW_FILE
+    if proc.returncode == 0 and raw_path.exists():
+        result["raw"] = raw_path.read_text(encoding="utf-8")
+        time.sleep(12)  # let the server's periodic commit publish the last VRAM samples
+        artifacts_volume.reload()
+        try:
+            joined = join_vram(load_jsonl(raw_path), load_jsonl(server_dir / "vram.jsonl"))
+            result["joined"] = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in joined)
+        except (OSError, ValueError, KeyError) as exc:
+            result["join_error"] = str(exc)
+    return result
+
+
+@app.local_entrypoint()
+def bench_cell(lane: str = "vanilla", server_run_id: str = "", workload: str = "W1",
+               concurrency: int = 1, repeats: int = 1, num_requests: int = 8) -> None:
+    """modal run -m experiments.modal_runner::bench_cell --server-run-id <deploy PTIT_RUN_ID> ..."""
+    if not server_run_id:
+        raise SystemExit("--server-run-id is required (the PTIT_RUN_ID used at modal deploy)")
+    bench_run_id = f"{RUN_ID}-{lane}-{workload}-c{concurrency}"
+    cell = {"workload": workload, "concurrency": concurrency, "repeats": repeats, "num_requests": num_requests}
+    result = bench.remote(lane, server_run_id, bench_run_id, cell, _git_commit())
+
+    out = REPO_ROOT / "experiments" / "runs" / "m3_01" / bench_run_id
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "harness.log").write_text(result["harness_log"], encoding="utf-8")
+    if result["server_env"]:
+        (out / SERVER_ENV_FILE).write_text(json.dumps(result["server_env"], indent=2) + "\n", encoding="utf-8")
+    if result["raw"]:
+        (out / RAW_FILE).write_text(result["raw"], encoding="utf-8")
+    if result["joined"]:
+        (out / "raw.vram.jsonl").write_text(result["joined"], encoding="utf-8")
+    summary = {k: result[k] for k in ("lane", "returncode", "server_ready_wait_s", "join_error")}
+    summary.update({"bench_run_id": bench_run_id, "server_run_id": server_run_id, "cell": cell,
+                    "commit": _git_commit(), "timestamp_utc": datetime.now(timezone.utc).isoformat()})
+    (out / "bench.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    print(result["harness_log"][-2500:])
+    print(json.dumps(summary, indent=2))
     print(f"Wrote {out}")

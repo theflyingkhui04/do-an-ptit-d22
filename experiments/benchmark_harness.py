@@ -60,6 +60,44 @@ EXPECTED_VLLM = "0.30.0"
 EXPECTED_TORCH = "2.13.0+cu130"
 EXPECTED_TORCH_CUDA = "13.0"
 
+L4_MODAL_PROFILE = "m3-l4-modal-v1"
+
+# "local": vLLM runs on this machine; GPU/VRAM read here with NVML (M1/M2, T4).
+# "server": vLLM runs elsewhere (Modal L4, [M3-01]); the environment comes from the
+# server_env.json written by the server container and VRAM is joined afterwards
+# from the server's own NVML samples (experiments/modal_vram_join.py).
+ENVIRONMENT_PROFILES = {
+    ENVIRONMENT_PROFILE: {
+        "gpu": EXPECTED_GPU,
+        "vllm_version": EXPECTED_VLLM,
+        "torch_version": EXPECTED_TORCH,
+        "torch_cuda_version": EXPECTED_TORCH_CUDA,
+        "mode": "local",
+    },
+    L4_MODAL_PROFILE: {
+        "gpu": "NVIDIA L4",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
+}
+
+SERVER_ENV_REQUIRED = (
+    "gpu",
+    "driver_version",
+    "gpu_memory_total_mb",
+    "torch_version",
+    "torch_cuda_version",
+    "vllm_version",
+    "dtype",
+    "quantization",
+)
+
+
+class ServerEnvError(ValueError):
+    """The server-reported environment file is missing or incomplete."""
+
 DEFAULT_CONCURRENCY_SWEEP = (1, 2, 4, 8, 16, 32)
 CANONICAL_MIN_REPEATS = 5
 CANONICAL_MIN_WARMUP_REQUESTS = 3
@@ -114,6 +152,9 @@ def package_version(name: str) -> str | None:
 
 
 def git_commit() -> str | None:
+    # Remote runs (Modal) have no .git; the launcher passes the local HEAD.
+    if os.environ.get("PTIT_GIT_COMMIT"):
+        return os.environ["PTIT_GIT_COMMIT"]
     repo_root = Path(__file__).resolve().parents[1]
     try:
         return subprocess.check_output(
@@ -126,7 +167,55 @@ def git_commit() -> str | None:
         return None
 
 
-def environment_info(gpu_index: int) -> tuple[dict, object]:
+def load_server_env(path: Path) -> dict:
+    """Read the environment written by the remote server container.
+
+    The file must sit under PTIT_SERVER_ENV_ROOT (default: the working
+    directory); the in-Modal benchmark sets it to the artifacts volume.
+    """
+    root = Path(os.environ.get("PTIT_SERVER_ENV_ROOT") or Path.cwd()).resolve()
+    path = Path(path).resolve()
+    if not path.is_relative_to(root):
+        raise ServerEnvError(f"server environment file {path} is outside {root}")
+    if not path.is_file():
+        raise ServerEnvError(f"server environment file not found: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ServerEnvError(f"server environment file is not JSON: {path}: {exc}") from exc
+    missing = [name for name in SERVER_ENV_REQUIRED if data.get(name) in (None, "")]
+    if missing:
+        raise ServerEnvError(f"server environment {path} is missing: {', '.join(missing)}")
+    return data
+
+
+def environment_info(
+    gpu_index: int,
+    profile: str = ENVIRONMENT_PROFILE,
+    server_env_json: Path | None = None,
+) -> tuple[dict, object]:
+    """Return (environment record, local NVML handle or None for server mode)."""
+    if ENVIRONMENT_PROFILES[profile]["mode"] == "server":
+        server = load_server_env(server_env_json)
+        info = {
+            "environment_profile": profile,
+            "environment_source": "server",
+            "gpu": server["gpu"],
+            "gpu_index": None,
+            "gpu_memory_total_mb": server["gpu_memory_total_mb"],
+            "driver_version": server["driver_version"],
+            "torch_version": server["torch_version"],
+            "torch_cuda_version": server["torch_cuda_version"],
+            "vllm_version": server["vllm_version"],
+            "server_dtype": server["dtype"],
+            "server_quantization": server["quantization"],
+            "server_lane": server.get("lane"),
+            "server_run_id": server.get("run_id"),
+            "aiohttp_version": aiohttp.__version__,
+            "commit": git_commit(),
+        }
+        return info, None
+
     nvmlInit()
     handle = nvmlDeviceGetHandleByIndex(gpu_index)
     name = nvmlDeviceGetName(handle)
@@ -150,12 +239,11 @@ def environment_info(gpu_index: int) -> tuple[dict, object]:
     return info, handle
 
 
-def validate_environment(env: dict) -> list[str]:
+def validate_environment(env: dict, profile: str = ENVIRONMENT_PROFILE) -> list[str]:
     expected = {
-        "gpu": EXPECTED_GPU,
-        "vllm_version": EXPECTED_VLLM,
-        "torch_version": EXPECTED_TORCH,
-        "torch_cuda_version": EXPECTED_TORCH_CUDA,
+        field: value
+        for field, value in ENVIRONMENT_PROFILES[profile].items()
+        if field != "mode"
     }
 
     mismatches: list[str] = []
@@ -603,15 +691,20 @@ async def run_repeat(
         sample_policy=sample_policy,
     )
 
+    # gpu_handle is None in server mode: VRAM is joined later from the
+    # server's own NVML samples using the UTC window recorded below.
     stop_monitor = asyncio.Event()
-    monitor_task = asyncio.create_task(
-        monitor_vram(
-            gpu_handle,
-            stop_monitor,
-            args.vram_sample_interval_s,
+    monitor_task = None
+    if gpu_handle is not None:
+        monitor_task = asyncio.create_task(
+            monitor_vram(
+                gpu_handle,
+                stop_monitor,
+                args.vram_sample_interval_s,
+            )
         )
-    )
 
+    started_at_utc = datetime.now(timezone.utc).isoformat()
     start = time.perf_counter()
     try:
         records = await run_requests(
@@ -632,8 +725,9 @@ async def run_repeat(
         )
         duration = time.perf_counter() - start
     finally:
+        finished_at_utc = datetime.now(timezone.utc).isoformat()
         stop_monitor.set()
-        vram_peak_mb = await monitor_task
+        vram_peak_mb = await monitor_task if monitor_task is not None else None
 
     run_id = f"run-{uuid.uuid4()}"
     successes = sum(record["success"] for record in records)
@@ -648,6 +742,8 @@ async def run_repeat(
         record["run_id"] = run_id
         record["run_duration_s"] = round(duration, 6)
         record["run_vram_peak_mb"] = vram_peak_mb
+        record["run_started_at_utc"] = started_at_utc
+        record["run_finished_at_utc"] = finished_at_utc
 
     raw_writer.write(records)
 
@@ -906,13 +1002,21 @@ async def async_main(args: argparse.Namespace) -> int:
         print("warmup_offset        : 0")
         print("====================================")
 
-    env, gpu_handle = environment_info(args.gpu_index)
+    profile = args.environment_profile
+    try:
+        env, gpu_handle = environment_info(args.gpu_index, profile, args.server_env_json)
+    except ServerEnvError as exc:
+        print("\n===== ENVIRONMENT CONTRACT FAILED =====")
+        print(f"profile              : {profile}")
+        print(f"error                : {exc}")
+        print("=======================================")
+        return 5
 
     try:
-        mismatches = validate_environment(env)
+        mismatches = validate_environment(env, profile)
         if mismatches:
             print("\n===== ENVIRONMENT CONTRACT FAILED =====")
-            print(f"profile              : {ENVIRONMENT_PROFILE}")
+            print(f"profile              : {profile}")
             for mismatch in mismatches:
                 print(f"mismatch             : {mismatch}")
             print("=======================================")
@@ -921,7 +1025,8 @@ async def async_main(args: argparse.Namespace) -> int:
             print("[CẢNH BÁO] Tiếp tục chạy vì có cờ --skip-env-check")
         else:
             print("\n===== ENVIRONMENT CONTRACT PASS =====")
-            print(f"profile              : {ENVIRONMENT_PROFILE}")
+            print(f"profile              : {profile}")
+            print(f"environment_source   : {env.get('environment_source', 'local')}")
             print(f"gpu                  : {env['gpu']}")
             print(f"vllm_version         : {env['vllm_version']}")
             print(f"torch_version        : {env['torch_version']}")
@@ -979,7 +1084,8 @@ async def async_main(args: argparse.Namespace) -> int:
                 print("=====================================")
                 return 6
     finally:
-        nvmlShutdown()
+        if gpu_handle is not None:
+            nvmlShutdown()
 
 
 def parse_args() -> argparse.Namespace:
@@ -1131,6 +1237,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-s", type=float, default=120)
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"))
     parser.add_argument("--gpu-index", type=int, default=0)
+    parser.add_argument(
+        "--environment-profile",
+        choices=sorted(ENVIRONMENT_PROFILES),
+        default=ENVIRONMENT_PROFILE,
+        help=(
+            "m1-t4-cu130-v1: vLLM on this machine (local NVML). "
+            "m3-l4-modal-v1: remote Modal L4 server; requires --server-env-json "
+            "and VRAM is joined afterwards from the server's samples."
+        ),
+    )
+    parser.add_argument(
+        "--server-env-json",
+        type=Path,
+        default=None,
+        help="server_env.json written by the remote server container.",
+    )
     parser.add_argument("--vram-sample-interval-s", type=float, default=0.05)
     parser.add_argument(
         "--raw-out",
@@ -1159,6 +1281,14 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
     concurrencies = resolve_concurrencies(args)
+
+    if (
+        ENVIRONMENT_PROFILES[args.environment_profile]["mode"] == "server"
+        and args.server_env_json is None
+    ):
+        parser.error(
+            f"--environment-profile {args.environment_profile} requires --server-env-json"
+        )
 
     if args.workload_file is not None and args.workload == "smoke":
         parser.error(

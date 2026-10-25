@@ -1,0 +1,16 @@
+{
+  "commit": "194327eea771386fc7af2f4a45f238e74475ff11",
+  "lanes": [
+    {
+      "lane": "vanilla",
+      "ok": true,
+      "health": 200,
+      "unauthenticated_status": 401,
+      "models": [
+        "qwen2.5-7b-vanilla"
+      ],
+      "chat_status": 200,
+      "chat_content_nonempty": true
+    }
+  ]
+}

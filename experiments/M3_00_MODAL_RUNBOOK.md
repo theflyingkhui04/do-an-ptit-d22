@@ -154,3 +154,83 @@ modal app stop ptit-vllm -y        # dừng tất cả (URL ngừng hoạt độ
 | adaptive | 221.9 s | 1.77 s | 178 368 token |
 
 L4 ≈ 0.8 USD/giờ; Starter 30 USD credit/tháng (giới hạn chi tiêu workspace 30 USD). Toàn bộ M3-00 ngày 24/10 tốn ≈ 2.08 USD.
+
+---
+
+# Phần [M3-01] — Client, benchmark trong Modal, pipeline
+
+## 9. Client chung (`src/client/modal_client.py`)
+
+Chỉ cần token trong `.env` (không cần tài khoản Modal):
+
+```python
+from src.client.modal_client import ModalLaneClient
+lane = ModalLaneClient("static")                                    # vanilla | static | adaptive
+r = lane.chat([{"role": "user", "content": "Xin chào"}], max_tokens=16, temperature=0)
+for ev in lane.stream([{"role": "user", "content": "Xin chào"}], max_tokens=64):
+    if ev.kind == "delta": print(ev.text, end="")
+    else: print("\n", ev.usage, ev.metrics)                         # metrics.speculative_decoding ở static/adaptive
+margins = lane.margins([{"role": "user", "content": "..."}], max_tokens=8)   # top-1 − top-2 logprob mỗi token
+```
+
+- Tự chờ khi server trả 503 (cold start), tối đa 20 phút.
+- Đổi URL: `PTIT_MODAL_URL_<LANE>` hoặc `PTIT_MODAL_WORKSPACE`.
+
+Kiểm nhanh 3 làn và smoke 5 prompt (W1×2, W2×2, W3×1):
+
+```powershell
+python -m experiments.modal_smoke client-check --run-id <id>
+python -m experiments.modal_smoke smoke --run-id <id>
+```
+
+## 10. Benchmark chạy TRONG Modal (cho M3-05)
+
+Harness chạy ở hàm CPU `bench` cùng vùng `us-east` với server → không lẫn độ trễ mạng VN; môi trường và VRAM lấy từ chính server L4.
+
+Một lần: tạo Modal Secret chứa token cho hàm bench (không in giá trị):
+
+```powershell
+modal secret create ptit-proxy-token --from-json <file JSON tạm có MODAL_PROXY_TOKEN_ID/SECRET>   # xoá file tạm ngay sau
+```
+
+Chạy một cell:
+
+```powershell
+$env:PTIT_RUN_ID="<id-deploy>"; $env:PTIT_SCALEDOWN_SECONDS="600"
+modal deploy -m experiments.modal_runner                              # server ghi server_env.json + vram.jsonl
+modal run -m experiments.modal_runner::bench_cell --server-run-id <id-deploy> `
+  --lane vanilla --workload W1 --concurrency 1 --repeats 5 --num-requests 32
+```
+
+- Đối số harness giống campaign M2-04 (`cycle-rotate`, warm-up 3, workload frozen); chỉ thêm `--environment-profile m3-l4-modal-v1 --server-env-json ...`.
+- Kết quả: `experiments/runs/m3_01/<RUN_ID>-<lane>-<W>-c<c>/` gồm `raw.jsonl` (gốc), **`raw.vram.jsonl` (đã điền `run_vram_peak_mb` — dùng file này cho aggregate)**, `server_env.json`, `harness.log`, `bench.json`.
+- Ghép VRAM thủ công nếu cần: `python -m experiments.modal_vram_join --raw raw.jsonl --vram vram.jsonl --out raw.vram.jsonl` (chạy trong thư mục chứa file).
+- Harness local (T4) **không đổi**: profile mặc định vẫn `m1-t4-cu130-v1`.
+
+## 11. Pipeline Node 1 qua Modal
+
+```powershell
+$env:PIPELINE_LLM_API_KEY = python -c "from src.client.modal_client import load_token; print(load_token())"
+python scripts/run_node1_extractor.py --requests experiments/configs/w1/node1_chat_requests.jsonl `
+  --package-manifest experiments/configs/w1/package_manifest.json `
+  --base-url https://nguyenduonghb940--ptit-vllm-vanilla.us-east.modal.direct/v1 --model qwen2.5-7b-vanilla `
+  --run-id <id> --lane vanilla --output-dir <dir> --report <dir>/node1_summary.json --no-db --limit 5 --timeout 900 `
+  --ready-timeout 1200          # tự chờ khi làn đang cold start (503)
+Remove-Item Env:PIPELINE_LLM_API_KEY
+```
+
+## 12. Đối chiếu T4 ⇔ Modal (launcher)
+
+| Việc | T4 (Colab/Kaggle, local) | Modal L4 |
+|---|---|---|
+| Bật làn | `bash scripts/launch_lane1_vanilla.sh` (…2, …3) | `modal deploy -m experiments.modal_runner` (cả 3 làn) |
+| Địa chỉ | `http://127.0.0.1:8001/8002/8003/v1` | `https://nguyenduonghb940--ptit-vllm-<lane>.us-east.modal.direct/v1` |
+| Đổi làn | `scripts/switch_lane.sh` | Không cần (mỗi làn một URL) |
+| Benchmark | `benchmark_harness.py` local, profile T4 | `modal run ...::bench_cell` (profile L4) |
+| Tắt | kill tiến trình | tự tắt khi rảnh / `modal app stop ptit-vllm -y` |
+
+## 13. Lưu ý vận hành (24/10/2026)
+
+- Chạy nhiều làn lần lượt: đặt `PTIT_SCALEDOWN_SECONDS` đủ lớn (≥ 600) để làn trước không tắt rồi phải cold start lại.
+- Log có `Cubin file saved by TritonBundler not found` (mức Warning) khi nhiều làn cùng ghi `ptit-vllm-cache`: không làm fail, chỉ biên dịch lại một phần.
+- `experiments/benchmark_harness.py --help` lỗi `not enough arguments for format string` — có từ trước trên `develop` (chuỗi help chứa `%`), không ảnh hưởng chạy thật.

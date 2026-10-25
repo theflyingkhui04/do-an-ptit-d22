@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from experiments import modal_lanes as lanes
+from src.client.modal_client import load_token as _shared_load_token
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -54,22 +55,8 @@ def http_request(
         raise ConnectionError(str(exc.reason)) from exc
 
 
-def load_token(env_file: Path = REPO_ROOT / ".env") -> str:
-    """Return ``<id>.<secret>`` for ``Authorization: Bearer``."""
-    values = {}
-    if Path(env_file).exists():
-        for line in Path(env_file).read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, value = line.split("=", 1)
-                values[key.strip()] = value.strip()
-    token_id = os.environ.get("MODAL_PROXY_TOKEN_ID") or values.get("MODAL_PROXY_TOKEN_ID")
-    secret = os.environ.get("MODAL_PROXY_TOKEN_SECRET") or values.get("MODAL_PROXY_TOKEN_SECRET")
-    if not token_id or not secret:
-        raise RuntimeError(
-            "Set MODAL_PROXY_TOKEN_ID and MODAL_PROXY_TOKEN_SECRET (environment or .env)"
-        )
-    return f"{token_id}.{secret}"
+# Token loading is shared with the lane client (src/client/modal_client.py).
+load_token = _shared_load_token
 
 
 def _auth(token: str) -> dict[str, str]:

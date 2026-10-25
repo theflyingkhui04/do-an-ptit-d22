@@ -236,3 +236,70 @@ def test_lane_config_import_does_not_need_modal():
     result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
 
     assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------- [M3-01] server env + bench
+def test_bench_workloads_match_m2_campaign():
+    from experiments import run_m2_campaign
+
+    assert lanes.BENCH_WORKLOADS == run_m2_campaign.WORKLOADS
+
+
+def test_server_artifact_dir():
+    assert lanes.server_artifact_dir("static", "r1") == "/artifacts/static/r1"
+
+
+def test_build_server_env_has_harness_required_fields():
+    from experiments import benchmark_harness as harness
+
+    env = lanes.build_server_env(
+        gpu="NVIDIA L4", driver_version="610.57.04", gpu_memory_total_mb=23034.0,
+        torch_version="2.13.0+cu130", torch_cuda_version="13.0", vllm_version="0.30.0",
+        lane="static", run_id="r1", profile="l4-bf16",
+    )
+
+    assert all(env[field] not in (None, "") for field in harness.SERVER_ENV_REQUIRED)
+    assert env["dtype"] == "bfloat16"
+    assert env["quantization"] == "awq_marlin"
+    assert env["target_revision"] == lanes.TARGET_REVISION
+    assert env["lane"] == "static"
+    assert harness.validate_environment(env, profile=harness.L4_MODAL_PROFILE) == []
+
+
+def test_bench_harness_args_are_canonical_and_parse(tmp_path):
+    import sys
+    from unittest.mock import patch
+    from experiments import benchmark_harness as harness
+
+    args = lanes.bench_harness_args(
+        "adaptive", base_url="https://x.test/v1", server_env_json="/artifacts/adaptive/r1/server_env.json",
+        raw_out="/artifacts/bench/b1/raw.jsonl", summary_csv="/artifacts/bench/b1/header.csv",
+        experiment_id="m3-01-b1", workload="W3", concurrency=4, repeats=1, num_requests=8,
+    )
+    flags = dict(zip(args, args[1:]))
+
+    assert flags["--endpoint"] == "https://x.test/v1/chat/completions"
+    assert flags["--model"] == "qwen2.5-7b-adaptive"
+    assert flags["--workload-file"] == "experiments/configs/w3_v2/chat_requests.jsonl"
+    assert flags["--sample-policy"] == "cycle-rotate"
+    assert flags["--warmup-requests"] == "3"
+    assert flags["--environment-profile"] == "m3-l4-modal-v1"
+    assert "--api-key" not in args  # token goes through OPENAI_API_KEY, never argv
+    with patch.object(sys, "argv", ["harness", *args]):
+        parsed = harness.parse_args()
+    assert parsed.lane == "adaptive"
+    assert parsed.concurrency == 4
+
+
+def test_bench_rejects_unknown_workload():
+    with pytest.raises(ValueError, match="workload"):
+        lanes.bench_harness_args("vanilla", base_url="u", server_env_json="e", raw_out="r", summary_csv="s",
+                                 experiment_id="x", workload="W9", concurrency=1, repeats=1, num_requests=1)
+
+
+def test_harness_commit_can_come_from_environment(monkeypatch):
+    from experiments import benchmark_harness as harness
+
+    monkeypatch.setenv("PTIT_GIT_COMMIT", "a" * 40)
+
+    assert harness.git_commit() == "a" * 40
