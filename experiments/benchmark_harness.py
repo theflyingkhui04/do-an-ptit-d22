@@ -6,6 +6,7 @@ import importlib.metadata as metadata
 import json
 import os
 import subprocess
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
@@ -1128,7 +1129,7 @@ def parse_args() -> argparse.Namespace:
             "sample reuse. 'cycle' is the legacy/debug zero-offset cycle. "
             "'cycle-rotate' is the PM-approved canonical reuse policy: each "
             "measured repeat uses deterministic rotating offset "
-            "((repeat_index-1)*(num_requests%sample_count))%sample_count, "
+            "((repeat_index-1)*(num_requests%%sample_count))%%sample_count, "
             "with the exact same mapping across Vanilla and Static."
         ),
     )
@@ -1321,4 +1322,6 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     raise SystemExit(asyncio.run(async_main(parse_args())))

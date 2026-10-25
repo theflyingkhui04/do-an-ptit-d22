@@ -69,6 +69,14 @@ def test_l4_profile_requires_server_env_json():
         parse(["--environment-profile", L4])
 
 
+def test_help_renders(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        parse(["--help"])
+
+    assert exit_info.value.code == 0
+    assert "cycle-rotate" in capsys.readouterr().out
+
+
 def test_unknown_profile_rejected():
     with pytest.raises(SystemExit):
         parse(["--environment-profile", "nope"])
