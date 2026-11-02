@@ -1,7 +1,7 @@
-# [M3-02] Worklog Khôi — Xây dựng Hardware Profiler & Mô hình Chi phí C(N, B) trên GPU L4
+# [M3-02] Worklog Khôi — Xây dựng hardware profiler và mô hình chi phí C(N, B) trên GPU L4
 
 > **Task:** `[M3-02] Hardware Profiler & Mô hình Chi phí C(N, B) trên GPU L4 (24/10 – 26/10)`  
-> **Người thực hiện:** Cấn Đức Khôi (Lead 70%) & Dương Nguyễn Thế (Partner 30%)  
+> **Người thực hiện:** Cấn Đức Khôi (Lead 70%) và Dương Nguyễn Thế (Partner 30%)  
 > **Nhánh phát triển:** `feat/m3-02-cost-model-l4`  
 > **Trạng thái:** ✅ **HOÀN THÀNH (100% PASS 41/41 unit tests)**
 
@@ -16,9 +16,9 @@
 
 ---
 
-## 2. Kết quả Toán học & Thực nghiệm trên GPU L4
+## 2. Kết quả toán học và thực nghiệm trên GPU L4
 
-### A. Chi phí Forward cơ sở (Median across context lengths):
+### A. Chi phí forward cơ sở (median theo context length):
 * **Target Model ($C_T$) — Qwen2.5-7B AWQ:**
   * $B=1: 19.095\text{ ms}$
   * $B=2: 19.606\text{ ms}$
@@ -35,13 +35,13 @@
   * $B=32: 6.697\text{ ms}$
 * **Tỷ số $C_D / C_T$:** Dao động từ $0.2228$ đến $0.2694$ (trung bình $\approx 0.25$).
 
-### B. Chi phí Xác thực $C_V(k, B)$ & Ma trận $C(k, B)$:
+### B. Chi phí xác thực $C_V(k, B)$ và ma trận $C(k, B)$:
 * Công thức xác thực song song:
   $$C_V(k, B) = C_T(B) \times (1 + 0.008 \times (k - 1))$$
 * Tổng chi phí chu kỳ nháp $k$:
   $$C(k, B) = k \times C_D(B) + C_V(k, B)$$
 
-### C. Điểm hòa vốn lý thuyết $\alpha^*(k, B)$ (Break-Even Acceptance Rate):
+### C. Điểm hòa vốn lý thuyết $\alpha^*(k, B)$ (break-even acceptance rate):
 Giải phương trình:
 $$\mathbb{E}[\tau] = 1 + \sum_{i=1}^k \alpha^i = \frac{C(k, B)}{C_{vanilla}(B)}$$
 
