@@ -1,5 +1,5 @@
 ---
-description: Quy chuẩn Git workflow, đặt tên nhánh, commit convention theo cấu trúc Why-What-How và quy trình PR cho dự án Đồ án D22
+description: Quy chuẩn Git workflow, đặt tên nhánh, commit convention theo cấu trúc Why-What-How bắt buộc mã task Trello và quy trình PR cho dự án Đồ án D22
 trigger: always_on
 ---
 
@@ -20,9 +20,9 @@ Quy định này áp dụng bắt buộc cho tất cả thành viên (Khôi, Đ�
 
 ---
 
-## 2. Quy chuẩn thông điệp commit (commit convention: Why + What + How)
+## 2. Quy chuẩn thông điệp commit (commit convention: Why + What + How & bắt buộc mã task Trello)
 
-Mọi commit có nội dung kỹ thuật quan trọng **bắt buộc phải có đầy đủ 3 phần: Why (Tại sao), What (Làm gì) và How (Như thế nào)**.
+Mọi commit kỹ thuật **bắt buộc phải ghi rõ mã task trên Trello** và có đầy đủ 3 phần: **Why (Tại sao)**, **What (Làm gì)** và **How (Như thế nào)**.
 
 ### Cấu trúc thông điệp chuẩn:
 
@@ -30,8 +30,8 @@ Mọi commit có nội dung kỹ thuật quan trọng **bắt buộc phải có 
 <type>(<scope>): <tóm tắt ngắn gọn thay đổi>
 
 Why:
-- Nêu rõ lý do, bối cảnh vấn đề kỹ thuật hoặc yêu cầu từ task Trello.
-- Giải thích tại sao thay đổi này là cần thiết (ví dụ: tránh tăng tốc âm, khắc phục OOM, phục vụ mốc M3).
+- Ghi rõ mã task Trello (ví dụ: Task #32 [M3-02]) và mục tiêu cần giải quyết.
+- Lý do kỹ thuật tại sao thay đổi này là cần thiết (tránh tăng tốc âm, sửa lỗi OOM, phục vụ mốc M3...).
 
 What:
 - Liệt kê các thay đổi cụ thể trong mã nguồn hoặc tài liệu.
@@ -39,9 +39,9 @@ What:
 
 How:
 - Mô tả phương pháp, thuật toán, công thức toán học hoặc cơ chế thực thi.
-- Cách tiếp cận giải quyết vấn đề (ví dụ: dùng giải thuật bisection, ánh xạ ma trận chi phí, adapter hook).
+- Cách tiếp cận giải quyết vấn đề (dùng giải thuật bisection, ánh xạ ma trận chi phí, adapter hook...).
 
-[Ref: #task-id | Tests: <trạng thái kiểm thử>]
+Task: #<id-trello> [<mã-task>] | Tests: <trạng thái kiểm thử>
 ```
 
 ---
@@ -54,19 +54,19 @@ How:
 * **`chore`**: Tác vụ bảo trì, cấu hình repo, thêm artifact dữ liệu thô.
 * **`refactor`**: Tái cấu trúc mã nguồn mà không thay đổi logic bên ngoài.
 
-### Phạm vi (Scope):
-* Mã task trên Trello: `m3-02`, `m3-04`, `m2-01`,...
-* Hoặc tên module trong `src/`: `proposer`, `pipeline`, `client`, `server`, `repo`, `rules`.
+### Quy định mã task Trello (Scope & Footer):
+* **Phần `<scope>` trên tiêu đề**: Ưu tiên đặt là mã task Trello (ví dụ: `m3-02`, `m3-04`, `m2-01`), hoặc module kỹ thuật liên quan (`proposer`, `pipeline`, `client`, `server`).
+* **Dòng footer cuối cùng**: **BẮT BUỘC** phải có trường `Task: #<idShort> [<mã-task>]` (ví dụ: `Task: #32 [M3-02]`).
 
 ---
 
 ### Ví dụ mẫu commit chuẩn mực:
 
 ```text
-feat(proposer): add L4 hardware cost model and profile matrix for M3-02
+feat(m3-02): add L4 hardware cost model and profile matrix
 
 Why:
-- Hoàn thành tiêu chí Definition of Done cho task M3-02 trên Trello.
+- Phục vụ task Trello #32 [M3-02]: Hardware Profiler & Mô hình Chi phí C(N, B) trên GPU L4.
 - Cần mô hình chi phí động trên GPU L4 để tự động tính điểm hòa vốn alpha*, thay thế các ngưỡng tĩnh cứng nhắc cũ của M2 và triệt tiêu tăng tốc âm.
 
 What:
@@ -81,14 +81,14 @@ How:
 - Cài đặt thuật toán chia đôi (Bisection) giải nghiệm đa thức E[tau] = C(k, B) / C_vanilla để tìm nghiệm hòa vốn alpha*.
 - Cung cấp hàm to_cost_profile() để tương thích ngược 100% với BudgetController.
 
-Ref: #32 | Tests: 41/41 PASS
+Task: #32 [M3-02] | Tests: 41/41 PASS
 ```
 
 ---
 
 ### Lưu ý bắt buộc:
 * Dòng tiêu đề không vượt quá 72 ký tự, không có dấu chấm câu ở cuối.
-* Cách một dòng trống giữa dòng tiêu đề và phần thân (Why / What / How).
+* Cách một dòng trống giữa dòng tiêu đề, các phần Why / What / How và dòng Task footer.
 * Khi viết bằng tiếng Việt (trong commit message hay tài liệu), **nghiêm cấm dùng Title Case** của tiếng Anh (chỉ viết hoa đầu câu, đầu đoạn và danh từ riêng/từ viết tắt).
 
 ---
@@ -105,5 +105,5 @@ Ref: #32 | Tests: 41/41 PASS
    * Ghi nhận rõ ràng: Mục tiêu, phương pháp, kết quả số liệu thực nghiệm, và các artifact đã tạo.
 
 3. **Mở Pull Request (PR):**
-   * Tiêu đề PR rõ ràng, gắn mã task tương ứng trên Trello.
+   * Tiêu đề PR rõ ràng, gắn mã task tương ứng trên Trello (ví dụ: `[M3-02] Tích hợp mô hình chi phí L4`).
    * Ghi chú ngắn gọn các thay đổi và kết quả test đã kiểm chứng theo cấu trúc Why + What + How.
