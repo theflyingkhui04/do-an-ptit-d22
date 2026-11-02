@@ -5,6 +5,7 @@ from src.proposer.controller import (
     BudgetDecision,
 )
 from src.proposer.adapter import AdaptiveProposerAdapter, ProposalOutput
+from src.proposer.cost_model import HardwareCostModel
 
 __all__ = [
     "BudgetController",
@@ -13,6 +14,7 @@ __all__ = [
     "BudgetDecision",
     "AdaptiveProposerAdapter",
     "ProposalOutput",
+    "HardwareCostModel",
 ]
 
 
