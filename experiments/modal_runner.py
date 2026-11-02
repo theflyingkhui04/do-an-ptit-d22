@@ -41,7 +41,7 @@ PROFILE = os.environ.get("PTIT_DTYPE_PROFILE", lanes.DEFAULT_PROFILE)
 RUN_ID = os.environ.get("PTIT_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 KEEP_WARM = os.environ.get("PTIT_KEEP_WARM") == "1"
 SCALEDOWN_SECONDS = int(os.environ.get("PTIT_SCALEDOWN_SECONDS", "300"))
-ENABLED_LANES = set(os.environ.get("PTIT_LANES", "vanilla,static,adaptive").split(","))
+ENABLED_LANES = set(os.environ.get("PTIT_LANES", "vanilla,static,adaptive,eagle").split(","))
 
 image = (
     modal.Image.from_registry("nvidia/cuda:13.0.3-devel-ubuntu22.04", add_python="3.11")
@@ -89,10 +89,13 @@ def download_weights() -> dict:
     from huggingface_hub import HfApi, snapshot_download
 
     manifest = {"downloaded_at_utc": datetime.now(timezone.utc).isoformat(), "models": []}
-    for repo, revision in (
+    models = [
         (lanes.TARGET_MODEL, lanes.TARGET_REVISION),
         (lanes.DRAFT_MODEL, lanes.DRAFT_REVISION),
-    ):
+    ]
+    if getattr(lanes, "EAGLE_DRAFT_MODEL", None):
+        models.append((lanes.EAGLE_DRAFT_MODEL, lanes.EAGLE_REVISION))
+    for repo, revision in models:
         sha = HfApi().model_info(repo, revision=revision).sha
         try:
             snapshot_download(repo, revision=sha, local_files_only=True)
@@ -251,6 +254,20 @@ if "adaptive" in ENABLED_LANES:
         @modal.enter()
         def start(self) -> None:
             self.proc = _start_vllm("adaptive")
+
+        @modal.exit()
+        def stop(self) -> None:
+            _stop_vllm(self.proc)
+
+
+if "eagle" in ENABLED_LANES or "eagle-custom" in ENABLED_LANES:
+    _eagle_lane = "eagle" if "eagle" in ENABLED_LANES else "eagle-custom"
+
+    @app.server(**_server_options(_eagle_lane))
+    class EagleServer:
+        @modal.enter()
+        def start(self) -> None:
+            self.proc = _start_vllm(_eagle_lane)
 
         @modal.exit()
         def stop(self) -> None:

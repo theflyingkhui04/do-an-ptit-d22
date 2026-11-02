@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Smoke / client check of the Modal lanes")
     parser.add_argument("command", choices=("smoke", "client-check"))
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--lanes", default="vanilla,static,adaptive")
+    parser.add_argument("--lanes", default="vanilla,static,adaptive,eagle")
     args = parser.parse_args(argv)
     try:
         out = evidence_path(args.run_id, "smoke.json" if args.command == "smoke" else "client_check.json")

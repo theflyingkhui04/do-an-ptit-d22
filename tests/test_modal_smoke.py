@@ -75,6 +75,15 @@ def test_smoke_runs_5_prompts_per_lane_with_canonical_params():
     assert "max_completion_tokens" in params
 
 
+def test_smoke_runs_eagle_lane():
+    make = factory()
+    records = smoke.run_smoke(["eagle"], make)
+
+    assert len(records) == 5
+    assert all(r["ok"] for r in records)
+    assert all(r["lane"] == "eagle" for r in records)
+
+
 def test_smoke_records_failures_instead_of_crashing():
     records = smoke.run_smoke(["static"], factory(static={"fail": True}))
 

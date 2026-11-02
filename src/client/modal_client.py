@@ -34,6 +34,8 @@ LANE_MODELS = {
     "vanilla": "qwen2.5-7b-vanilla",
     "static": "qwen2.5-7b-static-draft",
     "adaptive": "qwen2.5-7b-adaptive",
+    "eagle": "qwen2.5-7b-eagle3-draft",
+    "eagle-custom": "qwen2.5-7b-eagle3-draft",
 }
 
 

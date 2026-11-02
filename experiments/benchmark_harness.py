@@ -11,18 +11,39 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Any
 
-import aiohttp
-import torch
-from pynvml import (
-    nvmlDeviceGetHandleByIndex,
-    nvmlDeviceGetMemoryInfo,
-    nvmlDeviceGetName,
-    nvmlInit,
-    nvmlShutdown,
-    nvmlSystemGetDriverVersion,
-)
+try:
+    import aiohttp
+except ImportError:
+    class _AiohttpStub:
+        ClientError = Exception
+        ClientResponse = Any
+        ClientSession = Any
+        __version__ = "stub"
+    aiohttp = _AiohttpStub()  # type: ignore[assignment]
+
+try:
+    import torch
+except ImportError:
+    torch = None  # type: ignore[assignment]
+
+try:
+    from pynvml import (
+        nvmlDeviceGetHandleByIndex,
+        nvmlDeviceGetMemoryInfo,
+        nvmlDeviceGetName,
+        nvmlInit,
+        nvmlShutdown,
+        nvmlSystemGetDriverVersion,
+    )
+except ImportError:
+    nvmlInit = None  # type: ignore[assignment]
+    nvmlShutdown = None  # type: ignore[assignment]
+    nvmlDeviceGetHandleByIndex = None  # type: ignore[assignment]
+    nvmlDeviceGetMemoryInfo = None  # type: ignore[assignment]
+    nvmlDeviceGetName = None  # type: ignore[assignment]
+    nvmlSystemGetDriverVersion = None  # type: ignore[assignment]
 
 try:
     from workload_adapter import (
@@ -1215,7 +1236,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--lane",
-        choices=["vanilla", "static", "adaptive"],
+        choices=["vanilla", "static", "adaptive", "eagle", "eagle-custom"],
         default="vanilla",
     )
     parser.add_argument(
