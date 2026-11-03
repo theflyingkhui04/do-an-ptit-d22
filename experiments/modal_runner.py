@@ -9,6 +9,10 @@ Run from the repository root with the conda env ``doan-d22``:
     modal run -m experiments.modal_runner::weights       # fill ptit-model-cache
     modal deploy -m experiments.modal_runner             # 3 lane servers
 
+Resilient cells (Python CLI manages a detached app; collection needs no app):
+    python -m experiments.modal_runner bench_submit --help
+    python -m experiments.modal_runner bench_collect --call-id fc-...
+
 Deploy-time switches (environment variables on the machine that deploys):
     PTIT_DTYPE_PROFILE   l4-bf16 (default) | fp16-fallback
     PTIT_RUN_ID          evidence folder name (default: UTC timestamp)
@@ -21,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -368,8 +373,8 @@ def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_comm
 
     server_dir = Path(lanes.server_artifact_dir(lane, server_run_id))
     out_dir = Path(lanes.ARTIFACTS_ROOT) / "bench" / bench_run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
     artifacts_volume.reload()
+    out_dir.mkdir(parents=True, exist_ok=False)
 
     args = lanes.bench_harness_args(
         lane,
@@ -388,7 +393,9 @@ def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_comm
 
     result = {"lane": lane, "returncode": proc.returncode, "server_ready_wait_s": round(ready_s, 2),
               "harness_log": proc.stdout[-6000:] + proc.stderr[-4000:], "raw": None, "joined": None,
-              "server_env": None, "join_error": None}
+              "server_env": None, "join_error": None,
+              "server_run_id": server_run_id, "bench_run_id": bench_run_id,
+              "cell": cell, "commit": git_commit}
     if (server_dir / SERVER_ENV_FILE).exists():
         result["server_env"] = json.loads((server_dir / SERVER_ENV_FILE).read_text(encoding="utf-8"))
     raw_path = out_dir / RAW_FILE
@@ -401,6 +408,8 @@ def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_comm
             result["joined"] = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in joined)
         except (OSError, ValueError, KeyError) as exc:
             result["join_error"] = str(exc)
+    result["timestamp_utc"] = datetime.now(timezone.utc).isoformat()
+    artifacts_volume.commit()
     return result
 
 
@@ -412,10 +421,11 @@ def bench_cell(lane: str = "vanilla", server_run_id: str = "", workload: str = "
         raise SystemExit("--server-run-id is required (the PTIT_RUN_ID used at modal deploy)")
     bench_run_id = f"{RUN_ID}-{lane}-{workload}-c{concurrency}"
     cell = {"workload": workload, "concurrency": concurrency, "repeats": repeats, "num_requests": num_requests}
-    result = bench.remote(lane, server_run_id, bench_run_id, cell, _git_commit())
-
     out = REPO_ROOT / "experiments" / "runs" / "m3_01" / bench_run_id
-    out.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=False)
+    commit = _git_commit()
+    result = bench.remote(lane, server_run_id, bench_run_id, cell, commit)
+
     (out / "harness.log").write_text(result["harness_log"], encoding="utf-8")
     if result["server_env"]:
         (out / SERVER_ENV_FILE).write_text(json.dumps(result["server_env"], indent=2) + "\n", encoding="utf-8")
@@ -425,11 +435,157 @@ def bench_cell(lane: str = "vanilla", server_run_id: str = "", workload: str = "
         (out / "raw.vram.jsonl").write_text(result["joined"], encoding="utf-8")
     summary = {k: result[k] for k in ("lane", "returncode", "server_ready_wait_s", "join_error")}
     summary.update({"bench_run_id": bench_run_id, "server_run_id": server_run_id, "cell": cell,
-                    "commit": _git_commit(), "timestamp_utc": datetime.now(timezone.utc).isoformat()})
+                    "commit": commit, "timestamp_utc": datetime.now(timezone.utc).isoformat()})
     (out / "bench.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(result["harness_log"][-2500:])
     print(json.dumps(summary, indent=2))
     print(f"Wrote {out}")
+
+
+def _bench_evidence_root() -> Path:
+    return REPO_ROOT / "experiments" / "runs" / "m3_01"
+
+
+def _validate_submission(record: dict) -> None:
+    for key in ("server_run_id", "bench_run_id"):
+        if not isinstance(record.get(key), str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", record[key]):
+            raise ValueError(f"Invalid {key}")
+    if record.get("lane") not in lanes.LANES:
+        raise ValueError("Invalid lane")
+    if not re.fullmatch(r"[0-9a-f]{40}", record.get("commit", "")):
+        raise ValueError("Submission requires a committed Git SHA")
+    cell = record.get("cell", {})
+    if cell.get("workload") not in lanes.BENCH_WORKLOADS:
+        raise ValueError("Invalid workload")
+    for key in ("concurrency", "repeats", "num_requests"):
+        if type(cell.get(key)) is not int or cell[key] < 1:
+            raise ValueError(f"Invalid {key}")
+    if not record.get("submitted_at_utc"):
+        raise ValueError("Missing submission timestamp")
+
+
+def _committed_bench_source() -> str:
+    """Freeze the uploaded code/config, ignoring local run evidence and caches."""
+    git = ["git", "-c", f"safe.directory={REPO_ROOT.as_posix()}"]
+    source = ["src", "experiments", ":(exclude)experiments/runs", ":(exclude)experiments/results",
+              ":(exclude)experiments/notebooks", ":(exclude)**/__pycache__/**", ":(exclude)**/*.ipynb"]
+    commit = subprocess.check_output([*git, "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
+    changed = subprocess.check_output([*git, "diff", "--name-only", "HEAD", "--", *source],
+                                      cwd=REPO_ROOT, text=True).strip()
+    untracked = subprocess.check_output([*git, "ls-files", "--others", "--exclude-standard", "--", *source],
+                                        cwd=REPO_ROOT, text=True).strip()
+    if changed or untracked:
+        raise RuntimeError("Commit uploaded source/config changes before benchmark submission")
+    return commit
+
+
+def _save_submission(path: Path, record: dict) -> None:
+    # Atomic receipt replacement: a killed client leaves the previous complete receipt.
+    temporary = path.with_suffix(".json.tmp")
+    with temporary.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, indent=2) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def bench_submit(lane: str = "vanilla", server_run_id: str = "", workload: str = "W1",
+                 concurrency: int = 1, repeats: int = 1, num_requests: int = 8,
+                 bench_run_id: str = "") -> str:
+    """Submit exactly one cell from Python CLI; detach is automatic, never optional."""
+    record = {
+        "lane": lane, "server_run_id": server_run_id,
+        "bench_run_id": bench_run_id or f"{RUN_ID}-{lane}-{workload}-c{concurrency}",
+        "cell": {"workload": workload, "concurrency": concurrency,
+                 "repeats": repeats, "num_requests": num_requests},
+        "commit": _committed_bench_source(),
+        "submitted_at_utc": datetime.now(timezone.utc).isoformat(), "call_id": None,
+    }
+    _validate_submission(record)
+    out = _bench_evidence_root() / record["bench_run_id"]
+    out.mkdir(parents=True, exist_ok=False)
+    receipt = out / "submission.json"
+    _save_submission(receipt, record)
+    # A spawned call in an ordinary ephemeral app can still die with its client.
+    # SDK 1.6.x public detached lifecycle keeps this job alive after this block exits.
+    with app.run(detach=True):
+        call = bench.spawn(lane, server_run_id, record["bench_run_id"], record["cell"], record["commit"])
+        record["call_id"] = call.object_id
+        if not isinstance(record["call_id"], str) or not re.fullmatch(r"fc-[A-Za-z0-9]+", record["call_id"]):
+            raise RuntimeError("Modal did not return a valid FunctionCall ID")
+        _save_submission(receipt, record)
+        print(f"FunctionCall: {record['call_id']}\nReceipt: {receipt}", flush=True)
+    return record["call_id"]
+
+
+def _validate_bench_result(result: dict, submission: dict) -> None:
+    for key in ("lane", "server_run_id", "bench_run_id", "cell", "commit"):
+        if result.get(key) != submission[key]:
+            raise ValueError(f"Remote benchmark metadata mismatch: {key}")
+    if result.get("returncode") != 0:
+        raise RuntimeError(f"Remote harness failed: returncode={result.get('returncode')}; "
+                           f"artifacts: /bench/{submission['bench_run_id']}")
+    server = result.get("server_env") or {}
+    if server.get("lane") != submission["lane"] or server.get("run_id") != submission["server_run_id"]:
+        raise ValueError("Remote server environment lane/run mismatch")
+    expected = {"experiment_id": submission["bench_run_id"], "lane": submission["lane"],
+                "commit": submission["commit"], "workload": submission["cell"]["workload"],
+                "concurrency": submission["cell"]["concurrency"]}
+    for artifact in ("raw", "joined"):
+        content = result.get(artifact)
+        if artifact == "joined" and content is None:
+            continue
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError(f"Missing {artifact} artifact")
+        for line in content.splitlines():
+            row = json.loads(line)
+            if any(row.get(key) != value for key, value in expected.items()):
+                raise ValueError(f"{artifact} artifact metadata mismatch")
+
+
+def bench_collect(call_id: str) -> Path:
+    """Recover a submitted call without starting an app or submitting another cell."""
+    if not isinstance(call_id, str) or not re.fullmatch(r"fc-[A-Za-z0-9]+", call_id):
+        raise ValueError("A valid FunctionCall ID (fc-...) is required")
+    matches = []
+    for path in _bench_evidence_root().glob("*/submission.json"):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if record.get("call_id") == call_id:
+            matches.append((path, record))
+    if len(matches) != 1:
+        raise ValueError(f"Expected exactly one local submission receipt for {call_id}; found {len(matches)}")
+    receipt, submission = matches[0]
+    _validate_submission(submission)
+    if receipt.parent.name != submission["bench_run_id"]:
+        raise ValueError("Submission receipt/run directory mismatch")
+    # No cancel(), even if retrieval fails or the collector is interrupted.
+    result = modal.FunctionCall.from_id(call_id).get()
+    _validate_bench_result(result, submission)
+    summary = {key: result[key] for key in ("lane", "returncode", "server_ready_wait_s", "join_error")}
+    summary.update({key: submission[key] for key in (
+        "bench_run_id", "server_run_id", "cell", "commit", "call_id", "submitted_at_utc")})
+    summary["timestamp_utc"] = result["timestamp_utc"]
+    files = {"harness.log": result["harness_log"],
+             SERVER_ENV_FILE: json.dumps(result["server_env"], indent=2) + "\n",
+             RAW_FILE: result["raw"]}
+    if result.get("joined") is not None:
+        files["raw.vram.jsonl"] = result["joined"]
+    files["bench.json"] = json.dumps(summary, indent=2) + "\n"
+    out = receipt.parent
+    # Retry collection safely after local interruption; never replace conflicting evidence.
+    for name, content in files.items():
+        path = out / name
+        if path.exists() and path.read_bytes() != content.encode("utf-8"):
+            raise FileExistsError(f"Conflicting existing evidence: {path}")
+    for name, content in files.items():
+        path = out / name
+        if not path.exists():
+            with path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(content)
+        else:
+            print(f"Reusing identical evidence: {path}")
+    print(f"Collected {call_id}: {out}")
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -553,3 +709,30 @@ def profile_costs(run_id: str = "", models: str = "target,draft", contexts: str 
         print(cell["model"], cell["context_len"], cell["batch_size"], cell["status"],
               cell["step_ms_median"], cell["variance_flag"])
     print(f"Wrote {out}")
+
+
+def _bench_cli() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Submit/recover one detached Modal benchmark cell")
+    commands = parser.add_subparsers(dest="command", required=True)
+    submit = commands.add_parser("bench_submit", help="Spawn one cell in an automatically detached app")
+    submit.add_argument("--lane", choices=tuple(lanes.LANES), default="vanilla")
+    submit.add_argument("--server-run-id", required=True)
+    submit.add_argument("--bench-run-id", default="")
+    submit.add_argument("--workload", choices=tuple(lanes.BENCH_WORKLOADS), default="W1")
+    submit.add_argument("--concurrency", type=int, default=1)
+    submit.add_argument("--repeats", type=int, default=1)
+    submit.add_argument("--num-requests", type=int, default=8)
+    collect = commands.add_parser("bench_collect", help="Recover an existing FunctionCall; never resubmit")
+    collect.add_argument("--call-id", required=True)
+    args = vars(parser.parse_args())
+    command = args.pop("command")
+    if command == "bench_submit":
+        bench_submit(**args)
+    else:
+        bench_collect(**args)
+
+
+if __name__ == "__main__":
+    _bench_cli()
