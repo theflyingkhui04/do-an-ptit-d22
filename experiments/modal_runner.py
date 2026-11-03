@@ -9,7 +9,7 @@ Run from the repository root with the conda env ``doan-d22``:
     modal run -m experiments.modal_runner::weights       # fill ptit-model-cache
     modal deploy -m experiments.modal_runner             # 3 lane servers
 
-Resilient cells (Python CLI manages a detached app; collection needs no app):
+Resilient cells (lookup the deployed Function; collection needs no submit process):
     python -m experiments.modal_runner bench_submit --help
     python -m experiments.modal_runner bench_collect --call-id fc-...
 
@@ -41,6 +41,14 @@ from experiments import modal_lanes as lanes
 APP_NAME = lanes.APP_NAME
 GPU = "L4"
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if modal.is_local():
+    from experiments.bench_source import snapshot
+
+    _SOURCE_SNAPSHOT, SOURCE_COMMIT = snapshot(REPO_ROOT)
+    SOURCE_ROOT = Path(_SOURCE_SNAPSHOT.name)
+else:
+    SOURCE_ROOT = REPO_ROOT
+    SOURCE_COMMIT = os.environ.get("PTIT_SOURCE_COMMIT", "unknown")
 
 PROFILE = os.environ.get("PTIT_DTYPE_PROFILE", lanes.DEFAULT_PROFILE)
 RUN_ID = os.environ.get("PTIT_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -54,9 +62,12 @@ image = (
     modal.Image.from_registry("nvidia/cuda:13.0.3-devel-ubuntu22.04", add_python="3.11")
     .entrypoint([])
     .uv_pip_install(f"vllm=={lanes.VLLM_VERSION}")
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "0"})
-    .add_local_dir(REPO_ROOT / "src", f"{lanes.REMOTE_PROJECT_ROOT}/src", ignore=["**/__pycache__/**"])
-    .add_local_file(REPO_ROOT / "experiments" / "modal_lanes.py", "/root/experiments/modal_lanes.py")
+    .env({"HF_HUB_ENABLE_HF_TRANSFER": "0", "PTIT_SOURCE_COMMIT": SOURCE_COMMIT,
+          "PTIT_RUN_ID": RUN_ID, "PTIT_LANES": ",".join(sorted(ENABLED_LANES)),
+          "PTIT_DTYPE_PROFILE": PROFILE, "PTIT_KEEP_WARM": "1" if KEEP_WARM else "0",
+          "PTIT_SCALEDOWN_SECONDS": str(SCALEDOWN_SECONDS)})
+    .add_local_dir(SOURCE_ROOT / "src", f"{lanes.REMOTE_PROJECT_ROOT}/src", ignore=["**/__pycache__/**"])
+    .add_local_file(SOURCE_ROOT / "experiments" / "modal_lanes.py", "/root/experiments/modal_lanes.py")
 )
 
 model_volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)
@@ -154,6 +165,11 @@ def _write_server_env(lane: str, run_dir: Path) -> None:
         profile=os.environ["PTIT_DTYPE_PROFILE"],
     )
     env["started_at_utc"] = datetime.now(timezone.utc).isoformat()
+    env["source_commit"] = os.environ["PTIT_SOURCE_COMMIT"]
+    import uuid
+    env["instance_id"] = str(uuid.uuid4())
+    env["modal_task_id"] = os.environ.get("MODAL_TASK_ID")
+    env["vllm_args"] = lanes.build_vllm_args(lane, profile=os.environ["PTIT_DTYPE_PROFILE"])
     (run_dir / SERVER_ENV_FILE).write_text(json.dumps(env, indent=2) + "\n", encoding="utf-8")
     artifacts_volume.commit()
 
@@ -326,10 +342,18 @@ def weights() -> None:
 BENCH_ROOT = "/root/bench"
 
 bench_image = image.add_local_dir(
-    REPO_ROOT / "experiments",
+    SOURCE_ROOT / "experiments",
     f"{BENCH_ROOT}/experiments",
     ignore=["runs/**", "results/**", "notebooks/**", "**/__pycache__/**", "**/*.ipynb"],
 )
+
+
+@app.function(cpu=0.125, timeout=60)
+def benchmark_identity() -> dict:
+    """Cheap deployed-source handshake; never starts a GPU server."""
+    return {"commit": os.environ["PTIT_SOURCE_COMMIT"], "run_id": RUN_ID,
+            "lanes": sorted(ENABLED_LANES), "keep_warm": KEEP_WARM,
+            "scaledown_seconds": SCALEDOWN_SECONDS}
 
 
 def _lane_base_url(lane: str) -> str:
@@ -359,6 +383,7 @@ def _wait_server_ready(base_url: str, token: str, timeout_s: float = 1200.0) -> 
     image=bench_image,
     cpu=2,
     timeout=4 * 60 * 60,
+    max_containers=1,
     volumes={lanes.ARTIFACTS_ROOT: artifacts_volume},
     secrets=[modal.Secret.from_name("ptit-proxy-token")],
 )
@@ -367,14 +392,31 @@ def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_comm
     sys.path.insert(0, BENCH_ROOT)
     from experiments.modal_vram_join import join_vram, load_jsonl
 
+    if os.environ.get("PTIT_SOURCE_COMMIT") != git_commit or RUN_ID != server_run_id:
+        raise ValueError("Deployed benchmark source/run identity mismatch")
     token = f"{os.environ['MODAL_PROXY_TOKEN_ID']}.{os.environ['MODAL_PROXY_TOKEN_SECRET']}"
     base_url = _lane_base_url(lane)
-    ready_s = _wait_server_ready(base_url, token)
-
     server_dir = Path(lanes.server_artifact_dir(lane, server_run_id))
     out_dir = Path(lanes.ARTIFACTS_ROOT) / "bench" / bench_run_id
     artifacts_volume.reload()
     out_dir.mkdir(parents=True, exist_ok=False)
+    artifacts_volume.commit()  # durable reservation before any server request
+    ready_s = _wait_server_ready(base_url, token)
+    artifacts_volume.reload()
+    server_before = json.loads((server_dir / SERVER_ENV_FILE).read_text(encoding="utf-8"))
+    if (server_before.get("source_commit") != git_commit or server_before.get("run_id") != server_run_id
+            or server_before.get("lane") != lane or not server_before.get("instance_id")):
+        raise ValueError("Server source/run/instance mismatch")
+    # A run/instance may serve only one scientific attempt, even after client loss.
+    with (server_dir / "benchmark_claim.json").open("x", encoding="utf-8") as stream:
+        json.dump({"bench_run_id": bench_run_id, "instance_id": server_before["instance_id"]}, stream)
+    artifacts_volume.commit()
+    import urllib.request
+    request = urllib.request.Request(base_url + "/models", headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        model_ids = [item["id"] for item in json.load(response)["data"]]
+    if model_ids != [lanes.LANES[lane].served_model_name]:
+        raise ValueError("Endpoint model identity mismatch")
 
     args = lanes.bench_harness_args(
         lane,
@@ -385,30 +427,52 @@ def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_comm
         experiment_id=bench_run_id,
         **cell,
     )
+    args.extend(["--warmup-policy", "m3-fixed3"])
     env = {**os.environ, "OPENAI_API_KEY": token, "PTIT_GIT_COMMIT": git_commit,
            "PTIT_SERVER_ENV_ROOT": lanes.ARTIFACTS_ROOT, "PYTHONIOENCODING": "utf-8"}
-    proc = subprocess.run([sys.executable, "-m", "experiments.benchmark_harness", *args],
-                          cwd=BENCH_ROOT, env=env, capture_output=True, text=True)
-    (out_dir / "harness.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
+    commit_stop = threading.Event()
+
+    def preserve_partial() -> None:
+        while not commit_stop.wait(10):
+            artifacts_volume.commit()
+
+    committer = threading.Thread(target=preserve_partial, daemon=True)
+    committer.start()
+    try:
+        with (out_dir / "harness.log").open("x", encoding="utf-8") as log:
+            proc = subprocess.run([sys.executable, "-u", "-m", "experiments.benchmark_harness", *args],
+                                  cwd=BENCH_ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, text=True)
+    finally:
+        commit_stop.set()
+        committer.join(timeout=30)
+        artifacts_volume.commit()
+    harness_log = (out_dir / "harness.log").read_text(encoding="utf-8")
 
     result = {"lane": lane, "returncode": proc.returncode, "server_ready_wait_s": round(ready_s, 2),
-              "harness_log": proc.stdout[-6000:] + proc.stderr[-4000:], "raw": None, "joined": None,
+              "harness_log": harness_log, "raw": None, "joined": None,
               "server_env": None, "join_error": None,
               "server_run_id": server_run_id, "bench_run_id": bench_run_id,
-              "cell": cell, "commit": git_commit}
-    if (server_dir / SERVER_ENV_FILE).exists():
-        result["server_env"] = json.loads((server_dir / SERVER_ENV_FILE).read_text(encoding="utf-8"))
+              "cell": cell, "commit": git_commit, "endpoint_model_ids": model_ids,
+              "call_id": modal.current_function_call_id()}
+    result["server_env"] = server_before
     raw_path = out_dir / RAW_FILE
-    if proc.returncode == 0 and raw_path.exists():
+    warmup_path = out_dir / "warmup.jsonl"
+    result["warmup"] = warmup_path.read_text(encoding="utf-8") if warmup_path.exists() else None
+    if raw_path.exists():
         result["raw"] = raw_path.read_text(encoding="utf-8")
+    if proc.returncode == 0 and raw_path.exists():
         time.sleep(12)  # let the server's periodic commit publish the last VRAM samples
         artifacts_volume.reload()
+        final_server = json.loads((server_dir / SERVER_ENV_FILE).read_text(encoding="utf-8"))
+        result["server_instance_unchanged"] = final_server == result["server_env"]
         try:
             joined = join_vram(load_jsonl(raw_path), load_jsonl(server_dir / "vram.jsonl"))
             result["joined"] = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in joined)
         except (OSError, ValueError, KeyError) as exc:
             result["join_error"] = str(exc)
     result["timestamp_utc"] = datetime.now(timezone.utc).isoformat()
+    # FunctionCall outputs have limited retention. Keep the full return bundle durably too.
+    (out_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False) + "\n", encoding="utf-8")
     artifacts_volume.commit()
     return result
 
@@ -481,8 +545,9 @@ def _committed_bench_source() -> str:
 
 def _save_submission(path: Path, record: dict) -> None:
     # Atomic receipt replacement: a killed client leaves the previous complete receipt.
-    temporary = path.with_suffix(".json.tmp")
-    with temporary.open("x", encoding="utf-8") as stream:
+    import uuid
+    temporary = path.with_name(f".submission-{uuid.uuid4().hex}.tmp")
+    with temporary.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(json.dumps(record, indent=2) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
@@ -506,16 +571,90 @@ def bench_submit(lane: str = "vanilla", server_run_id: str = "", workload: str =
     out.mkdir(parents=True, exist_ok=False)
     receipt = out / "submission.json"
     _save_submission(receipt, record)
-    # A spawned call in an ordinary ephemeral app can still die with its client.
-    # SDK 1.6.x public detached lifecycle keeps this job alive after this block exits.
-    with app.run(detach=True):
-        call = bench.spawn(lane, server_run_id, record["bench_run_id"], record["cell"], record["commit"])
-        record["call_id"] = call.object_id
-        if not isinstance(record["call_id"], str) or not re.fullmatch(r"fc-[A-Za-z0-9]+", record["call_id"]):
-            raise RuntimeError("Modal did not return a valid FunctionCall ID")
-        _save_submission(receipt, record)
-        print(f"FunctionCall: {record['call_id']}\nReceipt: {receipt}", flush=True)
+    identity = modal.Function.from_name(APP_NAME, "benchmark_identity").remote()
+    if (identity.get("commit") != record["commit"] or identity.get("run_id") != server_run_id
+            or identity.get("lanes") != [lane] or identity.get("keep_warm") is not False
+            or identity.get("scaledown_seconds") != 60):
+        raise ValueError("Deployed source/run/lifecycle mismatch; deploy the committed single lane first")
+    bench_fn = modal.Function.from_name(APP_NAME, "bench")
+    # Reserve before the RPC. A disconnect during spawn is ambiguous: never auto-retry.
+    # Preserve this separate marker even when call_id is null (NOT_SUBMITTED receipt).
+    _save_submission(out / "spawn_attempt.json", identity)
+    call = bench_fn.spawn(lane, server_run_id, record["bench_run_id"], record["cell"], record["commit"])
+    call_id = call.object_id
+    if not isinstance(call_id, str) or not re.fullmatch(r"fc-[A-Za-z0-9]+", call_id):
+        raise RuntimeError("Modal did not return a valid FunctionCall ID")
+    # Print immediately as a second recovery channel if persisting the receipt fails.
+    print(f"FunctionCall: {call_id}", flush=True)
+    record["call_id"] = call_id
+    _save_submission(receipt, record)
+    print(f"Receipt: {receipt}", flush=True)
     return record["call_id"]
+
+
+def bench_recover(bench_run_id: str, call_id: str) -> None:
+    """Attach an orphaned *completed* call only after validating its full identity."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", bench_run_id):
+        raise ValueError("Invalid bench_run_id")
+    if not re.fullmatch(r"fc-[A-Za-z0-9]+", call_id):
+        raise ValueError("Invalid FunctionCall ID")
+    path = _bench_evidence_root() / bench_run_id / "submission.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    _validate_submission(record)
+    if record["bench_run_id"] != bench_run_id or record.get("call_id") not in (None, call_id):
+        raise ValueError("Conflicting recovery receipt")
+    result = modal.FunctionCall.from_id(call_id).get(timeout=0)
+    _validate_bench_result(result, record)
+    record["call_id"] = call_id
+    _save_submission(path, record)
+    print(f"FunctionCall: {call_id}", flush=True)
+
+
+def bench_status(bench_run_id: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", bench_run_id):
+        raise ValueError("Invalid bench_run_id")
+    out = _bench_evidence_root() / bench_run_id
+    if not out.exists():
+        return "NOT_SUBMITTED"
+    record = json.loads((out / "submission.json").read_text(encoding="utf-8"))
+    _validate_submission(record)
+    if (out / "validation_failure.json").exists():
+        return "FAILED"
+    if not record.get("call_id"):
+        if (out / "spawn_attempt.json").exists():
+            raise RuntimeError("Spawn outcome unknown; recover the existing call; NEVER auto-resubmit")
+        return "NOT_SUBMITTED"
+    handle = modal.FunctionCall.from_id(record["call_id"])
+    from modal.exception import TimeoutError as ModalTimeoutError
+    try:
+        result = _bench_result(record["call_id"], record, timeout=0)
+    except Exception as exc:
+        graph = handle.get_call_graph()
+        if any(node.status.name in ("FAILURE", "INIT_FAILURE", "TERMINATED", "TIMEOUT") for node in graph):
+            return "FAILED"
+        if isinstance(exc, ModalTimeoutError):
+            return "RUNNING" if any(node.task_id for node in graph) else "SUBMITTED"
+        raise  # observation/network errors never justify resubmission
+    if result.get("returncode") != 0:
+        return "FAILED"
+    try:
+        _validate_bench_result(result, record)
+    except (ValueError, RuntimeError):
+        return "FAILED"
+    return "COLLECTED" if (out / "bench.json").exists() else "COMPLETED"
+
+
+def _bench_result(call_id: str, submission: dict, timeout: float | None = None) -> dict:
+    from modal.exception import OutputExpiredError
+    try:
+        call = modal.FunctionCall.from_id(call_id)
+        return call.get() if timeout is None else call.get(timeout=timeout)
+    except OutputExpiredError:
+        content = b"".join(artifacts_volume.read_file(f"bench/{submission['bench_run_id']}/result.json"))
+        result = json.loads(content)
+        if result.get("call_id") != call_id:
+            raise ValueError("Archived result/FunctionCall identity mismatch")
+        return result
 
 
 def _validate_bench_result(result: dict, submission: dict) -> None:
@@ -559,15 +698,19 @@ def bench_collect(call_id: str) -> Path:
     if receipt.parent.name != submission["bench_run_id"]:
         raise ValueError("Submission receipt/run directory mismatch")
     # No cancel(), even if retrieval fails or the collector is interrupted.
-    result = modal.FunctionCall.from_id(call_id).get()
+    result = _bench_result(call_id, submission)
     _validate_bench_result(result, submission)
     summary = {key: result[key] for key in ("lane", "returncode", "server_ready_wait_s", "join_error")}
     summary.update({key: submission[key] for key in (
         "bench_run_id", "server_run_id", "cell", "commit", "call_id", "submitted_at_utc")})
     summary["timestamp_utc"] = result["timestamp_utc"]
+    summary["server_instance_unchanged"] = result.get("server_instance_unchanged", False)
+    summary["endpoint_model_ids"] = result.get("endpoint_model_ids")
     files = {"harness.log": result["harness_log"],
              SERVER_ENV_FILE: json.dumps(result["server_env"], indent=2) + "\n",
              RAW_FILE: result["raw"]}
+    if result.get("warmup") is not None:
+        files["warmup.jsonl"] = result["warmup"]
     if result.get("joined") is not None:
         files["raw.vram.jsonl"] = result["joined"]
     files["bench.json"] = json.dumps(summary, indent=2) + "\n"
@@ -716,7 +859,7 @@ def _bench_cli() -> None:
 
     parser = argparse.ArgumentParser(description="Submit/recover one detached Modal benchmark cell")
     commands = parser.add_subparsers(dest="command", required=True)
-    submit = commands.add_parser("bench_submit", help="Spawn one cell in an automatically detached app")
+    submit = commands.add_parser("bench_submit", help="Spawn one cell against the deployed Function")
     submit.add_argument("--lane", choices=tuple(lanes.LANES), default="vanilla")
     submit.add_argument("--server-run-id", required=True)
     submit.add_argument("--bench-run-id", default="")
@@ -726,12 +869,25 @@ def _bench_cli() -> None:
     submit.add_argument("--num-requests", type=int, default=8)
     collect = commands.add_parser("bench_collect", help="Recover an existing FunctionCall; never resubmit")
     collect.add_argument("--call-id", required=True)
+    status = commands.add_parser("bench_status", help="Read remote state without submitting")
+    status.add_argument("--bench-run-id", required=True)
+    recover = commands.add_parser("bench_recover", help="Recover orphaned completed call; never spawn")
+    recover.add_argument("--bench-run-id", required=True)
+    recover.add_argument("--call-id", required=True)
     args = vars(parser.parse_args())
     command = args.pop("command")
     if command == "bench_submit":
         bench_submit(**args)
-    else:
+    elif command == "bench_collect":
         bench_collect(**args)
+    elif command == "bench_recover":
+        bench_recover(**args)
+    else:
+        print(bench_status(**args))
+
+
+if modal.is_local() and "deploy" in sys.argv[1:3]:
+    _committed_bench_source()
 
 
 if __name__ == "__main__":
