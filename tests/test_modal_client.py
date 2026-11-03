@@ -84,7 +84,7 @@ def test_workspace_override(monkeypatch):
 
 def test_unknown_lane_rejected():
     with pytest.raises(ValueError, match="vanilla"):
-        mc.ModalLaneClient("eagle", token=TOKEN)
+        mc.ModalLaneClient("unknown_lane", token=TOKEN)
 
 
 def test_lane_models_match_runner_config():

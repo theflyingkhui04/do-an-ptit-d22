@@ -22,6 +22,7 @@ LAUNCHERS = {
     "vanilla": ROOT / "scripts" / "launch_lane1_vanilla.sh",
     "static": ROOT / "scripts" / "launch_lane2_static.sh",
     "adaptive": ROOT / "scripts" / "launch_lane3_adaptive.sh",
+    "eagle": ROOT / "scripts" / "launch_lane4_eagle.sh",
 }
 SHARED_FLAGS = (
     "--served-model-name",
@@ -48,7 +49,7 @@ def as_dict(args: list[str]) -> dict[str, str]:
     return {flag: value for flag, value in zip(args, args[1:]) if flag.startswith("--")}
 
 
-@pytest.mark.parametrize("lane", ["vanilla", "static", "adaptive"])
+@pytest.mark.parametrize("lane", ["vanilla", "static", "adaptive", "eagle"])
 def test_shared_flags_match_launcher(lane):
     args = lanes.build_vllm_args(lane)
     expected = launcher_flags(lane)
@@ -66,6 +67,15 @@ def test_speculative_config_matches_launcher(lane):
     # Launchers add "revision" the same way when PROTOCOL_B_DRAFT_REVISION is set.
     assert spec.pop("revision") == lanes.DRAFT_REVISION
     assert spec == launcher_spec_config(lane)
+    assert args["--per-request-spec-decode-metrics"] == "summary"
+
+
+def test_eagle_speculative_config_matches_launcher():
+    args = as_dict(lanes.build_vllm_args("eagle"))
+    spec = json.loads(args["--speculative-config"])
+    if lanes.EAGLE_REVISION:
+        assert spec.pop("revision") == lanes.EAGLE_REVISION
+    assert spec == launcher_spec_config("eagle")
     assert args["--per-request-spec-decode-metrics"] == "summary"
 
 
@@ -101,7 +111,7 @@ def test_default_profile_is_l4_bf16():
 
 def test_unknown_lane_or_profile_rejected():
     with pytest.raises(ValueError, match="lane"):
-        lanes.build_vllm_args("eagle")
+        lanes.build_vllm_args("unknown_lane")
     with pytest.raises(ValueError, match="profile"):
         lanes.build_vllm_args("vanilla", profile="int8")
 
@@ -193,6 +203,8 @@ def test_lane_identities_are_fixed():
         "vanilla": "qwen2.5-7b-vanilla",
         "static": "qwen2.5-7b-static-draft",
         "adaptive": "qwen2.5-7b-adaptive",
+        "eagle": "qwen2.5-7b-eagle3-draft",
+        "eagle-custom": "qwen2.5-7b-eagle3-draft",
     }
 
 
