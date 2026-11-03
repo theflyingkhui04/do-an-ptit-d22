@@ -42,6 +42,8 @@ RUN_ID = os.environ.get("PTIT_RUN_ID") or datetime.now(timezone.utc).strftime("%
 KEEP_WARM = os.environ.get("PTIT_KEEP_WARM") == "1"
 SCALEDOWN_SECONDS = int(os.environ.get("PTIT_SCALEDOWN_SECONDS", "300"))
 ENABLED_LANES = set(os.environ.get("PTIT_LANES", "vanilla,static,adaptive,eagle").split(","))
+if unknown_lanes := ENABLED_LANES - lanes.LANES.keys():
+    raise ValueError(f"Unknown deployment lanes: {sorted(unknown_lanes)}")
 
 image = (
     modal.Image.from_registry("nvidia/cuda:13.0.3-devel-ubuntu22.04", add_python="3.11")
@@ -96,7 +98,11 @@ def download_weights() -> dict:
     if getattr(lanes, "EAGLE_DRAFT_MODEL", None):
         models.append((lanes.EAGLE_DRAFT_MODEL, lanes.EAGLE_REVISION))
     for repo, revision in models:
+        if not revision:
+            raise ValueError(f"Missing pinned revision for {repo}")
         sha = HfApi().model_info(repo, revision=revision).sha
+        if sha != revision:
+            raise ValueError(f"Revision mismatch for {repo}: requested {revision}, resolved {sha}")
         try:
             snapshot_download(repo, revision=sha, local_files_only=True)
             already_present = True
@@ -107,7 +113,9 @@ def download_weights() -> dict:
         ref = lanes.pin_main_ref(Path(lanes.HF_HOME) / "hub", repo, sha)
         print(f"{repo}@{sha}: {'already present' if already_present else 'downloaded'} ({size} bytes); {ref} -> {sha}")
         manifest["models"].append(
-            {"repo": repo, "revision": sha, "already_present": already_present, "bytes": size, "main_ref_pinned": True}
+            {"repo": repo, "revision": sha, "requested_revision": revision,
+             "resolved_revision": sha, "already_present": already_present,
+             "bytes": size, "main_ref_pinned": True}
         )
 
     # Written only after every model is complete: no manifest = not usable.
@@ -260,14 +268,13 @@ if "adaptive" in ENABLED_LANES:
             _stop_vllm(self.proc)
 
 
-if "eagle" in ENABLED_LANES or "eagle-custom" in ENABLED_LANES:
-    _eagle_lane = "eagle" if "eagle" in ENABLED_LANES else "eagle-custom"
+if "eagle" in ENABLED_LANES:
 
-    @app.server(**_server_options(_eagle_lane))
+    @app.server(**_server_options("eagle"))
     class EagleServer:
         @modal.enter()
         def start(self) -> None:
-            self.proc = _start_vllm(_eagle_lane)
+            self.proc = _start_vllm("eagle")
 
         @modal.exit()
         def stop(self) -> None:

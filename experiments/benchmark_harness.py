@@ -233,6 +233,12 @@ def environment_info(
             "server_quantization": server["quantization"],
             "server_lane": server.get("lane"),
             "server_run_id": server.get("run_id"),
+            # Configured launch identities; endpoint identity still needs a runtime probe.
+            "target_model": server.get("target_model"),
+            "target_revision": server.get("target_revision"),
+            "draft_model": server.get("draft_model"),
+            "draft_revision": server.get("draft_revision"),
+            "served_model_name": server.get("served_model_name"),
             "aiohttp_version": aiohttp.__version__,
             "commit": git_commit(),
         }
@@ -1236,7 +1242,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--lane",
-        choices=["vanilla", "static", "adaptive", "eagle", "eagle-custom"],
+        choices=["vanilla", "static", "adaptive", "eagle"],
         default="vanilla",
     )
     parser.add_argument(

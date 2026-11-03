@@ -87,6 +87,11 @@ def test_unknown_lane_rejected():
         mc.ModalLaneClient("unknown_lane", token=TOKEN)
 
 
+def test_removed_eagle_alias_cannot_route_to_an_undeployed_endpoint():
+    with pytest.raises(ValueError, match="Unknown lane"):
+        mc.ModalLaneClient("eagle-custom", token=TOKEN)
+
+
 def test_lane_models_match_runner_config():
     from experiments import modal_lanes
 
