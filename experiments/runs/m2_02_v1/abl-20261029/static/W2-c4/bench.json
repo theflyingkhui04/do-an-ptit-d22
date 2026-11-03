@@ -1,0 +1,12 @@
+{
+  "lane": "static",
+  "returncode": 0,
+  "server_ready_wait_s": 0.1,
+  "join_error": null,
+  "cell": {
+    "workload": "W2",
+    "concurrency": 4,
+    "repeats": 3,
+    "num_requests": 16
+  }
+}

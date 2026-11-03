@@ -1,0 +1,17 @@
+{
+  "gpu": "NVIDIA L4",
+  "driver_version": "610.57.04",
+  "gpu_memory_total_mb": 23034.0,
+  "torch_version": "2.13.0+cu130",
+  "torch_cuda_version": "13.0",
+  "vllm_version": "0.30.0",
+  "dtype": "bfloat16",
+  "quantization": "awq_marlin",
+  "dtype_profile": "l4-bf16",
+  "lane": "adaptive-v2",
+  "run_id": "abl-20261029",
+  "served_model_name": "qwen2.5-7b-adaptive-v2",
+  "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+  "draft_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "started_at_utc": "2026-10-30T16:44:09.108452+00:00"
+}

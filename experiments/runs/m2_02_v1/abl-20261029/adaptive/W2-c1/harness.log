@@ -1,0 +1,143 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W2
+workload_file        : experiments/configs/w2_v2/chat_requests.jsonl
+sample_count         : 12
+sample_policy        : cycle-rotate
+package_workload_id  : w2_text_to_sql
+dataset_version      : w2.m1_03.v2
+prompt_version       : w2_text_to_sql.v2
+manifest_path        : /root/bench/experiments/configs/w2_v2/package_manifest.json
+artifact_key         : chat_requests_jsonl
+workload_file_sha256 : bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c
+manifest_package_sha256: 529f159c6837a9e2e326f70e0420eb80a1d0788f58d42a74734efee675fe7d9f
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : m3-l4-modal-v1
+environment_source   : server
+gpu                  : NVIDIA L4
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [1]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== NON-CANONICAL SMOKE MODE =====
+repeats=3 is below canonical M1 minimum 5.
+Do not use this run as scientific M1 benchmark evidence.
+====================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : abl-20261029-adaptive-W2-c1
+lane                 : adaptive
+workload             : W2
+canonical_samples    : 12
+sample_policy        : cycle-rotate
+concurrencies        : [1]
+repeats_per_cell     : 3
+requests_per_repeat  : 16
+===================================
+
+========================================
+START CELL
+experiment_id : abl-20261029-adaptive-W2-c1
+cell_id       : adaptive__W2__c1
+concurrency   : 1
+repeats       : 3
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : option-b-concurrency-matched
+experiment_id        : abl-20261029-adaptive-W2-c1
+cell_id              : adaptive__W2__c1
+requested_minimum    : 3
+warmup_requests      : 3
+warmup_concurrency   : 1
+measured_concurrency : 1
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : adaptive__W2__c1
+requests             : 3
+successes            : 3
+concurrency_limit    : 1
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : abl-20261029-adaptive-W2-c1
+cell_id             : adaptive__W2__c1
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-fc31021c-e930-4be9-8628-1600ff8b7852
+requests            : 16
+successes           : 16
+metrics_complete    : 16
+concurrency         : 1
+duration_s          : 23.168
+request_throughput  : 0.691 req/s
+output_throughput   : 54.687 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/bench/abl-20261029-adaptive-W2-c1/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : abl-20261029-adaptive-W2-c1
+cell_id             : adaptive__W2__c1
+repeat_id           : r002
+sample_offset       : 4
+run_id              : run-6e59c519-0470-4b7a-ad16-f7d1890fe944
+requests            : 16
+successes           : 16
+metrics_complete    : 16
+concurrency         : 1
+duration_s          : 24.828
+request_throughput  : 0.644 req/s
+output_throughput   : 53.771 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/bench/abl-20261029-adaptive-W2-c1/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : abl-20261029-adaptive-W2-c1
+cell_id             : adaptive__W2__c1
+repeat_id           : r003
+sample_offset       : 8
+run_id              : run-aff2787a-bf91-470b-b009-e7513899a126
+requests            : 16
+successes           : 16
+metrics_complete    : 16
+concurrency         : 1
+duration_s          : 25.504
+request_throughput  : 0.627 req/s
+output_throughput   : 53.875 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/bench/abl-20261029-adaptive-W2-c1/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : adaptive__W2__c1
+measured_repeats     : 3
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : abl-20261029-adaptive-W2-c1
+cells_completed      : 1
+concurrencies        : [1]
+repeats_per_cell     : 3
+======================
