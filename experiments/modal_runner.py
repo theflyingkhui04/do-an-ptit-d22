@@ -632,7 +632,7 @@ def bench_status(bench_run_id: str) -> str:
         graph = handle.get_call_graph()
         if any(node.status.name in ("FAILURE", "INIT_FAILURE", "TERMINATED", "TIMEOUT") for node in graph):
             return "FAILED"
-        if isinstance(exc, ModalTimeoutError):
+        if isinstance(exc, (TimeoutError, ModalTimeoutError)):
             return "RUNNING" if any(node.task_id for node in graph) else "SUBMITTED"
         raise  # observation/network errors never justify resubmission
     if result.get("returncode") != 0:

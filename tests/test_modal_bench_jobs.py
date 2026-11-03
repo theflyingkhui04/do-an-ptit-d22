@@ -398,11 +398,12 @@ def test_receipt_replace_failure_retains_previous_complete_receipt(job, monkeypa
 
 
 @pytest.mark.parametrize("task_id,expected", [("", "SUBMITTED"), ("ta-test", "RUNNING")])
-def test_status_polls_existing_call_without_resubmission(job, task_id, expected):
+@pytest.mark.parametrize("timeout_type", [TimeoutError, "modal"])
+def test_status_polls_existing_call_without_resubmission(job, task_id, expected, timeout_type):
     from modal.exception import TimeoutError as ModalTimeoutError
     prepare_collect(job)
     handle = job.modal.FunctionCall.from_id.return_value
-    handle.get.side_effect = ModalTimeoutError()
+    handle.get.side_effect = ModalTimeoutError() if timeout_type == "modal" else timeout_type()
     handle.get_call_graph.return_value = [SimpleNamespace(task_id=task_id, status=SimpleNamespace(name="PENDING"))]
     assert job.bench_status("pilot-cell") == expected
     job.deployed.spawn.assert_not_called()
