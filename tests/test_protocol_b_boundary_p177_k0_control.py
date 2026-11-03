@@ -7,6 +7,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -22,6 +23,33 @@ from experiments import protocol_b_boundary as boundary
 from experiments import protocol_b_boundary_observer as observer
 from experiments import protocol_b_boundary_sources as sources
 from experiments.protocol_b import EvidenceError, fingerprint
+
+
+# Deterministic decision trace of the Lane 3 control logic with default (v0) settings:
+# high/low/mixed acceptance, KV and VRAM pressure, several concurrent requests.
+CONTROL_TRACE_SCRIPT = """
+import json
+from src.server.budget_planner import AdaptiveBudgetPlanner
+NEW_TELEMETRY_KEYS = {"reason_counts", "batch_k_counts"}
+planner = AdaptiveBudgetPlanner.from_env({})
+plans, telemetry = [], []
+accept = {"hi": (3, 3), "lo": (0, 3), "mid": (2, 3)}
+for step in range(60):
+    ids = ["hi", "lo", "mid"] if step < 45 else ["hi"]
+    kv = 0.95 if 20 <= step < 24 else 0.3
+    vram = 900.0 if 30 <= step < 32 else None
+    plan = planner.plan_step(ids, batch_size=len(ids), kv_usage=kv, free_vram_mb=vram)
+    plans.append([plan.batch_k, sorted(plan.per_request_k.items())])
+    for req in ids:
+        k = plan.per_request_k.get(req, 0)
+        acc, drafted = accept[req]
+        if k:
+            planner.record_verification(req, min(k, drafted), min(acc, k))
+for req in ("hi", "lo", "mid"):
+    record = planner.finish_request(req)
+    telemetry.append({key: value for key, value in record.items() if key not in NEW_TELEMETRY_KEYS})
+print(json.dumps({"plans": plans, "telemetry": telemetry}, sort_keys=True))
+"""
 
 
 # vLLM v0.30.0 Apache-2.0 source; pinned read-only native control dependency.
@@ -395,10 +423,22 @@ class SourceTests(unittest.TestCase):
                 sources.validate_scheduler_observation(raw, bad)
 
     def test_planner_controller_and_adapter_unchanged_from_base(self):
-        for name in ("src/server/budget_planner.py", "src/proposer/controller.py", "src/proposer/adapter.py"):
-            raw = subprocess.check_output(["git", "-c", "safe.directory="+boundary.ROOT.as_posix(), "show",
-                                           boundary.CONTROL_BASE_EXECUTION+":"+name], cwd=boundary.ROOT)
-            self.assertEqual(raw, (boundary.ROOT / name).read_bytes())
+        # A control run is only comparable with the sealed baseline if the control logic
+        # behaves as at CONTROL_BASE_EXECUTION. Adaptive v1 adds opt-in parameters whose
+        # defaults keep v0 behaviour, so the guard compares decisions, not bytes.
+        names = ("src/proposer/__init__.py", "src/proposer/controller.py", "src/proposer/adapter.py",
+                 "src/server/__init__.py", "src/server/budget_planner.py")
+        with tempfile.TemporaryDirectory() as base_root:
+            for name in names:
+                raw = subprocess.check_output(["git", "-c", "safe.directory="+boundary.ROOT.as_posix(), "show",
+                                               boundary.CONTROL_BASE_EXECUTION+":"+name], cwd=boundary.ROOT)
+                (Path(base_root) / name).parent.mkdir(parents=True, exist_ok=True)
+                (Path(base_root) / name).write_bytes(raw)
+            base, current = (json.loads(subprocess.check_output(
+                [sys.executable, "-c", CONTROL_TRACE_SCRIPT], cwd=root, env={**os.environ, "PYTHONPATH": root}))
+                for root in (base_root, str(boundary.ROOT)))
+        self.assertGreater(len(base["plans"]), 40)
+        self.assertEqual(current, base)
 
     def test_pinned_vllm_transforms_remain_supported(self):
         # Existing lifecycle tests exercise temporary packages, not installed /usr/local vLLM.
