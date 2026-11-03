@@ -39,6 +39,28 @@ class CostProfile:
         return base_t if k == 0 else (base_t + k * draft_step_t)
 
 
+_REASON_CATEGORIES = (
+    ("KV-cache pressure", "memory"),
+    ("VRAM pressure", "memory"),
+    ("Memory pressure", "memory"),
+    ("Periodic probe", "probe"),
+    ("Low acceptance floor", "floor"),
+    ("Low acceptance fallback", "fallback"),
+    ("High acceptance", "high"),
+    ("Mid acceptance", "mid"),
+)
+
+
+def reason_counts(history: List[dict]) -> Dict[str, int]:
+    """Counts budget decisions per reason category (diagnostic telemetry)."""
+    counts: Dict[str, int] = {}
+    for entry in history:
+        reason = entry.get("reason", "")
+        category = next((name for prefix, name in _REASON_CATEGORIES if reason.startswith(prefix)), "other")
+        counts[category] = counts.get(category, 0) + 1
+    return counts
+
+
 class BudgetController:
     """Adaptive Speculative Controller v0 based on rolling acceptance rate alpha."""
 
@@ -216,6 +238,8 @@ class AdaptiveDraftController(BudgetController):
         kv_cache_recover_pct: float = 80.0,
         memory_cooldown_steps: int = 3,
         enable_vram_guard: bool = True,
+        min_k: int = 0,
+        min_warmup_samples: int = 1,
     ):
         super().__init__(
             window_size=window_size,
@@ -234,6 +258,10 @@ class AdaptiveDraftController(BudgetController):
             )
         if memory_cooldown_steps < 1:
             raise ValueError("memory_cooldown_steps must be >= 1")
+        if min_k != 0 and min_k not in self.candidate_budgets:
+            raise ValueError(f"min_k ({min_k}) must be 0 or one of candidate_budgets {self.candidate_budgets}")
+        if min_warmup_samples < 1:
+            raise ValueError("min_warmup_samples must be >= 1")
 
         self.step_count = 0
         self.probe_interval = probe_interval
@@ -243,6 +271,12 @@ class AdaptiveDraftController(BudgetController):
         self.kv_cache_recover_pct = kv_cache_recover_pct
         self.memory_cooldown_steps = memory_cooldown_steps
         self.enable_vram_guard = enable_vram_guard
+        # [Adaptive v1] With draft_model, vLLM still runs a draft forward at K=0, so a
+        # floor > 0 replaces the low-acceptance fallback to k=0 (0 keeps v0 behaviour).
+        self.min_k = min_k
+        # [Adaptive v1] The budget rule keeps initial_alpha until this many verification
+        # samples exist, so one bad first sample cannot drop a request to the floor.
+        self.min_warmup_samples = min_warmup_samples
 
         # Hysteresis state: steps spent at k=0 since the last memory trigger
         self._memory_pressure_active = False
@@ -368,6 +402,11 @@ class AdaptiveDraftController(BudgetController):
         - fallback_threshold <= alpha < high_threshold: throttle down to k=2
         - alpha < fallback_threshold (0.65): fallback to k=0 with periodic probing (k=probe_k every probe_interval steps)
         """
+        if alpha < self.fallback_threshold and self.min_k > 0:
+            return (
+                self.min_k,
+                f"Low acceptance floor: alpha {alpha:.3f} < threshold {self.fallback_threshold:.3f}, k={self.min_k}",
+            )
         if alpha < self.fallback_threshold:
             self.consecutive_fallback_steps += 1
             if self.probe_interval > 0 and self.consecutive_fallback_steps >= self.probe_interval:
@@ -423,7 +462,8 @@ class AdaptiveDraftController(BudgetController):
             return decision
 
         # 2. Budget Rule (Co giãn k theo alpha kết hợp Periodic Probing)
-        k, reason = self.apply_budget_rule(alpha=effective_alpha)
+        rule_alpha = effective_alpha if self.step_count >= self.min_warmup_samples else self.initial_alpha
+        k, reason = self.apply_budget_rule(alpha=rule_alpha)
         e_tau = self.estimate_expected_tokens(k, effective_alpha)
 
         decision = BudgetDecision(
@@ -453,6 +493,7 @@ class AdaptiveDraftController(BudgetController):
         base_stats["step_count"] = self.step_count
         base_stats["consecutive_fallback_steps"] = self.consecutive_fallback_steps
         base_stats["memory_pressure_active"] = self._memory_pressure_active
+        base_stats["reason_counts"] = reason_counts(self._history)
         return base_stats
 
 
