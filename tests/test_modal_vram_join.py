@@ -94,3 +94,23 @@ def test_cli_refuses_paths_outside_working_directory(tmp_path, monkeypatch):
 
     assert vj.main(["--raw", "raw.jsonl", "--vram", "vram.jsonl", "--out", str(tmp_path / "escape.jsonl")]) == 2
     assert not (tmp_path / "escape.jsonl").exists()
+
+
+def test_gpu_state_per_repeat_when_samples_carry_clock_power_temperature():
+    # 30/10 L4: identical static outputs ran 17% apart in TPOT on two containers; the
+    # sampler now records SM clock, board power and temperature to explain such gaps.
+    samples = [{**sample("10:00:01", 12000), "sm_clock_mhz": 2000, "power_w": 70.0, "temp_c": 60},
+               {**sample("10:00:10", 12100), "sm_clock_mhz": 1800, "power_w": 72.0, "temp_c": 66},
+               {**sample("10:00:20", 12200), "sm_clock_mhz": 1900, "power_w": 71.0, "temp_c": 64}]
+
+    out = vj.join_vram([rec("r1", "10:00:00", "10:00:30")], samples)
+
+    assert out[0]["run_sm_clock_mhz_p50"] == 1900
+    assert out[0]["run_power_w_p50"] == 71.0
+    assert out[0]["run_gpu_temp_c_max"] == 66
+
+
+def test_gpu_state_fields_absent_for_memory_only_samples():
+    out = vj.join_vram([rec("r1", "10:00:00", "10:00:30")], SAMPLES)
+
+    assert "run_sm_clock_mhz_p50" not in out[0]

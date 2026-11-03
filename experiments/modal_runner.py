@@ -41,7 +41,7 @@ PROFILE = os.environ.get("PTIT_DTYPE_PROFILE", lanes.DEFAULT_PROFILE)
 RUN_ID = os.environ.get("PTIT_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 KEEP_WARM = os.environ.get("PTIT_KEEP_WARM") == "1"
 SCALEDOWN_SECONDS = int(os.environ.get("PTIT_SCALEDOWN_SECONDS", "300"))
-ENABLED_LANES = set(os.environ.get("PTIT_LANES", "vanilla,static,adaptive").split(","))
+ENABLED_LANES = lanes.enabled_lanes(os.environ.get("PTIT_LANES", ""), local=modal.is_local())
 
 image = (
     modal.Image.from_registry("nvidia/cuda:13.0.3-devel-ubuntu22.04", add_python="3.11")
@@ -138,12 +138,37 @@ def _write_server_env(lane: str, run_dir: Path) -> None:
         profile=os.environ["PTIT_DTYPE_PROFILE"],
     )
     env["started_at_utc"] = datetime.now(timezone.utc).isoformat()
+    env.update(_gpu_limits(pynvml, handle))
     (run_dir / SERVER_ENV_FILE).write_text(json.dumps(env, indent=2) + "\n", encoding="utf-8")
     artifacts_volume.commit()
 
 
+def _gpu_limits(pynvml, handle) -> dict:
+    """The host's enforced power limit and max SM clock (L4 hosts may differ)."""
+    try:
+        return {
+            "power_limit_w": round(pynvml.nvmlDeviceGetEnforcedPowerLimit(handle) / 1000, 1),
+            "sm_clock_max_mhz": pynvml.nvmlDeviceGetMaxClockInfo(handle, pynvml.NVML_CLOCK_SM),
+        }
+    except pynvml.NVMLError:
+        return {}
+
+
+def _gpu_state(pynvml, handle) -> dict:
+    """SM clock, board power and temperature; empty if the driver does not report them."""
+    try:
+        return {
+            "sm_clock_mhz": pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_SM),
+            "power_w": round(pynvml.nvmlDeviceGetPowerUsage(handle) / 1000, 1),
+            "temp_c": pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU),
+        }
+    except pynvml.NVMLError:
+        return {}
+
+
 def _sample_vram(run_dir: Path, stop: threading.Event, interval_s: float = 0.25, commit_every_s: float = 10.0) -> None:
-    """[M3-01] Append whole-GPU NVML memory samples ({ts_utc, used_mb, total_mb}) to vram.jsonl."""
+    """[M3-01] Append whole-GPU NVML samples ({ts_utc, used_mb, total_mb} plus sm_clock_mhz,
+    power_w, temp_c) to vram.jsonl."""
     import pynvml
 
     pynvml.nvmlInit()
@@ -156,6 +181,7 @@ def _sample_vram(run_dir: Path, stop: threading.Event, interval_s: float = 0.25,
                 "ts_utc": datetime.now(timezone.utc).isoformat(),
                 "used_mb": round(mem.used / 1024**2, 2),
                 "total_mb": round(mem.total / 1024**2, 2),
+                **_gpu_state(pynvml, handle),
             }) + "\n")
             out.flush()
             if time.monotonic() - last_commit >= commit_every_s:
@@ -257,6 +283,58 @@ if "adaptive" in ENABLED_LANES:
             _stop_vllm(self.proc)
 
 
+if "adaptive-f1" in ENABLED_LANES:
+
+    @app.server(**_server_options("adaptive-f1"))
+    class AdaptiveF1Server:
+        @modal.enter()
+        def start(self) -> None:
+            self.proc = _start_vllm("adaptive-f1")
+
+        @modal.exit()
+        def stop(self) -> None:
+            _stop_vllm(self.proc)
+
+
+if "adaptive-f12" in ENABLED_LANES:
+
+    @app.server(**_server_options("adaptive-f12"))
+    class AdaptiveF12Server:
+        @modal.enter()
+        def start(self) -> None:
+            self.proc = _start_vllm("adaptive-f12")
+
+        @modal.exit()
+        def stop(self) -> None:
+            _stop_vllm(self.proc)
+
+
+if "adaptive-v1" in ENABLED_LANES:
+
+    @app.server(**_server_options("adaptive-v1"))
+    class AdaptiveV1Server:
+        @modal.enter()
+        def start(self) -> None:
+            self.proc = _start_vllm("adaptive-v1")
+
+        @modal.exit()
+        def stop(self) -> None:
+            _stop_vllm(self.proc)
+
+
+if "adaptive-v2" in ENABLED_LANES:
+
+    @app.server(**_server_options("adaptive-v2"))
+    class AdaptiveV2Server:
+        @modal.enter()
+        def start(self) -> None:
+            self.proc = _start_vllm("adaptive-v2")
+
+        @modal.exit()
+        def stop(self) -> None:
+            _stop_vllm(self.proc)
+
+
 # --------------------------------------------------------------------------
 # Local entrypoints (write evidence under experiments/runs/m3_00/<run-id>/)
 # --------------------------------------------------------------------------
@@ -335,12 +413,17 @@ def _wait_server_ready(base_url: str, token: str, timeout_s: float = 1200.0) -> 
 )
 def bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_commit: str) -> dict:
     """Run one benchmark_harness cell against a deployed lane and join server VRAM."""
+    return _run_bench(lane, server_run_id, bench_run_id, cell, git_commit)
+
+
+def _run_bench(lane: str, server_run_id: str, bench_run_id: str, cell: dict, git_commit: str,
+               ready_timeout_s: float = 1200.0) -> dict:
     sys.path.insert(0, BENCH_ROOT)
     from experiments.modal_vram_join import join_vram, load_jsonl
 
     token = f"{os.environ['MODAL_PROXY_TOKEN_ID']}.{os.environ['MODAL_PROXY_TOKEN_SECRET']}"
     base_url = _lane_base_url(lane)
-    ready_s = _wait_server_ready(base_url, token)
+    ready_s = _wait_server_ready(base_url, token, timeout_s=ready_timeout_s)
 
     server_dir = Path(lanes.server_artifact_dir(lane, server_run_id))
     out_dir = Path(lanes.ARTIFACTS_ROOT) / "bench" / bench_run_id
@@ -529,3 +612,157 @@ def profile_costs(run_id: str = "", models: str = "target,draft", contexts: str 
         print(cell["model"], cell["context_len"], cell["batch_size"], cell["status"],
               cell["step_ms_median"], cell["variance_flag"])
     print(f"Wrote {out}")
+
+
+# --------------------------------------------------------------------------
+# [Adaptive v1] Ablation: lanes in parallel, cells sequential within a lane
+# --------------------------------------------------------------------------
+@app.function(
+    image=bench_image,
+    cpu=2,
+    timeout=12 * 60 * 60,
+    volumes={lanes.ARTIFACTS_ROOT: artifacts_volume},
+    secrets=[modal.Secret.from_name("ptit-proxy-token")],
+)
+def bench_series(lane: str, server_run_id: str, campaign_id: str, cells: list[dict], git_commit: str,
+                 ready_timeout_s: float = 2700.0) -> dict:
+    """All cells of one lane in order, then that lane's adaptive telemetry (if any)."""
+    sys.path.insert(0, BENCH_ROOT)
+    from experiments import ablation_v1 as ab
+
+    def run_one(cell: dict) -> dict:
+        bench_run_id = f"{campaign_id}-{lane}-{cell['workload']}-c{cell['concurrency']}"
+        result = _run_bench(lane, server_run_id, bench_run_id, cell, git_commit, ready_timeout_s)
+        print(json.dumps({"event": "cell_done", "lane": lane, **cell, "returncode": result["returncode"],
+                          "join_error": result["join_error"]}), flush=True)
+        return result
+
+    results = ab.run_cells(cells, run_one)
+    telemetry = None
+    path = lanes.lane_env(lane, server_run_id).get("ADAPTIVE_TELEMETRY_PATH")
+    if path:
+        time.sleep(12)
+        artifacts_volume.reload()
+        if Path(path).exists():
+            telemetry = Path(path).read_text(encoding="utf-8")
+    return {"lane": lane, "results": results, "telemetry": telemetry}
+
+
+def _write_cell(out: Path, result: dict) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    if result.get("error"):
+        error = {"cell": result["cell"], "error": result["error"]}
+        (out / "bench.json").write_text(json.dumps(error, indent=2) + "\n", encoding="utf-8")
+        return
+    (out / "harness.log").write_text(result["harness_log"], encoding="utf-8")
+    if result["server_env"]:
+        (out / SERVER_ENV_FILE).write_text(json.dumps(result["server_env"], indent=2) + "\n", encoding="utf-8")
+    if result["raw"]:
+        (out / RAW_FILE).write_text(result["raw"], encoding="utf-8")
+    if result["joined"]:
+        (out / "raw.vram.jsonl").write_text(result["joined"], encoding="utf-8")
+    meta = {k: result[k] for k in ("lane", "returncode", "server_ready_wait_s", "join_error", "cell")}
+    (out / "bench.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+
+
+def _summarize_cell_tolerant(analyze_m2, raw: Path, harness_lane: str) -> dict:
+    """M2-04 cell aggregation over the cell's last complete attempt; spec-lane records whose
+    server returned no per-request metrics (vLLM "metrics": null) are excluded and counted
+    instead of aborting."""
+    import tempfile
+
+    from experiments import ablation_v1 as ab
+
+    records = [json.loads(line) for line in raw.read_text(encoding="utf-8").splitlines() if line.strip()]
+    current = ab.latest_attempt(records)
+    missing = [r for r in current if harness_lane in analyze_m2.SPEC_LANES
+               and r.get("phase") == "measured" and not isinstance(r.get("server_metrics"), dict)]
+    kept = [r for r in current if r not in missing]
+    with tempfile.TemporaryDirectory() as tmp:
+        filtered = Path(tmp) / raw.name
+        filtered.write_text("".join(json.dumps(r) + "\n" for r in kept), encoding="utf-8")
+        row = analyze_m2._summarize_cell(filtered, harness_lane)
+    row = {**row, "n_measured": sum(r.get("phase") == "measured" for r in kept),
+           "stale_records_dropped": len(records) - len(current), "spec_metrics_missing": len(missing)}
+    if missing:
+        row["spec_metrics_missing_samples"] = sorted({r.get("sample_id") for r in missing})
+    return row
+
+
+def _summarize_ablation(root: Path, lane_names: list[str], cells: list[dict]) -> dict:
+    from experiments import ablation_v1 as ab
+    from experiments import analyze_m2
+
+    rows, telemetry = [], {}
+    for lane in lane_names:
+        harness_lane = lanes.ALL_LANES[lane].harness_lane or lane
+        windows = {}
+        for cell in cells:
+            raw = root / lane / f"{cell['workload']}-c{cell['concurrency']}" / "raw.vram.jsonl"
+            if not raw.exists():
+                continue
+            row = _summarize_cell_tolerant(analyze_m2, raw, harness_lane)
+            rows.append({"lane": lane, "workload": cell["workload"], "concurrency": cell["concurrency"],
+                         **{k: v for k, v in row.items() if not k.startswith("_") and k not in ("lane", "workload", "concurrency")}})
+            records = ab.latest_attempt(
+                [json.loads(line) for line in raw.read_text(encoding="utf-8").splitlines() if line.strip()])
+            windows[(cell["workload"], cell["concurrency"])] = ab.cell_window(records)
+        tel_path = root / lane / "telemetry.jsonl"
+        if tel_path.exists():
+            lines = [json.loads(line) for line in tel_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            telemetry[lane] = {f"{w}-c{c}": ab.telemetry_summary(part)
+                               for (w, c), part in ab.split_telemetry(lines, windows).items()}
+    rows = ab.add_speedups(rows)
+    return {"rows": rows, "criteria": ab.evaluate_criteria(rows), "telemetry": telemetry}
+
+
+@app.local_entrypoint()
+def ablation(server_run_id: str = "", campaign_id: str = "", lanes_csv: str = "", workloads: str = "",
+             concurrency: str = "", repeats: int = 3, num_requests: int = 16, summary_only: bool = False) -> None:
+    """modal run -m experiments.modal_runner::ablation --server-run-id <id> --campaign-id <id>
+
+    Run lanes in batches (--lanes-csv), then --summary-only to aggregate every lane on disk."""
+    from experiments import ablation_v1 as ab
+    from experiments.modal_profiler import parse_int_list
+
+    if not server_run_id:
+        raise SystemExit("--server-run-id is required (the PTIT_RUN_ID used at modal deploy)")
+    campaign_id = campaign_id or RUN_ID
+    root = ab.campaign_dir(campaign_id)
+    lane_names = [x for x in (lanes_csv or ",".join(ab.LANES)).split(",") if x]
+    for lane in lane_names:
+        lanes._lane(lane)
+    cells = ab.plan_cells(tuple(x for x in (workloads or ",".join(ab.WORKLOADS)).split(",") if x),
+                          parse_int_list(concurrency, ab.CONCURRENCY), repeats, num_requests)
+
+    commit = _git_commit()
+    if summary_only:
+        lane_names = [lane for lane in ab.LANES if (root / lane).is_dir()]
+        calls = {}
+    else:
+        calls = {lane: bench_series.spawn(lane, server_run_id, campaign_id, cells, commit, ab.READY_TIMEOUT_S)
+                 for lane in lane_names}
+    for lane, call in calls.items():
+        try:
+            out = call.get()
+        except Exception as exc:  # keep the lanes that finished
+            print(f"[{lane}] FAILED: {type(exc).__name__}: {exc}")
+            continue
+        for result in out["results"]:
+            cell = result["cell"]
+            _write_cell(root / lane / f"{cell['workload']}-c{cell['concurrency']}", result)
+        if out["telemetry"]:
+            tel_path = root / lane / "telemetry.jsonl"
+            old = tel_path.read_text(encoding="utf-8") if tel_path.exists() else ""
+            tel_path.write_text(ab.merge_jsonl(old, out["telemetry"]), encoding="utf-8")
+        print(f"[{lane}] {sum(r['returncode'] == 0 for r in out['results'])}/{len(out['results'])} cells ok")
+
+    summary = {"campaign_id": campaign_id, "server_run_id": server_run_id, "commit": commit,
+               "timestamp_utc": datetime.now(timezone.utc).isoformat(), "lanes": lane_names, "cells": cells,
+               **_summarize_ablation(root, lane_names, cells)}
+    (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    for r in summary["rows"]:
+        print(f"{r['lane']:13} {r['workload']} c{r['concurrency']:<3} tpot {r['tpot_p50']:7.2f} "
+              f"vsV {r['speedup_vs_vanilla'] or 0:5.3f} vsS {r['speed_vs_static'] or 0:5.3f}")
+    print(json.dumps(summary["criteria"], indent=2))
+    print(f"Wrote {root}")

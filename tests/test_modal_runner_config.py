@@ -303,3 +303,170 @@ def test_harness_commit_can_come_from_environment(monkeypatch):
     monkeypatch.setenv("PTIT_GIT_COMMIT", "a" * 40)
 
     assert harness.git_commit() == "a" * 40
+
+
+# ---------------------------------------------------------------- [Adaptive v1] ablation lanes
+ABLATION = ("adaptive-f1", "adaptive-f12", "adaptive-v1", "adaptive-v2")
+
+
+def test_ablation_lanes_are_separate_from_canonical_lanes():
+    assert set(lanes.ABLATION_LANES) == set(ABLATION)
+    assert not set(lanes.ABLATION_LANES) & set(lanes.LANES)
+    names = [cfg.served_model_name for cfg in lanes.ALL_LANES.values()]
+    assert len(names) == len(set(names))
+
+
+@pytest.mark.parametrize("lane", ABLATION)
+def test_ablation_lanes_run_the_adaptive_scheduler(lane):
+    cfg = lanes.ABLATION_LANES[lane]
+
+    assert cfg.scheduler_cls == lanes.LANES["adaptive"].scheduler_cls
+    assert cfg.harness_lane == "adaptive"
+    assert cfg.speculative_config["model"] == lanes.DRAFT_MODEL
+
+
+def test_f1_and_f12_only_change_controller_kwargs():
+    base = lanes.LANES["adaptive"]
+    for lane, kwargs in (("adaptive-f1", {"min_k": 2}), ("adaptive-f12", {"min_k": 2, "min_warmup_samples": 3})):
+        cfg = lanes.ABLATION_LANES[lane]
+        assert cfg.speculative_config == base.speculative_config
+        assert json.loads(cfg.env["ADAPTIVE_CONTROLLER_KWARGS"]) == kwargs
+        assert {k: v for k, v in cfg.env.items() if k != "ADAPTIVE_CONTROLLER_KWARGS"} == \
+            {k: v for k, v in base.env.items() if k != "ADAPTIVE_CONTROLLER_KWARGS"}
+
+
+def test_v1_lane_keeps_one_uniform_k():
+    cfg = lanes.ABLATION_LANES["adaptive-v1"]
+
+    assert cfg.speculative_config["num_speculative_tokens"] == 3
+    assert cfg.speculative_config["num_speculative_tokens_per_batch_size"] == [[1, 32, 3]]
+    assert cfg.env["ADAPTIVE_MAX_K"] == "3"
+    assert cfg.env["ADAPTIVE_PER_REQUEST"] == "0"
+    assert cfg.env["ADAPTIVE_K_HOLD_STEPS"] == "4"
+    assert json.loads(cfg.env["ADAPTIVE_CONTROLLER_KWARGS"]) == {"min_k": 2, "min_warmup_samples": 3}
+
+
+def test_ablation_lane_controller_kwargs_build_a_planner():
+    from src.server.budget_planner import AdaptiveBudgetPlanner
+
+    for lane in ABLATION:
+        planner = AdaptiveBudgetPlanner.from_env(lanes.ABLATION_LANES[lane].env)
+        assert planner.adapter.get_controller("r").min_k == (1 if lane == "adaptive-v2" else 2)
+
+
+def test_ablation_lane_vllm_args_and_telemetry_path():
+    args = lanes.build_vllm_args("adaptive-v1")
+    env = lanes.lane_env("adaptive-v1", "r1")
+
+    assert args[args.index("--served-model-name") + 1] == "qwen2.5-7b-adaptive-v1"
+    assert json.loads(args[args.index("--speculative-config") + 1])["num_speculative_tokens"] == 3
+    assert env["ADAPTIVE_TELEMETRY_PATH"] == "/artifacts/adaptive-v1/r1/telemetry.jsonl"
+
+
+def test_ablation_bench_args_use_adaptive_harness_lane():
+    args = lanes.bench_harness_args(
+        "adaptive-f1", base_url="https://x.test/v1", server_env_json="e", raw_out="r", summary_csv="s",
+        experiment_id="x", workload="W2", concurrency=4, repeats=1, num_requests=4,
+    )
+    flags = dict(zip(args, args[1:]))
+
+    assert flags["--lane"] == "adaptive"
+    assert flags["--model"] == "qwen2.5-7b-adaptive-f1"
+
+
+def test_ablation_server_env_records_lane():
+    env = lanes.build_server_env(
+        gpu="NVIDIA L4", driver_version="d", gpu_memory_total_mb=1.0, torch_version="t", torch_cuda_version="c",
+        vllm_version="0.30.0", lane="adaptive-v1", run_id="r1", profile="l4-bf16",
+    )
+
+    assert env["served_model_name"] == "qwen2.5-7b-adaptive-v1"
+    assert env["draft_revision"] == lanes.DRAFT_REVISION
+
+
+def test_container_defines_every_lane_while_deploy_filters():
+    # PTIT_LANES only exists on the deploying machine; a container that skipped an
+    # ablation lane class crash-looped with AttributeError (dry run 25/10).
+    assert lanes.enabled_lanes("adaptive-v1", local=False) == set(lanes.ALL_LANES)
+    assert lanes.enabled_lanes("", local=True) == set(lanes.LANES)
+    assert lanes.enabled_lanes("static,adaptive-v1", local=True) == {"static", "adaptive-v1"}
+
+
+def test_runner_uses_enabled_lanes_helper():
+    source = (ROOT / "experiments" / "modal_runner.py").read_text(encoding="utf-8")
+
+    assert "lanes.enabled_lanes(" in source
+    for cls in ("AdaptiveF1Server", "AdaptiveF12Server", "AdaptiveV1Server", "AdaptiveV2Server"):
+        assert f"class {cls}" in source
+
+
+def test_runner_in_container_mode_defines_every_server_class():
+    code = (
+        "import os, modal; os.environ.pop('PTIT_LANES', None); modal.is_local = lambda: False\n"
+        "import experiments.modal_runner as r\n"
+        "missing = [c for c in ('VanillaServer', 'StaticServer', 'AdaptiveServer', 'AdaptiveF1Server',"
+        " 'AdaptiveF12Server', 'AdaptiveV1Server', 'AdaptiveV2Server') if not hasattr(r, c)]\n"
+        "assert not missing, missing\n"
+    )
+
+    result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr[-800:]
+
+
+def test_v2_lane_is_v1_with_floor_one():
+    v1, v2 = lanes.ABLATION_LANES["adaptive-v1"], lanes.ABLATION_LANES["adaptive-v2"]
+
+    assert v2.speculative_config == v1.speculative_config
+    assert {k: v for k, v in v2.env.items() if k != "ADAPTIVE_CONTROLLER_KWARGS"} ==         {k: v for k, v in v1.env.items() if k != "ADAPTIVE_CONTROLLER_KWARGS"}
+    assert json.loads(v2.env["ADAPTIVE_CONTROLLER_KWARGS"]) == {
+        "min_k": 1, "min_warmup_samples": 3, "candidate_budgets": [0, 1, 2, 3, 4]}
+
+
+class _FakeNVML:
+    NVML_CLOCK_SM = 1
+    NVML_TEMPERATURE_GPU = 0
+
+    class NVMLError(Exception):
+        pass
+
+    def __init__(self, broken=False):
+        self.broken = broken
+
+    def _check(self):
+        if self.broken:
+            raise self.NVMLError("not supported")
+
+    def nvmlDeviceGetClockInfo(self, handle, kind):
+        self._check()
+        return 1980
+
+    def nvmlDeviceGetMaxClockInfo(self, handle, kind):
+        self._check()
+        return 2040
+
+    def nvmlDeviceGetPowerUsage(self, handle):
+        self._check()
+        return 71234
+
+    def nvmlDeviceGetEnforcedPowerLimit(self, handle):
+        self._check()
+        return 72000
+
+    def nvmlDeviceGetTemperature(self, handle, kind):
+        self._check()
+        return 63
+
+
+def test_gpu_state_and_limits_from_nvml():
+    from experiments import modal_runner
+
+    assert modal_runner._gpu_state(_FakeNVML(), None) == {"sm_clock_mhz": 1980, "power_w": 71.2, "temp_c": 63}
+    assert modal_runner._gpu_limits(_FakeNVML(), None) == {"power_limit_w": 72.0, "sm_clock_max_mhz": 2040}
+
+
+def test_gpu_state_is_empty_when_driver_does_not_report_it():
+    from experiments import modal_runner
+
+    assert modal_runner._gpu_state(_FakeNVML(broken=True), None) == {}
+    assert modal_runner._gpu_limits(_FakeNVML(broken=True), None) == {}

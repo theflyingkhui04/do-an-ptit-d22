@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -36,10 +37,14 @@ def join_vram(
     samples: list[dict[str, Any]],
     epsilon_s: float = 0.5,
 ) -> list[dict[str, Any]]:
-    """Return copies of ``records`` with run_vram_peak_mb taken from ``samples``."""
+    """Return copies of ``records`` with run_vram_peak_mb taken from ``samples``, plus the
+    repeat's GPU state (median SM clock and board power, max temperature) when the samples
+    carry it."""
     points = sorted((_ts(s["ts_utc"]), float(s["used_mb"])) for s in samples)
+    states = sorted((_ts(s["ts_utc"]), s) for s in samples if "sm_clock_mhz" in s)
     eps = timedelta(seconds=epsilon_s)
     peaks: dict[str, tuple[float, int]] = {}
+    gpu_state: dict[str, dict[str, float]] = {}
     missing: list[str] = []
     out: list[dict[str, Any]] = []
 
@@ -56,9 +61,15 @@ def join_vram(
                 peaks[run_id] = (float("nan"), 0)
             else:
                 peaks[run_id] = (round(max(inside), 2), len(inside))
+            window = [s for ts, s in states if start <= ts <= end]
+            gpu_state[run_id] = {
+                "run_sm_clock_mhz_p50": statistics.median(s["sm_clock_mhz"] for s in window),
+                "run_power_w_p50": statistics.median(s["power_w"] for s in window),
+                "run_gpu_temp_c_max": max(s["temp_c"] for s in window),
+            } if window else {}
         peak, count = peaks[run_id]
         out.append({**record, "run_vram_peak_mb": peak, "vram_join_samples": count,
-                    "vram_source": "server_nvml"})
+                    "vram_source": "server_nvml", **gpu_state[run_id]})
 
     if missing:
         raise VramJoinError(f"no server VRAM sample inside the window of run(s): {', '.join(sorted(set(missing)))}")

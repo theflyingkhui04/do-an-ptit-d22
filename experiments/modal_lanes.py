@@ -57,6 +57,8 @@ class LaneConfig:
     speculative_config: dict[str, Any] | None = None
     scheduler_cls: str | None = None
     env: dict[str, str] = field(default_factory=dict)
+    # benchmark_harness --lane label (its schema knows vanilla/static/adaptive only).
+    harness_lane: str | None = None
 
 
 LANES: dict[str, LaneConfig] = {
@@ -94,10 +96,54 @@ LANES: dict[str, LaneConfig] = {
 }
 
 
+# [Adaptive v1] Ablation lanes: Lane 3 variants deployed next to the canonical
+# lanes (PTIT_LANES=...) to separate the causes of the v0 slowdown. Not part of the
+# canonical three-lane comparison.
+def _adaptive_variant(name: str, controller_kwargs: dict[str, Any], *, num_spec: int | None = None,
+                      **env_overrides: str) -> LaneConfig:
+    base = LANES["adaptive"]
+    spec = dict(base.speculative_config)
+    if num_spec is not None:
+        spec["num_speculative_tokens"] = num_spec
+        spec["num_speculative_tokens_per_batch_size"] = [[1, 32, num_spec]]
+    env = {**base.env, **env_overrides, "ADAPTIVE_CONTROLLER_KWARGS": json.dumps(controller_kwargs)}
+    return LaneConfig(served_model_name=f"qwen2.5-7b-{name}", speculative_config=spec,
+                      scheduler_cls=base.scheduler_cls, env=env, harness_lane="adaptive")
+
+
+ABLATION_LANES: dict[str, LaneConfig] = {
+    # A1: no k=0 fallback (draft floor 2).
+    "adaptive-f1": _adaptive_variant("adaptive-f1", {"min_k": 2}),
+    # A1 + A3: plus warm-up guard (3 samples before lowering k).
+    "adaptive-f12": _adaptive_variant("adaptive-f12", {"min_k": 2, "min_warmup_samples": 3}),
+    # A1 + A3 + A2: one uniform K for the batch, K <= num_speculative_tokens = 3, hysteresis.
+    "adaptive-v1": _adaptive_variant(
+        "adaptive-v1", {"min_k": 2, "min_warmup_samples": 3}, num_spec=3,
+        ADAPTIVE_MAX_K="3", ADAPTIVE_PER_REQUEST="0", ADAPTIVE_K_HOLD_STEPS="4",
+    ),
+    # v1 with floor 1: a K=1 step costs about one draft forward, the same as K=0
+    # (vLLM still runs the draft at K=0), yet can accept one extra token.
+    "adaptive-v2": _adaptive_variant(
+        "adaptive-v2", {"min_k": 1, "min_warmup_samples": 3, "candidate_budgets": [0, 1, 2, 3, 4]}, num_spec=3,
+        ADAPTIVE_MAX_K="3", ADAPTIVE_PER_REQUEST="0", ADAPTIVE_K_HOLD_STEPS="4",
+    ),
+}
+ALL_LANES: dict[str, LaneConfig] = {**LANES, **ABLATION_LANES}
+
+
+def enabled_lanes(value: str, *, local: bool) -> set[str]:
+    """Lanes whose server class is defined. PTIT_LANES filters the deploy on the
+    local machine only; inside a container it is unset, so every lane must be
+    defined there (Modal starts only the lanes that were deployed)."""
+    if not local:
+        return set(ALL_LANES)
+    return {lane for lane in value.split(",") if lane} if value.strip() else set(LANES)
+
+
 def _lane(lane: str) -> LaneConfig:
-    if lane not in LANES:
-        raise ValueError(f"Unknown lane {lane!r}; expected one of {sorted(LANES)}")
-    return LANES[lane]
+    if lane not in ALL_LANES:
+        raise ValueError(f"Unknown lane {lane!r}; expected one of {sorted(ALL_LANES)}")
+    return ALL_LANES[lane]
 
 
 def build_vllm_args(
@@ -141,6 +187,8 @@ def lane_env(lane: str, run_id: str) -> dict[str, str]:
     env = {"PYTHONPATH": f"{REMOTE_PROJECT_ROOT}:/root", **cfg.env}
     if lane == "adaptive":
         env["ADAPTIVE_TELEMETRY_PATH"] = f"{ARTIFACTS_ROOT}/lane3/{run_id}/telemetry.jsonl"
+    elif lane in ABLATION_LANES:
+        env["ADAPTIVE_TELEMETRY_PATH"] = f"{server_artifact_dir(lane, run_id)}/telemetry.jsonl"
     return env
 
 
@@ -175,7 +223,7 @@ def build_server_env(
     profile: str,
 ) -> dict[str, Any]:
     """Environment record written by a server container (read by the harness)."""
-    _lane(lane)
+    cfg = _lane(lane)
     dtype = DTYPE_PROFILES[profile]
     return {
         "gpu": gpu,
@@ -189,9 +237,9 @@ def build_server_env(
         "dtype_profile": profile,
         "lane": lane,
         "run_id": run_id,
-        "served_model_name": LANES[lane].served_model_name,
+        "served_model_name": cfg.served_model_name,
         "target_revision": TARGET_REVISION,
-        "draft_revision": DRAFT_REVISION if LANES[lane].speculative_config else None,
+        "draft_revision": DRAFT_REVISION if cfg.speculative_config else None,
     }
 
 
@@ -219,7 +267,7 @@ def bench_harness_args(
     if workload not in BENCH_WORKLOADS:
         raise ValueError(f"Unknown workload {workload!r}; expected one of {sorted(BENCH_WORKLOADS)}")
     return [
-        "--lane", lane,
+        "--lane", cfg.harness_lane or lane,
         "--workload", workload,
         "--endpoint", f"{base_url.rstrip('/')}/chat/completions",
         "--model", cfg.served_model_name,
