@@ -418,6 +418,15 @@ def test_status_network_error_is_not_a_failed_job(job):
         job.bench_status("pilot-cell")
 
 
+def test_null_id_always_classifies_as_not_submitted_even_after_ambiguous_rpc(job):
+    job.deployed.spawn.side_effect = ConnectionError("lost spawn response")
+    with pytest.raises(ConnectionError):
+        submit(job)
+    assert (receipt(job).parent / "spawn_attempt.json").exists()
+    assert job.bench_status("pilot-cell") == "NOT_SUBMITTED"
+    job.modal.FunctionCall.from_id.assert_not_called()
+
+
 def test_expired_output_can_be_collected_from_bound_volume_archive(job):
     from modal.exception import OutputExpiredError
     prepare_collect(job)

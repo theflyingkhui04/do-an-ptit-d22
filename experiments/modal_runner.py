@@ -621,8 +621,6 @@ def bench_status(bench_run_id: str) -> str:
     if (out / "validation_failure.json").exists():
         return "FAILED"
     if not record.get("call_id"):
-        if (out / "spawn_attempt.json").exists():
-            raise RuntimeError("Spawn outcome unknown; recover the existing call; NEVER auto-resubmit")
         return "NOT_SUBMITTED"
     handle = modal.FunctionCall.from_id(record["call_id"])
     from modal.exception import TimeoutError as ModalTimeoutError

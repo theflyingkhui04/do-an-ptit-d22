@@ -92,6 +92,8 @@ def drive(record: dict, retry_failed: bool = False) -> None:
         history = attempts(record, cell)
         pending = history[-1] if history else None
         state = runner.bench_status(pending.name) if pending else "NOT_SUBMITTED"
+        if pending and state == "NOT_SUBMITTED" and (pending / "spawn_attempt.json").exists():
+            raise RuntimeError("Spawn outcome unknown; recover the existing call; NEVER auto-resubmit")
         if state == "FAILED" or (state == "NOT_SUBMITTED" and pending):
             # Never infer terminal remote failure from a network error.
             if not retry_failed:

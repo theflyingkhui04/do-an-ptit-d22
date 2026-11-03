@@ -191,3 +191,20 @@ def test_resume_skips_collected_cells_without_remote_operations(monkeypatch):
     runner.bench_submit.assert_not_called()
     runner.bench_status.assert_not_called()
     shutdown.assert_not_called()
+
+
+def test_ambiguous_spawn_cannot_be_retried_blindly_even_with_retry_flag(tmp_path, monkeypatch):
+    import experiments
+    from experiments import run_m3_campaign as campaign
+    pending = tmp_path / "reserved-attempt"
+    pending.mkdir()
+    (pending / "spawn_attempt.json").write_text("{}")
+    runner = SimpleNamespace(_committed_bench_source=lambda: "a" * 40,
+                             bench_status=lambda name: "NOT_SUBMITTED", bench_submit=Mock())
+    monkeypatch.setattr(experiments, "modal_runner", runner, raising=False)
+    monkeypatch.setattr(campaign, "save_plan", Mock())
+    monkeypatch.setattr(campaign, "selected_attempt", lambda r, c: None)
+    monkeypatch.setattr(campaign, "attempts", lambda r, c: [pending])
+    with pytest.raises(RuntimeError, match="NEVER auto-resubmit"):
+        campaign.drive(plan("cpu-confirmatory", "a" * 40), retry_failed=True)
+    runner.bench_submit.assert_not_called()
