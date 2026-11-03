@@ -37,13 +37,22 @@ class AdaptiveBudgetPlanner:
         min_batch_k: int = 0,
         per_request: bool = True,
         telemetry_path: Optional[str] = None,
+        k_hold_steps: int = 0,
     ):
         self.adapter = adapter or AdaptiveProposerAdapter()
         self.max_k = max_k
         self.min_batch_k = min_batch_k
         self.per_request = per_request
         self.telemetry_path = telemetry_path
+        # [Adaptive v1] Batch K changes only after the same new K was proposed for
+        # k_hold_steps consecutive steps (0 = follow every step, v0). Fewer K switches
+        # keep more steps on vLLM's single full-CUDA-graph decode length.
+        self.k_hold_steps = k_hold_steps
+        self._held_k: Optional[int] = None
+        self._pending_k: Optional[int] = None
+        self._pending_steps = 0
         self._known_requests: Set[str] = set()
+        self._batch_k_counts: Dict[str, Dict[int, int]] = {}
 
     def plan_step(
         self,
@@ -73,11 +82,32 @@ class AdaptiveBudgetPlanner:
         if not per_request_k:
             return StepPlan(batch_k=0, per_request_k={})
 
-        batch_k = max(max(per_request_k.values()), self.min_batch_k)
-        batch_k = min(batch_k, self.max_k)
+        proposed = max(max(per_request_k.values()), self.min_batch_k)
+        batch_k = self._hold(min(proposed, self.max_k))
         if not self.per_request:
             per_request_k = {req_id: batch_k for req_id in per_request_k}
+        else:
+            per_request_k = {req_id: min(k, batch_k) for req_id, k in per_request_k.items()}
+        for req_id in per_request_k:
+            counts = self._batch_k_counts.setdefault(req_id, {})
+            counts[batch_k] = counts.get(batch_k, 0) + 1
         return StepPlan(batch_k=batch_k, per_request_k=per_request_k)
+
+    def _hold(self, proposed: int) -> int:
+        """Hysteresis on batch K; a drop to 0 (memory pressure) applies at once."""
+        if self.k_hold_steps <= 0 or self._held_k is None or proposed == 0:
+            self._held_k, self._pending_k, self._pending_steps = proposed, None, 0
+            return proposed
+        if proposed == self._held_k:
+            self._pending_k, self._pending_steps = None, 0
+            return proposed
+        if proposed == self._pending_k:
+            self._pending_steps += 1
+        else:
+            self._pending_k, self._pending_steps = proposed, 1
+        if self._pending_steps >= self.k_hold_steps:
+            self._held_k, self._pending_k, self._pending_steps = proposed, None, 0
+        return self._held_k
 
     def record_verification(self, req_id: str, num_drafted: int, num_accepted: int) -> None:
         """Feeds one verification result back to the request's controller.
@@ -100,6 +130,8 @@ class AdaptiveBudgetPlanner:
             return None
         self._known_requests.discard(req_id)
         telemetry = self.adapter.end_request(req_id)
+        counts = self._batch_k_counts.pop(req_id, {})
+        telemetry["batch_k_counts"] = {str(k): n for k, n in counts.items()}
         if self.telemetry_path:
             record = dict(telemetry)
             record["finished_at"] = time.time()
@@ -129,6 +161,7 @@ class AdaptiveBudgetPlanner:
             min_batch_k=int(env.get("ADAPTIVE_MIN_BATCH_K", "0")),
             per_request=_env_flag(env.get("ADAPTIVE_PER_REQUEST", "1")),
             telemetry_path=env.get("ADAPTIVE_TELEMETRY_PATH") or None,
+            k_hold_steps=int(env.get("ADAPTIVE_K_HOLD_STEPS", "0")),
         )
 
 
