@@ -1,0 +1,61 @@
+{
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "run_id": "m305-colab-pilot-v1-eagle-W1-c1-a001",
+  "files": [
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/colab_validation.json",
+      "bytes": 1685,
+      "sha256": "5378038a2e795ffb97aa55ee03ea694666dbf6b7476921d1b3773e8367787e8e"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/harness.log",
+      "bytes": 5860,
+      "sha256": "681b50f357a3d5b29be8b096256a1e83948d59c421a015bad238873ee769e876"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/identity_check.json",
+      "bytes": 173,
+      "sha256": "9fd01f72ab1df90e72b37dc562b85cf9d8f7213cc2ffdb09144bd7d99f4c5288"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/raw.jsonl",
+      "bytes": 1208645,
+      "sha256": "1a2ff92be66316201038d27d001d2399518443fb745f68cce8b5af63329803e2"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/raw.vram.jsonl",
+      "bytes": 1218405,
+      "sha256": "699405e507b9e17ff1c7b085b4334a73df82ceb8e7fa809bbcdcc660d022b8d7"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/server_env.json",
+      "bytes": 1593,
+      "sha256": "b4c94629cc2b6cdbcfc08837a1f1c342987b63f4db551f0b33974404a7d0eadb"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/summary.csv",
+      "bytes": 156,
+      "sha256": "08d17167a6ece0a061ed2c1573282cffeed24ccb7b0a6c68e15daa6b3a1f77e9"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/vllm.log",
+      "bytes": 122411,
+      "sha256": "1f0acb7fb08e2904fdc5b4ddcd6e0c9f2ed47265de85a1cacbdb1095361d7a10"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/vllm_command.json",
+      "bytes": 779,
+      "sha256": "7a227293eed61c5e75da618c07bb32e72ef99486e33d6db841331ea590a4e968"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/vram.jsonl",
+      "bytes": 600289,
+      "sha256": "c62820efb0a3b9196e0f2b9d3f9a7ee046f821af38e5c153258586077e650a7d"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-colab-pilot-v1-eagle-W1-c1-a001/warmup.jsonl",
+      "bytes": 21897,
+      "sha256": "43d106e257a732bfcc89f386d82f125da085b9fa5b1b0bc44b41bc8b7ce653ef"
+    }
+  ]
+}
