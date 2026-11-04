@@ -1,0 +1,61 @@
+{
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "run_id": "m305-confirmatory-colab-v1-vanilla-W3-c32-a001",
+  "files": [
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/colab_validation.json",
+      "bytes": 1625,
+      "sha256": "1b8f100ede2d95d0855ab3d4e451d0990a62f0de60072df6216d62914fbbbd95"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/harness.log",
+      "bytes": 6031,
+      "sha256": "9e390b847fdf296eb965afb21cd9ccf3d974b769020e49d382fd822da4c19364"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/identity_check.json",
+      "bytes": 168,
+      "sha256": "260ebeec5e08d86f0cbaa79b210bc064dc7a116e5aceeb69f71a8578ad56ceef"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/raw.jsonl",
+      "bytes": 1350952,
+      "sha256": "7601372f8ae0d0d06223691eaf35b310ac8a5c338f629b2913547659c159f585"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/raw.vram.jsonl",
+      "bytes": 1360392,
+      "sha256": "6df98efb3304821432de5f4d072a15011b6de0a83528ebb835c02aef5f8162f1"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/server_env.json",
+      "bytes": 1222,
+      "sha256": "eb3f90b6cd8a78c341fbac941a84f911c64ce3590d2ed032e2de566435912fdd"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/summary.csv",
+      "bytes": 156,
+      "sha256": "08d17167a6ece0a061ed2c1573282cffeed24ccb7b0a6c68e15daa6b3a1f77e9"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/vllm.log",
+      "bytes": 36072,
+      "sha256": "f1480a473148fce41ae2237ef2743184000efc36ac22179590c089e31436ee61"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/vllm_command.json",
+      "bytes": 475,
+      "sha256": "2d97314d1326e3a65472774fe0dac3125895a6aeb28464e2b4e483e9b286a5fc"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/vram.jsonl",
+      "bytes": 53637,
+      "sha256": "6df408275ecd9d23eb4085c9afcfc7b5ab502ec328f94e2b4a33297ccb282007"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W3-c32-a001/warmup.jsonl",
+      "bytes": 23034,
+      "sha256": "df94fe9a436e3d62c5de241941fe6cd9398f592f132d246f8b08fd02b3f3f5a2"
+    }
+  ]
+}
