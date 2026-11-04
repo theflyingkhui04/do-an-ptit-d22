@@ -1,0 +1,41 @@
+{
+  "campaign_core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "claim": "Backporting upstream vLLM fix #55708 eliminated the observed metrics.speculative_decoding omissions in this predefined 320-request HTTP validation run.",
+  "claim_limit": "0/320 does not establish a universal zero failure probability and does not by itself authorize changing the frozen campaign runtime.",
+  "comparison_baseline": {
+    "note": "Previous stock-runtime evidence is retained separately. This comparison does not overwrite or invalidate prior runs.",
+    "previous_predeclared_validation_total_requests": 320,
+    "previous_raw_sse_missing_spec_metrics": 3,
+    "runtime": "stock vLLM 0.30.0"
+  },
+  "created_utc": "2026-11-04T11:42:07.044764+00:00",
+  "diagnostic_id": "m305-vllm-specmetrics-issue-repro-20261104T112225Z",
+  "evidence_type": "patched_runtime_validation",
+  "protocol": {
+    "measured_requests_per_server": 160,
+    "repeats_per_server": 5,
+    "requests_per_repeat": 32,
+    "server_replicates": 2,
+    "total_measured_requests": 320,
+    "warmups_per_server": 3,
+    "workload_sha256": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c"
+  },
+  "result": {
+    "missing_with_prometheus_counter_activity": 0,
+    "raw_sse_missing_spec_metrics": 0,
+    "server_1_missing": 0,
+    "server_2_missing": 0
+  },
+  "runtime": {
+    "gpu": "NVIDIA L4",
+    "local_patch_sha": "8c20ed952e20db8c04fdf9a6aa51585e285079b9",
+    "runtime_patch_verified": true,
+    "torch_cuda": "13.0",
+    "torch_version": "2.13.0+cu130",
+    "upstream_fix_commit": "6c2925fe5fe8156475affbfa995ed272c96fe4fa",
+    "upstream_fix_pr": 55708,
+    "vllm_base_sha": "ced6857afa0ea7b2e3f0846a62e1394e90f15607",
+    "vllm_version": "0.30.0"
+  },
+  "scientific_classification": "PATCH VALIDATION PASS"
+}

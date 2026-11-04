@@ -1,0 +1,31 @@
+{
+  "diagnostic_id": "m305-vllm-specmetrics-issue-repro-20261104T112225Z",
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "vllm_version": "0.30.0",
+  "torch_version": "2.13.0+cu130",
+  "torch_cuda": "13.0",
+  "gpu": "NVIDIA L4",
+  "workload_sha256": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c",
+  "server_replicates": 2,
+  "measured_requests_per_server": 160,
+  "total_measured_requests": 320,
+  "raw_sse_missing_spec_metrics": 0,
+  "missing_with_prometheus_counter_activity": 0,
+  "by_server": [
+    {
+      "server_replicate": 1,
+      "server_instance_id": "bc5d9a22-a823-49c0-b5b4-0b34a3ba1c3e",
+      "measured_requests": 160,
+      "missing_spec_metrics": 0,
+      "missing_records": []
+    },
+    {
+      "server_replicate": 2,
+      "server_instance_id": "980afb4e-6df3-4846-93cb-5e618e55eca5",
+      "measured_requests": 160,
+      "missing_spec_metrics": 0,
+      "missing_records": []
+    }
+  ],
+  "all_missing_records": []
+}
