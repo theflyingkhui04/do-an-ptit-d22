@@ -1,0 +1,172 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W3
+workload_file        : experiments/configs/w3_v2/chat_requests.jsonl
+sample_count         : 12
+sample_policy        : cycle-rotate
+package_workload_id  : w3_free_analysis
+dataset_version      : w3.m1_03.v2
+prompt_version       : w3_business_analysis.v2
+manifest_path        : /content/do-an-ptit-d22/experiments/configs/w3_v2/package_manifest.json
+artifact_key         : chat_requests_jsonl
+workload_file_sha256 : 57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b
+manifest_package_sha256: 657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : m3-l4-modal-v1
+environment_source   : server
+gpu                  : NVIDIA L4
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [8]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+lane                 : eagle
+workload             : W3
+canonical_samples    : 12
+sample_policy        : cycle-rotate
+concurrencies        : [8]
+repeats_per_cell     : 5
+requests_per_repeat  : 32
+===================================
+
+========================================
+START CELL
+experiment_id : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+cell_id       : eagle__W3__c8
+concurrency   : 8
+repeats       : 5
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : m3-fixed3
+experiment_id        : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+cell_id              : eagle__W3__c8
+requested_minimum    : 3
+warmup_requests      : 3
+warmup_concurrency   : 8
+measured_concurrency : 8
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : eagle__W3__c8
+requests             : 3
+successes            : 3
+concurrency_limit    : 8
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+cell_id             : eagle__W3__c8
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-aa948e68-7e22-4dbf-a6f1-e0b538185c23
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 40.101
+request_throughput  : 0.798 req/s
+output_throughput   : 385.551 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-eagle-W3-c8-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+cell_id             : eagle__W3__c8
+repeat_id           : r002
+sample_offset       : 8
+run_id              : run-9c94b4ae-36f7-4ecc-96a8-161b26815b44
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 38.112
+request_throughput  : 0.840 req/s
+output_throughput   : 404.488 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-eagle-W3-c8-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+cell_id             : eagle__W3__c8
+repeat_id           : r003
+sample_offset       : 4
+run_id              : run-f12c4132-a560-454e-9f67-94c68f46bee1
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 37.856
+request_throughput  : 0.845 req/s
+output_throughput   : 409.212 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-eagle-W3-c8-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+cell_id             : eagle__W3__c8
+repeat_id           : r004
+sample_offset       : 0
+run_id              : run-df1732cb-43f6-4d0f-ab93-76657db94241
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 39.334
+request_throughput  : 0.814 req/s
+output_throughput   : 385.216 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-eagle-W3-c8-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+cell_id             : eagle__W3__c8
+repeat_id           : r005
+sample_offset       : 8
+run_id              : run-82500e43-3e67-4b3e-b9b6-1c6c1c805cc4
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 38.163
+request_throughput  : 0.838 req/s
+output_throughput   : 403.947 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-eagle-W3-c8-a001/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : eagle__W3__c8
+measured_repeats     : 5
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : m305-confirmatory-colab-v1-eagle-W3-c8-a001
+cells_completed      : 1
+concurrencies        : [8]
+repeats_per_cell     : 5
+======================
