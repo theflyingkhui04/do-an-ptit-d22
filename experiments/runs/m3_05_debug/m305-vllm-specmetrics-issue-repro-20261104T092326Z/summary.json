@@ -1,0 +1,154 @@
+{
+  "diagnostic_id": "m305-vllm-specmetrics-issue-repro-20261104T092326Z",
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "vllm_version": "0.30.0",
+  "torch_version": "2.13.0+cu130",
+  "torch_cuda": "13.0",
+  "gpu": "NVIDIA L4",
+  "workload_sha256": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c",
+  "server_replicates": 2,
+  "measured_requests_per_server": 160,
+  "total_measured_requests": 320,
+  "raw_sse_missing_spec_metrics": 3,
+  "missing_with_prometheus_counter_activity": 3,
+  "by_server": [
+    {
+      "server_replicate": 1,
+      "server_instance_id": "d1635c82-61ef-4a5b-87db-7cf6ca129cdf",
+      "measured_requests": 160,
+      "missing_spec_metrics": 2,
+      "missing_records": [
+        {
+          "server_replicate": 1,
+          "repeat_id": "r002",
+          "request_index": 30,
+          "sample_id": "w2_sql_v2_003",
+          "http_status": 200,
+          "completion_tokens": 96,
+          "finish_reasons": [
+            "length"
+          ],
+          "usage_event_count": 1,
+          "metrics_present": false,
+          "speculative_metrics_present": false,
+          "prometheus_delta": {
+            "vllm:spec_decode_num_drafts_total": 28.0,
+            "vllm:spec_decode_num_draft_tokens_total": 84.0,
+            "vllm:spec_decode_num_accepted_tokens_total": 70.0
+          },
+          "request_uuid": "a1966f50-7b44-400c-ac95-a05bba77bba5"
+        },
+        {
+          "server_replicate": 1,
+          "repeat_id": "r003",
+          "request_index": 17,
+          "sample_id": "w2_sql_v2_010",
+          "http_status": 200,
+          "completion_tokens": 96,
+          "finish_reasons": [
+            "length"
+          ],
+          "usage_event_count": 1,
+          "metrics_present": false,
+          "speculative_metrics_present": false,
+          "prometheus_delta": {
+            "vllm:spec_decode_num_drafts_total": 29.0,
+            "vllm:spec_decode_num_draft_tokens_total": 87.0,
+            "vllm:spec_decode_num_accepted_tokens_total": 69.0
+          },
+          "request_uuid": "e13b2d2d-fe3f-4e39-8d36-f4bb1a8a0360"
+        }
+      ]
+    },
+    {
+      "server_replicate": 2,
+      "server_instance_id": "055064fb-3ce1-4ac0-844b-7f8cc5b93abe",
+      "measured_requests": 160,
+      "missing_spec_metrics": 1,
+      "missing_records": [
+        {
+          "server_replicate": 2,
+          "repeat_id": "r004",
+          "request_index": 9,
+          "sample_id": "w2_sql_v2_010",
+          "http_status": 200,
+          "completion_tokens": 96,
+          "finish_reasons": [
+            "length"
+          ],
+          "usage_event_count": 1,
+          "metrics_present": false,
+          "speculative_metrics_present": false,
+          "prometheus_delta": {
+            "vllm:spec_decode_num_drafts_total": 29.0,
+            "vllm:spec_decode_num_draft_tokens_total": 87.0,
+            "vllm:spec_decode_num_accepted_tokens_total": 69.0
+          },
+          "request_uuid": "ab65ca74-b680-4cd4-baa4-4c56b325f47d"
+        }
+      ]
+    }
+  ],
+  "all_missing_records": [
+    {
+      "server_replicate": 1,
+      "repeat_id": "r002",
+      "request_index": 30,
+      "sample_id": "w2_sql_v2_003",
+      "http_status": 200,
+      "completion_tokens": 96,
+      "finish_reasons": [
+        "length"
+      ],
+      "usage_event_count": 1,
+      "metrics_present": false,
+      "speculative_metrics_present": false,
+      "prometheus_delta": {
+        "vllm:spec_decode_num_drafts_total": 28.0,
+        "vllm:spec_decode_num_draft_tokens_total": 84.0,
+        "vllm:spec_decode_num_accepted_tokens_total": 70.0
+      },
+      "request_uuid": "a1966f50-7b44-400c-ac95-a05bba77bba5"
+    },
+    {
+      "server_replicate": 1,
+      "repeat_id": "r003",
+      "request_index": 17,
+      "sample_id": "w2_sql_v2_010",
+      "http_status": 200,
+      "completion_tokens": 96,
+      "finish_reasons": [
+        "length"
+      ],
+      "usage_event_count": 1,
+      "metrics_present": false,
+      "speculative_metrics_present": false,
+      "prometheus_delta": {
+        "vllm:spec_decode_num_drafts_total": 29.0,
+        "vllm:spec_decode_num_draft_tokens_total": 87.0,
+        "vllm:spec_decode_num_accepted_tokens_total": 69.0
+      },
+      "request_uuid": "e13b2d2d-fe3f-4e39-8d36-f4bb1a8a0360"
+    },
+    {
+      "server_replicate": 2,
+      "repeat_id": "r004",
+      "request_index": 9,
+      "sample_id": "w2_sql_v2_010",
+      "http_status": 200,
+      "completion_tokens": 96,
+      "finish_reasons": [
+        "length"
+      ],
+      "usage_event_count": 1,
+      "metrics_present": false,
+      "speculative_metrics_present": false,
+      "prometheus_delta": {
+        "vllm:spec_decode_num_drafts_total": 29.0,
+        "vllm:spec_decode_num_draft_tokens_total": 87.0,
+        "vllm:spec_decode_num_accepted_tokens_total": 69.0
+      },
+      "request_uuid": "ab65ca74-b680-4cd4-baa4-4c56b325f47d"
+    }
+  ]
+}

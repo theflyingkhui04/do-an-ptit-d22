@@ -1,0 +1,49 @@
+{
+  "server_replicate": 2,
+  "phase": "warmup",
+  "repeat_id": null,
+  "request_index": 2,
+  "sample_offset": 0,
+  "sample_index": 2,
+  "sample_id": "w2_sql_v2_003",
+  "http_status": 200,
+  "elapsed_s": 1.4615405629999714,
+  "finish_reasons": [
+    "length"
+  ],
+  "completion_tokens": 96,
+  "usage_event_count": 1,
+  "final_usage_present": true,
+  "metrics_present": true,
+  "speculative_metrics_present": true,
+  "speculative_metrics": {
+    "mean_acceptance_length": 3.5,
+    "draft_acceptance_rate": 0.8333333333333334,
+    "acceptance_histogram": [
+      3,
+      2,
+      1,
+      22
+    ],
+    "num_spec_steps": 28,
+    "num_accepted_draft_tokens": 70,
+    "num_draft_tokens": 84,
+    "num_spec_tokens": 3
+  },
+  "prometheus_before": {
+    "vllm:spec_decode_num_drafts_total": 34.0,
+    "vllm:spec_decode_num_draft_tokens_total": 102.0,
+    "vllm:spec_decode_num_accepted_tokens_total": 85.0
+  },
+  "prometheus_after": {
+    "vllm:spec_decode_num_drafts_total": 62.0,
+    "vllm:spec_decode_num_draft_tokens_total": 186.0,
+    "vllm:spec_decode_num_accepted_tokens_total": 155.0
+  },
+  "prometheus_delta": {
+    "vllm:spec_decode_num_drafts_total": 28.0,
+    "vllm:spec_decode_num_draft_tokens_total": 84.0,
+    "vllm:spec_decode_num_accepted_tokens_total": 70.0
+  },
+  "request_uuid": "f55ed26d-23b2-4c50-ab03-00d53f579d3f"
+}

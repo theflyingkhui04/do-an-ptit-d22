@@ -1,0 +1,19 @@
+{
+  "path": "/content/do-an-ptit-d22/experiments/configs/w2_v2/chat_requests.jsonl",
+  "sha256": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c",
+  "sample_count": 12,
+  "sample_ids": [
+    "w2_sql_v2_001",
+    "w2_sql_v2_002",
+    "w2_sql_v2_003",
+    "w2_sql_v2_004",
+    "w2_sql_v2_005",
+    "w2_sql_v2_006",
+    "w2_sql_v2_007",
+    "w2_sql_v2_008",
+    "w2_sql_v2_009",
+    "w2_sql_v2_010",
+    "w2_sql_v2_011",
+    "w2_sql_v2_012"
+  ]
+}

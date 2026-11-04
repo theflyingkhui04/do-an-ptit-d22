@@ -1,0 +1,49 @@
+{
+  "server_replicate": 1,
+  "phase": "measured",
+  "repeat_id": "r003",
+  "request_index": 6,
+  "sample_offset": 4,
+  "sample_index": 10,
+  "sample_id": "w2_sql_v2_011",
+  "http_status": 200,
+  "elapsed_s": 1.50403720099996,
+  "finish_reasons": [
+    "length"
+  ],
+  "completion_tokens": 96,
+  "usage_event_count": 1,
+  "final_usage_present": true,
+  "metrics_present": true,
+  "speculative_metrics_present": true,
+  "speculative_metrics": {
+    "mean_acceptance_length": 3.392857142857143,
+    "draft_acceptance_rate": 0.7976190476190477,
+    "acceptance_histogram": [
+      4,
+      2,
+      1,
+      21
+    ],
+    "num_spec_steps": 28,
+    "num_accepted_draft_tokens": 67,
+    "num_draft_tokens": 84,
+    "num_spec_tokens": 3
+  },
+  "prometheus_before": {
+    "vllm:spec_decode_num_drafts_total": 1748.0,
+    "vllm:spec_decode_num_draft_tokens_total": 5244.0,
+    "vllm:spec_decode_num_accepted_tokens_total": 4264.0
+  },
+  "prometheus_after": {
+    "vllm:spec_decode_num_drafts_total": 1776.0,
+    "vllm:spec_decode_num_draft_tokens_total": 5328.0,
+    "vllm:spec_decode_num_accepted_tokens_total": 4331.0
+  },
+  "prometheus_delta": {
+    "vllm:spec_decode_num_drafts_total": 28.0,
+    "vllm:spec_decode_num_draft_tokens_total": 84.0,
+    "vllm:spec_decode_num_accepted_tokens_total": 67.0
+  },
+  "request_uuid": "acd30d8a-0961-4fe7-a06a-e02b60e2c411"
+}
