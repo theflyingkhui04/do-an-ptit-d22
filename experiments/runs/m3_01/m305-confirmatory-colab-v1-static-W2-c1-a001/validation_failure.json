@@ -1,0 +1,27 @@
+{
+  "status": "INVALID-PROTOCOL",
+  "reason": "missing_server_metrics",
+  "error": "Speculative measured record(s) missing server_metrics; acceptance aggregation failed closed.",
+  "campaign": "m305-confirmatory-colab-v1",
+  "run_id": "m305-confirmatory-colab-v1-static-W2-c1-a001",
+  "lane": "static",
+  "workload": "W2",
+  "concurrency": 1,
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "raw_rows": 160,
+  "warmup_rows": 3,
+  "joined_rows": 160,
+  "missing_server_metrics": 1,
+  "affected_requests": [
+    {
+      "repeat_id": "r002",
+      "request_index": 25,
+      "request_id": "req-20ac7a16-8814-448f-8af3-03f0cfafcfec",
+      "sample_id": "w2_sql_v2_010",
+      "output_tokens": 96,
+      "success": true,
+      "metrics_complete": true
+    }
+  ],
+  "timestamp_utc": "2026-11-04T08:29:04.306432+00:00"
+}
