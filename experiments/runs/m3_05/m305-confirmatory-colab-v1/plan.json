@@ -1,0 +1,371 @@
+{
+  "campaign_id": "m305-confirmatory-colab-v1",
+  "backend": "google-colab",
+  "pm_backend_decision": "APPROVED",
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "warmup": 3,
+  "repeats": 5,
+  "num_requests": 32,
+  "cells": [
+    {
+      "lane": "vanilla",
+      "workload": "W1",
+      "concurrency": 1
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W1",
+      "concurrency": 2
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W1",
+      "concurrency": 4
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W1",
+      "concurrency": 8
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W1",
+      "concurrency": 16
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W1",
+      "concurrency": 32
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W2",
+      "concurrency": 1
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W2",
+      "concurrency": 2
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W2",
+      "concurrency": 4
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W2",
+      "concurrency": 8
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W2",
+      "concurrency": 16
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W2",
+      "concurrency": 32
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W3",
+      "concurrency": 1
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W3",
+      "concurrency": 2
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W3",
+      "concurrency": 4
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W3",
+      "concurrency": 8
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W3",
+      "concurrency": 16
+    },
+    {
+      "lane": "vanilla",
+      "workload": "W3",
+      "concurrency": 32
+    },
+    {
+      "lane": "static",
+      "workload": "W1",
+      "concurrency": 1
+    },
+    {
+      "lane": "static",
+      "workload": "W1",
+      "concurrency": 2
+    },
+    {
+      "lane": "static",
+      "workload": "W1",
+      "concurrency": 4
+    },
+    {
+      "lane": "static",
+      "workload": "W1",
+      "concurrency": 8
+    },
+    {
+      "lane": "static",
+      "workload": "W1",
+      "concurrency": 16
+    },
+    {
+      "lane": "static",
+      "workload": "W1",
+      "concurrency": 32
+    },
+    {
+      "lane": "static",
+      "workload": "W2",
+      "concurrency": 1
+    },
+    {
+      "lane": "static",
+      "workload": "W2",
+      "concurrency": 2
+    },
+    {
+      "lane": "static",
+      "workload": "W2",
+      "concurrency": 4
+    },
+    {
+      "lane": "static",
+      "workload": "W2",
+      "concurrency": 8
+    },
+    {
+      "lane": "static",
+      "workload": "W2",
+      "concurrency": 16
+    },
+    {
+      "lane": "static",
+      "workload": "W2",
+      "concurrency": 32
+    },
+    {
+      "lane": "static",
+      "workload": "W3",
+      "concurrency": 1
+    },
+    {
+      "lane": "static",
+      "workload": "W3",
+      "concurrency": 2
+    },
+    {
+      "lane": "static",
+      "workload": "W3",
+      "concurrency": 4
+    },
+    {
+      "lane": "static",
+      "workload": "W3",
+      "concurrency": 8
+    },
+    {
+      "lane": "static",
+      "workload": "W3",
+      "concurrency": 16
+    },
+    {
+      "lane": "static",
+      "workload": "W3",
+      "concurrency": 32
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W1",
+      "concurrency": 1
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W1",
+      "concurrency": 2
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W1",
+      "concurrency": 4
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W1",
+      "concurrency": 8
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W1",
+      "concurrency": 16
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W1",
+      "concurrency": 32
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W2",
+      "concurrency": 1
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W2",
+      "concurrency": 2
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W2",
+      "concurrency": 4
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W2",
+      "concurrency": 8
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W2",
+      "concurrency": 16
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W2",
+      "concurrency": 32
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W3",
+      "concurrency": 1
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W3",
+      "concurrency": 2
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W3",
+      "concurrency": 4
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W3",
+      "concurrency": 8
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W3",
+      "concurrency": 16
+    },
+    {
+      "lane": "adaptive",
+      "workload": "W3",
+      "concurrency": 32
+    },
+    {
+      "lane": "eagle",
+      "workload": "W1",
+      "concurrency": 1
+    },
+    {
+      "lane": "eagle",
+      "workload": "W1",
+      "concurrency": 2
+    },
+    {
+      "lane": "eagle",
+      "workload": "W1",
+      "concurrency": 4
+    },
+    {
+      "lane": "eagle",
+      "workload": "W1",
+      "concurrency": 8
+    },
+    {
+      "lane": "eagle",
+      "workload": "W1",
+      "concurrency": 16
+    },
+    {
+      "lane": "eagle",
+      "workload": "W1",
+      "concurrency": 32
+    },
+    {
+      "lane": "eagle",
+      "workload": "W2",
+      "concurrency": 1
+    },
+    {
+      "lane": "eagle",
+      "workload": "W2",
+      "concurrency": 2
+    },
+    {
+      "lane": "eagle",
+      "workload": "W2",
+      "concurrency": 4
+    },
+    {
+      "lane": "eagle",
+      "workload": "W2",
+      "concurrency": 8
+    },
+    {
+      "lane": "eagle",
+      "workload": "W2",
+      "concurrency": 16
+    },
+    {
+      "lane": "eagle",
+      "workload": "W2",
+      "concurrency": 32
+    },
+    {
+      "lane": "eagle",
+      "workload": "W3",
+      "concurrency": 1
+    },
+    {
+      "lane": "eagle",
+      "workload": "W3",
+      "concurrency": 2
+    },
+    {
+      "lane": "eagle",
+      "workload": "W3",
+      "concurrency": 4
+    },
+    {
+      "lane": "eagle",
+      "workload": "W3",
+      "concurrency": 8
+    },
+    {
+      "lane": "eagle",
+      "workload": "W3",
+      "concurrency": 16
+    },
+    {
+      "lane": "eagle",
+      "workload": "W3",
+      "concurrency": 32
+    }
+  ]
+}

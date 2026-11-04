@@ -1,0 +1,9 @@
+{
+  "scientific_status": "VALID",
+  "backend": "google-colab",
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "cells": 72,
+  "measured_requests": 11520,
+  "warmup_requests": 216,
+  "summary_sha256": "d2e845d68d10d4132006e129397e66d51dce9b6453102fcedf747a2e67de9cda"
+}
