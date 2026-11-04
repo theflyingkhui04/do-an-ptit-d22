@@ -1,0 +1,8 @@
+{
+  "status": "FAILED_OR_INCOMPLETE",
+  "error_type": "KeyboardInterrupt",
+  "error": "",
+  "timestamp_utc": "2026-11-04T15:27:40.082290+00:00",
+  "runtime_variant": "vllm-0.30.0-plus-backport-55708",
+  "vllm_patch_sha": "8c20ed952e20db8c04fdf9a6aa51585e285079b9"
+}

@@ -1,0 +1,1 @@
+lane,workload,concurrency,gpu,n_runs,ttft_p50,tpot_p50,tpot_p95,e2e_p50,alpha,tau,vram_peak_mb,throughput,speedup_vs_vanilla,variance_flag,commit,timestamp
