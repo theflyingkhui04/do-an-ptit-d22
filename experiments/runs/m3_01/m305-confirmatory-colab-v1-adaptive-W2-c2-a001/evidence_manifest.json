@@ -1,0 +1,68 @@
+{
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "run_id": "m305-confirmatory-colab-v1-adaptive-W2-c2-a001",
+  "runtime_variant": "vllm-0.30.0-plus-backport-55708",
+  "vllm_patch_sha": "8c20ed952e20db8c04fdf9a6aa51585e285079b9",
+  "files": [
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/adaptive_telemetry.jsonl",
+      "bytes": 64540,
+      "sha256": "39c04395a55e887fec386dec93e62c5b062d20291520aa754af490d1b4c76ecf"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/colab_validation.json",
+      "bytes": 2140,
+      "sha256": "6e8cca0df7a4e19aaf8bd5fa3779bbc171a759cc2d3a401fe9fc6a4433a95c4a"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/harness.log",
+      "bytes": 6005,
+      "sha256": "5b3500e2223ef83fe25ca60fb11e456dab0a950e32435c9379d93c1a5bb1fbb9"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/identity_check.json",
+      "bytes": 289,
+      "sha256": "ca4984b745eb9f0032c49e132f00c514ea14fed9a45727bfdd3861f562f2b608"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/raw.jsonl",
+      "bytes": 518580,
+      "sha256": "5c9d0a0d187c4cca8844a9114e1bfc5acbaeee524de4f85877c8918a07236d04"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/raw.vram.jsonl",
+      "bytes": 528180,
+      "sha256": "a78a2652597889347a63877760e910bcef1fe6e1992a4d4c4293053a29fdbac6"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/server_env.json",
+      "bytes": 2137,
+      "sha256": "6f4be77571572c1df78ae9e71fd01be931de6e8efd0e3b16700bfe948daa3bb5"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/summary.csv",
+      "bytes": 156,
+      "sha256": "08d17167a6ece0a061ed2c1573282cffeed24ccb7b0a6c68e15daa6b3a1f77e9"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/vllm.log",
+      "bytes": 51617,
+      "sha256": "52644bbed581def3a4e6b686671329b06dfb0f269f77e5a8fe75bc4715850290"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/vllm_command.json",
+      "bytes": 943,
+      "sha256": "7f77c02414fd5d781f4bf5db103ae89d85cb07daa7c537c47eee8ffd404b73e6"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/vram.jsonl",
+      "bytes": 71404,
+      "sha256": "ecab901f63bd6cf2dad1b5e368fbc4c4949a25f0c2aa54462cfbfa60541a0eeb"
+    },
+    {
+      "path": "experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W2-c2-a001/warmup.jsonl",
+      "bytes": 8562,
+      "sha256": "95a0d0ada4df303b10e4422bf895ddd73de68f1d6452a5f5b8181aeb0c7c440f"
+    }
+  ]
+}
