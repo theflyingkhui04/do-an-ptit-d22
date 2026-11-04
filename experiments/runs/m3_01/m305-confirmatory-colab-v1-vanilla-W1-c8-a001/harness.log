@@ -1,0 +1,172 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W1
+workload_file        : experiments/configs/w1/node1_chat_requests.jsonl
+sample_count         : 30
+sample_policy        : cycle-rotate
+package_workload_id  : w1_node1_invoice_extraction
+dataset_version      : w1.m1_03.v1
+prompt_version       : node1_extractor.v1
+manifest_path        : /content/do-an-ptit-d22/experiments/configs/w1/package_manifest.json
+artifact_key         : node1_chat_requests_jsonl
+workload_file_sha256 : 0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360
+manifest_package_sha256: e7cba647035f8834920d523ce8f6a70ef68896069ee71d3a862fac2fc42eff66
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : m3-l4-modal-v1
+environment_source   : server
+gpu                  : NVIDIA L4
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [8]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+lane                 : vanilla
+workload             : W1
+canonical_samples    : 30
+sample_policy        : cycle-rotate
+concurrencies        : [8]
+repeats_per_cell     : 5
+requests_per_repeat  : 32
+===================================
+
+========================================
+START CELL
+experiment_id : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+cell_id       : vanilla__W1__c8
+concurrency   : 8
+repeats       : 5
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : m3-fixed3
+experiment_id        : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+cell_id              : vanilla__W1__c8
+requested_minimum    : 3
+warmup_requests      : 3
+warmup_concurrency   : 8
+measured_concurrency : 8
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : vanilla__W1__c8
+requests             : 3
+successes            : 3
+concurrency_limit    : 8
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+cell_id             : vanilla__W1__c8
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-741ad5a1-da3b-426c-aceb-1c269df0a404
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 56.697
+request_throughput  : 0.564 req/s
+output_throughput   : 365.839 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W1-c8-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+cell_id             : vanilla__W1__c8
+repeat_id           : r002
+sample_offset       : 2
+run_id              : run-e1935676-602a-4e13-a041-ee00ff83d5b5
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 54.169
+request_throughput  : 0.591 req/s
+output_throughput   : 380.604 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W1-c8-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+cell_id             : vanilla__W1__c8
+repeat_id           : r003
+sample_offset       : 4
+run_id              : run-26d05da5-a012-4892-acd0-29e3616e78b7
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 56.058
+request_throughput  : 0.571 req/s
+output_throughput   : 368.939 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W1-c8-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+cell_id             : vanilla__W1__c8
+repeat_id           : r004
+sample_offset       : 6
+run_id              : run-4fd23202-a21b-4885-b3c5-46d812f2b92b
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 55.078
+request_throughput  : 0.581 req/s
+output_throughput   : 375.032 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W1-c8-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+cell_id             : vanilla__W1__c8
+repeat_id           : r005
+sample_offset       : 8
+run_id              : run-1737e941-c85b-463a-a150-d446bd51d086
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 56.087
+request_throughput  : 0.571 req/s
+output_throughput   : 369.301 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-vanilla-W1-c8-a001/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : vanilla__W1__c8
+measured_repeats     : 5
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : m305-confirmatory-colab-v1-vanilla-W1-c8-a001
+cells_completed      : 1
+concurrencies        : [8]
+repeats_per_cell     : 5
+======================
