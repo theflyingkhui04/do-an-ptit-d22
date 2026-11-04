@@ -1,0 +1,172 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W3
+workload_file        : experiments/configs/w3_v2/chat_requests.jsonl
+sample_count         : 12
+sample_policy        : cycle-rotate
+package_workload_id  : w3_free_analysis
+dataset_version      : w3.m1_03.v2
+prompt_version       : w3_business_analysis.v2
+manifest_path        : /content/do-an-ptit-d22/experiments/configs/w3_v2/package_manifest.json
+artifact_key         : chat_requests_jsonl
+workload_file_sha256 : 57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b
+manifest_package_sha256: 657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : m3-l4-modal-v1
+environment_source   : server
+gpu                  : NVIDIA L4
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [16]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+lane                 : adaptive
+workload             : W3
+canonical_samples    : 12
+sample_policy        : cycle-rotate
+concurrencies        : [16]
+repeats_per_cell     : 5
+requests_per_repeat  : 32
+===================================
+
+========================================
+START CELL
+experiment_id : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+cell_id       : adaptive__W3__c16
+concurrency   : 16
+repeats       : 5
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : m3-fixed3
+experiment_id        : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+cell_id              : adaptive__W3__c16
+requested_minimum    : 3
+warmup_requests      : 3
+warmup_concurrency   : 16
+measured_concurrency : 16
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : adaptive__W3__c16
+requests             : 3
+successes            : 3
+concurrency_limit    : 16
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+cell_id             : adaptive__W3__c16
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-85295203-83c3-49e0-bfac-e44b9ff77fc1
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 43.411
+request_throughput  : 0.737 req/s
+output_throughput   : 337.796 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W3-c16-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+cell_id             : adaptive__W3__c16
+repeat_id           : r002
+sample_offset       : 8
+run_id              : run-ebf0262e-7f27-4e76-abd8-b3e414140b32
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 43.031
+request_throughput  : 0.744 req/s
+output_throughput   : 355.511 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W3-c16-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+cell_id             : adaptive__W3__c16
+repeat_id           : r003
+sample_offset       : 4
+run_id              : run-214c989b-d7cf-4699-bcf4-247f924c3bca
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 45.776
+request_throughput  : 0.699 req/s
+output_throughput   : 339.959 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W3-c16-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+cell_id             : adaptive__W3__c16
+repeat_id           : r004
+sample_offset       : 0
+run_id              : run-415b7004-dbda-4749-a280-609f6cd43a93
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 44.804
+request_throughput  : 0.714 req/s
+output_throughput   : 335.369 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W3-c16-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+cell_id             : adaptive__W3__c16
+repeat_id           : r005
+sample_offset       : 8
+run_id              : run-b4f127d9-328c-47aa-9e7b-d1090b0bc646
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 16
+duration_s          : 42.912
+request_throughput  : 0.746 req/s
+output_throughput   : 356.500 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_01/m305-confirmatory-colab-v1-adaptive-W3-c16-a001/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : adaptive__W3__c16
+measured_repeats     : 5
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : m305-confirmatory-colab-v1-adaptive-W3-c16-a001
+cells_completed      : 1
+concurrencies        : [16]
+repeats_per_cell     : 5
+======================
