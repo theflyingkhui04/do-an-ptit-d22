@@ -1,37 +1,11 @@
 {
   "campaign_id": "m305-confirmatory-colab-v1",
   "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
-  "decision": "REUSE previously complete cells and continue remaining campaign with patched runtime",
-  "decision_scope": {
-    "remaining_unrun_cells": 47,
-    "rerun_cell": "static__W2__c1",
-    "reused_cells": 24
-  },
-  "known_invalid_attempts": [
-    {
-      "measured": 160,
-      "missing": 1,
-      "missing_request_ids": [
-        "req-20ac7a16-8814-448f-8af3-03f0cfafcfec"
-      ],
-      "run_id": "m305-confirmatory-colab-v1-static-W2-c1-a001",
-      "spec_present": 159
-    },
-    {
-      "measured": 160,
-      "missing": 2,
-      "missing_request_ids": [
-        "req-909a46a2-25eb-43c7-b53d-5ebf9b9f48a9",
-        "req-170e4e0e-2fcb-4262-a6a8-c2de26a11a3f"
-      ],
-      "run_id": "m305-confirmatory-colab-v1-static-W2-c1-a002",
-      "spec_present": 158
-    }
-  ],
+  "decision": "Reuse previously complete cells and continue remaining campaign with patched runtime",
   "patch_validation": {
     "evidence_commit": "6371d65e56edc145fe92b796c0c79cace42fe3ed",
-    "patched_result": "0/320 missing speculative metrics",
-    "stock_result": "3/320 missing speculative metrics",
+    "patched_result": "0/320 missing metrics.speculative_decoding",
+    "stock_result": "3/320 missing metrics.speculative_decoding",
     "upstream_issue": "https://github.com/vllm-project/vllm/issues/65644"
   },
   "patched_runtime": {
@@ -44,10 +18,9 @@
     "vllm_version": "0.30.0"
   },
   "pm_decision": "APPROVED",
-  "recorded_at_utc": "2026-11-04T15:14:38.929416+00:00",
-  "scientific_rule": "Reuse only cells proven complete by their own preserved raw evidence. Retain invalid attempts. Do not mix failed records into aggregation.",
-  "stock_runtime_evidence": {
-    "reused_cells": [
+  "recorded_at_utc": "2026-11-04T15:22:01.573472+00:00",
+  "reuse": {
+    "cells": [
       {
         "concurrency": 1,
         "lane": "static",
@@ -169,6 +142,36 @@
         "workload": "W3"
       }
     ],
-    "vllm_version": "0.30.0"
+    "count": 24
+  },
+  "scientific_rule": "Reuse only cells proven complete by their own raw evidence. Preserve every failed/incomplete attempt. Do not mix invalid records into canonical aggregation.",
+  "static_W2_c1_history": {
+    "a001": {
+      "measured": 160,
+      "missing": 1,
+      "missing_request_ids": [
+        "req-20ac7a16-8814-448f-8af3-03f0cfafcfec"
+      ],
+      "run_id": "m305-confirmatory-colab-v1-static-W2-c1-a001",
+      "spec_present": 159
+    },
+    "a002": {
+      "measured": 160,
+      "missing": 2,
+      "missing_request_ids": [
+        "req-909a46a2-25eb-43c7-b53d-5ebf9b9f48a9",
+        "req-170e4e0e-2fcb-4262-a6a8-c2de26a11a3f"
+      ],
+      "run_id": "m305-confirmatory-colab-v1-static-W2-c1-a002",
+      "spec_present": 158
+    },
+    "a003": {
+      "error_type": "KeyboardInterrupt",
+      "measured_raw_present": false,
+      "runtime_variant": "vllm-0.30.0-plus-backport-55708",
+      "status": "FAILED_OR_INCOMPLETE",
+      "vllm_patch_sha": "8c20ed952e20db8c04fdf9a6aa51585e285079b9"
+    },
+    "next_attempt": "m305-confirmatory-colab-v1-static-W2-c1-a004"
   }
 }
