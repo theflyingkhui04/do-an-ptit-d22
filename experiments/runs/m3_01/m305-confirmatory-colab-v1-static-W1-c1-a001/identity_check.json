@@ -1,0 +1,8 @@
+{
+  "health": 200,
+  "model_ids": [
+    "qwen2.5-7b-static-draft"
+  ],
+  "server_instance_id": "25fdbda2-ec65-4b4b-8f22-12e7b3a632cd",
+  "chat_requests_before_harness": 0
+}
