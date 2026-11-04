@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "vllm",
+    "serve",
+    "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "--revision",
+    "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8000",
+    "--served-model-name",
+    "qwen2.5-7b-adaptive",
+    "--quantization",
+    "awq_marlin",
+    "--dtype",
+    "bfloat16",
+    "--generation-config",
+    "vllm",
+    "--gpu-memory-utilization",
+    "0.85",
+    "--max-model-len",
+    "4096",
+    "--max-num-seqs",
+    "32",
+    "--speculative-config",
+    "{\"method\": \"draft_model\", \"model\": \"Qwen/Qwen2.5-0.5B-Instruct\", \"num_speculative_tokens\": 4, \"num_speculative_tokens_per_batch_size\": [[1, 32, 4]], \"use_heterogeneous_vocab\": true, \"draft_sample_method\": \"greedy\", \"revision\": \"7ae557604adf67be50417f59c2c2f167def9a775\"}",
+    "--scheduler-cls",
+    "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
+    "--per-request-spec-decode-metrics",
+    "summary"
+  ]
+}
