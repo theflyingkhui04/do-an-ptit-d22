@@ -1,0 +1,4 @@
+M experiments/runs/m3_01/m305-confirmatory-colab-v1-static-W2-c1-a003/vllm.log
+ M experiments/runs/m3_01/m305-confirmatory-colab-v1-static-W2-c1-a004/vllm.log
+ M experiments/runs/m3_01/m305-confirmatory-colab-v1-static-W2-c1-a005/vllm.log
+?? experiments/runs/m3_01/m305-confirmatory-colab-v1-static-W2-c1-a005/failure_traceback.txt

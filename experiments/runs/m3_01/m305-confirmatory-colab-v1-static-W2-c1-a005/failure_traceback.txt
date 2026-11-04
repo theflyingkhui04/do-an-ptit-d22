@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "/tmp/ipykernel_2467/1668996975.py", line 1289, in run_cell_patched
+    for line in hp.stdout:
+                ^^^^^^^^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/tmp/ipykernel_2467/1536395456.py", line 612, in <cell line: 0>
+    run_cell_patched(
+    ~~~~~~~~~~~~~~~~^
+        FULL_CAMPAIGN,
+        ^^^^^^^^^^^^^^
+    ...<2 lines>...
+        concurrency,
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "/tmp/ipykernel_2467/1668996975.py", line 1397, in run_cell_patched
+    time.sleep(3)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
