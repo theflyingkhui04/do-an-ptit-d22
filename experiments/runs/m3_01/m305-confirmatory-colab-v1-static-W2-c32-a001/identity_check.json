@@ -1,0 +1,10 @@
+{
+  "health": 200,
+  "model_ids": [
+    "qwen2.5-7b-static-draft"
+  ],
+  "server_instance_id": "c80bb7d1-a1d9-4517-8e46-3ef93fc1b4aa",
+  "chat_requests_before_harness": 0,
+  "runtime_variant": "vllm-0.30.0-plus-backport-55708",
+  "vllm_patch_sha": "8c20ed952e20db8c04fdf9a6aa51585e285079b9"
+}
