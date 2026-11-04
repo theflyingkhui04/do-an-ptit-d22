@@ -1,0 +1,36 @@
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null,"prompt_text":null}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"SELECT"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":" seller_name, SUM"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"(v"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"at_amount_value)"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":" AS revenue\nFROM"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":" v_invoice_facts"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"\nWHERE strftime"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"('%Y-%"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"m', issued_date"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":") = '2"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"026-"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"03'\nGROUP"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":" BY seller_name\n"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":"ORDER BY revenue DESC"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[{"index":0,"delta":{"content":""},"logprobs":null,"finish_reason":"stop","stop_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-b3dbd47b55c7dd45","object":"chat.completion.chunk","created":1793782174,"model":"qwen2.5-7b-static-draft","choices":[],"usage":{"prompt_tokens":361,"total_tokens":410,"completion_tokens":49},"system_fingerprint":"vllm-0.30.0-4ea44f05","metrics":{"speculative_decoding":{"mean_acceptance_length":3.642857142857143,"draft_acceptance_rate":0.8809523809523809,"acceptance_histogram":[1,0,2,11],"num_spec_steps":14,"num_accepted_draft_tokens":37,"num_draft_tokens":42,"num_spec_tokens":3}}}
+
+data: [DONE]
+

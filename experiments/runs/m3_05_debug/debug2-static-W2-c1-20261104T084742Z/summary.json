@@ -1,0 +1,41 @@
+{
+  "debug_id": "debug2-static-W2-c1-20261104T084742Z",
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "workload_sha256": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c",
+  "warmup_requests": 3,
+  "measured_requests": 160,
+  "raw_missing_spec_metrics": 1,
+  "harness_missing_spec_metrics": 1,
+  "parser_mismatches": 0,
+  "raw_missing_records": [
+    {
+      "repeat_id": "r003",
+      "request_index": 5,
+      "sample_id": "w2_sql_v2_010",
+      "raw_usage": true,
+      "raw_metrics": false,
+      "raw_spec": false,
+      "harness_spec": false,
+      "finish_reasons": [
+        "length"
+      ],
+      "output_tokens": 96
+    }
+  ],
+  "harness_missing_records": [
+    {
+      "repeat_id": "r003",
+      "request_index": 5,
+      "sample_id": "w2_sql_v2_010",
+      "raw_usage": true,
+      "raw_metrics": false,
+      "raw_spec": false,
+      "harness_spec": false,
+      "finish_reasons": [
+        "length"
+      ],
+      "output_tokens": 96
+    }
+  ],
+  "parser_mismatch_records": []
+}
