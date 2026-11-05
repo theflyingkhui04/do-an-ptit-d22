@@ -44,6 +44,38 @@ Hệ thống suy luận cơ sở được thiết lập với hai làn độc l�
    - Tổng VRAM chiếm dụng cho cả hai mô hình: **6.27 GiB** (VRAM còn dư cho KV-cache là **4.81 GiB**, hoàn toàn nằm dưới ngưỡng cảnh báo an toàn 14.0 GiB trên T4).
    - Cổng phục vụ nội bộ: `http://127.0.0.1:8002/v1`.
 
+### 4.1.4. Hạ tầng Thực nghiệm Mở rộng trên Modal.com (NVIDIA L4 24GB) — Sprint 4
+Từ Sprint 4, nhóm chuyển các chiến dịch đo mới sang nền tảng GPU serverless **Modal.com** với GPU **NVIDIA L4 24GB** (kiến trúc Ada Lovelace, sm_89). Khác với T4, L4 hỗ trợ BF16 và FlashAttention-2, nên đây là cơ hội quan sát cùng một thuật toán điều khiển cây nháp trên một thế hệ phần cứng khác. Ba làn (Vanilla, Static, Adaptive) được khai báo bằng mã nguồn trong [`experiments/modal_runner.py`](../experiments/modal_runner.py), với cấu hình làn ([`experiments/modal_lanes.py`](../experiments/modal_lanes.py)) được kiểm thử tự động để luôn khớp với các launcher T4 (`scripts/launch_lane*.sh`) về mô hình, độ sâu nháp và giới hạn phục vụ; chỉ kiểu dữ liệu được đổi sang `bfloat16`. Phần mềm giữ nguyên vLLM `0.30.0` / PyTorch `2.13.0+cu130` / CUDA `13.0` như hợp đồng `m1-t4-cu130-v1`, vì bộ lập lịch thích ứng của Làn 3 kế thừa `AsyncScheduler` của vLLM 0.30.0. Theo log khởi động, trên L4 vLLM tự chọn kernel lượng tử hoá AWQ Marlin và backend `FLASH_ATTN`; trọng số được ghim theo revision (`Qwen2.5-7B-Instruct-AWQ@b250375`, `Qwen2.5-0.5B-Instruct@7ae5576`) và lưu trong ổ bền của nền tảng, mỗi endpoint đều yêu cầu xác thực.
+
+Do server tự tắt khi không có tải để tiết kiệm chi phí, thời gian khởi động trở thành một thông số vận hành cần báo cáo. Bảng 4.1b tổng hợp số đo thực tế (3 lần lặp mỗi ô, đồng hồ phía client, đo đến khi nhận phản hồi đầu tiên). Khởi động lạnh mất từ khoảng 3.5 đến 5.5 phút, chủ yếu do bước khởi tạo engine vLLM (profile bộ nhớ, chụp CUDA graph, warmup — đặc biệt dài khi có mô hình nháp), trong khi khởi động ấm chỉ khoảng 1.8–2.2 giây. Vì vậy, các phép đo hiệu năng trên L4 phải chạy ở chế độ giữ ấm container. Lưu ý: số liệu L4 là một bộ dữ liệu riêng và **không được trộn** với số liệu T4 (M1/M2) trong cùng bảng speedup; việc chính thức hoá L4 thành nền tảng thực nghiệm đang được đề xuất thành QĐ-14 và chờ nhóm phê duyệt.
+
+*Bảng 4.1b: Thời gian khởi động của ba làn trên Modal L4, profile `l4-bf16` (median, min–max; đo ngày 24/10/2026)*
+
+| Làn | Khởi động lạnh (s) | Khởi động ấm (s) | KV-cache khả dụng (tokens) |
+| :--- | :---: | :---: | :---: |
+| Làn 1 — Vanilla | 200.9 (200.6–226.1) | 1.84 (1.73–2.78) | 242,192 |
+| Làn 2 — Static (k = 3) | 321.7 (288.4–406.7) | 2.17 (1.80–3.36) | 179,040 |
+| Làn 3 — Adaptive (k ≤ 4) | 221.9 (207.0–242.4) | 1.77 (1.64–1.78) | 178,368 |
+
+*Nguồn: `experiments/runs/m3_00/20261024-m300-startup/startup.json`; KV-cache từ log vLLM trong `experiments/runs/m3_00/20261024-m300-3lanes-check/`.*
+
+**Phương pháp đo khi máy chủ ở xa.** Bộ đo `benchmark_harness.py` vốn được thiết kế để chạy cùng máy với máy chủ vLLM: nó đọc GPU, phiên bản thư viện và VRAM bằng NVML ngay tại máy đo. Khi máy chủ nằm trên Modal, đo từ máy cá nhân sẽ ghi nhầm GPU của máy cá nhân và cộng thêm độ trễ mạng Việt Nam – `us-east` vào TTFT. Vì vậy nhóm bổ sung hồ sơ môi trường `m3-l4-modal-v1` (hồ sơ T4 `m1-t4-cu130-v1` giữ nguyên làm mặc định) với ba nguyên tắc: (1) bộ đo chạy trong một hàm CPU của Modal **cùng vùng** với máy chủ, dùng đúng các tham số và gói workload đã đóng băng của chiến dịch M2-04; (2) thông tin môi trường (GPU, driver, phiên bản vLLM/PyTorch, kiểu dữ liệu, kernel lượng tử hoá) do **chính container máy chủ** ghi lại khi khởi động; (3) VRAM được container máy chủ lấy mẫu bằng NVML mỗi 0,25 giây, sau đó ghép vào từng lượt đo theo cửa sổ thời gian UTC của lượt đó (dung sai ±0,5 giây; lượt nào không có mẫu thì báo lỗi thay vì ước đoán). Lần chạy kiểm chứng (làn Vanilla, W1, một lượt 8 yêu cầu — cấu hình rút gọn, không dùng làm số liệu so sánh) ghi nhận môi trường `NVIDIA L4`/vLLM 0.30.0 và VRAM đỉnh 19 850,6 MB ghép từ 347 mẫu của máy chủ (`experiments/runs/m3_01/20261024-m301-vanilla-W1-c1/`).
+
+**Chi phí forward của mô hình đích và mô hình nháp trên L4 (M3-02).** Để mô hình chi phí $C(N, B)$ dùng số đo thật thay cho hằng số ước lượng (20 ms cho một bước vanilla và 3 ms cho mỗi token nháp trong `CostProfile` hiện tại), nhóm đo riêng thời gian một bước decode của mô hình đích $C_T(L, B)$ và mô hình nháp $C_D(L, B)$ trên L4, với $L$ là độ dài ngữ cảnh và $B$ là số yêu cầu chạy đồng thời. Phép đo dùng vLLM 0.30.0 ở chế độ offline với đúng cấu hình của các làn phục vụ (bf16, AWQ Marlin cho mô hình đích, `max_model_len` 4096, revision trọng số đã cố định), tắt prefix caching và cho mỗi yêu cầu một dãy token riêng. Thời gian một bước được tính bằng $(T(1+N) - T(1))/N$ với $N = 64$, trong đó $T(m)$ là thời gian sinh $m$ token cho cả lô, nhờ vậy phần prefill bị triệt tiêu. Mỗi ô gồm 3 lượt khởi động và 5 lượt đo; cả 60 ô đều có độ dao động dưới ngưỡng 15%.
+
+*Bảng 4.1c — Thời gian một bước decode trên NVIDIA L4 (ms, trung vị 5 lượt)*
+
+| Mô hình | $L$ | $B = 1$ | $B = 8$ | $B = 32$ |
+| :--- | :---: | :---: | :---: | :---: |
+| Đích 7B AWQ ($C_T$) | 256 | 19,15 | 19,80 | 23,44 |
+| Đích 7B AWQ ($C_T$) | 3072 | 19,35 | 25,72 | 52,96 |
+| Nháp 0,5B ($C_D$) | 256 | 4,79 | 5,08 | 5,72 |
+| Nháp 0,5B ($C_D$) | 3072 | 5,19 | 6,14 | 11,40 |
+
+*Nguồn: `experiments/results/m3_02_forward_costs_l4.json` (đủ lưới $L \in \{256, 512, 1024, 2048, 3072\}$, $B \in \{1, 2, 4, 8, 16, 32\}$); dữ liệu thô `experiments/runs/m3_02/20261025-m302-l4-v2/`.*
+
+Kết quả cho thấy hai điểm. Thứ nhất, khi lô nhỏ, thời gian một bước gần như không đổi theo độ dài ngữ cảnh (khoảng 19 ms với mô hình đích và 5 ms với mô hình nháp từ 256 đến 3072 token): bước decode bị giới hạn bởi việc đọc trọng số từ bộ nhớ, còn chi phí attention trên KV cache chỉ nổi lên khi lô lớn và ngữ cảnh dài (53,0 ms ở $L = 3072$, $B = 32$). Thứ hai, một lượt forward của mô hình nháp tốn khoảng 26% một bước của mô hình đích ($C_D/C_T \approx 0{,}26$ ở $B = 1$). Con số này quan trọng với bộ điều khiển thích ứng: trong vLLM, khi chọn ngân sách $k = 0$, mô hình nháp vẫn chạy một lượt forward để giữ KV cache của nó đồng bộ, nên một bước "tắt suy đoán" vẫn tốn khoảng $C_T + C_D$ chứ không phải $C_T$. Đây là một nguyên nhân khả dĩ khiến Làn 3 chậm hơn Vanilla trên W3 ở chiến dịch M2-04 (đo trên T4, nên chỉ so sánh được về xu hướng); kết luận định lượng cần phép đo tách riêng ở Sprint sau. Các giới hạn của phép đo: mỗi ô là trung bình trên ngữ cảnh $[L, L+64]$, và với $L \cdot B$ lớn, prefill chia nhỏ có thể chồng lấn với vài bước decode đầu. Chi phí xác thực nhiều token $C_V(k)$ và ma trận $C(N, B)$ hoàn chỉnh thuộc phần việc tiếp theo của M3-02.
+
 ---
 
 ## 4.2. Thiết Kế và Chuẩn Hóa Bộ Workload Đánh Giá (W1, W2, W3)

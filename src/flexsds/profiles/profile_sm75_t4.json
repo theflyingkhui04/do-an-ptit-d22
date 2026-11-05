@@ -1,0 +1,62 @@
+{
+  "metadata": {
+    "device": "Tesla T4",
+    "sm_architecture": "sm_75",
+    "vram_total_mb": 15360.0,
+    "vllm_version": "0.30.0",
+    "source": "t4-m1-m2-measurements",
+    "attn_verify_factor": 0.012
+  },
+  "models": {
+    "target": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "draft": "Qwen/Qwen2.5-0.5B-Instruct"
+  },
+  "grid": {
+    "batches": [1, 2, 4, 8, 16, 32],
+    "candidate_budgets": [0, 1, 2, 3, 4]
+  },
+  "forward_costs_median_ms": {
+    "target_c_t": {
+      "1": 36.5,
+      "2": 37.8,
+      "4": 39.2,
+      "8": 42.1,
+      "16": 48.5,
+      "32": 62.0
+    },
+    "draft_c_d": {
+      "1": 9.2,
+      "2": 9.8,
+      "4": 10.4,
+      "8": 11.2,
+      "16": 12.8,
+      "32": 15.5
+    },
+    "c_d_over_c_t_ratio": {
+      "1": 0.252,
+      "2": 0.259,
+      "4": 0.265,
+      "8": 0.266,
+      "16": 0.264,
+      "32": 0.250
+    }
+  },
+  "verification_costs_ms": {
+    "k1_b1": 36.5,
+    "k2_b1": 36.9,
+    "k3_b1": 37.4,
+    "k4_b1": 37.8
+  },
+  "break_even_alpha": {
+    "k0_b1": 0.0,
+    "k1_b1": 0.252,
+    "k2_b1": 0.380,
+    "k3_b1": 0.470,
+    "k4_b1": 0.540,
+    "k0_b32": 0.0,
+    "k1_b32": 0.250,
+    "k2_b32": 0.385,
+    "k3_b32": 0.485,
+    "k4_b32": 0.560
+  }
+}

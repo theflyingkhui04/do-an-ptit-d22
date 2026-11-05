@@ -386,6 +386,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--ready-timeout",
+        type=float,
+        default=0.0,
+        help="Seconds to keep retrying HTTP 503 while a Modal lane cold-starts (0 = no retry).",
+    )
+    parser.add_argument(
         "--run-id",
         default=DEFAULT_RUN_ID,
     )
@@ -481,6 +487,7 @@ def main() -> int:
         args.base_url,
         args.api_key,
         args.timeout,
+        ready_timeout_seconds=args.ready_timeout,
     )
     extractor = Node1Extractor(
         client=client,

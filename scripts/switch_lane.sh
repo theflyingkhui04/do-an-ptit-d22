@@ -9,7 +9,7 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-LOG_DIR="$PROJECT_ROOT/logs"
+LOG_DIR="${LANE_LOG_DIR:-$PROJECT_ROOT/logs}"
 
 # Thời gian chờ server sẵn sàng (giây). Lần đầu trên runtime Colab mới phải tải model
 # từ HuggingFace (~3 phút) + torch.compile, nên mặc định 900 s; ghi đè: HEALTH_TIMEOUT=1200
@@ -19,6 +19,7 @@ mkdir -p "$LOG_DIR"
 PID_FILE_LANE1="/tmp/vllm_lane1.pid"
 PID_FILE_LANE2="/tmp/vllm_lane2.pid"
 PID_FILE_LANE3="/tmp/vllm_lane3.pid"
+PID_FILE_LANE4="/tmp/vllm_lane4.pid"
 
 stop_all() {
     echo "==> Đang dừng tất cả tiến trình vLLM và giải phóng GPU VRAM..."
@@ -27,6 +28,7 @@ stop_all() {
     fuser -k 8001/tcp 2>/dev/null || true
     fuser -k 8002/tcp 2>/dev/null || true
     fuser -k 8003/tcp 2>/dev/null || true
+    fuser -k 8004/tcp 2>/dev/null || true
 
     # 2. Dừng theo tên tiến trình
     pkill -f "vllm.entrypoints" 2>/dev/null || true
@@ -36,7 +38,7 @@ stop_all() {
     pkill -f "EngineCore" 2>/dev/null || true
 
     # 3. Dọn dẹp file PID
-    rm -f "$PID_FILE_LANE1" "$PID_FILE_LANE2" "$PID_FILE_LANE3"
+    rm -f "$PID_FILE_LANE1" "$PID_FILE_LANE2" "$PID_FILE_LANE3" "$PID_FILE_LANE4"
 
     # 4. Chờ GPU thu hồi bộ nhớ thật sự trước khi khởi động làn mới
     wait_for_gpu_release 60
@@ -164,12 +166,27 @@ start_lane3() {
     wait_for_health 8003 "$HEALTH_TIMEOUT" "$log_file" "$pid"
 }
 
+start_lane4() {
+    stop_all
+    local log_file="$LOG_DIR/vllm_lane4.log"
+    echo "==> Đang khởi chạy Làn 4: Custom EAGLE-3.1 Speculator (Cổng 8004)..."
+    echo "    Log được ghi vào: ${log_file}"
+
+    nohup bash "$PROJECT_ROOT/scripts/launch_lane4_eagle.sh" > "$log_file" 2>&1 &
+    local pid=$!
+    echo $pid > "$PID_FILE_LANE4"
+    echo "    Tiến trình chạy nền với PID: ${pid}"
+
+    wait_for_health 8004 "$HEALTH_TIMEOUT" "$log_file" "$pid"
+}
+
 show_status() {
     echo "================ TRẠNG THÁI HỆ THỐNG PHỤC VỤ ================"
-    local lane1_status lane2_status lane3_status
+    local lane1_status lane2_status lane3_status lane4_status
     lane1_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null || echo "000")
     lane2_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8002/health 2>/dev/null || echo "000")
     lane3_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8003/health 2>/dev/null || echo "000")
+    lane4_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8004/health 2>/dev/null || echo "000")
 
     if [ "$lane1_status" = "200" ]; then
         echo "Làn 1 (Vanilla - Cổng 8001): ĐANG CHẠY (ONLINE)"
@@ -187,6 +204,12 @@ show_status() {
         echo "Làn 3 (Adaptive Draft - Cổng 8003): ĐANG CHẠY (ONLINE)"
     else
         echo "Làn 3 (Adaptive Draft - Cổng 8003): TẮT (OFFLINE)"
+    fi
+
+    if [ "$lane4_status" = "200" ]; then
+        echo "Làn 4 (Custom EAGLE-3.1 - Cổng 8004): ĐANG CHẠY (ONLINE)"
+    else
+        echo "Làn 4 (Custom EAGLE-3.1 - Cổng 8004): TẮT (OFFLINE)"
     fi
 
     echo "------------------------------------------------------------"
@@ -207,6 +230,9 @@ case "$1" in
     lane3|3)
         start_lane3
         ;;
+    lane4|4)
+        start_lane4
+        ;;
     stop)
         stop_all
         echo "Đã dừng toàn bộ dịch vụ vLLM."
@@ -215,10 +241,11 @@ case "$1" in
         show_status
         ;;
     *)
-        echo "Cách sử dụng: $0 {lane1|lane2|lane3|stop|status}"
+        echo "Cách sử dụng: $0 {lane1|lane2|lane3|lane4|stop|status}"
         echo "  - lane1 : Dừng server cũ, bật Làn 1 (Vanilla) trên cổng 8001 và chờ sẵn sàng."
         echo "  - lane2 : Dừng server cũ, bật Làn 2 (Static Draft) trên cổng 8002 và chờ sẵn sàng."
         echo "  - lane3 : Dừng server cũ, bật Làn 3 (Adaptive Draft) trên cổng 8003 và chờ sẵn sàng."
+        echo "  - lane4 : Dừng server cũ, bật Làn 4 (Custom EAGLE-3.1) trên cổng 8004 và chờ sẵn sàng."
         echo "  - stop  : Dừng toàn bộ server vLLM và giải phóng GPU VRAM."
         echo "  - status: Kiểm tra cổng nào đang mở và dung lượng VRAM hiện tại."
         exit 1

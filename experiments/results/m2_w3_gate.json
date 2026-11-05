@@ -1,0 +1,65 @@
+{
+  "gate": "W3_ADAPTIVE_SPEEDUP_ALL_CONCURRENCY",
+  "formula": "vanilla_tpot_p50 / adaptive_tpot_p50",
+  "threshold": 1.0,
+  "status": "FAIL",
+  "experiment_id": "m2-04-6424c6a-t4-canonical-v1",
+  "commit": "6424c6ab309749f6159250fd3fd74d3dafb2cdd2",
+  "cells": [
+    {
+      "concurrency": 1,
+      "speedup": 0.752052098,
+      "vanilla_tpot_p50": 24.829,
+      "adaptive_tpot_p50": 33.015,
+      "adaptive_tpot_p50_min": 32.944,
+      "adaptive_tpot_p50_max": 33.139,
+      "pass": false
+    },
+    {
+      "concurrency": 2,
+      "speedup": 0.69403843,
+      "vanilla_tpot_p50": 25.356,
+      "adaptive_tpot_p50": 36.534,
+      "adaptive_tpot_p50_min": 36.404,
+      "adaptive_tpot_p50_max": 37.043,
+      "pass": false
+    },
+    {
+      "concurrency": 4,
+      "speedup": 0.647084028,
+      "vanilla_tpot_p50": 27.184,
+      "adaptive_tpot_p50": 42.01,
+      "adaptive_tpot_p50_min": 41.837,
+      "adaptive_tpot_p50_max": 42.034,
+      "pass": false
+    },
+    {
+      "concurrency": 8,
+      "speedup": 0.578760075,
+      "vanilla_tpot_p50": 30.088,
+      "adaptive_tpot_p50": 51.987,
+      "adaptive_tpot_p50_min": 51.295,
+      "adaptive_tpot_p50_max": 52.522,
+      "pass": false
+    },
+    {
+      "concurrency": 16,
+      "speedup": 0.585886122,
+      "vanilla_tpot_p50": 38.041,
+      "adaptive_tpot_p50": 64.929,
+      "adaptive_tpot_p50_min": 63.634,
+      "adaptive_tpot_p50_max": 65.743,
+      "pass": false
+    },
+    {
+      "concurrency": 32,
+      "speedup": 0.6714903,
+      "vanilla_tpot_p50": 52.992,
+      "adaptive_tpot_p50": 78.917,
+      "adaptive_tpot_p50_min": 76.554,
+      "adaptive_tpot_p50_max": 80.162,
+      "pass": false
+    }
+  ],
+  "generated_at": "2026-10-24T07:47:23.013513+00:00"
+}

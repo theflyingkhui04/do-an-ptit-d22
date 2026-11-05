@@ -1,0 +1,38 @@
+{
+  "commit": "0b13ae82005adfe3d637c4beaf8b7d745fe36b09",
+  "lanes": [
+    {
+      "lane": "vanilla",
+      "ok": true,
+      "health": 200,
+      "unauthenticated_status": 401,
+      "models": [
+        "qwen2.5-7b-vanilla"
+      ],
+      "chat_status": 200,
+      "chat_content_nonempty": true
+    },
+    {
+      "lane": "static",
+      "ok": true,
+      "health": 200,
+      "unauthenticated_status": 401,
+      "models": [
+        "qwen2.5-7b-static-draft"
+      ],
+      "chat_status": 200,
+      "chat_content_nonempty": true
+    },
+    {
+      "lane": "adaptive",
+      "ok": true,
+      "health": 200,
+      "unauthenticated_status": 401,
+      "models": [
+        "qwen2.5-7b-adaptive"
+      ],
+      "chat_status": 200,
+      "chat_content_nonempty": true
+    }
+  ]
+}

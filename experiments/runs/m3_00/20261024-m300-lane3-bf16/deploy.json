@@ -1,0 +1,28 @@
+{
+  "app": "ptit-vllm",
+  "lane": "adaptive",
+  "url": "https://nguyenduonghb940--ptit-vllm-adaptive.us-east.modal.direct",
+  "gpu": "NVIDIA L4",
+  "vllm_version": "0.30.0",
+  "torch_version": "2.13.0+cu130",
+  "profile": "l4-bf16",
+  "requested": {
+    "dtype": "bfloat16",
+    "quantization": "awq_marlin"
+  },
+  "effective": {
+    "dtype": "torch.bfloat16",
+    "quantization": "auto_awq",
+    "linear_kernel": "MarlinLinearKernel",
+    "attention_backend": "FLASH_ATTN",
+    "init_engine_seconds": 377.27,
+    "compile_seconds": 59.36
+  },
+  "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+  "draft_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "scaledown_seconds": 120,
+  "min_containers": 0,
+  "max_containers": 1,
+  "commit": "0b13ae82005adfe3d637c4beaf8b7d745fe36b09",
+  "working_tree_note": "M3-00 code not yet committed at run time"
+}

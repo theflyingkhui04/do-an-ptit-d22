@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flexsds"
+version = "0.2.0a1"
+description = "Flexible Speculative Decoding Serving Engine for LLMs"
+authors = [
+    {name = "Can Duc Khoi"},
+    {name = "Bui Duc Dai"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "psutil",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+flexsds = "flexsds.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["flexsds*"]
+
+[tool.setuptools.package-data]
+flexsds = ["profiles/*.json", "assets/*"]

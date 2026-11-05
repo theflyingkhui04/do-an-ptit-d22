@@ -5,7 +5,7 @@
 - **Ngày ghi nhận:** 16/10/2026
 - **Người phát hiện / Raise:** Bùi Đức Đại (Dev + IT / MLOps & Benchmark)
 - **Người xem xét & Phê duyệt:** Cấn Đức Khôi (Dev + PM / AI Systems)
-- **Trạng thái:** **PM approved — Phê duyệt phương án C (qualify baseline và paired test)**
+- **Trạng thái:** **DEFERRED TO FINAL SPRINT (Hoãn sang Sprint cuối / Modal L4) — Đóng pha T4 ở 45/54, gỡ nghẽn cho Sprint 4**
 
 ---
 
@@ -115,3 +115,77 @@ Ghi bổ sung ngày 18/10/2026 từ quyết định trực tiếp mới nhất c
 - **FACT/OBSERVATION:** các kết quả lịch sử ghi nhận Vanilla A/B 45/54, Adaptive A/B 45/54, Vanilla/Adaptive r03 và prodq3 44/54. Chúng chưa cô lập được lỗi chỉ thuộc Adaptive. **UNKNOWN:** nguyên nhân số học chính xác của biến thiên giữa các lần chạy. Các cơ chế tie số thực, khác GPU, lựa chọn kernel hoặc thứ tự CUDA graph vẫn là **HYPOTHESIS** nếu chưa có phép thử phân biệt; phần giải thích nhân quả ở mục 3 không được coi là bằng chứng xác lập nguyên nhân.
 
 Triển khai cục bộ và hướng dẫn thu thập bằng chứng: [Runbook Protocol B](../../docs/runbooks/m2-03-protocol-b.md). Không chạy GPU trong nhiệm vụ triển khai này.
+
+---
+
+## Cập nhật thực nghiệm & Quyết định PM — 21/10/2026: Đóng pha T4, Delay Lossless sang Sprint cuối
+
+### 1. Diễn biến thực nghiệm chuyên sâu trên branch fix/m2-03-lossless-clean (18/10 – 21/10/2026)
+
+Từ ngày 18/10 đến 21/10/2026, nhóm đã triển khai chuỗi chẩn đoán nhân quả chuyên sâu trên GPU Tesla T4:
+
+1. **Chặng 1: Thực thi Protocol B & Bác bỏ giả thuyết "Vanilla bất định" (18/10/2026, commit `4372f8b`):**
+   - Chạy 2 cặp tuần tự (V1 -> A1 -> V2 -> A2) trên cùng 1 GPU vật lý T4:
+     - Vanilla tự lặp lại (V vs V): 54 / 54 (100%).
+     - Adaptive tự lặp lại (A vs A): 54 / 54 (100%).
+     - Vanilla vs Adaptive: 44 / 54 (81.48%) (lệch đúng 10 prompt cố định ở cả 2 cặp).
+   - **Ý nghĩa:** Bác bỏ giả thuyết ban đầu cho rằng "do phần cứng T4/AWQ trôi số học ngẫu nhiên nên baseline Vanilla không lặp lại". Bản thân mỗi pipeline đều xác định tuyệt đối (deterministic). Sự sai lệch 10 prompt là lỗi phân kỳ thực tế (real divergence) giữa cơ chế thực thi của Adaptive so với Vanilla.
+
+2. **Chặng 2: Cô lập nguyên nhân gốc rễ — Boundary 279 & P177 (18/10 – 19/10/2026):**
+   - Nhóm tập trung mổ xẻ ca lỗi điển hình `w3_business_v2_004` (phân kỳ tại index 279, xem [m2-03-boundary-279.md](../../docs/runbooks/m2-03-boundary-279.md)):
+     - **Định vị điểm xuất phát sai khác KV-cache:** Bắt đầu chính xác từ Position 177 (P177) tại Layer 1 ngay sau khi model forward (`IMMEDIATE_STORED_KV_DIVERGENCE`).
+     - **Thử nghiệm kiểm soát k = 0 (`p177-k0-control`):** Khi ép Adaptive không suy đoán (k = 0, tức target model forward 1 token như Vanilla) thì KV-cache tại P177 khớp 100% với Vanilla (`SPECULATIVE_MULTI_TOKEN_FORWARD_DIVERGENCE`).
+     - **Thử nghiệm thay thế Attention (`p177-attention-substitution`):** Ép thay thế kernel Triton Attention ở Layer 0 bằng logic decode đơn token thì KV P177 khớp trở lại (`LAYER0_ATTENTION_PATH_CAUSAL`).
+   - **Kết luận khoa học:** Thủ phạm chính là kernel Triton Attention của vLLM 0.30.0 trên kiến trúc Turing (sm75/T4) khi tính toán multi-token target verification (nhiều query row đồng thời) cho kết quả số học khác với khi giải mã từng token tuần tự q_len = 1.
+
+3. **Chặng 3: Phát triển bản vá Row-wise Attention & Sửa Draft Tokenizer (19/10 – 20/10/2026):**
+   - Hoàn thiện module `t4_rowwise_attention.py` và patch `vllm-0.30.0-t4-rowwise-attention.patch` (xem [m2-03-rowwise-attention.md](../../docs/runbooks/m2-03-rowwise-attention.md)):
+     - Viết lại dispatch trên T4 để chia các token xác thực thành từng hàng query logic (q_len = 1) với độ dài ngữ cảnh tương ứng, khôi phục tương đương số học với Vanilla decode.
+     - Vá lỗi tokenizer draft model revision (`spec.draft_model_config.revision`) trong vLLM.
+   - **Kết quả targeted test:** Prompt lỗi `w3_business_v2_004` chạy lại trên T4 đã PASS hoàn toàn 100% (commit `dd10e41`).
+
+4. **Chặng 4: Đánh giá lại toàn bộ Canonical 54 với Row-wise v2 (20/10/2026, commit `5ae38fd`):**
+   - Tỷ lệ khớp đạt **45 / 54 (83.33%)** (tăng thêm 1 prompt so với mức 44/54 trước đó).
+   - Prompt `w3_business_v2_004` đã hoàn toàn biến mất khỏi danh sách lỗi.
+   - Vẫn còn 9 prompt lệch: `m0_04_005`, `m0_04_026`, `m0_04_029`, `w2_sql_v2_003`, `w3_business_v2_001`, `w3_business_v2_002`, `w3_business_v2_009`, `w3_business_v2_010`, `w3_business_v2_012`.
+
+5. **Chặng 5: Mổ xẻ m0_04_005 và hiện tượng Observer Effect (21/10/2026, commit `9dd8233`):**
+   - Lập probe A/B `test_m005_ab.py` và runbook [m2-03-m005-ab.md](../../docs/runbooks/m2-03-m005-ab.md) để bắt nguyên nhân lệch tại token thứ 162 của `m0_04_005` (Vanilla ra 341, Adaptive ra 5212).
+   - Gặp hiện tượng **Observer Effect (Heisenbug):** Bản thân các hook chẩn đoán đọc tensor CPU đã làm thay đổi thời gian thực thi (timing), khiến Adaptive trong phiên test lại tự động sinh ra token 341 (khớp với Vanilla) thay vì tái hiện lỗi 5212. Dữ liệu này bị phân loại là `INVALID_EVIDENCE` do probe không trung lập (non-neutral).
+
+---
+
+### 2. Bảng tổng hợp các mốc thực nghiệm trên GPU Tesla T4
+
+| Chiến dịch / Mốc | Ngày | Baseline Repeatability | Adaptive Repeatability | Vanilla vs Adaptive | Ghi chú & Trạng thái |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| Ghi nhận ban đầu (r03) | 16/10 | 45 / 54 (chạy rời) | 45 / 54 | 44 / 54 (81.48%) | Nghi vấn do GPU trôi số học |
+| Protocol B (2aad4c00) | 18/10 | 54 / 54 (100%) | 54 / 54 (100%) | 44 / 54 (81.48%) | Chứng minh lỗi do pipeline Adaptive |
+| Row-wise v2 Targeted | 19/10 | 1 / 1 | 1 / 1 | 1 / 1 (PASS) | Ca lỗi w3_business_v2_004 được sửa dứt điểm |
+| Row-wise v2 Canonical | 20/10 | 54 / 54 (100%) | 54 / 54 (100%) | 45 / 54 (83.33%) | Lên 45/54, còn 9 prompt lệch |
+| M005 A/B Diagnostic | 21/10 | — | — | INVALID_EVIDENCE | Observer probe làm trôi timing, Heisenbug |
+
+---
+
+### 3. Quyết định chính thức của PM (21/10/2026): Dừng thực nghiệm T4, Delay M2-03 sang Sprint cuối
+
+1. **Đóng toàn bộ hoạt động kiểm thử M2-03 trên kiến trúc Turing (Tesla T4 sm75):**
+   - Kiến trúc Turing (T4) có nhiều giới hạn số học phần cứng cố hữu: không hỗ trợ native Bfloat16 (buộc ép FP16/Half), kernel Triton Unified Attention khác thứ tự reduction khi tính multi-row so với single-row decode, và nhân ma trận AWQ Marlin dễ hòa điểm tie-margin = 0.0.
+   - Nhóm đã hoàn thành xuất sắc mục tiêu bản chất khoa học: chứng minh tính lặp lại (100% repeatability trên từng pipeline), cô lập nguyên nhân sâu tới Layer 0/Layer 1, và phát triển bản vá nâng độ khớp lên 45/54. Tiếp tục "săn bóng ma" trên 9 prompt còn lại trên T4 sẽ làm cạn kiệt GPU quota và gây trễ nghiêm trọng toàn bộ tiến độ đồ án.
+
+2. **Hướng giải quyết chính thức: DELAY ĐỂ SPRINT CUỐI (Sprint 5 / Sprint 6):**
+   - **Tạm hoãn mục tiêu 54/54 lossless tuyệt đối tại Sprint 4:** Không giữ trạng thái Blocked của M2-03 làm tê liệt các công việc tiếp theo.
+   - **Kích hoạt Phương án C trên hạ tầng Modal.com ở sprint cuối:** Khi chuyển sang nền tảng cloud serverless Modal.com với thế hệ GPU mới như **NVIDIA L4 (Ada Lovelace sm89)** hoặc **A10G (Ampere sm86)**:
+     - GPU 24GB VRAM hỗ trợ đầy đủ native BF16 và FlashAttention-2 chuẩn hóa, triệt tiêu hoàn toàn sai lệch reduction order của Triton Attention Turing.
+     - Chạy quy trình 2 pha của **Phương án C**: Qualification baseline xác định 54/54 -> Paired lossless verification để đạt 54/54 lossless tuyệt đối một cách tự nhiên và sạch sẽ.
+
+3. **Gỡ nút thắt, giải phóng 100% nguồn lực cho Sprint 4 (M3 & Cổng sinh tử 23/10):**
+   - Tháo gỡ trạng thái Blocked của các thẻ `[M2-04]` và `[M2-05]` trên Trello Board.
+   - Nhóm dồn toàn lực vào 3 mục tiêu cốt lõi của Sprint 4 để kịp Cổng kiểm soát sống còn ngày 23/10/2026:
+     - `[M3-01]` Nạp ma trận chi phí C(N, B) vào cost model vLLM (Khôi 70% + Dương 30%).
+     - `[M3-02]` Sweep đo kiểm đối chứng 3 làn M3 (Đại 70% + Khôi 30%) nhằm triệt tiêu tăng tốc âm ở W3 và tối đa hóa speedup ở W1/W2.
+     - `[M3-03]` Hoàn thiện Node 2 (Text-to-SQL), Node 3 (VAT Report) và bản thảo quyển đồ án >= 20 trang (Dương 70% + Đại 30%).
+
+4. **Giá trị đóng góp học thuật cho Quyển Đồ án:**
+   - Toàn bộ hồ sơ thực nghiệm này (Protocol B, KV divergence P177, Triton Attention multi-row reduction, bản vá Row-wise attention, và hiện tượng Heisenbug / Observer Effect) sẽ được đưa vào **Chương 4 (Thực nghiệm & Đánh giá) và Chương 5 (Phân tích Giới hạn & Đóng góp Kỹ thuật)** của quyển đồ án như một đóng góp nghiên cứu thực nghiệm phần cứng rất giá trị.
+

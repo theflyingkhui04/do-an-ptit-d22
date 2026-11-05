@@ -1,0 +1,26 @@
+[
+  {
+    "lane": "static",
+    "request_id": "chatcmpl-6a488f9d-f27a-4ecd-ad49-f5abcb72bb47",
+    "usage": {
+      "prompt_tokens": 40,
+      "total_tokens": 88,
+      "completion_tokens": 48
+    },
+    "speculative_decoding": {
+      "mean_acceptance_length": 2.611111111111111,
+      "draft_acceptance_rate": 0.5370370370370371,
+      "acceptance_histogram": [
+        4,
+        5,
+        3,
+        6
+      ],
+      "num_spec_steps": 18,
+      "num_accepted_draft_tokens": 29,
+      "num_draft_tokens": 54,
+      "num_spec_tokens": 3
+    },
+    "num_spec_tokens_ok": true
+  }
+]
