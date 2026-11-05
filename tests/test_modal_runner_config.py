@@ -6,11 +6,17 @@ serving limits and speculative config; only dtype/quantization may differ.
 
 from __future__ import annotations
 
+import ast
+import asyncio
 import json
+import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -34,11 +40,15 @@ SHARED_FLAGS = (
 
 
 def launcher_flags(lane: str) -> dict[str, str]:
+    if lane == "eagle":
+        return as_dict(eagle_launcher_args())
     text = LAUNCHERS[lane].read_text(encoding="utf-8")
     return dict(re.findall(r"^\s*(--[a-z-]+)\s+(\S+)\s*\\?\s*$", text, flags=re.M))
 
 
 def launcher_spec_config(lane: str) -> dict:
+    if lane == "eagle":
+        return json.loads(launcher_flags(lane)["--speculative-config"])
     text = LAUNCHERS[lane].read_text(encoding="utf-8")
     match = re.search(r"^SPEC_CONFIG='(\{.*\})'\s*$", text, flags=re.M)
     assert match, f"{LAUNCHERS[lane].name} has no SPEC_CONFIG"
@@ -47,6 +57,19 @@ def launcher_spec_config(lane: str) -> dict:
 
 def as_dict(args: list[str]) -> dict[str, str]:
     return {flag: value for flag, value in zip(args, args[1:]) if flag.startswith("--")}
+
+
+def eagle_launcher_args() -> list[str]:
+    text = LAUNCHERS["eagle"].read_text(encoding="utf-8")
+    code = re.search(r"VLLM_ARGS_TEXT=\$\(python3 - <<'PY'\n(.*?)\nPY\n\)", text, re.S)
+    assert code, "launcher must obtain its arguments from the canonical Python contract"
+    result = subprocess.run([sys.executable, "-"], input=code.group(1).encode("utf-8"), cwd=ROOT,
+                            capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert b"\r" not in result.stdout, "Bash mapfile must receive LF-delimited argv, including on Windows"
+    assert 'mapfile -t VLLM_ARGS <<< "$VLLM_ARGS_TEXT"' in text
+    assert '$VLLM_CMD "${VLLM_ARGS[@]}"' in text
+    return result.stdout.decode("utf-8").splitlines()
 
 
 @pytest.mark.parametrize("lane", ["vanilla", "static", "adaptive", "eagle"])
@@ -73,10 +96,22 @@ def test_speculative_config_matches_launcher(lane):
 def test_eagle_speculative_config_matches_launcher():
     args = as_dict(lanes.build_vllm_args("eagle"))
     spec = json.loads(args["--speculative-config"])
-    if lanes.EAGLE_REVISION:
-        assert spec.pop("revision") == lanes.EAGLE_REVISION
+    assert spec["revision"] == lanes.EAGLE_REVISION
     assert spec == launcher_spec_config("eagle")
     assert args["--per-request-spec-decode-metrics"] == "summary"
+    assert eagle_launcher_args() == lanes.build_vllm_args("eagle", profile="fp16-fallback", port=8004)
+
+
+def test_eagle_uses_frozen_eagle3_contract():
+    spec = json.loads(as_dict(lanes.build_vllm_args("eagle"))["--speculative-config"])
+    assert spec == {
+        "method": "eagle3", "model": lanes.EAGLE_DRAFT_MODEL,
+        "revision": lanes.EAGLE_REVISION, "num_speculative_tokens": 3,
+        "draft_sample_method": "greedy",
+    }
+    assert "use_heterogeneous_vocab" not in spec
+    assert lanes.EAGLE_REVISION == "c3adca7e211b471d97a519a625df7ffd37b8b461"
+    assert as_dict(lanes.build_vllm_args("eagle"))["--revision"] == lanes.TARGET_REVISION
 
 
 def test_vanilla_has_no_speculation():
@@ -158,7 +193,7 @@ def test_pinned_revisions_are_passed_when_set(monkeypatch):
 
 
 def test_revisions_are_pinned_to_full_commit_hashes():
-    for revision in (lanes.TARGET_REVISION, lanes.DRAFT_REVISION):
+    for revision in (lanes.TARGET_REVISION, lanes.DRAFT_REVISION, lanes.EAGLE_REVISION):
         assert re.fullmatch(r"[0-9a-f]{40}", revision or ""), revision
 
 
@@ -204,7 +239,6 @@ def test_lane_identities_are_fixed():
         "static": "qwen2.5-7b-static-draft",
         "adaptive": "qwen2.5-7b-adaptive",
         "eagle": "qwen2.5-7b-eagle3-draft",
-        "eagle-custom": "qwen2.5-7b-eagle3-draft",
     }
 
 
@@ -315,3 +349,167 @@ def test_harness_commit_can_come_from_environment(monkeypatch):
     monkeypatch.setenv("PTIT_GIT_COMMIT", "a" * 40)
 
     assert harness.git_commit() == "a" * 40
+
+
+@pytest.mark.parametrize("lane", ["vanilla", "static", "adaptive", "eagle"])
+def test_model_identity_survives_server_env_and_harness(tmp_path, monkeypatch, lane):
+    from experiments import benchmark_harness as harness
+
+    server = lanes.build_server_env(
+        gpu="NVIDIA L4", driver_version="610.57.04", gpu_memory_total_mb=23034.0,
+        torch_version="2.13.0+cu130", torch_cuda_version="13.0", vllm_version="0.30.0",
+        lane=lane, run_id="r1", profile="l4-bf16",
+    )
+    expected_draft = None if lane == "vanilla" else (
+        lanes.EAGLE_DRAFT_MODEL if lane == "eagle" else lanes.DRAFT_MODEL)
+    expected_revision = None if lane == "vanilla" else (
+        lanes.EAGLE_REVISION if lane == "eagle" else lanes.DRAFT_REVISION)
+    assert server["target_model"] == lanes.TARGET_MODEL
+    assert server["target_revision"] == lanes.TARGET_REVISION
+    assert server["draft_model"] == expected_draft
+    assert server["draft_revision"] == expected_revision
+    assert server["lane"] == lane
+    assert server["served_model_name"] == lanes.LANES[lane].served_model_name
+    path = tmp_path / "server_env.json"
+    path.write_text(json.dumps(server), encoding="utf-8")
+    monkeypatch.setenv("PTIT_SERVER_ENV_ROOT", str(tmp_path))
+    env, handle = harness.environment_info(0, profile=harness.L4_MODAL_PROFILE, server_env_json=path)
+    assert handle is None
+    for key in ("target_model", "target_revision", "draft_model", "draft_revision", "served_model_name"):
+        assert env[key] == server[key]
+    assert env["server_lane"] == lane
+
+    # Exercise the real request record and JSONL writer, without HTTP or GPU calls.
+    async def events(response):
+        yield json.dumps({"id": "r", "choices": [{"delta": {"content": "ok"}}]})
+        yield json.dumps({"choices": [], "usage": {"prompt_tokens": 2, "completion_tokens": 1}})
+        yield "[DONE]"
+
+    session = Mock()
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=SimpleNamespace(status=200))
+    session.post.return_value = context
+    metadata = {key: "fixture" for key in (
+        "workload_id", "dataset_version", "sample_id", "sample_index", "sample_offset",
+        "canonical_sample_count", "sample_policy", "prompt_version")}
+    with patch.object(harness, "iter_sse", events):
+        record = asyncio.run(harness.run_one(
+            session, asyncio.Semaphore(1),
+            SimpleNamespace(lane=lane, workload="W1", endpoint="https://test.invalid"),
+            env, {"request_id": "cpu-only"}, 1,
+            {"model": server["served_model_name"]}, metadata,
+        ))
+    assert record["success"]
+    raw_path = tmp_path / "raw.jsonl"
+    harness.RawJsonlWriter(raw_path, overwrite=False).write([record])
+    raw = json.loads(raw_path.read_text(encoding="utf-8"))
+    for key in ("target_model", "target_revision", "draft_model", "draft_revision", "served_model_name"):
+        assert raw[key] == server[key]
+
+
+def test_canonical_lane_enumeration_has_no_fifth_condition(monkeypatch):
+    from experiments import benchmark_harness as harness
+    from unittest.mock import patch
+
+    assert tuple(lanes.LANES) == ("vanilla", "static", "adaptive", "eagle")
+    with pytest.raises(ValueError, match="Unknown lane"):
+        lanes.build_vllm_args("eagle-custom")
+    with patch.object(sys, "argv", ["harness", "--model", "m", "--lane", "eagle-custom"]):
+        with pytest.raises(SystemExit):
+            harness.parse_args()
+    tree = ast.parse((ROOT / "experiments" / "modal_runner.py").read_text(encoding="utf-8"))
+    selection = [node for node in tree.body if (
+        isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "ENABLED_LANES"
+                                           for t in node.targets)) or (
+        isinstance(node, ast.If) and isinstance(node.test, ast.NamedExpr)
+        and node.test.target.id == "unknown_lanes")]
+    assert len(selection) == 2
+    code = compile(ast.Module(body=selection, type_ignores=[]), "modal_runner.py", "exec")
+    monkeypatch.delenv("PTIT_LANES", raising=False)
+    namespace = {"os": os, "lanes": lanes}
+    exec(code, namespace)
+    assert namespace["ENABLED_LANES"] == set(lanes.LANES)
+    monkeypatch.setenv("PTIT_LANES", "eagle-custom")
+    with pytest.raises(ValueError, match="Unknown deployment lanes"):
+        exec(code, namespace)
+
+
+@pytest.fixture
+def weight_download(tmp_path, monkeypatch):
+    """Execute the real CPU downloader body without importing/deploying Modal."""
+    import huggingface_hub
+
+    tree = ast.parse((ROOT / "experiments" / "modal_runner.py").read_text(encoding="utf-8"))
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                    and node.name == "download_weights")
+    function.decorator_list = []
+    api = Mock()
+    pins = {lanes.TARGET_MODEL: lanes.TARGET_REVISION, lanes.DRAFT_MODEL: lanes.DRAFT_REVISION,
+            lanes.EAGLE_DRAFT_MODEL: lanes.EAGLE_REVISION}
+    api.model_info.side_effect = lambda repo, revision: Mock(sha=pins[repo])
+    monkeypatch.setattr(huggingface_hub, "HfApi", lambda: api)
+    monkeypatch.setattr(lanes, "HF_HOME", str(tmp_path))
+    hub = tmp_path / "hub"
+    for repo, sha in pins.items():
+        _fake_snapshot(hub, repo, sha)
+
+    def snapshot(repo, *, revision, local_files_only=False):
+        return str(hub / f"models--{repo.replace('/', '--')}" / "snapshots" / revision)
+
+    download = Mock(side_effect=snapshot)
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", download)
+    volume = Mock()
+    namespace = {"lanes": lanes, "Path": Path, "datetime": datetime, "timezone": timezone,
+                 "json": json, "MANIFEST_NAME": "ptit_weights_manifest.json", "model_volume": volume}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "modal_runner.py", "exec"), namespace)
+    return namespace["download_weights"], api, download, volume
+
+
+@pytest.mark.parametrize("cached", [True, False])
+def test_download_manifest_and_cache_use_exact_pins(weight_download, tmp_path, cached):
+    run, api, download, volume = weight_download
+    snapshot = download.side_effect
+
+    def fetch(repo, **kwargs):
+        if not cached and kwargs.get("local_files_only"):
+            raise FileNotFoundError("not cached")
+        return snapshot(repo, **kwargs)
+
+    download.side_effect = fetch
+    manifest = run()
+    assert json.loads((tmp_path / "ptit_weights_manifest.json").read_text()) == manifest
+    pins = {lanes.TARGET_MODEL: lanes.TARGET_REVISION, lanes.DRAFT_MODEL: lanes.DRAFT_REVISION,
+            lanes.EAGLE_DRAFT_MODEL: lanes.EAGLE_REVISION}
+    assert len(manifest["models"]) == 3
+    for row in manifest["models"]:
+        sha = pins[row["repo"]]
+        assert row["requested_revision"] == row["resolved_revision"] == row["revision"] == sha
+        assert row["already_present"] is cached
+        api.model_info.assert_any_call(row["repo"], revision=sha)
+        ref = tmp_path / "hub" / f"models--{row['repo'].replace('/', '--')}" / "refs" / "main"
+        assert ref.read_text() == sha
+    assert len(download.call_args_list) == 6
+    for call in download.call_args_list:
+        assert call.kwargs["revision"] == pins[call.args[0]]
+    volume.commit.assert_called_once()
+
+
+def test_download_rejects_resolved_eagle_sha_mismatch(weight_download, tmp_path):
+    run, api, download, volume = weight_download
+    api.model_info.side_effect = lambda repo, revision: Mock(
+        sha="f" * 40 if repo == lanes.EAGLE_DRAFT_MODEL else revision)
+    with pytest.raises(ValueError, match="Revision mismatch"):
+        run()
+    assert not any(call.args[0] == lanes.EAGLE_DRAFT_MODEL for call in download.call_args_list)
+    assert not (tmp_path / "ptit_weights_manifest.json").exists()
+    volume.commit.assert_not_called()
+
+
+def test_download_rejects_missing_eagle_pin(weight_download, tmp_path, monkeypatch):
+    run, api, download, volume = weight_download
+    monkeypatch.setattr(lanes, "EAGLE_REVISION", None)
+    with pytest.raises(ValueError, match="Missing pinned revision"):
+        run()
+    assert not any(call.args[0] == lanes.EAGLE_DRAFT_MODEL for call in download.call_args_list)
+    assert not (tmp_path / "ptit_weights_manifest.json").exists()
+    volume.commit.assert_not_called()

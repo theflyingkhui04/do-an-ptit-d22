@@ -30,7 +30,8 @@ EAGLE_SERVED_MODEL = "qwen2.5-7b-eagle3-draft"
 # (experiments/runs/m3_00/20261024-m300-setup/weights_manifest.json).
 TARGET_REVISION: str | None = "b25037543e9394b818fdfca67ab2a00ecc7dd641"
 DRAFT_REVISION: str | None = "7ae557604adf67be50417f59c2c2f167def9a775"
-EAGLE_REVISION: str | None = None
+# M3-04 final export: step 15000, HF release v0.3.0-epoch3 (M3-04 worklog §4).
+EAGLE_REVISION = "c3adca7e211b471d97a519a625df7ffd37b8b461"
 
 REMOTE_PROJECT_ROOT = "/root/project"
 ARTIFACTS_ROOT = "/artifacts"
@@ -97,20 +98,9 @@ LANES: dict[str, LaneConfig] = {
     "eagle": LaneConfig(
         served_model_name=EAGLE_SERVED_MODEL,
         speculative_config={
-            "method": "draft_model",
+            "method": "eagle3",
             "model": EAGLE_DRAFT_MODEL,
             "num_speculative_tokens": 3,
-            "use_heterogeneous_vocab": True,
-            "draft_sample_method": "greedy",
-        },
-    ),
-    "eagle-custom": LaneConfig(
-        served_model_name=EAGLE_SERVED_MODEL,
-        speculative_config={
-            "method": "draft_model",
-            "model": EAGLE_DRAFT_MODEL,
-            "num_speculative_tokens": 3,
-            "use_heterogeneous_vocab": True,
             "draft_sample_method": "greedy",
         },
     ),
@@ -147,9 +137,8 @@ def build_vllm_args(
     ]
     if cfg.speculative_config is not None:
         spec = dict(cfg.speculative_config)
-        if lane in ("eagle", "eagle-custom"):
-            if EAGLE_REVISION:
-                spec["revision"] = EAGLE_REVISION
+        if lane == "eagle":
+            spec["revision"] = EAGLE_REVISION
         elif DRAFT_REVISION:
             spec["revision"] = DRAFT_REVISION
         args += ["--speculative-config", json.dumps(spec)]
@@ -200,12 +189,12 @@ def build_server_env(
     run_id: str,
     profile: str,
 ) -> dict[str, Any]:
-    """Environment record written by a server container (read by the harness)."""
+    """Runtime environment and configured model identity, not endpoint verification."""
     _lane(lane)
     dtype = DTYPE_PROFILES[profile]
     draft_revision = None
     if LANES[lane].speculative_config:
-        draft_revision = EAGLE_REVISION if lane in ("eagle", "eagle-custom") else DRAFT_REVISION
+        draft_revision = EAGLE_REVISION if lane == "eagle" else DRAFT_REVISION
     return {
         "gpu": gpu,
         "driver_version": driver_version,
@@ -219,7 +208,9 @@ def build_server_env(
         "lane": lane,
         "run_id": run_id,
         "served_model_name": LANES[lane].served_model_name,
+        "target_model": TARGET_MODEL,
         "target_revision": TARGET_REVISION,
+        "draft_model": (LANES[lane].speculative_config or {}).get("model"),
         "draft_revision": draft_revision,
     }
 

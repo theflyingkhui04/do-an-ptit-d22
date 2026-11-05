@@ -407,22 +407,27 @@ class BenchmarkWorkloadAdapterTests(unittest.TestCase):
             validate_manifest_consistency(integrity, rows)
 
     def test_real_frozen_packages_if_present(self) -> None:
+        # Validate canonical committed bytes; checkout CRLF is not a dataset change.
+        from experiments.bench_source import snapshot
+        packed, _ = snapshot(REPO_ROOT)
+        self.addCleanup(packed.cleanup)
+        canonical_root = Path(packed.name)
         w1_path = (
-            REPO_ROOT
+            canonical_root
             / "experiments"
             / "configs"
             / "w1"
             / "node1_chat_requests.jsonl"
         )
         w2_path = (
-            REPO_ROOT
+            canonical_root
             / "experiments"
             / "configs"
             / "w2"
             / "chat_requests.jsonl"
         )
         w3_path = (
-            REPO_ROOT
+            canonical_root
             / "experiments"
             / "configs"
             / "w3"
