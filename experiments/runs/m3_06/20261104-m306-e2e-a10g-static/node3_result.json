@@ -1,0 +1,17 @@
+{
+  "status": "ok",
+  "report_text": "### Báo cáo tổng hợp tình hình chi tiêu và thuế VAT cho tập 30 hóa đơn bán lẻ đã trích xuất\n\n#### 1. Tổng quan\n- Tổng chi tiêu trong tháng 08/2020 là NULL do không có dữ liệu phù hợp.\n- Cửa hàng CỬA HÀNG NĂM OÁNH có tổng giá trị hóa đơn cao nhất trong tập dữ liệu.\n- Không có hóa đơn nào phát sinh VAT.\n\n#### 2. Mặt hàng và cửa hàng nổi bật\n- Không có mặt hàng nào được mua nhiều nhất trong tập dữ liệu.\n- Cửa hàng CỬA HÀNG NĂM OÁNH có tổng giá trị hóa đơn cao nhất.\n\n#### 3. Tình hình VAT\n- Không có hóa đơn nào phát sinh VAT.\n\n#### 4. Hạn chế của dữ liệu và đề xuất kiểm tra tiếp\n- Tổng chi tiêu trong tháng 08/2020 là NULL do chưa có dữ liệu phù hợp.\n- Không có mặt hàng nào được mua nhiều nhất, cần kiểm tra lại dữ liệu.\n- Không có thông tin về mức thuế suất và tổng tiền thuế theo từng loại thuế, cần kiểm tra lại cấu trúc dữ liệu.\n\nTổng kết, cần tiếp tục kiểm tra và xác nhận dữ liệu để có được thông tin chính xác về chi tiêu và thuế VAT.",
+  "error": null,
+  "latency_ms": 3832.242,
+  "prompt_tokens": 880,
+  "completion_tokens": 289,
+  "finish_reason": "stop",
+  "input_question_ids": [
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "Q5",
+    "Q6"
+  ]
+}
