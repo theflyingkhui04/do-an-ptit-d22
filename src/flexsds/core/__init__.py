@@ -1,0 +1,1 @@
+"""FlexSDS Core module."""
