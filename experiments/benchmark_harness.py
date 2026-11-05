@@ -233,6 +233,13 @@ def environment_info(
             "server_quantization": server["quantization"],
             "server_lane": server.get("lane"),
             "server_run_id": server.get("run_id"),
+            "server_instance_id": server.get("instance_id"),
+            # Configured launch identities; endpoint identity still needs a runtime probe.
+            "target_model": server.get("target_model"),
+            "target_revision": server.get("target_revision"),
+            "draft_model": server.get("draft_model"),
+            "draft_revision": server.get("draft_revision"),
+            "served_model_name": server.get("served_model_name"),
             "aiohttp_version": aiohttp.__version__,
             "commit": git_commit(),
         }
@@ -294,6 +301,14 @@ def make_experiment_id(configured_id: str | None) -> str:
     if configured_id:
         return configured_id
     return f"exp-{uuid.uuid4()}"
+
+
+def warmup_count(args: argparse.Namespace, concurrency: int) -> int:
+    if getattr(args, "warmup_policy", "concurrency-matched") == "m3-fixed3":
+        if args.warmup_requests != 3:
+            raise ValueError("M3 confirmatory warm-up requires exactly 3 requests")
+        return 3
+    return max(CANONICAL_MIN_WARMUP_REQUESTS, args.warmup_requests, concurrency)
 
 
 def make_cell_id(lane: str, workload: str, concurrency: int) -> str:
@@ -629,14 +644,10 @@ async def warm_up_cell(
     cell_id: str,
     concurrency: int,
 ) -> int:
-    effective_warmup_count = max(
-        CANONICAL_MIN_WARMUP_REQUESTS,
-        args.warmup_requests,
-        concurrency,
-    )
+    effective_warmup_count = warmup_count(args, concurrency)
 
     print("\n===== M1-02 CELL WARM-UP =====")
-    print("policy               : option-b-concurrency-matched")
+    print(f"policy               : {getattr(args, 'warmup_policy', 'concurrency-matched')}")
     print(f"experiment_id        : {experiment_id}")
     print(f"cell_id              : {cell_id}")
     print(f"requested_minimum    : {args.warmup_requests}")
@@ -663,6 +674,11 @@ async def warm_up_cell(
         sample_offset=0,
     )
 
+    if getattr(args, "warmup_policy", "concurrency-matched") == "m3-fixed3":
+        path = Path(args.raw_out).with_name("warmup.jsonl")
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
+            for record in warm:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
     warmup_failures = [record for record in warm if not record["success"]]
     if warmup_failures:
         print("\n===== WARM-UP FAILED =====")
@@ -952,11 +968,7 @@ async def async_main(args: argparse.Namespace) -> int:
 
     # Strict mode must fail before GPU/server work if either measured requests
     # or the largest cell warm-up would require implicit sample reuse.
-    max_warmup_count = max(
-        CANONICAL_MIN_WARMUP_REQUESTS,
-        args.warmup_requests,
-        max(concurrencies),
-    )
+    max_warmup_count = warmup_count(args, max(concurrencies))
     required_requests = max(args.num_requests, max_warmup_count)
 
     if (
@@ -1198,6 +1210,9 @@ def parse_args() -> argparse.Namespace:
             "explicitly marked non-canonical."
         ),
     )
+    parser.add_argument("--warmup-policy", choices=("concurrency-matched", "m3-fixed3"),
+                        default="concurrency-matched",
+                        help="M3 PM lock: exactly three warm-ups; older protocols retain their default.")
     parser.add_argument(
         "--warmup-requests",
         type=int,
@@ -1236,7 +1251,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--lane",
-        choices=["vanilla", "static", "adaptive", "eagle", "eagle-custom"],
+        choices=["vanilla", "static", "adaptive", "eagle"],
         default="vanilla",
     )
     parser.add_argument(

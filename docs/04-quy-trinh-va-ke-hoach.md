@@ -1,19 +1,19 @@
 # Quy trình Làm việc & Kế hoạch Dự án
 
-> **Cập nhật:** 14/09/2026.  
-> **Bối cảnh thực tế:** Nhóm gồm 3 thành viên, làm việc từ xa (lệch giờ, trao đổi online là chính), thời gian dành cho đồ án ~10–15h/người/tuần. Hạn bảo vệ dự kiến: giữa tháng 12/2026.
+> **Cập nhật:** 04/11/2026.  
+> **Bối cảnh thực tế:** Nhóm gồm 3 thành viên, làm việc từ xa (lệch giờ, trao đổi online là chính), thời gian dành cho đồ án ~10–15h/người/tuần. Hạn nộp quyển chính thức theo thông báo mới nhất của Học viện: **06/12/2026**; lịch bảo vệ dự kiến: giữa tháng 12/2026.
 
 ---
 
 ## 0. Các mốc thời gian cốt lõi
 
-Kế hoạch được lập theo kịch bản an toàn nhất (phòng trường hợp lịch thi/bảo vệ diễn ra sớm):
+Kế hoạch được lập theo lịch trình chính thức của Học viện và kỷ luật đóng băng mã nguồn sớm để bảo đảm an toàn:
 
 | Mốc thời gian | Thời điểm dự kiến | Ý nghĩa & Hành động |
 |---|---|---|
 | **Ngày bảo vệ** | Giữa tháng 12/2026 | Lịch chính thức theo thông báo của Học viện. |
-| **Hạn nộp quyển** | **~30/11/2026** | Nộp trước bảo vệ 2 tuần để thầy cô phản biện đọc quyển. |
-| **Đóng băng Code & Số liệu (Freeze)** | **15/11/2026** | **Mốc quan trọng nhất:** Sau ngày này, tuyệt đối không sửa code hay chạy lại benchmark; 2 tuần cuối dành trọn thời gian để chỉnh sửa câu chữ báo cáo và chuẩn bị slide. |
+| **Hạn nộp quyển** | **06/12/2026** | **Hạn nộp chính thức:** Nộp quyển báo cáo hoàn chỉnh về văn phòng khoa trước bảo vệ để thầy cô phản biện đọc quyển. |
+| **Đóng băng Code & Số liệu (Freeze)** | **15/11/2026** | **Mốc quan trọng nhất:** Sau ngày này, tuyệt đối không sửa code thuật toán hay chạy lại benchmark; các tuần cuối dành cho hoàn thiện sản phẩm demo, đóng gói codebase và viết báo cáo. |
 | **Quỹ thời gian cả nhóm** | ~35 giờ/tuần | Tổng cộng ~450 giờ làm việc cho cả 3 thành viên trong suốt kỳ đồ án. |
 
 ---
@@ -125,50 +125,47 @@ Chủ động phân loại ngay từ đầu để biết cái gì bắt buộc p
 * Bản đồ trường hợp sử dụng (Use-case Map): Chỉ rõ những tình huống nào nên bật tối ưu và tình huống nào nên tắt để tránh giảm tốc độ.
 * Pipeline xử lý hóa đơn tiếng Việt (MC-OCR) tối thiểu 2 node (Trích xuất JSON và Text-to-SQL) để kiểm thử luồng thực tế.
 
-### COULD — Chỉ làm nếu hoàn thành MUST và SHOULD trước ngày 23/10 (~15% công sức)
-* **[ADDITIONAL WORK] Huấn luyện Draft Head chuẩn EAGLE-3 cho Qwen 3.5 9B (Domain-Adapted Head):** Mượn GPU A100 (Google Colab Pro / RunPod) huấn luyện 2–3 giờ trên tập dữ liệu MC-OCR / chuẩn EAGLE-3. Chạy đo đạc đối chứng (Ablation Study) để chứng minh khả năng tổng quát hóa của thuật toán trên thế hệ mô hình mới nhất Qwen 3.5 9B.
-* Mở rộng thêm Node 3 (Tự động sinh báo cáo phân tích tài chính) kèm giao diện web demo trực quan (Streamlit/Gradio).
-* Tích hợp thử nghiệm với nền tảng Dify hoặc LangGraph.
-* Mượn thêm GPU cao cấp (như A100) chạy thử nghiệm đối chứng để chứng minh khả năng tự thích ứng trên nhiều loại phần cứng khác nhau.
+### COULD — Hạng mục mở rộng giá trị gia tăng và sản phẩm (~15% công sức)
+* Nghiên cứu mở rộng cấu trúc cây nháp động (`TreeAdaptive`): Tối ưu hóa Tree Topology (độ sâu $d$ vs số nhánh $b$) theo ma trận chi phí thực nghiệm $C(\text{Tree}, B)$ và hàm kỳ vọng $\mathbb{E}[\tau(\text{Tree})]$ trên GPU L4.
+* Thiết kế sản phẩm demo hoàn chỉnh: Giao diện web trực quan (Streamlit / Gradio) demo luồng trích xuất hóa đơn và Text-to-SQL thời gian thực.
+* Thiết kế sản phẩm công cụ: Skill agent hỗ trợ tự động kết nối, đo phần cứng và tạo endpoint LLM, đóng gói thành thư viện Python (`ptit-spec-engine`) có thể cài đặt bằng lệnh `pip`.
 
 ### WON'T — Dứt khoát không làm (Tránh mất thời gian và lạc hướng)
-* ❌ **Không tự huấn luyện (train/fine-tune) lại mô hình đích (Target Model 7B/9B):** Chỉ huấn luyện đầu nháp phụ trợ (Draft Head) ở tầng COULD trong Sprint 5 mở rộng, tuyệt đối không sa đà vào việc pretrain/finetune full weights mô hình đích gây quá tải tài nguyên.
-* ❌ **Không tự viết ứng dụng quản lý mô hình (Launcher/Web UI phức tạp):** Tận dụng các công cụ có sẵn.
+* ❌ **Không tự huấn luyện (train/fine-tune) lại mô hình đích (Target Model 7B/9B):** Tuyệt đối không sa đà vào việc pretrain/finetune full weights mô hình đích gây quá tải tài nguyên; chỉ tập trung khai thác đầu nháp EAGLE-3.1 7B đã huấn luyện thành công.
+* ❌ **Không tự viết ứng dụng quản lý mô hình (Launcher/Web UI phức tạp):** Tận dụng tối đa các công cụ có sẵn.
 
 ---
 
-## 6. Lộ trình 6 Mốc phát triển (Milestones)
+## 6. Lộ trình 7 mốc phát triển (Milestones)
 
-Mỗi mốc thời gian tập trung kiểm chứng và giải quyết dứt điểm một câu hỏi kỹ thuật quan trọng nhất (Đã cập nhật theo lịch trình ép tiến độ tối ưu):
+Mỗi mốc thời gian tập trung kiểm chứng và giải quyết dứt điểm một câu hỏi kỹ thuật quan trọng nhất (Đã cập nhật theo lịch trình 3 sprint cuối và hạn nộp 06/12/2026):
 
 | Mốc | Thời hạn | Mục tiêu kỹ thuật cốt lõi | Đầu ra tối thiểu cần đạt |
 |---|---|---|---|
 | **M0 · PoC Nền tảng** | **20/09** | *Đề tài có thực sự chạy được trên GPU T4 16GB không?* | [ĐÃ HOÀN THÀNH] vLLM và Qwen chạy được trên T4; chạy thử được EAGLE-2 mặc định; chốt xong 2 giao diện đóng băng. |
 | **M1 · Baseline Benchmark** | **04/10** | *Hệ thống đo lường có đáng tin cậy không? Chuẩn so sánh ban đầu thế nào?* | [ĐÃ HOÀN THÀNH] Bộ đo tự động hoàn thành; có bảng số liệu đo 2 làn (vanilla & static) trên concurrency 1 $\rightarrow$ 32. |
-| **M2 · Adaptive v0 & Lossless** | **14/10** *(Ép sớm)* | *Việc can thiệp điều khiển cây nháp lúc đang chạy có thực hiện được không?* | Bộ điều khiển co/giãn cây theo tỉ lệ đoán trúng $\alpha$; script test chứng minh lossless khớp 100% từng ký tự; sweep 54 ô đối chứng M2. |
-| **M3 · Hardware-Aware v1** | **23/10** *(Ép sớm)* | *Đưa bảng chi phí đo từ phần cứng vào thuật toán có giúp cải thiện tốc độ không?* | Hoàn thành module profiler phần cứng lúc bật máy; chạy đối chứng hiệu năng; vượt qua Cổng kiểm soát 23/10; bản thảo quyển $\ge 20$ trang. |
-| **M4 · Train 9B & Đóng băng** | **15/11** *(Mở rộng)* | *Dữ liệu thực nghiệm đã đủ độ dày dặn và tin cậy để bảo vệ chưa?* | **Train xong EAGLE-3 Draft Head cho Qwen 3.5 9B trên A100**; xuất biểu đồ Ablation Study; tích hợp E2E Pipeline; **ĐÓNG BĂNG TOÀN BỘ CODE & SỐ LIỆU (15/11)**; quyển $\ge 35$ trang. |
-| **M5 · Quyển & Bảo vệ** | **30/11** | *Sản phẩm báo cáo và slide đã chỉn chu chưa?* | Hoàn thiện quyển báo cáo $\ge 50$ trang nộp trường; hoàn thành slide thuyết trình; tổng duyệt thử trả lời 20+ câu hỏi phản biện. |
+| **M2 · Adaptive v0 & Lossless** | **21/10** | *Việc can thiệp điều khiển cây nháp lúc đang chạy có thực hiện được không?* | [ĐÃ HOÀN THÀNH] Bộ điều khiển co/giãn cây theo tỉ lệ đoán trúng $\alpha$; nghiệm thu Adaptive v0; sweep đối chứng M2 trên T4. |
+| **M3 · Modal L4 & EAGLE-3.1** | **03/11** | *Chuyển dịch hạ tầng serverless và huấn luyện mô hình nháp chuyên biệt có khả thi không?* | [ĐÃ HOÀN THÀNH] Dựng serverless Modal L4; train xong checkpoint EAGLE-3.1 7B (15k step trên A100); đo chi phí L4; harness 4 làn. |
+| **M4 · TreeAdaptive & Đóng băng** | **15/11** *(Sprint 5)* | *Cấu trúc cây nháp động có vượt trội chuỗi tuyến tính không? Bộ số liệu 4 làn đã hoàn thiện chưa?* | **Hoàn thành module `TreeAdaptive`**; sweep trọn vẹn 54 prompts 4 làn trên L4; tích hợp 4 làn vào pipeline hóa đơn; **ĐÓNG BĂNG TOÀN BỘ CODE CORE & SỐ LIỆU (15/11 FREEZE)**. |
+| **M5 · Thiết kế & Đóng gói Sản phẩm** | **25/11** *(Sprint 6)* | *Các kết quả nghiên cứu đã được chuyển hóa thành sản phẩm công nghệ hoàn chỉnh chưa?* | Web demo trích xuất hóa đơn (Streamlit/Gradio); skill agent và thư viện Python SDK cài đặt được (`pip install`); video demo 3–5 phút. |
+| **M6 · Quyển & Bảo vệ** | **06/12** *(Sprint 7)* | *Sản phẩm báo cáo và slide đã chỉn chu, sẵn sàng bảo vệ chưa?* | Hoàn thiện quyển báo cáo $\ge 50$ trang nộp trường trước **06/12**; hoàn thành slide thuyết trình 25–30 slides; GitHub Actions CI/CD và release tag `v1.0.0-final`. |
 
-### Kế hoạch theo từng tuần (Timesheet Mới)
+### Kế hoạch theo từng tuần (Timesheet mới)
 ```text
-Tuần 1  (14–20/09):   ▲ M0: PoC Nền tảng · Chốt 2 giao diện · Viết nháp Chương 1
+Tuần 1  (14–20/09):   ▲ M0: PoC nền tảng · Chốt 2 giao diện · Viết nháp Chương 1
 Tuần 2  (21–27/09):   Xây dựng harness benchmark tự động · Đo thử làn vanilla
-Tuần 3  (28/09–04/10): ▲ M1: Baseline Benchmark · Đo làn EAGLE-2 tĩnh · Quét concurrency
-Tuần 4  (05–14/10):   ▲ M2: ADAPTIVE v0 & LOSSLESS · Ép tiến độ (Profiler T4, Lossless 100%, Sweep 3 làn M2)
-Tuần 5  (15–23/10):   ▲ M3: HARDWARE-AWARE v1 & CỔNG SINH TỬ 23/10 (Cost Model, Sweep M3, Quyển >= 20 trang)
-Tuần 6  (24–31/10):   🚀 SPRINT 5 (Mở rộng P1): Train EAGLE-3 Draft Head cho Qwen 3.5 9B trên A100
-Tuần 7  (01–07/11):   🚀 SPRINT 5 (Mở rộng P2): Benchmark Ablation Study Qwen 3.5 9B & Bản đồ Use-case
-Tuần 8  (08–15/11):   ▲ M4: ĐÓNG BĂNG TOÀN BỘ CODE & SỐ LIỆU (15/11 FREEZE) · E2E Pipeline · Quyển >= 35 trang
-Tuần 9  (16–22/11):   Ráp và hoàn thiện quyển báo cáo >= 50 trang chuẩn PTIT
-Tuần 10 (23–29/11):   ▲ M5: Nộp quyển chính thức · Thiết kế slide bảo vệ chuyên nghiệp
-Tuần 11 (30/11–06/12): Tập dượt thuyết trình · Chuẩn bị 20+ câu hỏi phản biện hội đồng
-Tuần 12 (07–13/12):   Tuần đệm dự phòng / Chờ ngày bảo vệ chính thức
+Tuần 3  (28/09–04/10): ▲ M1: Baseline benchmark · Đo làn EAGLE-2 tĩnh · Quét concurrency
+Tuần 4  (05–21/10):   ▲ M2: Adaptive v0 & Lossless · Profiler T4, sweep 3 làn M2
+Tuần 5–6 (22/10–03/11): ▲ M3: Modal serverless, train xong EAGLE-3.1 7B (15k step), cost model L4, harness 4 làn
+Tuần 7–8 (04–15/11):   🚀 SPRINT 5 (M4): Thuật toán TreeAdaptive · Đo sweep 4 làn thực nghiệm · Tích hợp pipeline · ĐÓNG BĂNG CODE & SỐ LIỆU (15/11 FREEZE)
+Tuần 9   (16–25/11):   🎨 SPRINT 6 (M5): Thiết kế & đóng gói sản phẩm · Web demo trích xuất hóa đơn · Skill agent & thư viện Python SDK · Video demo
+Tuần 10–11 (26/11–06/12): 🏁 SPRINT 7 (M6): Ráp và hoàn thiện quyển báo cáo >= 50 trang chuẩn PTIT · Slide thuyết trình · Setup CI/CD & release tag · NỘP QUYỂN CHÍNH THỨC (06/12)
+Tuần 12  (07–13/12):   Tuần đệm dự phòng / Diễn tập bảo vệ và chờ ngày bảo vệ chính thức
 ```
 
 ### Ba cổng đánh giá & Điều chỉnh phạm vi (Checkpoints)
 1. **Ngày 04/10:** [ĐÃ QUA] Nếu chưa có kết quả đo ổn định của 2 làn cơ sở → Cắt bỏ toàn bộ các mục ở tầng COULD, thu nhỏ pipeline hóa đơn về 1 node duy nhất.
-2. **Ngày 23/10 (Cổng kiểm soát sống còn - Sớm 9 ngày):** Nếu phương pháp Adaptive không giúp tăng tốc hơn so với cấu hình tĩnh → **Chủ động chuyển hướng góc kể chuyện của đồ án**: Đề tài trở thành *"Nghiên cứu thực nghiệm chuyên sâu về các ranh giới suy hao và giới hạn vật lý của giải mã suy đoán trên GPU phổ thông"*. Nếu vượt qua thành công, lập tức kích hoạt task huấn luyện Qwen 3.5 9B ở Sprint 5.
+2. **Ngày 23/10 (Cổng kiểm soát sống còn):** [ĐÃ QUA] Thuật toán Adaptive v0 đã triệt tiêu tăng tốc âm thành công. Nhóm kích hoạt luồng mở rộng Làn 4 với đầu nháp EAGLE-3.1 tự huấn luyện và tập trung phát triển thuật toán cây nháp động `TreeAdaptive` trong Sprint 5.
 3. **Ngày 15/11:** Bất kể tính năng nào chưa xong đều phải dừng lại để đóng băng mã nguồn; các tính năng dở dang sẽ được đưa vào phần "Hạn chế & Hướng phát triển trong tương lai".
 
 ---

@@ -113,7 +113,7 @@ Ghi lại các quyết định lớn và **lý do** — để bảo vệ trướ
 | **M-02** | Có checkpoint EAGLE-2 cho Qwen2.5-7B không, và có chạy được với bản 4-bit không? | Thử nghiệm Sprint 1 cho thấy checkpoint cộng đồng lỗi kiến trúc trên vLLM và CUDA 13 bỏ sm_75 trên SGLang. Đã thay thế chuẩn xác bằng Luồng 1 (Draft 0.5B) chạy 100% ổn định trên T4. | **Đã đóng (10/10)** | Khôi | ✅ Đã chốt theo QĐ-12 |
 | **M-03** | vLLM `custom_class` proposer có cho đổi cấu hình cây **theo từng bước** không? | Đã giải quyết ở M2 bằng giải pháp ép phẳng cây tuần tự k in {0, 2, 3, 4} và điều phối qua `AdaptiveScheduler` / `AdaptiveProposerAdapter`. | **Đã đóng (11/10)** | Khôi, Dương | ✅ Đã chốt |
 | **M-04** | GVHD có chấp nhận **kết quả âm tính** (adaptive không thắng stock) không? | Quyết định có cần phương án xoay góc kể chuyện ở cổng 01/11 hay không. Hỏi sớm thì rẻ. | **Tuần 1** | Khôi | Đang theo dõi |
-| **M-05** | Ngày bảo vệ và hạn nộp quyển chính thức | Toàn bộ lịch đang chạy theo giả định xấu nhất | khi khoa thông báo | TV3 | Đang chờ |
+| **M-05** | **Ngày bảo vệ và hạn nộp quyển chính thức** | Hạn nộp quyển chính thức: **06/12/2026**; lịch bảo vệ dự kiến: giữa tháng 12/2026 theo thông báo của Học viện. Lộ trình 3 sprint cuối và kỷ luật đóng băng 15/11 đã được đồng bộ. | **Đã đóng (04/11)** | Cả nhóm | ✅ Đã chốt theo thông báo Học viện |
 
 ---
 
