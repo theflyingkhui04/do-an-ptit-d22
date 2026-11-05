@@ -190,8 +190,19 @@ class RunPipelineE2ETests(unittest.TestCase):
         self.assertEqual(rc, 0)
 
     def test_skip_node1_requires_db(self) -> None:
+        argv = self.argv("--skip-node1")
         with self.assertRaises(SystemExit):
-            e2e.parse_args(self.argv("--skip-node1"))
+            e2e.parse_args(argv)
+
+    def test_unsafe_run_id_rejected(self) -> None:
+        # Sonar pythonsecurity:S8707: run_id must not escape --output-root.
+        for bad in ("../x", "a/b", "a\\b","..", "", " x", "x" * 101):
+            with self.subTest(run_id=bad), self.assertRaises(SystemExit):
+                e2e.parse_args(["--run-id", bad, "--base-url", "http://x/v1"])
+
+    def test_safe_run_id_accepted(self) -> None:
+        args = e2e.parse_args(["--run-id", "20261104-m306-e2e.a10g_r2", "--base-url", "http://x/v1"])
+        self.assertEqual(args.run_id, "20261104-m306-e2e.a10g_r2")
 
     def test_resolve_endpoint_lane_default(self) -> None:
         args = e2e.parse_args(["--run-id", "r"])

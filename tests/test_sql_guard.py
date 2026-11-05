@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import unittest
 
 from src.pipeline.sql_guard import SqlGuardError, check_read_only, clean_sql
@@ -14,6 +15,30 @@ class CleanSqlTests(unittest.TestCase):
 
     def test_clean_sql_plain_fence_and_whitespace(self) -> None:
         self.assertEqual(clean_sql("  ```\nSELECT 1 FROM v_tax_facts\n```  "), "SELECT 1 FROM v_tax_facts")
+
+    def test_clean_sql_inline_fence(self) -> None:
+        self.assertEqual(clean_sql("```sql SELECT 1 FROM v_tax_facts```"), "SELECT 1 FROM v_tax_facts")
+
+    def test_clean_sql_unclosed_fence_is_left_alone(self) -> None:
+        self.assertEqual(clean_sql("```sql\nSELECT 1"), "```sql\nSELECT 1")
+
+
+class GuardPerformanceTests(unittest.TestCase):
+    """LLM output reaches these regexes; they must not backtrack super-linearly."""
+
+    def test_pathological_inputs_finish_quickly(self) -> None:
+        inputs = [
+            "```" + " " * 20000 + "\n" * 20000,
+            "WITH a" + " " * 20000 + "(",
+            "SELECT 1 FROM v_invoice_facts WHERE x IN (" + ", b" * 5000 + " AS",
+        ]
+        for raw in inputs:
+            start = time.perf_counter()
+            try:
+                check_read_only(clean_sql(raw))
+            except SqlGuardError:
+                pass
+            self.assertLess(time.perf_counter() - start, 0.5)
 
 
 class CheckReadOnlyTests(unittest.TestCase):
