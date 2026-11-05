@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 
 # Same runtime as the canonical M1/M2 campaigns (experiments/benchmark_harness.py);
@@ -46,6 +46,20 @@ DTYPE_PROFILES: dict[str, dict[str, str]] = {
     "fp16-fallback": {"dtype": "half", "quantization": "awq"},
 }
 DEFAULT_PROFILE = "l4-bf16"
+
+# L4 is the reference GPU for M3 measurements. A10G (24 GB, sm_86, BF16) is a
+# fallback for functional runs when Modal has no L4 capacity; T4 needs
+# PTIT_DTYPE_PROFILE=fp16-fallback. Latency from a non-L4 GPU is not
+# comparable with L4 results.
+DEFAULT_GPU = "L4"
+SUPPORTED_GPUS = ("L4", "A10G", "T4")
+
+
+def resolve_gpu(environ: Mapping[str, str]) -> str:
+    gpu = environ.get("PTIT_GPU") or DEFAULT_GPU
+    if gpu not in SUPPORTED_GPUS:
+        raise ValueError(f"PTIT_GPU must be one of {SUPPORTED_GPUS}, got {gpu!r}")
+    return gpu
 
 COMMON_SERVING_ARGS = [
     "--generation-config", "vllm",

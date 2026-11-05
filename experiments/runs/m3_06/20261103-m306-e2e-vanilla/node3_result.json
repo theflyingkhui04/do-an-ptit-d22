@@ -1,0 +1,10 @@
+{
+  "status": "skipped_no_data",
+  "report_text": null,
+  "error": null,
+  "latency_ms": null,
+  "prompt_tokens": null,
+  "completion_tokens": null,
+  "finish_reason": null,
+  "input_question_ids": []
+}

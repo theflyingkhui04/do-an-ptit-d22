@@ -26,7 +26,8 @@ MC-OCR text
   -> Node 1 Extractor
   -> invoice_extraction.v1 JSON
   -> SQLite schema user_version=1
-  -> Node 2 Text-to-SQL over stable views
+  -> Node 2 Text-to-SQL over stable views (Q1-Q6)
+  -> Node 3 VAT report (one grounded Vietnamese report)
 ```
 
 ## Node 1 Contract
@@ -110,6 +111,71 @@ the selected view, and a short explanation so the result can be audited. These
 questions cover invoice totals, item quantities, seller aggregation, VAT
 presence, date grouping, and tax analysis without exposing `raw_json` to the
 normal business-query path.
+
+## Node 2 / Node 3 runner and E2E command (M3-06)
+
+Code:
+
+- `src/pipeline/node2_questions.py` — Q1–Q6 above, verbatim.
+- `src/pipeline/sql_guard.py` — read-only guard: one `SELECT`/`WITH`
+  statement, only the three views (or CTE names), no base tables,
+  `sqlite_master` or `raw_json`, no DML/DDL/`PRAGMA`/`ATTACH`/`load_extension`.
+  Literals and comments are masked before checking.
+- `src/pipeline/text_to_sql.py` — `Node2Runner`: one LLM request per question,
+  then guard, then execution on a `mode=ro` + `PRAGMA query_only=ON`
+  connection (5 s timeout, at most 200 rows).
+- `src/pipeline/report_writer.py` — `Node3Writer`: one request that receives
+  each question, its SQL, its status and at most 20 rows, and must use only
+  those numbers.
+- `scripts/run_pipeline_e2e.py` — Node 1 (existing CLI, subprocess) → SQLite of
+  this run → Node 2 → Node 3.
+
+Prompts and sampling: Node 2 uses the frozen W2 v2 system prompt
+(`experiments/configs/w2_v2/system_prompt.md`), Node 3 the frozen W3 v2 system
+prompt (`experiments/configs/w3_v2/system_prompt.md`); `temperature=0.0`,
+`seed=42`, `max_tokens` 256 (Node 2) and 768 (Node 3). The Node 3 user message
+template is `src/pipeline/prompts/node3_report_user.md`.
+
+**Contract deviation (recorded):** the catalog above says Node 2 *should*
+return the SQL, the selected view and a short explanation. Because Node 2
+reuses the W2 v2 prompt (SQL text only, so pipeline output matches the
+benchmark workload), `views_used` is derived from the SQL and `explanation` is
+always `null`.
+
+Node 2 status per question: `ok` (rows), `empty` (0 rows, or only NULL values —
+an aggregate over zero matching rows returns one all-NULL row), `transport_error`,
+`guard_rejected`, `sql_error`, `timeout`. A failed question is recorded and the
+pipeline continues; the LLM is never called again to repair SQL, so request
+counts stay equal across serving lanes. Raw network errors (read timeout,
+dropped connection) are recorded as `transport_error` too. Node 3 status:
+`ok`, `transport_error`, `empty_response` (blank content), or
+`skipped_no_data` when no question returned `ok`/`empty`. Before Node 1 runs,
+Node 1 outputs left by an earlier run with the same `run_id`/lane are deleted;
+if Node 1 crashes without a summary, Node 2/3 are skipped.
+
+Run on Modal (lane token is read from `.env`):
+
+```powershell
+python scripts\run_pipeline_e2e.py --lane vanilla --run-id <id>
+```
+
+Local functional check with Ollama (not a performance measurement):
+
+```powershell
+python scripts\run_pipeline_e2e.py --base-url http://localhost:11434/v1 --model qwen2.5:7b-instruct --run-id local-smoke --limit 5
+```
+
+Re-run Node 2/3 on an existing database without calling Node 1 again:
+`--skip-node1 --db <path>`.
+Record the serving GPU in the summary with `--hardware <label>` (e.g.
+`modal-A10G`; Modal GPU is chosen at deploy time with `PTIT_GPU`).
+
+Outputs in `experiments/runs/m3_06/<run_id>-<lane>/`: `node1/`,
+`node1_summary.json`, `invoices.sqlite` (not committed), `node2_results.jsonl`,
+`node3_result.json`, `report.md`, `e2e_summary.json`. Exit code 0 requires
+≥ 1 invoice, ≥ 1 Node 2 question `ok|empty` and Node 3 `ok`; otherwise 2.
+Latency and token counts are client-side only; this command does not emit the
+M1 request telemetry contract.
 
 ## Versioning Boundary
 

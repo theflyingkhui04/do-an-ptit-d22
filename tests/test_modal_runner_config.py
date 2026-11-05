@@ -513,3 +513,19 @@ def test_download_rejects_missing_eagle_pin(weight_download, tmp_path, monkeypat
     assert not any(call.args[0] == lanes.EAGLE_DRAFT_MODEL for call in download.call_args_list)
     assert not (tmp_path / "ptit_weights_manifest.json").exists()
     volume.commit.assert_not_called()
+
+
+def test_gpu_defaults_to_l4():
+    assert lanes.DEFAULT_GPU == "L4"
+    assert lanes.resolve_gpu({}) == "L4"
+    assert lanes.resolve_gpu({"PTIT_GPU": ""}) == "L4"
+
+
+@pytest.mark.parametrize("gpu", ["L4", "A10G", "T4"])
+def test_gpu_override_from_env(gpu):
+    assert lanes.resolve_gpu({"PTIT_GPU": gpu}) == gpu
+
+
+def test_unknown_gpu_rejected():
+    with pytest.raises(ValueError, match="PTIT_GPU"):
+        lanes.resolve_gpu({"PTIT_GPU": "H100"})

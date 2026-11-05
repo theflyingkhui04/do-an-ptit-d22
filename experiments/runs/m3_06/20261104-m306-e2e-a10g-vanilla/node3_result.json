@@ -1,0 +1,17 @@
+{
+  "status": "ok",
+  "report_text": "### Báo cáo tổng hợp tình hình chi tiêu và thuế VAT cho tập 30 hóa đơn bán lẻ\n\n#### 1. Tổng quan\n- Tổng chi tiêu trong tháng 08/2020 là 5,155,094.0 đồng.\n\n#### 2. Mặt hàng và cửa hàng nổi bật\n- KHÔNG CÓ DỮ LIỆU về mặt hàng được mua nhiều nhất.\n- Cửa hàng có tổng giá trị hóa đơn cao nhất là CỬA HÀNG NĂM OÁNH.\n\n#### 3. Tình hình VAT\n- KHÔNG CÓ DỮ LIỆU về hóa đơn có phát sinh VAT.\n- KHÔNG CÓ DỮ LIỆU về mức thuế suất và tổng tiền thuế theo từng loại thuế.\n\n#### 4. Hạn chế của dữ liệu và đề xuất kiểm tra tiếp\n- Trong tập dữ liệu, không có thông tin về mặt hàng được mua nhiều nhất và mức thuế suất cũng như tổng tiền thuế theo từng loại thuế. Điều này có thể do các bảng liên quan chưa được cập nhật hoặc có lỗi truy vấn.\n- Đề xuất kiểm tra lại cấu trúc dữ liệu và đảm bảo rằng các bảng liên quan đã được cập nhật đầy đủ. Đồng thời, cần kiểm tra lại các truy vấn SQL để đảm bảo chúng hoạt động đúng.\n\nTổng kết, tập dữ liệu hiện tại chỉ cung cấp thông tin về tổng chi tiêu và cửa hàng có tổng giá trị hóa đơn cao nhất, nhưng không có thông tin về mặt hàng được mua nhiều nhất và tình hình VAT.",
+  "error": null,
+  "latency_ms": 4719.099,
+  "prompt_tokens": 890,
+  "completion_tokens": 341,
+  "finish_reason": "stop",
+  "input_question_ids": [
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "Q5",
+    "Q6"
+  ]
+}
