@@ -1,0 +1,21 @@
+{
+  "protocol_status": "VALID",
+  "diagnostic_protocol": "m305-rootcause-w3-v1",
+  "plan_sha256": "46e718b37e635b5923eac039dd0d35cde2acd3f1428686159003fbe28be91cbf",
+  "run_id": "vanilla-pre-W3-c1-a001",
+  "arm": "vanilla-pre",
+  "base_lane": "vanilla",
+  "workload": "W3",
+  "concurrency": 1,
+  "fresh_server_instance_id": "bc159012-e229-4621-a364-c084d595c061",
+  "warmup_attempted": 3,
+  "warmup_successful": 3,
+  "repeats": 5,
+  "requests_per_repeat": 32,
+  "measured_requests": 160,
+  "request_failures": 0,
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "w3_chat_sha256": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+  "vllm_outputs_patch_sha256": "8f58684245f17007863382ffa9de115d371738ae28731b0c876196eb3b3fea47",
+  "force_k0_proven": null
+}

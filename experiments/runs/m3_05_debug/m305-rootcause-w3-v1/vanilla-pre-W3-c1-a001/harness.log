@@ -1,0 +1,172 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W3
+workload_file        : experiments/configs/w3_v2/chat_requests.jsonl
+sample_count         : 12
+sample_policy        : cycle-rotate
+package_workload_id  : w3_free_analysis
+dataset_version      : w3.m1_03.v2
+prompt_version       : w3_business_analysis.v2
+manifest_path        : /content/do-an-ptit-d22/experiments/configs/w3_v2/package_manifest.json
+artifact_key         : chat_requests_jsonl
+workload_file_sha256 : 57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b
+manifest_package_sha256: 657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : m3-l4-modal-v1
+environment_source   : server
+gpu                  : NVIDIA L4
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [1]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : vanilla-pre-W3-c1-a001
+lane                 : vanilla
+workload             : W3
+canonical_samples    : 12
+sample_policy        : cycle-rotate
+concurrencies        : [1]
+repeats_per_cell     : 5
+requests_per_repeat  : 32
+===================================
+
+========================================
+START CELL
+experiment_id : vanilla-pre-W3-c1-a001
+cell_id       : vanilla__W3__c1
+concurrency   : 1
+repeats       : 5
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : m3-fixed3
+experiment_id        : vanilla-pre-W3-c1-a001
+cell_id              : vanilla__W3__c1
+requested_minimum    : 3
+warmup_requests      : 3
+warmup_concurrency   : 1
+measured_concurrency : 1
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : vanilla__W3__c1
+requests             : 3
+successes            : 3
+concurrency_limit    : 1
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : vanilla-pre-W3-c1-a001
+cell_id             : vanilla__W3__c1
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-75286708-fb71-48b2-88b1-a0e11aaaec26
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 1
+duration_s          : 285.856
+request_throughput  : 0.112 req/s
+output_throughput   : 52.915 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : vanilla-pre-W3-c1-a001
+cell_id             : vanilla__W3__c1
+repeat_id           : r002
+sample_offset       : 8
+run_id              : run-430ee573-f5fb-4488-bf5e-072b4bb408b3
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 1
+duration_s          : 280.728
+request_throughput  : 0.114 req/s
+output_throughput   : 52.984 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : vanilla-pre-W3-c1-a001
+cell_id             : vanilla__W3__c1
+repeat_id           : r003
+sample_offset       : 4
+run_id              : run-4f7b0235-ef06-4b2a-9c8c-058141f6df78
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 1
+duration_s          : 290.404
+request_throughput  : 0.110 req/s
+output_throughput   : 52.981 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : vanilla-pre-W3-c1-a001
+cell_id             : vanilla__W3__c1
+repeat_id           : r004
+sample_offset       : 0
+run_id              : run-4596f1ff-f264-4ade-b55a-7f1ee9ad17fb
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 1
+duration_s          : 284.504
+request_throughput  : 0.112 req/s
+output_throughput   : 52.990 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : vanilla-pre-W3-c1-a001
+cell_id             : vanilla__W3__c1
+repeat_id           : r005
+sample_offset       : 8
+run_id              : run-4b4570bb-464d-4038-b4c4-b5f98a7b1b76
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 1
+duration_s          : 280.724
+request_throughput  : 0.114 req/s
+output_throughput   : 52.984 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : vanilla__W3__c1
+measured_repeats     : 5
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : vanilla-pre-W3-c1-a001
+cells_completed      : 1
+concurrencies        : [1]
+repeats_per_cell     : 5
+======================

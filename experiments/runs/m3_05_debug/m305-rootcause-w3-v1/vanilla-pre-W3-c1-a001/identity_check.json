@@ -1,0 +1,7 @@
+{
+  "health": 200,
+  "model_ids": [
+    "qwen2.5-7b-vanilla"
+  ],
+  "server_instance_id": "bc159012-e229-4621-a364-c084d595c061"
+}

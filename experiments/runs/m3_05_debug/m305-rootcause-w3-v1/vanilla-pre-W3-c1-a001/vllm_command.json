@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "vllm",
+    "serve",
+    "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "--revision",
+    "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8000",
+    "--served-model-name",
+    "qwen2.5-7b-vanilla",
+    "--quantization",
+    "awq_marlin",
+    "--dtype",
+    "bfloat16",
+    "--generation-config",
+    "vllm",
+    "--gpu-memory-utilization",
+    "0.85",
+    "--max-model-len",
+    "4096",
+    "--max-num-seqs",
+    "32"
+  ],
+  "arm_env_overrides": {},
+  "secret_values_recorded": false
+}

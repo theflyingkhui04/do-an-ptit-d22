@@ -1,0 +1,41 @@
+{
+  "diagnostic_protocol": "m305-rootcause-w3-v1",
+  "plan_sha256": "46e718b37e635b5923eac039dd0d35cde2acd3f1428686159003fbe28be91cbf",
+  "arm": "vanilla-pre",
+  "base_lane": "vanilla",
+  "concurrency": 1,
+  "performance": {
+    "lane": "vanilla",
+    "workload": "W3",
+    "concurrency": 1,
+    "gpu": "NVIDIA L4",
+    "n_runs": 5,
+    "ttft_p50": 40.734,
+    "tpot_p50": 18.825,
+    "tpot_p95": 18.845,
+    "e2e_p50": 8795.743,
+    "alpha": "N/A",
+    "tau": "N/A",
+    "vram_peak_mb": 18804.88,
+    "throughput": 52.98,
+    "speedup_vs_vanilla": 1.0,
+    "variance_flag": false,
+    "commit": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+    "timestamp": "2026-11-05T04:42:37.216553+00:00",
+    "_experiment_id": "vanilla-pre-W3-c1-a001",
+    "_dataset_version": "w3.m1_03.v2",
+    "_workload_file_sha256": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+    "_tpot_min": 18.822,
+    "_tpot_max": 18.827,
+    "_variance_ratio": 0.03,
+    "_total_requests": 160
+  },
+  "speculative_measured": null,
+  "prometheus_harness_delta": {
+    "num_spec_steps": 0.0,
+    "num_draft_tokens": 0.0,
+    "num_accepted_draft_tokens": 0.0
+  },
+  "force_k0_proven": null,
+  "note": "Prometheus delta covers 3 warmups + 160 measured requests; speculative_measured covers the 160 measured requests only."
+}

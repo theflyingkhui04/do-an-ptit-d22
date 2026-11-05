@@ -1,0 +1,110 @@
+{
+  "plan_sha256": "46e718b37e635b5923eac039dd0d35cde2acd3f1428686159003fbe28be91cbf",
+  "files": [
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/README.md",
+      "bytes": 178,
+      "sha256": "b183bc5cc071dc7f9b9663b395965f455bcf53525f07730138bc040c9fc459f4"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/diagnostic_validation.json",
+      "bytes": 786,
+      "sha256": "8b88cff86672b65f3f8915e18da74ad78b2da6ff0505055c5dee8e2bda01e89b"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/harness.log",
+      "bytes": 5807,
+      "sha256": "67dbc35480c9b76cdae1a876f82420e991e49b615ce8e60449ee96b8f320174c"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/harness_command.json",
+      "bytes": 971,
+      "sha256": "1b6bd79ca5aca4a0f771085aa9a6a789b1a850d13c3b9a55b22611e6a281e8a2"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/identity_check.json",
+      "bytes": 131,
+      "sha256": "74130fc1454aa7e1cb2aab4f3c4d1fdc1c14421df7ff2d6f92efafae37a1cc51"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/nvidia_smi_dmon.log",
+      "bytes": 186084,
+      "sha256": "ee9d6ce6da052f78fe04526503db45a58ba1348cef611511638fcbe1b196bad7"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/nvidia_smi_idle_before_server.txt",
+      "bytes": 4292,
+      "sha256": "161d25ada45300718ae23093d99e5103f7e9218b13f483c7b14aea553c0d375d"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/nvidia_smi_post_measure.txt",
+      "bytes": 4303,
+      "sha256": "4ffec49ed467fb160b001237305b10139b28a80db6ade33981830b3877bcd968"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/nvidia_smi_pre_measure.txt",
+      "bytes": 4305,
+      "sha256": "9d66a84abeba0c147db24b2363dac09ef084904a5c3c9ca0f051680c1eb436e6"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/prometheus_after.prom",
+      "bytes": 54761,
+      "sha256": "2eb2829fbbfecebb09c9e1326faaa20495163963d39b4a6e345bebf54c0b034d"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/prometheus_before.prom",
+      "bytes": 52766,
+      "sha256": "1662a3fbf3ea3abd7e320a006221a4aad062b79a5e4214981260de49f3936fc7"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/prometheus_delta.json",
+      "bytes": 91,
+      "sha256": "9c3e1ed7be1d2b05429e1c860c215da9b3dc35ec00b480f973cef10ca0058d01"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/raw.jsonl",
+      "bytes": 1322111,
+      "sha256": "9d9c2f6cd6c464e2f6cf016a0cec81d5ac68a92f60626fc4c484aff818bfa913"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/raw.vram.jsonl",
+      "bytes": 1331871,
+      "sha256": "5faea93273466b74c08a5e2c8537ece2026dccf93993aa0b7ee77f6d0ff7b290"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/server_env.json",
+      "bytes": 1562,
+      "sha256": "774fa888770ff49c5f12837695f3ee34a58d2c42e2a63f77d93a883a99625760"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/summary.csv",
+      "bytes": 156,
+      "sha256": "08d17167a6ece0a061ed2c1573282cffeed24ccb7b0a6c68e15daa6b3a1f77e9"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/summary.json",
+      "bytes": 1310,
+      "sha256": "c9efb8486148d00c1443216085aaddb72ed32f5d70acda4cff8fa91bd6d16b9b"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/vllm.log",
+      "bytes": 68520,
+      "sha256": "ce4248880a70afc8e30abfbbba4af56337b16d3a11f480a9f277917a6ca5b184"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/vllm_command.json",
+      "bytes": 537,
+      "sha256": "13a3c2075e2a35648bdc49aa29b2f9b1f0b775892ccd5ce8c63923b689157557"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/vram.jsonl",
+      "bytes": 590164,
+      "sha256": "de5aa0f412b750b08a248d59b2c0c3418cb8a49663f7b05d696798aed4936723"
+    },
+    {
+      "path": "experiments/runs/m3_05_debug/m305-rootcause-w3-v1/vanilla-pre-W3-c1-a001/warmup.jsonl",
+      "bytes": 23277,
+      "sha256": "ea7eb7802dc8e70c9af4d39a069235fcd6ae7827fc2365b30ffb5ede92c048f0"
+    }
+  ]
+}
