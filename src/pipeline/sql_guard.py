@@ -41,12 +41,15 @@ FORBIDDEN_IDENTIFIERS: tuple[str, ...] = (
     "raw_json",
 )
 
-_FENCE_RE = re.compile(r"^```[A-Za-z]*\s*\n?(.*?)\n?```$", re.DOTALL)
+_FENCE = "```"
+_FENCE_TAGS = ("", "sql", "sqlite")
 _KEYWORD_RE = re.compile(r"\b(" + "|".join(FORBIDDEN_KEYWORDS) + r")\b", re.IGNORECASE)
 _IDENTIFIER_RE = re.compile(r"\b(" + "|".join(FORBIDDEN_IDENTIFIERS) + r")\b", re.IGNORECASE)
-_RELATION_RE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_]\w*)", re.IGNORECASE)
+_RELATION_RE = re.compile(r"\b(?:FROM|JOIN)\s+([a-z_]\w*)", re.IGNORECASE)
+# The optional column list owns its leading whitespace, so no two whitespace
+# runs are adjacent; this keeps matching linear on LLM-generated text.
 _CTE_RE = re.compile(
-    r"(?:\bWITH(?:\s+RECURSIVE)?|,)\s*([A-Za-z_]\w*)\s*(?:\([^()]*\))?\s+AS\s*\(",
+    r"(?:\bWITH(?:\s+RECURSIVE)?|,)\s*([a-z_]\w*)(?:\s*\([^()]*\))?\s+AS\s*\(",
     re.IGNORECASE,
 )
 
@@ -62,9 +65,10 @@ class SqlGuardError(ValueError):
 def clean_sql(raw: str) -> str:
     """Strip a Markdown code fence, surrounding whitespace and one trailing ``;``."""
     text = raw.strip()
-    match = _FENCE_RE.match(text)
-    if match:
-        text = match.group(1).strip()
+    if len(text) >= 2 * len(_FENCE) and text.startswith(_FENCE) and text.endswith(_FENCE):
+        inner = text[len(_FENCE) : -len(_FENCE)]
+        tag, _, rest = inner.partition("\n") if "\n" in inner else inner.partition(" ")
+        text = (rest if tag.strip().lower() in _FENCE_TAGS else inner).strip()
     if text.endswith(";"):
         text = text[:-1].rstrip()
     return text

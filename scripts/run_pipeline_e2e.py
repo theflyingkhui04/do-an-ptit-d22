@@ -17,6 +17,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import time
@@ -50,6 +51,10 @@ NODE1_SCRIPT = REPO_ROOT / "scripts/run_node1_extractor.py"
 NODE1_REQUESTS = "experiments/configs/w1/node1_chat_requests.jsonl"
 NODE1_PACKAGE_MANIFEST = "experiments/configs/w1/package_manifest.json"
 API_KEY_ENV = "PIPELINE_LLM_API_KEY"
+DB_NAME = "invoices.sqlite"
+# A run_id becomes a directory name under --output-root, so it must not
+# contain path separators or "..".
+RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 
 
 def git_sha() -> str | None:
@@ -82,6 +87,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.skip_node1 and args.db is None:
         parser.error("--skip-node1 requires --db")
+    if not RUN_ID_RE.fullmatch(args.run_id) or ".." in args.run_id:
+        parser.error("--run-id must be 1-100 characters of letters, digits, '.', '_' or '-' (no '..')")
     if args.limit < 1:
         parser.error("--limit must be at least 1")
     return args
@@ -113,7 +120,7 @@ def run_node1(args: argparse.Namespace, run_dir: Path, base_url: str, model: str
         "--lane", args.lane,
         "--output-dir", str(run_dir / "node1"),
         "--report", str(summary_path),
-        "--db", str(run_dir / "invoices.sqlite"),
+        "--db", str(run_dir / DB_NAME),
         "--replace-run",
         "--limit", str(args.limit),
         "--timeout", str(args.timeout),
@@ -129,10 +136,10 @@ def run_node1(args: argparse.Namespace, run_dir: Path, base_url: str, model: str
 
 STALE_NODE1_FILES = (
     "node1_summary.json",
-    "invoices.sqlite",
-    "invoices.sqlite-wal",
-    "invoices.sqlite-shm",
-    "invoices.sqlite-journal",
+    DB_NAME,
+    f"{DB_NAME}-wal",
+    f"{DB_NAME}-shm",
+    f"{DB_NAME}-journal",
 )
 
 
@@ -185,7 +192,10 @@ def main(
     args = parse_args(argv)
     base_url, model = resolve_endpoint(args)
     api_key = resolve_api_key(args)
-    run_dir = Path(args.output_root) / f"{args.run_id}-{args.lane}"
+    output_root = Path(args.output_root).resolve()
+    run_dir = (output_root / f"{args.run_id}-{args.lane}").resolve()
+    if run_dir.parent != output_root:
+        raise SystemExit(f"run directory {run_dir} escapes --output-root {output_root}")
     run_dir.mkdir(parents=True, exist_ok=True)
     started_at = _now()
     wall_start = time.perf_counter()
@@ -194,7 +204,7 @@ def main(
         db_path = Path(args.db)
         node1: dict[str, Any] = {"skipped": True, "db": str(db_path)}
     else:
-        db_path = run_dir / "invoices.sqlite"
+        db_path = run_dir / DB_NAME
         remove_stale_node1_artifacts(run_dir)
         node1 = node1_runner(args, run_dir, base_url, model, api_key)
     # A missing Node 1 summary means Node 1 crashed; its DB may be partial.
