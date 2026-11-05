@@ -67,6 +67,7 @@ Biến môi trường lúc deploy:
 | `PTIT_LANES` | `vanilla,static,adaptive` (mặc định) | Chỉ deploy một số làn (ví dụ `static`) — làn không liệt kê sẽ bị gỡ |
 | `PTIT_SCALEDOWN_SECONDS` | `300` mặc định | Rảnh bao lâu thì tắt container |
 | `PTIT_KEEP_WARM` | `1` | Luôn giữ 1 container/làn bật — **chỉ khi benchmark**, tốn tiền liên tục |
+| `PTIT_GPU` | `L4` (mặc định) / `A10G` / `T4` | GPU dự phòng khi Modal hết L4 (thường gặp "waiting to be scheduled on a GPU_L4 worker"). Latency trên GPU khác **không so sánh được** với số liệu L4; T4 cần thêm `PTIT_DTYPE_PROFILE=fp16-fallback` |
 
 > Xoá biến sau khi dùng (`Remove-Item Env:PTIT_KEEP_WARM`) để lần deploy sau không vô tình giữ ấm.
 

@@ -315,3 +315,19 @@ def test_harness_commit_can_come_from_environment(monkeypatch):
     monkeypatch.setenv("PTIT_GIT_COMMIT", "a" * 40)
 
     assert harness.git_commit() == "a" * 40
+
+
+def test_gpu_defaults_to_l4():
+    assert lanes.DEFAULT_GPU == "L4"
+    assert lanes.resolve_gpu({}) == "L4"
+    assert lanes.resolve_gpu({"PTIT_GPU": ""}) == "L4"
+
+
+@pytest.mark.parametrize("gpu", ["L4", "A10G", "T4"])
+def test_gpu_override_from_env(gpu):
+    assert lanes.resolve_gpu({"PTIT_GPU": gpu}) == gpu
+
+
+def test_unknown_gpu_rejected():
+    with pytest.raises(ValueError, match="PTIT_GPU"):
+        lanes.resolve_gpu({"PTIT_GPU": "H100"})
