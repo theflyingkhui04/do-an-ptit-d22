@@ -1,0 +1,15 @@
+{
+  "timestamp_utc": "2026-11-05T04:14:36.237900+00:00",
+  "status": "PASS",
+  "plan_sha256": "46e718b37e635b5923eac039dd0d35cde2acd3f1428686159003fbe28be91cbf",
+  "core_sha": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+  "w3_chat_sha256": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+  "vllm_outputs_patch_sha256": "8f58684245f17007863382ffa9de115d371738ae28731b0c876196eb3b3fea47",
+  "canonical_summary_sha256_before": "d2e845d68d10d4132006e129397e66d51dce9b6453102fcedf747a2e67de9cda",
+  "runtime": {
+    "gpu": "NVIDIA L4",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "vllm": "0.30.0"
+  }
+}

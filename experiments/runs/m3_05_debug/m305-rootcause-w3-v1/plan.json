@@ -1,0 +1,103 @@
+{
+  "frozen_at_utc": "2026-11-05T04:14:36.237257+00:00",
+  "plan_sha256": "46e718b37e635b5923eac039dd0d35cde2acd3f1428686159003fbe28be91cbf",
+  "payload": {
+    "protocol": "m305-rootcause-w3-v1",
+    "source_commit": "62fe60e2fab16a1770ee96743d3b175727b3fa14",
+    "runtime": {
+      "gpu": "NVIDIA L4",
+      "torch": "2.13.0+cu130",
+      "cuda": "13.0",
+      "vllm": "0.30.0",
+      "vllm_outputs_patch_sha256": "8f58684245f17007863382ffa9de115d371738ae28731b0c876196eb3b3fea47"
+    },
+    "workload": {
+      "name": "W3",
+      "workload_id": "w3_free_analysis",
+      "dataset_version": "w3.m1_03.v2",
+      "prompt_version": "w3_business_analysis.v2",
+      "chat_requests_sha256": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b",
+      "package_sha256": "657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689"
+    },
+    "matrix": {
+      "arms": [
+        "vanilla-pre",
+        "static-k3",
+        "adaptive-current",
+        "adaptive-no-probe",
+        "adaptive-force-k0",
+        "eagle-static-k3",
+        "eagle-dynamic-k",
+        "vanilla-post"
+      ],
+      "concurrencies": [
+        1,
+        32
+      ],
+      "cells": 16
+    },
+    "per_cell": {
+      "fresh_vllm_process": true,
+      "warmups": 3,
+      "repeats": 5,
+      "measured_requests_per_repeat": 32,
+      "measured_requests": 160,
+      "sample_policy": "cycle-rotate",
+      "warmup_policy": "m3-fixed3"
+    },
+    "ablations": {
+      "adaptive-no-probe": {
+        "ADAPTIVE_CONTROLLER_KWARGS": {
+          "probe_interval": 0
+        }
+      },
+      "adaptive-force-k0": {
+        "ADAPTIVE_CONTROLLER_KWARGS": {
+          "fallback_threshold": 1.000001,
+          "probe_interval": 0
+        },
+        "required_runtime_proof": [
+          "all controller telemetry tree_budgets == 0",
+          "sum per-request num_draft_tokens == 0",
+          "sum per-request num_spec_steps == 0",
+          "Prometheus draft counters delta == 0"
+        ]
+      },
+      "eagle-dynamic-k": {
+        "mechanism": "vLLM built-in Dynamic Speculative Decoding",
+        "not_project_adaptive": true,
+        "schedule": [
+          [
+            1,
+            8,
+            3
+          ],
+          [
+            9,
+            16,
+            2
+          ],
+          [
+            17,
+            32,
+            1
+          ]
+        ]
+      }
+    },
+    "analysis_freeze": {
+      "primary_performance_metric": "TPOT p50 aggregated repeat->cell by existing aggregate_results.py",
+      "system_metric": "output-token throughput",
+      "replicate_unit": "repeat (5 per cell), not individual request",
+      "outlier_rule": "none; preserve all successful/incomplete/failure evidence",
+      "drift_control": "vanilla-pre vs vanilla-post at same concurrency",
+      "no_posthoc_tuning": true,
+      "no_unapproved_drift_threshold": true,
+      "canonical_72_cell_summary_must_not_change": true
+    },
+    "canonical_campaign_guard": {
+      "path": "experiments/results/m3_sweep_4lanes_summary.json",
+      "sha256_before_diagnostic": "d2e845d68d10d4132006e129397e66d51dce9b6453102fcedf747a2e67de9cda"
+    }
+  }
+}
