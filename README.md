@@ -1,118 +1,193 @@
-# Hardware-Aware Speculative Decoding for Self-Hosted LLM Inference
+<div align="center">
 
-> **VN:** *Giải mã suy đoán thích ứng phần cứng nhằm tăng tốc luồng trích xuất & phân tích dữ liệu hóa đơn tiếng Việt.*
-> Graduation thesis — Posts and Telecommunications Institute of Technology (PTIT), cohort D22.
+<img src="logo/flexsds_banner.gif" alt="PTIT - FlexSDS Banner" width="100%" />
 
-**Speed up self-hosted open-source LLMs on consumer GPUs — losslessly.** A custom **Adaptive Proposer** plugged into **vLLM** dynamically resizes the EAGLE-2 draft tree at runtime from real-time acceptance rate, hardware profiling and free VRAM — killing the *negative-acceleration* and *out-of-memory* failure modes that make static speculative decoding unusable on 8–12 GB GPUs.
+# FlexSDS: Hệ thống phục vụ suy luận phỏng đoán thích ứng nhận biết phần cứng
 
-`🟡 Status: design locked, implementation in progress · defense Dec 2026`
+**Bộ công cụ phục vụ suy luận phỏng đoán thông minh cho các mô hình ngôn ngữ lớn tự lưu trữ**  
+*Hardware-Aware Adaptive Speculative Decoding Serving Toolkit for Self-Hosted LLMs*
+
+[![PTIT](https://img.shields.io/badge/PTIT-Đồ%20án%20tốt%20nghiệp%20D22-ED1C24?style=for-the-badge&logoColor=white)](https://portal.ptit.edu.vn/)
+[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![vLLM](https://img.shields.io/badge/vLLM-0.30.0%20Core%20V1-blue?style=for-the-badge)](https://github.com/vllm-project/vllm)
+[![Modal](https://img.shields.io/badge/Modal-GPU%20L4%20Serverless-00C7B7?style=for-the-badge)](https://modal.com)
+[![Status](https://img.shields.io/badge/Trạng%20thái-Sprint%205%20%2F%20M4%20Freeze-brightgreen?style=for-the-badge)]()
+
+<br/>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="logo/icon_dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="logo/icon_white.webp">
+  <img alt="FlexSDS Logo" src="logo/icon_dark.webp" width="90" height="90">
+</picture>
+
+</div>
 
 ---
 
-## TL;DR
+## 1. Tổng quan đề tài
 
-- **Problem:** Multi-step LLM workflows (agents, data pipelines) are bottlenecked by **decode latency**, which *compounds* across sequential calls. Static speculative decoding (even vLLM's default) uses a **fixed draft tree** → it *slows down* on hard/high-entropy steps, *under-uses* the GPU on easy steps, and can **OOM** under concurrency on consumer GPUs.
-- **Contribution:** A **hardware-aware, adaptive draft-tree controller** integrated into vLLM via its `custom_class` proposer backend — lossless, training-free at serve time, and tuned to the *actual* GPU it runs on.
-- **Demonstrated on** a real end-to-end **Vietnamese receipt-analytics pipeline** (MC-OCR dataset) and benchmarked with vLLM `benchmark_serving` + Langfuse.
+Trong các hệ thống xử lý tài liệu tự động và chuỗi tác vụ đa bước (multi-step LLM pipeline), **độ trễ sinh từ trong pha giải mã (Decode Latency)** là nút thắt cổ chai lớn nhất và bị tích lũy lũy tiến qua từng lời gọi mô hình. Kỹ thuật suy luận phỏng đoán truyền thống (Static Speculative Decoding) sử dụng cấu hình nháp cố định thường gặp phải hai rào cản nghiêm trọng trong môi trường triển khai thực tế:
+1. **Hiện tượng tăng tốc âm (Negative Speedup):** Khi gặp các tác vụ suy luận tự do có entropy cao hoặc khi hệ thống chịu tải đồng thời lớn ($c \ge 16$), việc ép chạy mô hình nháp vô ích biến nó thành tải ký sinh, làm giảm tốc độ thực tế (chỉ đạt $0.67\times - 0.81\times$ so với suy luận tuần tự cơ sở).
+2. **Nguy cơ tràn bộ nhớ (Out-Of-Memory - OOM):** Việc đồng thời nạp cả mô hình đích, mô hình nháp và phân bổ bộ đệm KV dễ dẫn đến tràn VRAM trên các dòng GPU phổ thông (NVIDIA Tesla T4 16GB, RTX 4090 24GB).
 
-## The core idea — Adaptive Proposer
+**FlexSDS** (*Flexible Speculative Decoding Serving*) là giải pháp mã nguồn mở hoàn chỉnh do nhóm sinh viên PTIT nghiên cứu và phát triển. Hệ thống tích hợp lớp điều khiển thích ứng **TreeAdaptive**, tự động nhận diện phần cứng, nạp ma trận chi phí thực nghiệm và giải ngưỡng hòa vốn động $\alpha^*(N, B)$ theo thời gian thực để co giãn cấu trúc cây nháp hoặc ngắt về suy luận tuần tự cơ sở, **bảo đảm tăng tốc tối đa nhưng không bao giờ bị chậm hơn chế độ mặc định (Lossless Guarantee)**.
 
-```
-        ┌───────────────────────────────────────────────┐
-        │  Startup: WARM-UP PROFILING                   │
-        │  measure t_draft, t_verify, VRAM_free on GPU  │
-        └───────────────────────┬───────────────────────┘
-                                ▼
-        ┌───────────────────────────────────────────────┐
-        │  Serving: REAL-TIME TELEMETRY                 │
-        │  track rolling acceptance α, live VRAM        │
-        └───────────────────────┬───────────────────────┘
-                                ▼
-        ┌───────────────────────────────────────────────┐
-        │  Decision: DYNAMIC TREE BUDGETING             │
-        │  tree = f(α, t_draft, t_verify, VRAM_free)    │
-        └───────────────────────────────────────────────┘
-```
+---
 
-- **α > 0.8** (easy, low-entropy e.g. JSON extraction) → grow the tree (depth 4, width 8) for max speedup (~3–4×).
-- **0.4 ≤ α ≤ 0.8** → balanced tree (depth 3, width 4).
-- **α < 0.3 or VRAM tight** (hard, high-entropy e.g. free-form analysis) → shrink to a short chain or **disable SD** → removes negative acceleration and prevents OOM.
+## 2. Ứng dụng thực nghiệm: Luồng đa tác vụ trên hóa đơn bán hàng
 
-## Why it's real work (novelty vs. vLLM built-in)
+Để kiểm chứng năng lực thích ứng trong môi trường thực tế, FlexSDS được triển khai phục vụ quy trình xử lý và phân tích hóa đơn bán hàng tiếng Việt (bộ dữ liệu MC-OCR) với 3 tác vụ đại diện:
 
-| | vLLM default (built-in speculative) | This thesis (Adaptive Custom Proposer) |
-|---|---|---|
-| Draft tree | **Static** for the whole server run | **Dynamic** per step, by measured cost |
-| Hardware awareness | ❌ manual static params | ✅ auto profiler tunes to the running GPU |
-| Memory safety | ❌ OOM-prone under load | ✅ prunes the tree when VRAM runs low |
-| Negative acceleration | ❌ can drop below 1.0× | ✅ falls back to plain decoding — never slower |
-| Effort | CLI flags only | Custom controller algorithm + startup hardware profiler + vLLM integration |
-
-> Draft-head training is explicitly **out of scope** — published EAGLE-2 checkpoints are used instead. The contribution is the *controller*, not the draft head ([QĐ-10](docs/03-quyet-dinh-thiet-ke.md)).
-
-## Demo pipeline — Vietnamese receipt analytics (MC-OCR)
-
-```
-[Raw VN receipt text — MC-OCR]
-        │
-        ▼  NODE 1 · EXTRACTOR      → structured JSON (store, items, prices, tax) → SQLite
-        ▼  NODE 2 · TEXT-TO-SQL    → Vietnamese question → SQL over the receipts DB
-        ▼  NODE 3 · SQL-TO-BI      → analytic report (HTML/Markdown) → Streamlit dashboard
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│             HỆ THỐNG ĐA TÁC VỤ TRÊN HÓA ĐƠN BÁN HÀNG                   │
+├────────────────────────────────────────────────────────────────────────┤
+│                      [Ảnh / Thư mục hóa đơn tải lên]                   │
+│                                     │                                  │
+│                                     ▼                                  │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ TÁC VỤ 1: TRÍCH XUẤT NỘI DUNG HÓA ĐƠN THÀNH JSON (MC-OCR W1)       │ │
+│ │ • Trích xuất 7 trường pháp lý: Người bán, MST, Ngày, Tiền, VAT...   │ │
+│ │ • Cú pháp JSON cố định, alpha > 90% -> Tăng tốc tối đa (1.35x-1.4x) │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+│                                    │                                   │
+│                                    ▼                                   │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ TÁC VỤ 2: SINH MÃ SQL TRUY VẤN DỮ LIỆU HÓA ĐƠN (TEXT-TO-SQL W2)   │ │
+│ │ • Chuyển câu hỏi quản trị kinh doanh tiếng Việt sang truy vấn SQL  │ │
+│ │ • Cú pháp SQL bán cấu trúc, alpha ~ 80% -> Tăng tốc ổn định 1.3x    │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+│                                    │                                   │
+│                                    ▼                                   │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ TÁC VỤ 3: HỎI ĐÁP & PHÂN TÍCH TÀI CHÍNH THÔNG MINH (INVOICE CHAT) │ │
+│ │ • Khung chat tương tác trực tiếp về các hóa đơn vừa xử lý          │ │
+│ │ • Văn bản tự do, alpha < 60% -> Tự ngắt nháp (k=0), tránh trễ âm   │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-E2E latency = Lat(Node1) + Lat(Node2) + Lat(Node3) — a workload where compounding decode latency, and the adaptive controller's per-step tuning, both show up clearly.
+---
 
-## Benchmarking
+## 3. Các đột phá kỹ thuật nổi bật
 
-Measured with vLLM `benchmark_serving` + **Langfuse**, across a concurrency sweep (batch 1 → 32):
+* **Lớp thích ứng nhận biết phần cứng (Hardware-Aware TreeAdaptive v0.2):** Tự động nhận diện kiến trúc GPU (`sm_89` NVIDIA L4, `sm_75` Tesla T4) và giải nghiệm phương trình hòa vốn theo thời gian thực:
+  $$\alpha^*(N, B) = \arg_\alpha \left( \frac{\mathbb{E}[\tau(N, \alpha)]}{C(N, B)} = \frac{1}{C(0, B)} \right)$$
+* **Triệt tiêu hoàn toàn hiện tượng tăng tốc âm:** Khi tỷ lệ chấp nhận thực tế $\alpha < \alpha^*$ hoặc khi bộ đệm KV vượt ngưỡng $90\%$, hệ thống lập tức ngắt suy đoán về chế độ an toàn ($N=0$), bảo đảm tốc độ luôn $\ge 1.00\times$.
+* **Bộ gác cổng an toàn tương thích (Pre-flight Guard):** Quét dung lượng VRAM thực tế, kiểm tra độ lệch từ vựng (Heterogeneous Vocabulary) giữa mô hình đích và mô hình nháp trước khi khởi động tiến trình serving.
+* **Đa nền tảng phục vụ:** Hỗ trợ khởi chạy server vLLM cục bộ (Local Dedicated Runner) hoặc triển khai tức thì lên nền tảng đám mây không máy chủ (Modal Cloud GPU L4) với chuẩn giao tiếp OpenAI API `/v1/chat/completions`.
+* **Giao diện dòng lệnh tương tác (Interactive CLI Wizard):** Menu hỏi–đáp từng bước có nhận diện thương hiệu PTIT bằng ký tự khối Unicode và mã màu ANSI TrueColor 24-bit.
 
-- **Acceptance rate (α)** — draft-head quality
-- **TTFT** (time to first token) — kept within budget
-- **TPOT / ITL** (inter-token latency) — the main optimization target
-- **E2E latency** — full 3-stage pipeline
-- **VRAM** — proving the memory safety of the Adaptive Proposer
+---
 
-Three lanes are compared on the same hardware: **vanilla autoregressive** · **stock EAGLE-2** · **adaptive**, to build a **use-case map** (when speed optimization is worth enabling — and when it isn't, e.g. large-batch throughput or long-input/short-output).
+## 4. Bốn chế độ suy luận đối chứng (4 Serving Lanes)
 
-## Tech stack
+Hệ thống cung cấp cơ chế đo kiểm thực nghiệm chuẩn hóa giữa 4 làn phục vụ trên cùng một hạ tầng phần cứng:
 
-Python · **vLLM** (`custom_class` proposer backend) · **EAGLE-2** speculative decoding · PyTorch · **Qwen2.5-7B-Instruct 4-bit (AWQ/GPTQ)** as target on a T4 16GB ([QĐ-09](docs/03-quyet-dinh-thiet-ke.md)) · SQLite · **Langfuse** · OpenAI-compatible `/v1/chat/completions` endpoint (plugs into Dify / LangGraph)
+1. **Làn 1 (`vanilla`):** Giải mã tuần tự cơ sở của mô hình đích Qwen2.5-7B-Instruct (chuẩn đối chứng $1.00\times$).
+2. **Làn 2 (`static`):** Suy luận phỏng đoán tĩnh với mô hình nháp độc lập Qwen2.5-0.5B-Instruct ($k=3$ cố định).
+3. **Làn 3 (`adaptive`):** Suy luận phỏng đoán thích ứng động TreeAdaptive co giãn ngân sách nháp theo tải và $\alpha$.
+4. **Làn 4 (`eagle`):** Đầu nháp suy đoán chuyên biệt EAGLE-3.1 tự huấn luyện cho miền hóa đơn tiếng Việt (`duckhoi/qwen2.5-7b-eagle3.1-speculator`).
 
-## Repository layout
+---
 
+## 5. Hướng dẫn cài đặt và sử dụng nhanh
+
+### 5.1. Cài đặt package
+
+```bash
+# Clone kho mã nguồn từ GitHub
+git clone https://github.com/theflyingkhui04/do-an-ptit-d22.git
+cd do-an-ptit-d22
+
+# Cài đặt môi trường ở chế độ phát triển (Editable Mode)
+pip install -e .
 ```
+
+### 5.2. Khởi chạy giao diện dòng lệnh tương tác (Interactive Wizard)
+
+Chỉ cần gõ lệnh `flexsds` trên terminal để khởi động trợ lý hướng dẫn từng bước:
+
+```bash
+flexsds
+```
+
+Trợ lý sẽ tự động:
+1. Quét thông số phần cứng GPU và hiển thị banner nhận diện thương hiệu PTIT.
+2. Hướng dẫn chọn tác vụ, mô hình đích (Target), mô hình nháp (Draft).
+3. Chạy Pre-flight Guard kiểm tra an toàn VRAM và xung đột bảng từ vựng.
+4. Tự động nạp ma trận chi phí thực nghiệm và khởi chạy server phục vụ.
+
+### 5.3. Sử dụng lệnh trực tiếp (Direct CLI Commands)
+
+```bash
+# Quét nhanh phần cứng và trạng thái VRAM
+flexsds detect
+
+# Khởi chạy endpoint serving trên nền tảng Modal Cloud
+flexsds serve --backend modal --target Qwen/Qwen2.5-7B-Instruct-AWQ --draft Qwen/Qwen2.5-0.5B-Instruct
+
+# Khởi chạy server phục vụ cục bộ trên GPU máy chủ
+flexsds serve --backend local --port 8000 --gpu-memory-utilization 0.90
+```
+
+---
+
+## 6. Web demo và bảng đo lường metrics đối chứng
+
+Hệ thống tích hợp giao diện web demo trực quan hỗ trợ:
+* Tải lên một hoặc nhiều ảnh hóa đơn (kéo thả cả thư mục hoặc chụp ảnh trực tiếp).
+* Lựa chọn 3 tác vụ xử lý độc lập: Trích xuất JSON, Sinh câu truy vấn SQL, hoặc Chat hỏi đáp tài chính.
+* **Thiết lập đa endpoint song song:** Cho phép thêm URL của nhiều server (Vanilla vs. Static vs. FlexSDS Adaptive) để chạy đồng thời cùng một dữ liệu đầu vào.
+* **Bảng so sánh metrics thời gian thực:**
+  * **TPOT (Time per Output Token - ms/token):** Đo tốc độ sinh từ thực tế của từng endpoint.
+  * **Throughput (tokens/s):** Tốc độ xả token ra màn hình.
+  * **Tỉ lệ chấp nhận nháp $\alpha$ (%):** Phản ánh đặc trưng ngữ nghĩa của tác vụ.
+  * **Trạng thái thích ứng:** Huy hiệu hiển thị quyết định co giãn cây của FlexSDS (`[Boost: k=4]`, `[Balanced: k=2]`, hoặc `[Fallback: k=0]`).
+  * **Hệ số tăng tốc (Speedup vs. Vanilla):** Trực quan hóa hiện tượng tăng tốc âm của chế độ tĩnh và khả năng duy trì tốc độ an toàn của FlexSDS.
+
+---
+
+## 7. Cấu trúc kho mã nguồn
+
+```text
 do-an-ptit-d22/
-├── README.md
-├── requirements.txt
-├── docs/
-│   ├── README.md                   # ← DOC MAP: what every file is for. Start here.
-│   ├── 01-gioi-thieu.md            # Introduction · research questions · scope
-│   ├── 02-tong-quan-tai-lieu.md    # Literature survey (3 directions) + rationale
-│   ├── 03-quyet-dinh-thiet-ke.md   # Decision log (ADR) + open questions
-│   ├── 04-quy-trinh-va-ke-hoach.md # Process + milestone plan + risk register
-│   ├── 05-thiet-ke-he-thong.md     # Architecture + the two frozen interfaces
-│   ├── 06-ke-hoach-thuc-nghiem.md  # Measurement protocol + result matrix
-│   ├── 07-thuat-ngu.md             # Glossary & notation
-│   ├── 08-outline-quyen.md         # Thesis outline + defense Q&A prep
-│   ├── paper_summary/              # Deep summaries of the 6 foundational papers
-│   └── references.md               # Papers (with arXiv IDs)
-├── src/                            # inference engine + adaptive proposer + endpoint
-└── experiments/                    # eval workflows + measurement pipeline + analysis
+├── logo/                              # Tài nguyên hình ảnh, logo PTIT và banner GIF
+│   ├── flexsds_banner.gif             # Banner động độ phân giải cao hiển thị trên README
+│   ├── flexsds_banner_static.webp     # Banner tĩnh
+│   ├── icon_dark.webp                 # Logo biểu tượng chế độ nền tối (Dark mode)
+│   └── icon_white.webp                # Logo biểu tượng chế độ nền sáng (Light mode)
+├── pyproject.toml                     # Cấu hình package Python và entrypoint dòng lệnh flexsds
+├── src/
+│   ├── flexsds/                       # Gói mã nguồn công cụ FlexSDS
+│   │   ├── cli/                       # Giao diện CLI, Interactive Wizard và banner ANSI
+│   │   ├── core/                      # Bộ quét phần cứng, bộ gác cổng an toàn & TreeAdaptive
+│   │   ├── profiles/                  # Danh mục ma trận chi phí thực nghiệm (GPU L4 & T4)
+│   │   └── server/                    # Bộ điều phối runner (Modal serverless & Local vLLM)
+│   ├── server/                        # Bộ lập lịch thích ứng vLLM AdaptiveAsyncScheduler
+│   ├── proposer/                      # Bộ điều khiển nháp và mô hình chi phí thực nghiệm
+│   └── pipeline/                      # Đường ống xử lý hóa đơn MC-OCR (JSON, SQL, Report)
+├── experiments/                       # Bộ công cụ đo benchmark 4 làn và kịch bản thực nghiệm
+├── docs/                              # Tài liệu kỹ thuật, quy định thiết kế và outline báo cáo
+└── tests/                             # Bộ kiểm thử tự động toàn diện (unit & regression tests)
 ```
 
-**New here?** Read [docs/README.md](docs/README.md) — it maps every document and tells you which ones to read for your role.
+---
 
-## Team
+## 8. Đội ngũ thực hiện
 
-Nhóm áp dụng mô hình **Ghép cặp Luân phiên 70/30 (Pair-Rotation System)**: Mỗi thành viên chủ trì (Lead) 70% mảng chuyên môn cốt lõi, đồng thời luân phiên đồng hành (Partner) 30% ở các mảng còn lại để cả 3 người đều nắm chắc toàn diện hệ thống khi bảo vệ đồ án.
+Nhóm áp dụng mô hình **Ghép cặp Luân phiên 70/30 (Pair-Rotation System)**: Mỗi thành viên chủ trì (Lead) 70% mảng chuyên môn cốt lõi, đồng thời luân phiên đồng hành (Partner) 30% ở các mảng còn lại:
 
-| Chuyên môn cốt lõi (Lead 70%) | Thành viên | Vai trò |
-|---|---|---|
-| AI Systems & PM (Core-Engine, vLLM) | Cấn Đức Khôi ([GitHub](https://github.com/theflyingkhui04) · | Dev + PM |
-| MLOps & Infrastructure (Benchmark Harness, GPU T4) | Bùi Đức Đại | Dev + IT |
-| AI Application & Data (Pipeline MC-OCR, VAT Invoices) | Dương Nguyễn Thế | Dev + BA |
-| Advisor | *(Cập nhật theo GVHD)* | GVHD |
+| Chuyên môn cốt lõi (Lead 70%) | Thành viên thực hiện | Vai trò trong dự án |
+| :--- | :--- | :--- |
+| **AI Systems & Core-Engine** | **Cấn Đức Khôi** ([@theflyingkhui04](https://github.com/theflyingkhui04)) | Lead Architecture & Core vLLM Scheduler |
+| **MLOps & Infrastructure** | **Bùi Đức Đại** | Lead Benchmark Harness & GPU Telemetry |
+| **AI Application & Data** | **Dương Nguyễn Thế** | Lead Pipeline MC-OCR & Invoices Analytics |
+| **Giảng viên hướng dẫn** | *(Cập nhật theo quyết định của khoa)* | Cố vấn khoa học & Giám sát chất lượng |
 
-## Status
+---
 
-🟡 **Design locked; implementation in progress** (thesis defense Dec 2026). Minimal-viable fallback if draft-head training is delayed: demonstrate the adaptive tree on a published EAGLE-2 checkpoint + full benchmark suite — still a complete, measurable contribution.
+## 9. Bản quyền
+
+Dự án được phát triển phục vụ đồ án tốt nghiệp đại học tại **Học viện Công nghệ Bưu chính Viễn thông (PTIT)**, niên khóa 2022–2026. Mã nguồn được phát hành theo giấy phép mã nguồn mở Apache 2.0.

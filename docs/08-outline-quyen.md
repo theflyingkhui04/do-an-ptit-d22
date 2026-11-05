@@ -57,11 +57,11 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 ```
 T1        Chương 1 nháp xong  ·  Chương 2 bắt đầu
 T3        Chương 2 nháp xong  ·  Chương 4.1–4.3 (thiết lập — viết được ngay sau M1)
-T5        Chương 3 nháp (sau M2 - 14/10)
-T7–T8     Chương 3 hoàn chỉnh  ·  Chương 4 hoàn chỉnh
-T9        ▲ M4 đóng băng → số liệu chốt
-T10       Chương 5 + 6  ·  ráp toàn bộ  ·  thống nhất thuật ngữ theo [07]
-T11       ▲ Nộp
+T5        Chương 3 nháp (sau M2 - 21/10)
+T7–T8     Chương 3 hoàn chỉnh (TreeAdaptive)  ·  Chương 4 hoàn chỉnh (đối chứng 4 làn)
+T9        ▲ M4 đóng băng code & số liệu (15/11 Freeze)
+T10       Chương 5 + 6  ·  Ráp toàn bộ quyển >= 50 trang  ·  Thống nhất thuật ngữ theo [07]
+T11       ▲ Nộp quyển chính thức (06/12/2026)  ·  Slide bảo vệ & tổng duyệt
 ```
 
 **Cột mốc kiểm tra:** tới **23/10** (sau M3) mà bản nháp dưới **20 trang** là đang trễ, bất kể code chạy tốt cỡ nào ([04 §8](04-quy-trinh-va-ke-hoach.md)).
@@ -73,10 +73,10 @@ Chuẩn bị sẵn câu trả lời + slide dự phòng cho từng câu:
 | Câu hỏi | Trả lời ở đâu |
 |---|---|
 | *"Tăng tốc 3× thì chất lượng có giảm không?"* | Bảng xác minh lossless — [06 §4](06-ke-hoach-thuc-nghiem.md). Chấm dứt trong 10 giây |
-| *"Sao không dùng EAGLE-3 mà dùng EAGLE-2?"* | ⚠️ **Chưa có câu trả lời** — câu hỏi mở [M-01](03-quyet-dinh-thiet-ke.md), hạn 20/09 |
-| *"Cây động theo confidence là EAGLE-2 làm rồi mà?"* | [QĐ-04](03-quyet-dinh-thiet-ke.md) — twist là **chi phí đo thật**, không phải confidence |
+| *"Sao không dùng EAGLE-3 mà dùng EAGLE-2?"* | [M3-04] Đề tài đã mở rộng Làn 4 và tự huấn luyện đầu nháp EAGLE-3.1 cho Qwen2.5-7B (15.000 steps trên A100), chứng minh hiệu quả vượt trội |
+| *"Cây động theo confidence là EAGLE-2 làm rồi mà?"* | [QĐ-04](03-quyet-dinh-thiet-ke.md) — twist là **chi phí đo thật từ phần cứng**, không chỉ dựa vào confidence |
 | *"D-cut 2026 đã làm cost-model rồi, khác gì?"* | Khác **chế độ**: D-cut nhắm batched concurrency cao trên GPU datacenter; đồ án nhắm batch nhỏ trên GPU phổ thông — [01 §1.5](01-gioi-thieu.md) |
 | *"Sao lại là hoá đơn? Có phải ép domain không?"* | [QĐ-08](03-quyet-dinh-thiet-ke.md) — pipeline là **dụng cụ đo**, bỏ đi thì đóng góp vẫn còn nguyên |
-| *"Sao không tự train draft head?"* | [QĐ-10](03-quyet-dinh-thiet-ke.md) — không thuộc đóng góp; α dịch chuyển cả ba làn như nhau |
+| *"Sao không tự train draft head?"* | [M3-04] Đã tự huấn luyện đầu nháp EAGLE-3.1 7B trên A100 để đưa vào Làn 4 làm bài đo đối chứng thành phần (Ablation Study) |
 | *"Kết quả chỉ trên một GPU, một model?"* | [06 §7](06-ke-hoach-thuc-nghiem.md) — thừa nhận thẳng, nêu ở Hạn chế |
 | *"Nếu adaptive không nhanh hơn static thì sao?"* | RQ2 vẫn đứng: loại bỏ tăng tốc âm và OOM là đóng góp độ tin cậy — [01 §1.3](01-gioi-thieu.md) |
