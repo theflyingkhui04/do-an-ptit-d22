@@ -141,9 +141,35 @@ Kiểm tra thủ công cho thấy mọi con số trong báo cáo đều có tron
 2. *Dữ liệu nguồn không chứa mặt hàng và thuế.* Văn bản MC-OCR của 30 mẫu W1 chỉ gồm tên cửa hàng, địa chỉ, ngày và tổng tiền; không mẫu nào nhắc tới VAT. Vì vậy Q2 và Q6 rỗng và Q4 bằng 0 — các câu về VAT mới chỉ kiểm được nhánh "không có dữ liệu" của pipeline.
 3. *Báo cáo chưa hoàn toàn bám cấu trúc.* Node 3 đôi khi thêm mục ngoài bốn phần được yêu cầu và bỏ sót một câu hỏi. Lần chạy đầu còn ghi "không có dữ liệu" cho kết quả bằng 0 và tự suy đoán nguyên nhân; hai lỗi này đã được khắc phục bằng chỉ dẫn bổ sung trong template của Node 3 và được kiểm chứng ở lần chạy lại.
 
-**Kiểm tra trên làn có speculative decoding.** Một lần chạy cùng cấu hình trên làn `static` cũng hoàn tất (exit 0) với cùng số câu `ok`/`empty`. Các trường nghiệp vụ của Node 1 (cửa hàng, ngày, tổng tiền) giống làn vanilla ở 30/30 hoá đơn, nhưng toàn văn JSON chỉ giống 14/30 và câu SQL của Q1 khác nhau. Khác biệt cấp ký tự giữa hai lần chạy đã từng được ghi nhận ngay giữa hai lần chạy vanilla trong M2-03 (do các token có xác suất gần bằng nhau dưới số học BF16), nên lần chạy đơn lẻ này **chưa đủ** để kết luận về tính lossless; phép xác minh đúng giao thức thuộc QĐ-11 và cần đối chứng vanilla–vanilla trên cùng GPU.
+**Kiểm tra trên làn có speculative decoding.** Một lần chạy cùng cấu hình trên làn `static` cũng hoàn tất (exit 0) với cùng số câu `ok`/`empty`. Các trường nghiệp vụ của Node 1 (cửa hàng, ngày, tổng tiền) giống làn vanilla ở 30/30 hoá đơn, nhưng toàn văn JSON chỉ giống 14/30 và câu SQL của Q1 khác nhau. Khác biệt cấp ký tự giữa hai lần chạy đã từng được ghi nhận ngay giữa hai lần chạy vanilla trong M2-03 (trên T4; nguyên nhân số học chưa được xác lập), nên lần chạy đơn lẻ này **chưa đủ** để kết luận về tính lossless; phép xác minh đúng giao thức thuộc QĐ-11. Đối chứng vanilla–vanilla trên cùng GPU được trình bày ở §4.2.5.
 
 **Giới hạn hiệu lực.** Số liệu W4 ở mục này là nghiệm thu chức năng: một lần chạy, đo phía client, trên A10G thay vì L4 tham chiếu, và chưa phát telemetry cấp server (α, τ, VRAM). Chúng không được dùng để so tốc độ giữa các làn; phép đo W4 theo đúng giao thức của Chương 4 (warm-up, lặp lại, telemetry) được dự kiến ở mốc M4.
+
+### 4.2.5. Chất lượng Trích xuất Node 1 trên Bốn Làn Phục vụ (M4-03)
+
+Mục này trả lời một câu hỏi ở góc nhìn người dùng pipeline: khi đổi làn phục vụ, thông tin trích xuất từ hoá đơn có còn đúng không?
+
+**Thiết lập.** Node 1 chạy 30 hoá đơn của W1 qua năm lần chạy trên Modal A10G: vanilla hai lần, static, adaptive và eagle (`temperature = 0`, `seed = 42`). Hai lần vanilla dùng để ước lượng mức dao động tự nhiên giữa các lần chạy. Đáp án là nhãn gốc của MC-OCR (`key_text_pairs`), vốn không đưa vào prompt của mô hình. Bốn trường được chấm: tên cửa hàng (SELLER), địa chỉ (ADDRESS), ngày giờ (TIMESTAMPS) và tổng tiền (TOTAL_COST). Hai trường chữ được so sau khi chuẩn hoá chữ thường, dấu câu, khoảng trắng và tiền tố địa chỉ, nhưng giữ nguyên dấu tiếng Việt; ngày giờ và số tiền được tách từ nhãn thô rồi so theo giá trị.
+
+| Lần chạy | JSON hợp lệ | SELLER | ADDRESS | TIMESTAMPS | TOTAL_COST |
+|---|---|---|---|---|---|
+| vanilla (lần 1) | 30/30 | 29/30 | 27/30 | 30/30 | 30/30 |
+| vanilla (lần 2) | 30/30 | 29/30 | 28/30 | 30/30 | 30/30 |
+| static | 30/30 | 29/30 | 27/30 | 30/30 | 30/30 |
+| adaptive | 30/30 | 29/30 | 27/30 | 30/30 | 30/30 |
+| eagle | 30/30 | 29/30 | 27/30 | 30/30 | 30/30 |
+
+*Bảng 4.y. Số trường khớp tuyệt đối với nhãn MC-OCR theo làn (nguồn: `experiments/results/m4_03_entity_match.md`; bằng chứng từng lần chạy ở `experiments/runs/m4_03/`).*
+
+**Kết quả ở cấp thực thể.** Cả năm lần chạy đều đạt 100% JSON hợp lệ. Ba làn suy đoán có số khớp bằng đúng vanilla lần 1 ở cả bốn trường, nên chênh lệch bằng 0 và nằm trong dao động giữa hai lần vanilla (0 điểm ở ba trường, 3,3 điểm ở ADDRESS). Các mẫu lệch cũng trùng nhau giữa các làn và có nguyên nhân rõ, không liên quan tới làn phục vụ:
+
+- Mẫu 027 (SELLER, ADDRESS): nhãn gán cả hai dòng đầu là tên cửa hàng, còn mô hình coi dòng thứ hai là một phần địa chỉ. Đây là khác biệt cách chia dòng.
+- Mẫu 029 (ADDRESS): văn bản có địa chỉ nhưng mô hình để trống, ở mọi làn.
+- Mẫu 021 (ADDRESS): mô hình thêm ", Cẩm Phả" vào cuối địa chỉ. Lỗi này xuất hiện ở bốn lần chạy và biến mất ở vanilla lần 2 — chính là nguồn của mức dao động 3,3 điểm.
+
+**Kết quả ở cấp văn bản.** Đầu ra không giống hệt nhau. Toàn văn JSON giữa hai lần vanilla giống nhau ở 25/30 mẫu, trong khi giữa vanilla và các làn suy đoán chỉ giống 13–15/30 mẫu; giữa static và eagle là 22/30 mẫu. Như vậy mức khác biệt giữa vanilla và làn suy đoán **lớn hơn** mức dao động của chính vanilla. Khác biệt tập trung ở phần siêu dữ liệu (`extraction.field_evidence`, `extraction.missing_fields`), khoảng trắng trong JSON và cách viết giờ (`12:03` so với `12:03:00`, cùng giá trị); ở một mẫu của làn static, trường `totals.subtotal` — không thuộc bốn trường được chấm — cũng khác.
+
+**Kết luận và giới hạn.** Trên 30 mẫu và bốn trường này, không quan sát thấy suy giảm độ chính xác khi bật giải mã suy đoán. Đây **không** phải bằng chứng đầu ra khớp từng ký tự: phép đo cho thấy đầu ra có khác và mức khác vượt dao động vanilla–vanilla. Nguyên nhân số học chưa được xác lập; M2-03 có ghi nhận liên quan trên T4 về việc xác thực nhiều token cùng lúc cho kết quả khác giải mã từng token, nhưng điều này chưa được kiểm chứng trên A10G, và phép xác minh lossless theo QĐ-11 là một bài đo riêng. Ngoài ra, cỡ mẫu nhỏ (một mẫu tương đương 3,3 điểm), dao động chỉ ước lượng từ hai lần chạy, chạy trên A10G thay vì L4 tham chiếu, và dữ liệu W1 không có mặt hàng hay VAT nên các trường đó chưa được kiểm tra.
 
 ---
 

@@ -39,3 +39,53 @@ Theo DoD của card: `run_node1_extractor.py --lane <lane>` chạy trên cả 4 
 Ghi chú TDD: `scripts/evaluate_node1_lanes.py` được viết cùng lúc với test, không thấy RED. Đã bù bằng kiểm tra đột biến: 6 lỗi cố ý (bỏ kiểm dao động, bỏ đếm bỏ trống, bỏ danh sách mẫu thiếu, tính cả baseline vào so sánh, bỏ điều kiện đủ 2 lần vanilla, bỏ danh sách mẫu lệch) đều bị test bắt.
 
 Chạy thử không GPU trên 3 lần chạy M3-06: SELLER 29/30, ADDRESS 27/30, TIMESTAMPS 30/30, TOTAL_COST 30/30 ở cả ba; khớp số đã xem tay.
+
+## 5. Chạy thật trên Modal A10G (07/11, commit `c19118c`)
+
+- **Deploy:** cả 4 làn, `PTIT_GPU=A10G`, `PTIT_RUN_ID=20261107-m403`, `PTIT_SCALEDOWN_SECONDS=120`. Không gặp lỗi GPU hay làn nào.
+- **Chạy tuần tự** với `--hardware modal-A10G --min-schema-valid-rate 1.0`, tất cả exit 0, 13:46–14:24:
+
+| Lần chạy | Làn | Hợp lệ | Lỗi ghi DB | Hoá đơn trong DB | Trung vị latency (ms) |
+|---|---|---|---|---|---|
+| `m4_03_vanilla_r1` | vanilla | 30/30 | 0 | 30 | 7866,2 |
+| `m4_03_vanilla_r2` | vanilla | 30/30 | 0 | 30 | 7813,8 |
+| `m4_03_static` | static | 30/30 | 0 | 30 | 6118,8 |
+| `m4_03_adaptive` | adaptive | 30/30 | 0 | 30 | 6159,2 |
+| `m4_03_eagle` | eagle | 30/30 | 0 | 30 | 6047,7 |
+
+Latency đo phía client, một lần, trên A10G: **chỉ tham khảo, không phải số đo hiệu năng.**
+
+- **DB:** `data/processed/invoices.db`, `user_version = 2`, 150 hoá đơn, không dòng nào thiếu `latency_ms`.
+- **Dọn dẹp:** `modal app stop ptit-vllm -y`; không còn app/container chạy.
+
+## 6. Kết quả chất lượng
+
+Bảng đầy đủ: `experiments/results/m4_03_entity_match.{json,md}`.
+
+| Lần chạy | SELLER | ADDRESS | TIMESTAMPS | TOTAL_COST |
+|---|---|---|---|---|
+| vanilla_r1 | 29/30 | 27/30 | 30/30 | 30/30 |
+| vanilla_r2 | 29/30 | 28/30 | 30/30 | 30/30 |
+| static, adaptive, eagle | 29/30 | 27/30 | 30/30 | 30/30 |
+
+- **Tiêu chí đề xuất đạt:** chênh lệch của cả 3 làn so với vanilla_r1 bằng 0 ở mọi trường, nằm trong dao động vanilla (0 hoặc 3,3 điểm ở ADDRESS).
+- **Đối chiếu tay:** các mẫu lệch trùng nhau giữa các làn. 021: thêm ", Cẩm Phả"; 027: nhãn gán 2 dòng SELLER, model đẩy dòng 2 sang địa chỉ; 029: `raw_text` có địa chỉ nhưng model bỏ trống. Mẫu 021 đúng ở vanilla_r2, là nguồn duy nhất của dao động ADDRESS.
+
+## 7. Phát hiện cần báo: đầu ra không giống hệt nhau
+
+| Cặp | Toàn văn giống | Payload giống |
+|---|---|---|
+| vanilla_r1 – vanilla_r2 | 25/30 | 25/30 |
+| vanilla_r1 – static | 13/30 | 14/30 |
+| vanilla_r1 – adaptive | 14/30 | 15/30 |
+| vanilla_r1 – eagle | 14/30 | 14/30 |
+| vanilla_r2 – static / adaptive / eagle | 13 / 15 / 14 | 14 / 16 / 14 |
+| static – adaptive | 17/30 | 19/30 |
+| static – eagle | 22/30 | 24/30 |
+| adaptive – eagle | 19/30 | 20/30 |
+
+- Khác biệt giữa vanilla và làn suy đoán **lớn hơn** dao động vanilla–vanilla, nên không giải thích được chỉ bằng dao động giữa các lần chạy. Đây cũng là đối chứng vanilla–vanilla trên A10G còn nợ từ M3-06 (L7).
+- Vị trí khác biệt (vanilla_r1 so với static): `extraction.field_evidence` 88 giá trị, `extraction.missing_fields` 72, `invoice.issued_time` 1 (`12:03:00` / `12:03`, cùng giá trị), `totals.subtotal` 1 mẫu; còn lại là khoảng trắng JSON.
+- Năm trường nghiệp vụ (cửa hàng, địa chỉ, ngày, giờ, tổng tiền) giống vanilla_r1 ở 29/30 mẫu; mẫu còn lại chỉ khác cách viết giờ.
+- **Kết luận được phép nói:** không thấy suy giảm độ chính xác ở 4 trường trên 30 mẫu. **Không** được nói đầu ra khớp từng ký tự. Nguyên nhân chưa xác lập; chuyển Khôi (QĐ-11).
+- Đã sửa câu trong `docs/chuong-4-thuc-nghiem.md` §4.2.4 từng quy cho "số học BF16": M2-03 chạy trên T4 (không có BF16) và `logs/problems/2026-10-16-...` ghi nguyên nhân chưa xác lập.
