@@ -138,9 +138,9 @@ Kế hoạch này chi tiết hóa việc thực hiện Task `[M4-02-03]` thuộc
 
 ## 5. Tiêu chí nghiệm thu (Definition of Done — DoD)
 
-- [ ] Lớp `FlexCostModel` nạp trơn tru cả tệp profile JSON đo thực nghiệm lẫn chế độ fallback giải tích.
-- [ ] Thuật toán bisection hội tụ nghiệm với sai số phần dư $|S - 1.0| < 10^{-4}$ trên toàn bộ các ca có nghiệm.
-- [ ] Độ trễ giải nghiệm trung bình $< 0.01\text{ ms}$ (và cache hit $< 0.001\text{ ms}$).
-- [ ] Xử lý chính xác các trường hợp biên ($R \le 1.0$ và $R > 1 + d$), không ném exception và không gán $\alpha^* = 1.0$ giả tạo.
-- [ ] 100% Pass bộ unit test mới `tests/test_cost_model_solver.py` và không gây hồi quy (regression) với các test cũ.
-- [ ] Hoàn tất worklog và cập nhật đầy đủ checklist trên Trello card #48.
+- [x] Lớp `FlexCostModel` nạp trơn tru cả tệp profile JSON đo thực nghiệm lẫn chế độ fallback giải tích.
+- [x] Thuật toán bisection hội tụ nghiệm với sai số phần dư $|S - 1.0| < 10^{-4}$ trên toàn bộ các ca có nghiệm.
+- [x] Độ trễ giải nghiệm trung bình $< 0.01\text{ ms}$ (và cache hit $< 0.001\text{ ms}$).
+- [x] Xử lý chính xác các trường hợp biên ($R \le 1.0$ và $R > 1 + d$), không ném exception và không gán $\alpha^* = 1.0$ giả tạo.
+- [x] 100% Pass bộ unit test mới `tests/test_cost_model_solver.py` và không gây hồi quy (regression) với các test cũ.
+- [x] Hoàn tất worklog và cập nhật đầy đủ checklist trên Trello card #48.

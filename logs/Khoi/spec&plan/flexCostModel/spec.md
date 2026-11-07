@@ -168,8 +168,8 @@ Quy tắc ra quyết định:
 
 ## 5. Tiêu chuẩn nghiệm thu (Definition of Done — DoD)
 
-- [ ] **Tương thích ngược 100%:** Giữ nguyên các hàm `from_json`, `get_forward_costs`, `calculate_alpha_star(k, batch_size)` để toàn bộ 18 test cases hiện hành của `test_flexsds_baseline.py` và `test_cost_model_l4.py` tiếp tục PASS mà không cần sửa code kiểm thử cũ.
-- [ ] **Thời gian thực thi:** Gọi `solve_alpha_star` hoàn tất trong $< 0.01\text{ ms}$ cho mỗi lượt tính toán (có bảng cache nghiệm tức thì $< 0.001\text{ ms}$).
-- [ ] **Độ chính xác nghiệm:** Residual sai số $|S(\mathcal{T}, B, \alpha^*) - 1.0| < 10^{-4}$ trên toàn bộ các ca kiểm thử có nghiệm.
-- [ ] **Bảo đảm không sập (Zero-Crash):** Xử lý chính xác các ca vô nghiệm $R > 1 + d$, trả về `is_feasible = False`, không ném Exception ra ngoài.
-- [ ] **Bộ unit test độc lập:** Viết `tests/test_cost_model_solver.py` bao phủ đầy đủ các ca kiểm thử tổng hợp (synthetic cases), kiểm tra điều kiện biên và so sánh với nghiệm giải tích biết trước.
+- [x] **Tương thích ngược 100%:** Giữ nguyên các hàm `from_json`, `get_forward_costs`, `calculate_alpha_star(k, batch_size)` để toàn bộ 18 test cases hiện hành của `test_flexsds_baseline.py` và `test_cost_model_l4.py` tiếp tục PASS mà không cần sửa code kiểm thử cũ.
+- [x] **Thời gian thực thi:** Gọi `solve_alpha_star` hoàn tất trong $< 0.01\text{ ms}$ cho mỗi lượt tính toán (có bảng cache nghiệm tức thì $< 0.001\text{ ms}$).
+- [x] **Độ chính xác nghiệm:** Residual sai số $|S(\mathcal{T}, B, \alpha^*) - 1.0| < 10^{-4}$ trên toàn bộ các ca kiểm thử có nghiệm.
+- [x] **Bảo đảm không sập (Zero-Crash):** Xử lý chính xác các ca vô nghiệm $R > 1 + d$, trả về `is_feasible = False`, không ném Exception ra ngoài.
+- [x] **Bộ unit test độc lập:** Viết `tests/test_cost_model_solver.py` bao phủ đầy đủ các ca kiểm thử tổng hợp (synthetic cases), kiểm tra điều kiện biên và so sánh với nghiệm giải tích biết trước.
