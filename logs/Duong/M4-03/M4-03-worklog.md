@@ -89,3 +89,13 @@ Bảng đầy đủ: `experiments/results/m4_03_entity_match.{json,md}`.
 - Năm trường nghiệp vụ (cửa hàng, địa chỉ, ngày, giờ, tổng tiền) giống vanilla_r1 ở 29/30 mẫu; mẫu còn lại chỉ khác cách viết giờ.
 - **Kết luận được phép nói:** không thấy suy giảm độ chính xác ở 4 trường trên 30 mẫu. **Không** được nói đầu ra khớp từng ký tự. Nguyên nhân chưa xác lập; chuyển Khôi (QĐ-11).
 - Đã sửa câu trong `docs/chuong-4-thuc-nghiem.md` §4.2.4 từng quy cho "số học BF16": M2-03 chạy trên T4 (không có BF16) và `logs/problems/2026-10-16-...` ghi nguyên nhân chưa xác lập.
+
+## 8. Sonar trên PR #32
+
+Lần đầu quality gate fail, PR chưa merge. Đã sửa:
+
+- **Path traversal (`pythonsecurity:S8707`):** `scripts/evaluate_node1_lanes.py` chỉ đọc/ghi trong thư mục repo (`ALLOWED_ROOT`). Test `test_input_outside_allowed_root_is_refused`, `test_output_outside_allowed_root_is_refused` (RED → GREEN).
+- **Bug `python:S1244`:** `check_invoice_contract.py` so số thực bằng `==`, đổi sang sai số nhỏ.
+- **Code smell:** tách `summarize_run`, `render_markdown` (`S3776`); đơn giản hoá `_AMOUNT_RE` (`S5843`); `\D` (`S6353`); `startswith` (`S6659`).
+- Sau khi sửa: tái tạo `m4_03_entity_match.{json,md}`, **không có thay đổi**; `pytest tests -q`: 1188 passed, 204 subtests.
+- Chưa sửa: `S3776` ở `main()` của `run_node1_extractor.py` (độ phức tạp 36). Hàm này dài từ M1; tách ra là refactor rủi ro, ngoài phạm vi M4-03. Là code smell, không phải bug.

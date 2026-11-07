@@ -31,9 +31,12 @@ from src.pipeline.entity_eval import (  # noqa: E402
     MISMATCH,
     NO_LABEL,
     UNSCORED,
+    FieldScore,
     score_sample,
 )
 
+# Command-line paths must stay inside the repository.
+ALLOWED_ROOT = REPO_ROOT
 DEFAULT_LABELS = Path("data/processed/m0_04_mcocr_devset/samples.jsonl")
 DEFAULT_OUTPUT_PREFIX = Path("experiments/results/m4_03_entity_match")
 TEXT_FIELDS = ("SELLER", "ADDRESS")
@@ -58,30 +61,54 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def allowed_path(path: Path) -> Path:
+    resolved = path.resolve()
+    if not resolved.is_relative_to(ALLOWED_ROOT):
+        raise SystemExit(f"Path {path} is outside {ALLOWED_ROOT}")
+    return resolved
+
+
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    safe_path = allowed_path(path)
     try:
-        text = path.read_text(encoding="utf-8")
+        text = safe_path.read_text(encoding="utf-8")
     except OSError as exc:
         raise SystemExit(f"Cannot read {path}: {exc}") from exc
     return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
+def _record(count: dict[str, Any], score: FieldScore) -> None:
+    if score.status == UNSCORED:
+        count["unscored"] += 1
+        return
+    count["scored"] += 1
+    count["matched"] += score.status == MATCH
+    count["blank"] += score.status == BLANK
+    count["f1_sum"] += score.f1 or 0.0
+
+
+def _field_summary(field: str, count: dict[str, Any]) -> dict[str, Any]:
+    scored = count["scored"]
+    summary = {
+        "scored": scored,
+        "matched": count["matched"],
+        "match_rate": round(count["matched"] / scored, RATE_DIGITS) if scored else None,
+        "blank": count["blank"],
+        "unscored": count["unscored"],
+    }
+    if field in TEXT_FIELDS:
+        summary["mean_f1"] = round(count["f1_sum"] / scored, RATE_DIGITS) if scored else None
+    return summary
 
 
 def summarize_run(labels: dict[str, list[dict]], outputs: dict[str, dict]) -> dict[str, Any]:
     counts = {field: {"scored": 0, "matched": 0, "blank": 0, "unscored": 0, "f1_sum": 0.0} for field in FIELDS}
     mismatches: list[dict[str, Any]] = []
     for sample_id, pairs in labels.items():
-        scores = score_sample(outputs.get(sample_id), pairs)
-        for field, score in scores.items():
-            count = counts[field]
+        for field, score in score_sample(outputs.get(sample_id), pairs).items():
             if score.status == NO_LABEL:
                 continue
-            if score.status == UNSCORED:
-                count["unscored"] += 1
-                continue
-            count["scored"] += 1
-            count["matched"] += score.status == MATCH
-            count["blank"] += score.status == BLANK
-            count["f1_sum"] += score.f1 or 0.0
+            _record(counts[field], score)
             if score.status in (MISMATCH, BLANK):
                 mismatches.append(
                     {
@@ -94,24 +121,11 @@ def summarize_run(labels: dict[str, list[dict]], outputs: dict[str, dict]) -> di
                     }
                 )
 
-    fields: dict[str, dict[str, Any]] = {}
-    for field, count in counts.items():
-        scored = count["scored"]
-        fields[field] = {
-            "scored": scored,
-            "matched": count["matched"],
-            "match_rate": round(count["matched"] / scored, RATE_DIGITS) if scored else None,
-            "blank": count["blank"],
-            "unscored": count["unscored"],
-        }
-        if field in TEXT_FIELDS:
-            fields[field]["mean_f1"] = round(count["f1_sum"] / scored, RATE_DIGITS) if scored else None
-
     missing = sorted(set(labels) - set(outputs))
     return {
         "valid_json_rate": round((len(labels) - len(missing)) / len(labels), RATE_DIGITS),
         "missing_samples": missing,
-        "fields": fields,
+        "fields": {field: _field_summary(field, count) for field, count in counts.items()},
         "mismatches": mismatches,
     }
 
@@ -147,6 +161,42 @@ def _cell(field: str, summary: dict[str, Any]) -> str:
     return text
 
 
+def _comparison_lines(comparison: dict[str, Any]) -> list[str]:
+    lines = [
+        "",
+        f"## So với {comparison['baseline']}",
+        "",
+        f"Dao động là |{comparison['control']} − {comparison['baseline']}| của từng trường.",
+        "",
+        "| Lần chạy | Trường | Chênh lệch | Dao động vanilla | Trong dao động vanilla |",
+        "|---|---|---|---|---|",
+    ]
+    for label, fields in comparison["lanes"].items():
+        for field, item in fields.items():
+            verdict = "đúng" if item["within_noise"] else "sai"
+            lines.append(
+                f"| {label} | {field} | {item['delta']:+.1%} | {comparison['noise'][field]:.1%} | {verdict} |"
+            )
+    return lines
+
+
+def _table_text(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _mismatch_lines(label: str, mismatches: list[dict[str, Any]]) -> list[str]:
+    lines = [f"### {label}", ""]
+    if not mismatches:
+        return [*lines, "Không có.", ""]
+    lines += ["| Mẫu | Trường | Trạng thái | Nhãn | Model |", "|---|---|---|---|---|"]
+    for item in mismatches:
+        lines.append(
+            f"| {item['sample_id']} | {item['field']} | {item['status']} "
+            f"| {_table_text(item['gold'])} | {_table_text(item['predicted'])} |"
+        )
+    return [*lines, ""]
+
+
 def render_markdown(result: dict[str, Any]) -> str:
     lines = [
         "# M4-03 — So khớp thực thể Node 1 giữa các làn",
@@ -162,23 +212,8 @@ def render_markdown(result: dict[str, Any]) -> str:
         cells = [_cell(field, run["fields"][field]) for field in FIELDS]
         lines.append(f"| {label} | {run['valid_json_rate']:.1%} | " + " | ".join(cells) + " |")
 
-    comparison = result["comparison"]
-    if comparison:
-        lines += [
-            "",
-            f"## So với {comparison['baseline']}",
-            "",
-            f"Dao động là |{comparison['control']} − {comparison['baseline']}| của từng trường.",
-            "",
-            "| Lần chạy | Trường | Chênh lệch | Dao động vanilla | Trong dao động vanilla |",
-            "|---|---|---|---|---|",
-        ]
-        for label, fields in comparison["lanes"].items():
-            for field, item in fields.items():
-                verdict = "đúng" if item["within_noise"] else "sai"
-                lines.append(
-                    f"| {label} | {field} | {item['delta']:+.1%} | {comparison['noise'][field]:.1%} | {verdict} |"
-                )
+    if result["comparison"]:
+        lines += _comparison_lines(result["comparison"])
 
     missing = {label: run["missing_samples"] for label, run in result["runs"].items() if run["missing_samples"]}
     if missing:
@@ -187,21 +222,13 @@ def render_markdown(result: dict[str, Any]) -> str:
 
     lines += ["", "## Mẫu lệch", ""]
     for label, run in result["runs"].items():
-        lines += [f"### {label}", ""]
-        if not run["mismatches"]:
-            lines += ["Không có.", ""]
-            continue
-        lines += ["| Mẫu | Trường | Trạng thái | Nhãn | Model |", "|---|---|---|---|---|"]
-        for item in run["mismatches"]:
-            gold = str(item["gold"]).replace("|", "\\|").replace("\n", " ")
-            predicted = str(item["predicted"]).replace("|", "\\|").replace("\n", " ")
-            lines.append(f"| {item['sample_id']} | {item['field']} | {item['status']} | {gold} | {predicted} |")
-        lines.append("")
+        lines += _mismatch_lines(label, run["mismatches"])
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    output_prefix = allowed_path(args.output_prefix)
     labels = {row["sample_id"]: row["key_text_pairs"] for row in read_jsonl(args.labels)}
     # Read every run before writing, so a bad path leaves no partial report.
     outputs = {
@@ -217,12 +244,12 @@ def main(argv: list[str] | None = None) -> int:
         "runs": runs,
         "comparison": compare_runs(runs, args.baseline, args.control),
     }
-    args.output_prefix.parent.mkdir(parents=True, exist_ok=True)
-    args.output_prefix.with_suffix(".json").write_text(
+    output_prefix.parent.mkdir(parents=True, exist_ok=True)
+    output_prefix.with_suffix(".json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    args.output_prefix.with_suffix(".md").write_text(render_markdown(result), encoding="utf-8")
-    print(f"[M4-03] wrote {args.output_prefix}.json and .md")
+    output_prefix.with_suffix(".md").write_text(render_markdown(result), encoding="utf-8")
+    print(f"[M4-03] wrote {output_prefix}.json and .md")
     return 0
 
 

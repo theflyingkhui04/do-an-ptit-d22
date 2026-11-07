@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -49,8 +50,11 @@ class EvaluateLanesTests(unittest.TestCase):
         self.labels = self.root / "labels.jsonl"
         self.write(self.labels, [label_row(s) for s in SAMPLES])
         self.prefix = self.root / "result"
+        self._allowed = patch.object(report, "ALLOWED_ROOT", self.root.resolve())
+        self._allowed.start()
 
     def tearDown(self) -> None:
+        self._allowed.stop()
         self._tmp.cleanup()
 
     def write(self, path: Path, rows: list[dict]) -> None:
@@ -141,6 +145,28 @@ class EvaluateLanesTests(unittest.TestCase):
         self.assertIn("missing.jsonl", str(caught.exception.code))
         self.assertFalse(self.prefix.with_suffix(".json").exists())
         self.assertFalse(self.prefix.with_suffix(".md").exists())
+
+    def test_input_outside_allowed_root_is_refused(self) -> None:
+        # Sonar pythonsecurity:S8707: command-line paths stay inside the repository.
+        with tempfile.TemporaryDirectory() as other:
+            outside = Path(other) / "run.jsonl"
+            self.write(outside, [output_row("s1")])
+            argv = ["--labels", str(self.labels), "--output-prefix", str(self.prefix), "--run", f"static={outside}"]
+            with self.assertRaises(SystemExit) as caught:
+                report.main(argv)
+        self.assertIn("outside", str(caught.exception.code))
+        self.assertFalse(self.prefix.with_suffix(".json").exists())
+
+    def test_output_outside_allowed_root_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as other:
+            argv = [
+                "--labels", str(self.labels), "--output-prefix", str(Path(other) / "result"),
+                "--run", self.run_file("static"),
+            ]
+            with self.assertRaises(SystemExit) as caught:
+                report.main(argv)
+            self.assertIn("outside", str(caught.exception.code))
+            self.assertFalse((Path(other) / "result.json").exists())
 
     def test_run_argument_needs_label_and_path(self) -> None:
         with self.assertRaises(SystemExit):

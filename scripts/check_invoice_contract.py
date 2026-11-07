@@ -168,9 +168,10 @@ def assert_sqlite_contract(payload: dict) -> None:
             latency_ms=12.5,
         )
         init_schema(conn, SQL_SCHEMA_PATH)
-        assert conn.execute(
+        stored_latency = conn.execute(
             "SELECT latency_ms FROM invoices WHERE invoice_id = ?", (invoice_id,)
-        ).fetchone()[0] == 12.5
+        ).fetchone()[0]
+        assert abs(stored_latency - 12.5) < 1e-9
 
         invoice = conn.execute(
             """

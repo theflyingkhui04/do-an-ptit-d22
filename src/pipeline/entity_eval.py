@@ -33,7 +33,7 @@ AMOUNT_TOLERANCE = 0.5
 _ADDRESS_PREFIX_RE = re.compile(r"^(?:đc|đ/c|địa chỉ)\s*:\s*", re.IGNORECASE)
 _DATE_RE = re.compile(r"(?<!\d)(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})(?!\d)")
 _TIME_RE = re.compile(r"(?<![\d.:])(\d{1,2})[:.](\d{2})(?!\d)")
-_AMOUNT_RE = re.compile(r"\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{2})?|\d+(?:[.,]\d{2})?")
+_AMOUNT_RE = re.compile(r"\d+(?:[.,\s]\d{3})*(?:[.,]\d{2})?")
 
 
 @dataclass(frozen=True)
@@ -87,7 +87,8 @@ def _amount_value(token: str) -> float:
     integer, decimals = token, "0"
     if len(token) > 3 and token[-3] in ".,":
         integer, decimals = token[:-3], token[-2:]
-    return float(f"{re.sub(r'[^0-9]', '', integer)}.{decimals}")
+    digits = re.sub(r"\D", "", integer)
+    return float(f"{digits}.{decimals}")
 
 
 def parse_amounts(text: str) -> list[float]:
@@ -127,7 +128,7 @@ def _score_timestamps(lines: list[str], issued_date: Any, issued_time: Any) -> F
         return FieldScore(BLANK, gold=gold, predicted=issued_date)
     date_ok = issued_date == gold_date
     gold_time = parse_time(gold)
-    time_ok = None if gold_time is None else str(issued_time or "")[:5] == gold_time
+    time_ok = None if gold_time is None else str(issued_time or "").startswith(gold_time)
     return FieldScore(
         MATCH if date_ok and time_ok is not False else MISMATCH,
         date_ok=date_ok,
