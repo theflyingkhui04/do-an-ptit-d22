@@ -1,0 +1,422 @@
+{
+  "task": "M4-03",
+  "labels": "data/processed/m0_04_mcocr_devset/samples.jsonl",
+  "sample_count": 30,
+  "inputs": {
+    "vanilla_r1": "experiments/runs/m4_03/m4_03_vanilla_r1/validated_outputs.jsonl",
+    "vanilla_r2": "experiments/runs/m4_03/m4_03_vanilla_r2/validated_outputs.jsonl",
+    "static": "experiments/runs/m4_03/m4_03_static/validated_outputs.jsonl",
+    "adaptive": "experiments/runs/m4_03/m4_03_adaptive/validated_outputs.jsonl",
+    "eagle": "experiments/runs/m4_03/m4_03_eagle/validated_outputs.jsonl"
+  },
+  "runs": {
+    "vanilla_r1": {
+      "valid_json_rate": 1.0,
+      "missing_samples": [],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 29,
+          "match_rate": 0.966667,
+          "blank": 0,
+          "unscored": 0,
+          "mean_f1": 0.982051
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.959548
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": "212 Đường Trần Phú-Cẩm Phả, Cẩm Phả",
+          "f1": 0.8571428571428571
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Saigon Co.op",
+          "f1": 0.4615384615384615
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Tang 1,SH42 - Toa K3, Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "predicted": "Co.op Food HN THE K-PARK\nTang 1,SH42 - Toa K3, Cong trinh chung cu\nket hop dich vu tren o dat H-CT2 thuoc\nDu an Dau tu xay dung Khu nha o Hi Brand\ntai Khu do thi moi Van Phu,\nP. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "f1": 0.9292929292929293
+        },
+        {
+          "sample_id": "m0_04_029",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": null,
+          "f1": 0.0
+        }
+      ]
+    },
+    "vanilla_r2": {
+      "valid_json_rate": 1.0,
+      "missing_samples": [],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 29,
+          "match_rate": 0.966667,
+          "blank": 0,
+          "unscored": 0,
+          "mean_f1": 0.982051
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 28,
+          "match_rate": 0.933333,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.96431
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Saigon Co.op",
+          "f1": 0.4615384615384615
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Tang 1,SH42 - Toa K3, Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "predicted": "Co.op Food HN THE K-PARK\nTang 1,SH42 - Toa K3, Cong trinh chung cu\nket hop dich vu tren o dat H-CT2 thuoc\nDu an Dau tu xay dung Khu nha o Hi Brand\ntai Khu do thi moi Van Phu,\nP. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "f1": 0.9292929292929293
+        },
+        {
+          "sample_id": "m0_04_029",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": null,
+          "f1": 0.0
+        }
+      ]
+    },
+    "static": {
+      "valid_json_rate": 1.0,
+      "missing_samples": [],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 29,
+          "match_rate": 0.966667,
+          "blank": 0,
+          "unscored": 0,
+          "mean_f1": 0.982051
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.959548
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": "212 Đường Trần Phú-Cẩm Phả, Cẩm Phả",
+          "f1": 0.8571428571428571
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Saigon Co.op",
+          "f1": 0.4615384615384615
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Tang 1,SH42 - Toa K3, Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "predicted": "Co.op Food HN THE K-PARK\nTang 1,SH42 - Toa K3, Cong trinh chung cu\nket hop dich vu tren o dat H-CT2 thuoc\nDu an Dau tu xay dung Khu nha o Hi Brand\ntai Khu do thi moi Van Phu,\nP. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "f1": 0.9292929292929293
+        },
+        {
+          "sample_id": "m0_04_029",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": null,
+          "f1": 0.0
+        }
+      ]
+    },
+    "adaptive": {
+      "valid_json_rate": 1.0,
+      "missing_samples": [],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 29,
+          "match_rate": 0.966667,
+          "blank": 0,
+          "unscored": 0,
+          "mean_f1": 0.982051
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.959548
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": "212 Đường Trần Phú-Cẩm Phả, Cẩm Phả",
+          "f1": 0.8571428571428571
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Saigon Co.op",
+          "f1": 0.4615384615384615
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Tang 1,SH42 - Toa K3, Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "predicted": "Co.op Food HN THE K-PARK\nTang 1,SH42 - Toa K3, Cong trinh chung cu\nket hop dich vu tren o dat H-CT2 thuoc\nDu an Dau tu xay dung Khu nha o Hi Brand\ntai Khu do thi moi Van Phu,\nP. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "f1": 0.9292929292929293
+        },
+        {
+          "sample_id": "m0_04_029",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": null,
+          "f1": 0.0
+        }
+      ]
+    },
+    "eagle": {
+      "valid_json_rate": 1.0,
+      "missing_samples": [],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 29,
+          "match_rate": 0.966667,
+          "blank": 0,
+          "unscored": 0,
+          "mean_f1": 0.982051
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.959548
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 30,
+          "match_rate": 1.0,
+          "blank": 0,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": "212 Đường Trần Phú-Cẩm Phả, Cẩm Phả",
+          "f1": 0.8571428571428571
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Saigon Co.op",
+          "f1": 0.4615384615384615
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Tang 1,SH42 - Toa K3, Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "predicted": "Co.op Food HN THE K-PARK\nTang 1,SH42 - Toa K3, Cong trinh chung cu\nket hop dich vu tren o dat H-CT2 thuoc\nDu an Dau tu xay dung Khu nha o Hi Brand\ntai Khu do thi moi Van Phu,\nP. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "f1": 0.9292929292929293
+        },
+        {
+          "sample_id": "m0_04_029",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": null,
+          "f1": 0.0
+        }
+      ]
+    }
+  },
+  "comparison": {
+    "baseline": "vanilla_r1",
+    "control": "vanilla_r2",
+    "noise": {
+      "SELLER": 0.0,
+      "ADDRESS": 0.033333,
+      "TIMESTAMPS": 0.0,
+      "TOTAL_COST": 0.0
+    },
+    "lanes": {
+      "static": {
+        "SELLER": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "ADDRESS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TIMESTAMPS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TOTAL_COST": {
+          "delta": 0.0,
+          "within_noise": true
+        }
+      },
+      "adaptive": {
+        "SELLER": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "ADDRESS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TIMESTAMPS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TOTAL_COST": {
+          "delta": 0.0,
+          "within_noise": true
+        }
+      },
+      "eagle": {
+        "SELLER": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "ADDRESS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TIMESTAMPS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TOTAL_COST": {
+          "delta": 0.0,
+          "within_noise": true
+        }
+      }
+    }
+  }
+}
