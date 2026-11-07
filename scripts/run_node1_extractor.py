@@ -5,18 +5,15 @@ This script is intentionally a thin orchestration layer around
 source binding, and validation logic must stay in ``src/pipeline`` rather than
 being duplicated here.
 
-Typical target-vLLM run:
+Typical runs (endpoint, model and output folder follow the lane):
 
-    python scripts/run_node1_extractor.py \
-      --requests experiments/configs/w1/node1_chat_requests.jsonl \
-      --package-manifest experiments/configs/w1/package_manifest.json \
-      --base-url http://127.0.0.1:8001/v1 \
-      --model qwen2.5-7b-vanilla \
-      --run-id m1_03_w1_vanilla \
-      --output-dir experiments/runs/m1_03_w1_vanilla \
-      --report experiments/results/m1_03_node1_vllm_summary.json \
-      --no-db \
-      --min-schema-valid-rate 0.95
+    python scripts/run_node1_extractor.py --lane eagle --hardware modal-A10G
+    python scripts/run_node1_extractor.py --lane static --backend local
+    python scripts/run_node1_extractor.py --lane vanilla \
+      --base-url http://localhost:11434/v1 --model qwen2.5:7b-instruct
+
+Results go to experiments/runs/m4_03/<run-id>/ and data/processed/invoices.db
+(SQLite schema v2).
 """
 
 from __future__ import annotations
@@ -35,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.client.modal_client import LANE_MODELS, lane_base_url, load_token  # noqa: E402
 from src.pipeline.extractor import (  # noqa: E402
     ExtractorError,
     ExtractorStage,
@@ -60,21 +58,13 @@ DEFAULT_REQUESTS_PATH = Path(
 DEFAULT_PACKAGE_MANIFEST_PATH = Path(
     "experiments/configs/w1/package_manifest.json"
 )
-DEFAULT_OUTPUT_DIR = Path(
-    "experiments/runs/m1_03_w1_vanilla"
-)
-DEFAULT_REPORT_PATH = Path(
-    "experiments/results/m1_03_node1_vllm_summary.json"
-)
-DEFAULT_DB_PATH = Path(
-    "data/processed/m0_04_mcocr_devset/invoices_v1.sqlite"
-)
+DEFAULT_OUTPUT_ROOT = Path("experiments/runs/m4_03")
+DEFAULT_DB_PATH = Path("data/processed/invoices.db")
 
-DEFAULT_BASE_URL = "http://127.0.0.1:8001/v1"
-DEFAULT_API_KEY = ""
-DEFAULT_MODEL = "qwen2.5-7b-vanilla"
-DEFAULT_RUN_ID = "m1_03_w1_vanilla"
 DEFAULT_LANE = "vanilla"
+DEFAULT_MODAL_READY_TIMEOUT = 1200.0
+# Must match scripts/launch_lane{1,2,3,4}_*.sh (tests/test_run_node1_lanes.py).
+LOCAL_LANE_PORTS = {"vanilla": 8001, "static": 8002, "adaptive": 8003, "eagle": 8004}
 DEFAULT_ACCEPTANCE_THRESHOLD = 0.95
 
 
@@ -214,6 +204,25 @@ def validate_request_package(
     return schema_version, prompt_version
 
 
+def run_exists(conn: Any, run_id: str) -> bool:
+    return bool(
+        conn.execute(
+            "SELECT EXISTS("
+            "SELECT 1 FROM extraction_runs WHERE run_id = ?"
+            ")",
+            (run_id,),
+        ).fetchone()[0]
+    )
+
+
+def ensure_run_available(conn: Any, run_id: str, replace_run: bool) -> None:
+    if run_exists(conn, run_id) and not replace_run:
+        raise RuntimeError(
+            f"run_id={run_id!r} already exists; "
+            "pass --replace-run to rerun it"
+        )
+
+
 def prepare_run(
     conn: Any,
     *,
@@ -224,26 +233,16 @@ def prepare_run(
     schema_version: str,
     package_manifest_path: Path | None,
     replace_run: bool,
+    hardware: str | None = None,
 ) -> None:
     """Prepare the optional SQLite audit run.
 
     Persistence remains outside Node1Extractor validity. The extractor validates
     successfully before this function's per-sample insert path is reached.
     """
-    exists = conn.execute(
-        "SELECT EXISTS("
-        "SELECT 1 FROM extraction_runs WHERE run_id = ?"
-        ")",
-        (run_id,),
-    ).fetchone()[0]
+    ensure_run_available(conn, run_id, replace_run)
 
-    if exists and not replace_run:
-        raise RuntimeError(
-            f"run_id={run_id!r} already exists; "
-            "pass --replace-run to rerun it"
-        )
-
-    if exists:
+    if run_exists(conn, run_id):
         conn.execute(
             "DELETE FROM extraction_runs WHERE run_id = ?",
             (run_id,),
@@ -275,20 +274,29 @@ def prepare_run(
             prompt_version,
             schema_version,
             dataset_manifest_path,
-            "M1-03 Node 1 run through reusable Node1Extractor",
+            f"Node 1 run through reusable Node1Extractor; hardware={hardware}",
         ),
     )
     conn.commit()
 
 
 def complete_run(conn: Any, run_id: str) -> None:
+    latencies = [
+        row[0]
+        for row in conn.execute(
+            "SELECT latency_ms FROM invoices "
+            "WHERE run_id = ? AND latency_ms IS NOT NULL",
+            (run_id,),
+        )
+    ]
     conn.execute(
         """
         UPDATE extraction_runs
-        SET completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        SET completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+            latency_ms_median = ?
         WHERE run_id = ?
         """,
-        (run_id,),
+        (statistics.median(latencies) if latencies else None, run_id),
     )
     conn.commit()
 
@@ -334,7 +342,42 @@ def raw_response_record(
     }
 
 
-def parse_args() -> argparse.Namespace:
+def resolve_lane_args(args: argparse.Namespace) -> argparse.Namespace:
+    """Fill endpoint, model, key and output defaults from the selected lane.
+
+    Explicit flags win, then PIPELINE_LLM_* variables, then the lane itself.
+    """
+    explicit_url = args.base_url or os.getenv("PIPELINE_LLM_BASE_URL")
+    modal_lane = not explicit_url and args.backend == "modal"
+    if explicit_url:
+        args.base_url = explicit_url
+    elif modal_lane:
+        args.base_url = lane_base_url(args.lane)
+    else:
+        args.base_url = f"http://127.0.0.1:{LOCAL_LANE_PORTS[args.lane]}/v1"
+
+    args.model = (
+        args.model
+        or os.getenv("PIPELINE_LLM_MODEL")
+        or LANE_MODELS[args.lane]
+    )
+    args.api_key = (
+        args.api_key
+        or os.getenv("PIPELINE_LLM_API_KEY")
+        or (load_token() if modal_lane else "")
+    )
+    if args.ready_timeout is None:
+        args.ready_timeout = (
+            DEFAULT_MODAL_READY_TIMEOUT if modal_lane else 0.0
+        )
+
+    args.run_id = args.run_id or f"m4_03_{args.lane}"
+    args.output_dir = args.output_dir or DEFAULT_OUTPUT_ROOT / args.run_id
+    args.report = args.report or args.output_dir / "run_summary.json"
+    return args
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument(
@@ -350,34 +393,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=DEFAULT_OUTPUT_DIR,
+        help="Default: experiments/runs/m4_03/<run-id>.",
     )
     parser.add_argument(
         "--report",
         type=Path,
-        default=DEFAULT_REPORT_PATH,
+        help="Default: <output-dir>/run_summary.json.",
     )
 
     parser.add_argument(
+        "--backend",
+        choices=("modal", "local"),
+        default="modal",
+        help="Where the lane is served when --base-url is not given.",
+    )
+    parser.add_argument(
         "--base-url",
-        default=os.getenv(
-            "PIPELINE_LLM_BASE_URL",
-            DEFAULT_BASE_URL,
-        ),
+        help="Default: PIPELINE_LLM_BASE_URL, else derived from --lane and --backend.",
     )
     parser.add_argument(
         "--api-key",
-        default=os.getenv(
-            "PIPELINE_LLM_API_KEY",
-            DEFAULT_API_KEY,
-        ),
+        help="Default: PIPELINE_LLM_API_KEY, else the Modal proxy token.",
     )
     parser.add_argument(
         "--model",
-        default=os.getenv(
-            "PIPELINE_LLM_MODEL",
-            DEFAULT_MODEL,
-        ),
+        help="Default: PIPELINE_LLM_MODEL, else the served model of --lane.",
     )
     parser.add_argument(
         "--timeout",
@@ -388,16 +428,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ready-timeout",
         type=float,
-        default=0.0,
-        help="Seconds to keep retrying HTTP 503 while a Modal lane cold-starts (0 = no retry).",
+        help=(
+            "Seconds to keep retrying HTTP 503 while a Modal lane cold-starts "
+            "(0 = no retry). Default: 1200 on a Modal lane, otherwise 0."
+        ),
     )
     parser.add_argument(
         "--run-id",
-        default=DEFAULT_RUN_ID,
+        help="Default: m4_03_<lane>.",
     )
     parser.add_argument(
         "--lane",
         default=DEFAULT_LANE,
+        choices=sorted(LANE_MODELS),
+    )
+    parser.add_argument(
+        "--hardware",
+        help="GPU/host label recorded in the summary (e.g. modal-A10G).",
     )
     parser.add_argument(
         "--limit",
@@ -449,11 +496,11 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
-    return parser.parse_args()
+    return resolve_lane_args(parser.parse_args(argv))
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     if args.limit is not None and args.limit < 1:
         raise ValueError("--limit must be at least 1")
@@ -495,15 +542,23 @@ def main() -> int:
         json_schema_path=args.json_schema,
     )
 
-    # Run-level gate: an unavailable endpoint/model must not become N sample
-    # failures and must not enter the measured denominator.
-    extractor.preflight()
-
+    # A wrong database or an existing run must stop before any server call.
     conn = None
     if not args.no_db:
         conn = connect(args.db)
         try:
             init_schema(conn, args.sql_schema)
+            ensure_run_available(conn, args.run_id, args.replace_run)
+        except Exception:
+            conn.close()
+            raise
+
+    try:
+        # Run-level gate: an unavailable endpoint/model must not become N sample
+        # failures and must not enter the measured denominator.
+        extractor.preflight()
+
+        if conn is not None:
             prepare_run(
                 conn,
                 run_id=args.run_id,
@@ -513,10 +568,12 @@ def main() -> int:
                 schema_version=schema_version,
                 package_manifest_path=args.package_manifest,
                 replace_run=args.replace_run,
+                hardware=args.hardware,
             )
-        except Exception:
+    except Exception:
+        if conn is not None:
             conn.close()
-            raise
+        raise
 
     raw_responses: list[dict[str, Any]] = []
     validated_outputs: list[dict[str, Any]] = []
@@ -610,6 +667,7 @@ def main() -> int:
                         args.run_id,
                         replace=True,
                         json_schema_path=args.json_schema,
+                        latency_ms=round(result.latency_ms, 3),
                     )
                 except Exception as exc:
                     persistence_failure_count += 1
@@ -749,9 +807,11 @@ def main() -> int:
         )
 
     summary = {
-        "task": "M1-03",
+        "task": "M4-03",
         "step": "run-node1-extractor",
         "backend": "openai-compatible",
+        "serving_backend": args.backend,
+        "hardware": args.hardware,
         "lane": args.lane,
         "base_url": args.base_url,
         "model": args.model,
