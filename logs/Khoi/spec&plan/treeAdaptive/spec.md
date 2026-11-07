@@ -108,14 +108,24 @@ Theo công trình nghiên cứu OPT-Tree (*Wang et al., 2025*):
   $$\tau(\mathcal{T}) = 1 + L(\mathcal{T})$$
   $$\mathbb{E}[\tau(\mathcal{T})] = 1 + \sum_{v \in V \setminus \{r\}} q(v)$$
 
-* **Xấp xỉ qua xác suất phân phối của mô hình nháp (OPT-Tree approximation):**
-  Trong thực tế, xác suất chấp thuận thực sự $q(v)$ phụ thuộc vào mô hình đích. OPT-Tree xấp xỉ $q(v)$ thông qua tích xác suất có điều kiện của mô hình nháp:
-  $$\hat{q}(v) = \prod_{u \in \text{prefix}(v)} p_D(u)$$
-  $$\hat{\mathbb{E}}[\tau(\mathcal{T})] = 1 + \sum_{v \in V \setminus \{r\}} \hat{q}(v) = 1 + \sum_{v \in V \setminus \{r\}} \left( \prod_{u \in \text{prefix}(v)} p_D(u) \right)$$
+* **Xấp xỉ qua xác suất phân phối của mô hình nháp và hợp đồng toán học với scalar $\alpha$:**
+  Trong thực tế serving runtime, controller nhận tín hiệu chất lượng chấp nhận trung bình $\alpha \in [0, 1]$ (EMA acceptance rate). Để liên kết scalar $\alpha$ với vector xác suất node $q(v)$ trên cây, hệ thống thiết lập hợp đồng toán học rõ ràng (stated approximation contract):
+  - Tại mỗi độ sâu $\ell \in [1, d]$, có $n_\ell$ ứng viên cạnh tranh (`layer_distribution[l]`).
+  - Dưới giải mã tham lam (greedy decoding), mô hình đích chỉ sinh duy nhất 1 token đúng tại mỗi vị trí giải mã; các nhánh cùng tầng là xung khắc. Do đó, xác suất bước (step acceptance probability) có ít nhất một ứng viên khớp tại tầng $\ell$ khi node cha đã được chấp nhận được mô hình hóa theo độ bao phủ nhánh:
+    $$P_{\text{step}}(\ell, \alpha) = 1 - (1 - \alpha)^{n_\ell}$$
+  - Xác suất chuỗi tiền tố được chấp nhận liên tục tới độ sâu $\ell$:
+    $$P_{\text{path}}(\ell, \alpha) = \prod_{k=1}^\ell P_{\text{step}}(k, \alpha)$$
+  - Kỳ vọng số token phát sinh $\mathbb{E}[\tau(\mathcal{T}, \alpha)]$ được định nghĩa:
+    $$\mathbb{E}[\tau(\mathcal{T}, \alpha)] = 1 + \sum_{\ell=1}^d P_{\text{path}}(\ell, \alpha)$$
+  - **Các tính chất bất biến được bảo đảm:**
+    1. Đơn điệu tăng theo $\alpha \in [0.0, 1.0]$.
+    2. Chặn dưới chặt: $\mathbb{E}[\tau(\mathcal{T}, 0.0)] = 1.0$ (chỉ token gốc được phát sinh).
+    3. Chặn trên chặt: $\mathbb{E}[\tau(\mathcal{T}, 1.0)] = 1 + d$ (đường dẫn dài nhất tới độ sâu tối đa $d$).
+    4. Không vượt quá $1 + d$ với mọi $\alpha \in [0, 1]$.
 
 * **Trường hợp suy biến về chuỗi tuyến tính (Linear chain):**
-  Khi cây $\mathcal{T}$ chỉ gồm một chuỗi thẳng độ dài $k$ ($b=1$), mỗi độ sâu chỉ có 1 node và $\hat{q}(v_\ell) = \alpha^\ell$, công thức suy biến chính xác về:
-  $$\mathbb{E}[\tau(k)] = 1 + \sum_{\ell=1}^k \alpha^\ell$$
+  Khi cây $\mathcal{T}$ là chuỗi thẳng độ dài $k$ ($b=1$, $n_\ell = 1$ với mọi $\ell$), ta có $P_{\text{step}}(\ell, \alpha) = \alpha$, dẫn tới $P_{\text{path}}(\ell, \alpha) = \alpha^\ell$. Khi đó công thức suy biến chính xác về:
+  $$\mathbb{E}[\tau(k, \alpha)] = 1 + \sum_{\ell=1}^k \alpha^\ell$$
   Hoàn toàn nhất quán với lý thuyết suy đoán tuyến tính cổ điển.
 
 ---
@@ -146,12 +156,20 @@ Nhằm đảm bảo tương thích với cơ chế tối ưu hóa đồ thị CU
 * **Tổng số node:** $N = 16$, độ sâu $d = 4$.
 * **Phân bổ node theo tầng:** $[1, 3, 6, 4, 3]$ (gồm gốc và 16 node nháp).
 * **Mảng quan hệ cha-con (`parent_indices`):**  
-  `[-1, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 6, 8, 10, 12, 14]`.
+  `[-1, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 6, 8, 10, 12, 13]`.  
+  *(Đã sửa lỗi S04: node 16 có cha là node 13 ở độ sâu 3, bảo đảm độ sâu của node 16 là đúng 4).*
+* **Mảng vị trí (`position_ids`):**  
+  `[0, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4]`.
 * **Đặc tính:** Tối ưu hóa cho đầu nháp EAGLE-3.1 khi tỷ lệ chấp thuận trung bình $\alpha \in [0.75, 0.88]$.
 
 #### 5. Cấu hình $T_{32}$ — Cây mở rộng tối đa
 * **Tổng số node:** $N = 32$, độ sâu $d = 5$.
-* **Phân bổ node theo tầng:** $[1, 4, 8, 8, 6, 6]$.
+* **Phân bổ node theo tầng:** $[1, 4, 8, 8, 6, 6]$ (gồm gốc và 32 node nháp).
+* **Mảng quan hệ cha-con duy nhất (`parent_indices` — 33 phần tử):**  
+  `[-1, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26]`.  
+  *(Đã xác định duy nhất và kiểm chứng 100% qua validator code).*
+* **Mảng vị trí (`position_ids` — 33 phần tử):**  
+  `[0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5]`.
 * **Điều kiện kích hoạt:** Chỉ cho phép kích hoạt khi batch size thấp ($B \le 2$) và $\alpha_{\text{effective}} \ge 0.90$.
 
 * **Quy tắc sinh Tree Attention Mask:**
@@ -175,11 +193,14 @@ Nhằm đảm bảo tương thích với cơ chế tối ưu hóa đồ thị CU
   Điểm hòa vốn xuất hiện khi tốc độ dự báo bằng đúng chế độ cơ sở: $S(\mathcal{T}, B, \alpha^*) = 1.0$:
   $$\mathbb{E}[\tau(\mathcal{T}, \alpha^*)] = \frac{C(\mathcal{T}, B)}{C(0, B)}$$
   Hệ thống sử dụng thuật toán tìm kiếm nhị phân (Bisection search) trên đoạn $[0.0, 1.0]$ với 50 vòng lặp (thời gian tính toán $< 0.01\text{ ms}$).
-  * Trường hợp biên: Nếu tỉ số chi phí $\frac{C(\mathcal{T}, B)}{C(0, B)} > 1 + N$, phương trình vô nghiệm trên $[0, 1]$, hệ thống gán $\alpha^* = 1.0$ (không khả thi để tăng tốc).
+  * Trường hợp biên và xử lý vô nghiệm (Infeasible & No-Root Handling):  
+    Do độ dài chuỗi token được chấp nhận không thể vượt quá độ sâu tối đa $d$ của cây, ta có chặn trên lý thuyết:
+    $$\mathbb{E}[\tau(\mathcal{T}, \alpha)] \le 1 + d$$
+    Nếu tỉ số chi phí $\frac{C(\mathcal{T}, B)}{C(0, B)} > 1 + d$, phương trình hòa vốn chắc chắn vô nghiệm trên $[0, 1]$ (không tồn tại bất kỳ $\alpha \in [0, 1]$ nào để đạt tốc độ bằng $1.0$). Khi đó, bộ giải trả về trạng thái rõ ràng `infeasible = True` (hoặc `status: "no_root"`), tuyệt đối không gán $\alpha^* = 1.0$ giả định để tránh làm sai lệch tín hiệu điều khiển.
 
 * **Quy tắc chuyển làn an toàn (Dynamic Fallback Gate):**
-  * Bộ điều khiển tính ngưỡng hòa vốn tối thiểu $\alpha^*(T_4, B)$ cho cấu hình nháp nhỏ nhất ($T_4$).
-  * Nếu tín hiệu chấp thuận thực tế $\alpha_{\text{effective}} < \alpha^*(T_4, B)$: Hệ thống lập tức ngắt suy đoán về $T_0$ ($N=0$), loại bỏ hoàn toàn nguy cơ suy giảm tốc độ do sinh nháp kém chất lượng.
+  * Tại mỗi bước suy luận, bộ điều khiển đánh giá hệ số tăng tốc dự báo $S(\mathcal{T}, B, \alpha_{\text{effective}})$ trên toàn bộ danh mục cây ứng viên $\mathcal{T} \in \{T_4, T_8, T_{16}, T_{32}\}$.
+  * Nếu $\max_{\mathcal{T} \in \text{Catalog}} S(\mathcal{T}, B, \alpha_{\text{effective}}) \le 1.0$: Hệ thống chuyển về chế độ cơ sở $T_0$ ($N=0$), giúp giảm thiểu tối đa nguy cơ suy giảm tốc độ (negative speedup) khi chất lượng đề xuất nháp suy giảm hoặc GPU bị quá tải.
 
 ---
 

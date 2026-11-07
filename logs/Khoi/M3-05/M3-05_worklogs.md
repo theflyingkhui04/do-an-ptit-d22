@@ -70,3 +70,49 @@ PYTHONPATH=. pytest tests/test_modal_runner_config.py \
 * **Kết quả:** `181 passed, 2 skipped in 0.61s` (không có bất kỳ lỗi hồi quy nào).
 * **Độ tương thích launcher:** Cấu hình flags trong `modal_lanes.py` khớp 100% với `scripts/launch_lane4_eagle.sh`.
 * **Sẵn sàng bàn giao:** Bùi Đức Đại có thể sử dụng ngay `benchmark_harness.py` với cờ `--lane eagle` để thực thi quét 54 prompts canonical trên Modal và Kaggle/Colab.
+
+---
+
+## 4. Báo cáo kiểm chứng tiêu chí cốt lõi: Đánh giá thực nghiệm Làn 3 và 4 trên Workload W3
+
+### A. Bối cảnh và mục tiêu kiểm chứng
+Subtask này kiểm chứng giả thuyết ban đầu của đồ án: *"Làn 3 (Adaptive 0.5B) và Làn 4 (EAGLE-3.1) có bứt phá tốc độ và xóa bỏ hoàn toàn hiện tượng tăng tốc âm (< 1.0x) trên workload W3 (suy luận phức tạp) trên GPU NVIDIA L4 hay không?"*
+
+### B. Dữ liệu thực nghiệm đối chứng 4 làn trên Workload W3
+Dữ liệu trích xuất từ chiến dịch đo kiểm chuẩn hóa (`experiments/results/m3_sweep_4lanes_summary.json` trên GPU NVIDIA L4, vLLM 0.30.0, commit `62fe60e2`):
+
+| Concurrency ($c$) | Làn 1: Vanilla ($S$) | Làn 2: Static 0.5B ($S$) | Làn 3: Adaptive 0.5B ($S$) | Làn 4: Custom EAGLE-3.1 ($S$) |
+| :---: | :---: | :---: | :---: | :---: |
+| **$c=1$** | $1.000\times$ (18.81 ms) | $1.022\times$ (18.41 ms) | **$0.745\times$ (25.25 ms)** | **$1.238\times$ (15.20 ms)** |
+| **$c=2$** | $1.000\times$ (18.95 ms) | $1.027\times$ (18.46 ms) | **$0.709\times$ (26.73 ms)** | **$1.222\times$ (15.51 ms)** |
+| **$c=4$** | $1.000\times$ (19.14 ms) | $1.028\times$ (18.61 ms) | **$0.637\times$ (30.02 ms)** | **$1.183\times$ (16.18 ms)** |
+| **$c=8$** | $1.000\times$ (19.55 ms) | $0.994\times$ (19.66 ms) | **$0.581\times$ (33.62 ms)** | **$1.088\times$ (17.96 ms)** |
+| **$c=16$** | $1.000\times$ (20.63 ms) | $0.928\times$ (22.24 ms) | **$0.522\times$ (39.52 ms)** | **$0.931\times$ (22.17 ms)** |
+| **$c=32$** | $1.000\times$ (22.84 ms) | $0.754\times$ (30.30 ms) | **$0.474\times$ (48.16 ms)** | **$0.669\times$ (34.11 ms)** |
+
+### C. Phân tích hiện tượng và nguyên nhân kỹ thuật
+
+1. **Hiệu năng của Làn 4 (Custom EAGLE-3.1):**
+   - **Bứt phá tốc độ ở tải thấp và vừa ($c \le 8$):** Đầu nháp chuyên biệt EAGLE-3.1 đạt hệ số tăng tốc từ $1.088\times$ đến $1.238\times$. Chi phí forward của 1 layer decoder nhẹ hơn rất nhiều so với mô hình SLM, giúp giảm thời gian sinh nháp mỗi token từ ~5 ms xuống ~1 ms.
+   - **Suy thoái tốc độ ở tải cao ($c \ge 16$):** Tốc độ giảm xuống $0.931\times$ ($c=16$) và $0.669\times$ ($c=32$). Nguyên nhân là do cấu hình Làn 4 ở M3-05 cố định chuỗi tuyến tính $k=3$ (static length). Khi concurrency tăng cao, GPU L4 bị bão hòa năng lực tính toán và băng thông bộ nhớ, chi phí xác thực song song của mô hình đích tăng lên khiến bước suy đoán không còn sinh lời nếu không có bộ điều khiển tự động hạ $k$.
+
+2. **Hiệu năng của Làn 3 (Adaptive Draft Controller v0.1):**
+   - **Tăng tốc âm trên toàn bộ 6 mức concurrency ($S \in [0.474\times, 0.745\times]$):**
+   - **Nguyên nhân cốt lõi:**
+     - Mô hình nháp độc lập Qwen2.5-0.5B (24 layers) có chi phí forward quá lớn so với năng lực GPU L4 khi chạy đồng thời với target model 7B.
+     - Trên workload W3 (bài toán lập luận và toán học phức tạp), không gian phân phối xác suất rộng, chuỗi nháp tuyến tính (linear chain) có tỷ lệ chấp thuận thấp ($\alpha \approx 62\%$), không đủ bù đắp chi phí forward của SLM.
+     - Bộ điều khiển Adaptive v0.1 mới chỉ thích ứng độ dài chuỗi $k \in \{0, 2, 3, 4\}$, chưa có cơ chế ngắt triệt để (fallback gate) về $T_0$ và chưa hỗ trợ cấu trúc cây nháp (tree drafting) để mở rộng tập ứng viên.
+
+### D. Kết luận kiểm chứng khoa học và quyết định kỹ thuật chuyển giao
+
+1. **Bác bỏ giả thuyết ban đầu (Hypothesis Not Supported by Evidence):**
+   - Tiêu chí *"xóa bỏ hoàn toàn hiện tượng tăng tốc âm (< 1.0x) ở W3 trên Làn 3 & 4"* **chưa đạt được** trong phạm vi kỹ thuật của Milestone M3.
+   - Việc ghi nhận trung thực kết quả thực nghiệm này tuân thủ đúng nguyên tắc liêm chính khoa học, phản ánh chính xác giới hạn vật lý của phần cứng và kiến trúc chuỗi nháp tuyến tính.
+2. **Luận cứ khoa học bản lề cho Milestone M4:**
+   - Kết quả này là bằng chứng thực nghiệm quan trọng nhất chứng minh sự cần thiết phải chuyển dịch sang **TreeAdaptive v0.2**:
+     - Thay thế mô hình nháp SLM nặng nề bằng đầu nháp siêu nhẹ EAGLE-3.1.
+     - Nâng cấp từ chuỗi nháp tuyến tính sang cấu trúc cây rời rạc ($T_0, T_4, T_8, T_{16}, T_{32}$) nhằm tối ưu hóa kỳ vọng chấp thuận token theo lý thuyết OPT-Tree (*Wang et al., 2025*).
+     - Thiết lập cơ chế ngắt an toàn hai tầng (Dynamic Fallback Gate) tự động đưa hệ thống về $T_0$ khi tải cao hoặc khi $\max S \le 1.0$, triệt tiêu hoàn toàn vùng suy hao ở tải cao.
+3. **Đóng tiêu chí kiểm chứng M3-05:**
+   - Hoàn thành đầy đủ trách nhiệm kiểm chứng và lập luận phản biện khoa học của Khôi (Partner 30%) cho task [M3-05].
+   - Giữ nguyên số liệu thực nghiệm M3-05 làm đường cơ sở (canonical baseline) đối chứng cho chiến dịch M4.
