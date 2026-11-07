@@ -103,6 +103,12 @@ Ghi lại các quyết định lớn và **lý do** — để bảo vệ trướ
 - **Đề xuất:** biến `PTIT_GPU` chọn GPU lúc deploy — **L4 mặc định và là phần cứng tham chiếu**; `A10G` hoặc `T4` (cần `PTIT_DTYPE_PROFILE=fp16-fallback`) chỉ dùng cho nghiệm thu chức năng khi thiếu L4. Mọi bằng chứng chạy trên GPU khác phải ghi rõ GPU (`--hardware`) và **không** được so độ trễ với số liệu L4.
 - **Bằng chứng:** `experiments/modal_lanes.py` (`resolve_gpu`), `tests/test_modal_runner_config.py`, `experiments/M3_00_MODAL_RUNBOOK.md`.
 
+## QĐ-17 *(đề xuất — chờ Khôi duyệt)* — SQLite schema v2 cho 4 làn và latency ở cấp hoá đơn và lần chạy
+- **Bối cảnh:** card [M4-03] yêu cầu Node 1 chạy trên 4 làn và ghi `latency_ms` vào SQLite. Schema v1 có `CHECK lane IN ('vanilla','static','adaptive')` nên làn `eagle` không ghi được, và không có cột latency. `CHECK` nằm trong DDL của từng file nên DB v1 cũ không nhận `eagle` dù sửa `schema.sql`.
+- **Đề xuất:** nâng lên `user_version = 2`, **chỉ thêm**: lane `eagle`, `invoices.latency_ms` (từng hoá đơn), `extraction_runs.latency_ms_median` (trung vị của lần chạy, đúng yêu cầu card). Không migrate tự động: `init_schema` từ chối DB v1 và yêu cầu đường dẫn mới. Ba view của Node 2 và JSON contract `invoice_extraction.v1` không đổi; các DB v1 đã commit giữ nguyên làm bằng chứng M1–M3.
+- **Lý do:** đúng quy tắc versioning trong `src/pipeline/README.md`; giữ được phân phối latency mà vẫn có số cấp lần chạy.
+- **Bằng chứng:** `src/pipeline/sqlite/schema.sql`, `scripts/init_invoice_sqlite.py`, `tests/test_invoice_sqlite_v2.py`, `data/processed/invoices.db` (không commit), `experiments/runs/m4_03/`.
+
 ---
 
 ## Câu hỏi còn mở (phải đóng, kèm hạn)

@@ -6,12 +6,13 @@ CREATE TABLE IF NOT EXISTS extraction_runs (
     run_id TEXT PRIMARY KEY,
     started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     completed_at TEXT,
-    lane TEXT CHECK (lane IS NULL OR lane IN ('vanilla', 'static', 'adaptive')),
+    lane TEXT CHECK (lane IS NULL OR lane IN ('vanilla', 'static', 'adaptive', 'eagle')),
     model_name TEXT,
     prompt_version TEXT,
     schema_version TEXT NOT NULL DEFAULT 'invoice_extraction.v1',
     dataset_manifest_path TEXT,
-    notes TEXT
+    notes TEXT,
+    latency_ms_median REAL CHECK (latency_ms_median IS NULL OR latency_ms_median >= 0)
 );
 
 CREATE TABLE IF NOT EXISTS invoices (
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     warnings_json TEXT NOT NULL DEFAULT '[]' CHECK (
         json_valid(warnings_json) AND json_type(warnings_json) = 'array'
     ),
+    latency_ms REAL CHECK (latency_ms IS NULL OR latency_ms >= 0),
 
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -212,6 +214,6 @@ SELECT
 FROM invoice_taxes AS it
 JOIN invoices AS i ON i.invoice_id = it.invoice_id;
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 COMMIT;

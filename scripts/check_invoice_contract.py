@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from init_invoice_sqlite import connect, init_schema, insert_extraction  # noqa: E402
+from init_invoice_sqlite import SCHEMA_USER_VERSION, connect, init_schema, insert_extraction  # noqa: E402
 from src.pipeline.invoice_models import validate_invoice_payload  # noqa: E402
 from src.pipeline.validation import validate_payload  # noqa: E402
 
@@ -154,7 +154,9 @@ def assert_sqlite_contract(payload: dict) -> None:
     conn = connect(Path(":memory:"))
     try:
         init_schema(conn, SQL_SCHEMA_PATH)
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_USER_VERSION
+        conn.execute("INSERT INTO extraction_runs (run_id, lane) VALUES ('lane-check', 'eagle')")
+        conn.execute("DELETE FROM extraction_runs WHERE run_id = 'lane-check'")
 
         relational = build_relational_payload(payload)
         validate_payload(relational, JSON_SCHEMA_PATH)
@@ -163,8 +165,13 @@ def assert_sqlite_contract(payload: dict) -> None:
             relational,
             RUN_ID,
             replace=False,
+            latency_ms=12.5,
         )
         init_schema(conn, SQL_SCHEMA_PATH)
+        stored_latency = conn.execute(
+            "SELECT latency_ms FROM invoices WHERE invoice_id = ?", (invoice_id,)
+        ).fetchone()[0]
+        assert abs(stored_latency - 12.5) < 1e-9
 
         invoice = conn.execute(
             """
@@ -234,16 +241,16 @@ def main() -> None:
     assert_pydantic_contract(payload)
     assert_sqlite_contract(payload)
     summary = {
-        "task": "M1-03",
+        "task": "M4-03",
         "step": "invoice-contract-check",
         "status": "PASS",
         "json_schema": JSON_SCHEMA_PATH.as_posix(),
         "pydantic_model": "src.pipeline.invoice_models.InvoiceExtraction",
-        "sqlite_user_version": 1,
+        "sqlite_user_version": SCHEMA_USER_VERSION,
         "example": EXAMPLE_PATH.as_posix(),
     }
     report_path = Path(
-        "experiments/results/m1_03_invoice_contract_summary.json"
+        "experiments/results/m4_03_invoice_contract_summary.json"
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(

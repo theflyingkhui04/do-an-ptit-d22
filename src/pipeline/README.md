@@ -70,9 +70,17 @@ Frozen rules:
 
 Canonical DDL: `src/pipeline/sqlite/schema.sql`.
 
-- `extraction_runs` stores experimental provenance (`lane`, model, prompt, and
-  schema version).
-- `invoices` stores one Node 1 result per run and retains `raw_json`.
+SQLite schema **v2** (`PRAGMA user_version = 2`, M4-03). Compared with v1 it only
+adds: lane `eagle`, `invoices.latency_ms` and
+`extraction_runs.latency_ms_median`. The three views and the JSON contract are
+unchanged. `init_schema` refuses a v1 database (no automatic migration): use a
+new database path. The committed `invoices_v1.sqlite` files stay as M1–M3
+evidence.
+
+- `extraction_runs` stores experimental provenance (`lane`, model, prompt,
+  schema version, and the median Node 1 request latency of the run).
+- `invoices` stores one Node 1 result per run, retains `raw_json`, and records
+  `latency_ms` of the request that produced it (client side, includes network).
 - `invoice_items`, `invoice_taxes`, and `field_evidence` store repeating data.
 - `run_id` is mandatory. Deleting a run cascades to all data produced by it.
 - `invoice_id` is deterministic: `<run_id>:<sample_id>`.
@@ -197,14 +205,30 @@ python scripts\check_invoice_contract.py
 ```powershell
 ollama pull qwen2.5:7b-instruct
 python scripts\build_node1_requests.py --model qwen2.5:7b-instruct
-python scripts\run_node1_extractor.py --replace-run
+python scripts\run_node1_extractor.py --base-url http://localhost:11434/v1 --model qwen2.5:7b-instruct --run-id local-ollama --replace-run
 ```
 
-The runner uses `http://localhost:11434/v1` by default, checks that the model
-exists, calls `/v1/chat/completions` in JSON mode, verifies source binding,
-validates `invoice_extraction.v1`, and loads valid outputs into SQLite. Raw
-responses and failures remain under the gitignored `data/processed/` tree; a
-compact reproducibility summary is written to `experiments/results/`.
+The runner checks that the model exists, calls `/v1/chat/completions` in JSON
+mode, verifies source binding, validates `invoice_extraction.v1`, and loads
+valid outputs into SQLite.
+
+## Running Node 1 on a serving lane (M4-03)
+
+```powershell
+python scripts\run_node1_extractor.py --lane eagle --hardware modal-A10G
+python scripts\run_node1_extractor.py --lane static --backend local
+```
+
+`--lane` accepts `vanilla`, `static`, `adaptive`, `eagle`. Without `--base-url`
+or `--model`, the endpoint and served model follow the lane: Modal by default,
+or ports 8001–8004 with `--backend local`. `--base-url` and `--model` (then
+`PIPELINE_LLM_BASE_URL`, `PIPELINE_LLM_MODEL`) take precedence. The API key comes
+from `--api-key`, `PIPELINE_LLM_API_KEY`, or the Modal proxy token.
+
+Defaults: `run_id = m4_03_<lane>`, output in `experiments/runs/m4_03/<run_id>/`
+(summary in `run_summary.json`), database `data/processed/invoices.db` (not
+committed). Rerunning an existing `run_id` needs `--replace-run`. A wrong
+database or an existing run stops before any server call.
 
 Before validation, the runner may apply these deterministic canonicalization
 rules:
