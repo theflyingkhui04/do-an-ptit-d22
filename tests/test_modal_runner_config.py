@@ -582,3 +582,19 @@ def test_w1_v2_label_maps_to_the_w1_package_id():
 
     assert validate_workload_label("W1_V2", "w1_node1_invoice_extraction") == "W1_V2"
     assert validate_workload_label("w1_v2", "w1_node1_invoice_extraction") == "W1_V2"
+
+
+# [M5-01 web demo] the demo lanes run as their own Modal application.
+def test_app_name_default_and_demo():
+    assert lanes.resolve_app_name({}) == "ptit-vllm" == lanes.APP_NAME
+    assert lanes.resolve_app_name({"PTIT_APP_NAME": ""}) == "ptit-vllm"
+    assert lanes.resolve_app_name({"PTIT_APP_NAME": "ptit-vllm-demo"}) == "ptit-vllm-demo"
+    for bad in ("Ptit", "ptit_vllm", "a/b", "-x", "x-", "x" * 41):
+        with pytest.raises(ValueError, match="PTIT_APP_NAME"):
+            lanes.resolve_app_name({"PTIT_APP_NAME": bad})
+
+
+def test_runner_image_carries_the_app_name():
+    source = (ROOT / "experiments/modal_runner.py").read_text(encoding="utf-8")
+    assert "APP_NAME = lanes.resolve_app_name(os.environ)" in source
+    assert '"PTIT_APP_NAME": APP_NAME' in source

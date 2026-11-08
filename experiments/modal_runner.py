@@ -21,6 +21,8 @@ Deploy-time switches (environment variables on the machine that deploys):
     PTIT_LANES           comma-separated lanes to deploy (default: all three)
     PTIT_GPU             L4 (default, reference) | A10G | T4 (T4 needs fp16-fallback)
     PTIT_MAX_MODEL_LEN   4096 (default) | 8192 (needed by workload W1_V2, [M5-01])
+    PTIT_APP_NAME        ptit-vllm (default) | another Modal app name, e.g. ptit-vllm-demo
+                         ([M5-01] web demo lanes, never replaced by benchmark deploys)
     PTIT_VLLM_RUNTIME    stock (default) | backport-55708 (same patched vLLM as the M3-05
                          Colab campaign; required by W1_V2, see experiments/vllm_runtime_patch.py)
 """
@@ -42,7 +44,7 @@ import modal
 from experiments import modal_lanes as lanes
 
 
-APP_NAME = lanes.APP_NAME
+APP_NAME = lanes.resolve_app_name(os.environ)
 GPU = lanes.resolve_gpu(os.environ)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if modal.is_local():
@@ -81,7 +83,7 @@ image = (
           "PTIT_RUN_ID": RUN_ID, "PTIT_LANES": ",".join(sorted(ENABLED_LANES)),
           "PTIT_DTYPE_PROFILE": PROFILE, "PTIT_KEEP_WARM": "1" if KEEP_WARM else "0",
           "PTIT_SCALEDOWN_SECONDS": str(SCALEDOWN_SECONDS), "PTIT_MAX_MODEL_LEN": str(MAX_MODEL_LEN),
-          "PTIT_VLLM_RUNTIME": VLLM_RUNTIME})
+          "PTIT_VLLM_RUNTIME": VLLM_RUNTIME, "PTIT_APP_NAME": APP_NAME})
     .add_local_dir(SOURCE_ROOT / "src", f"{lanes.REMOTE_PROJECT_ROOT}/src", ignore=["**/__pycache__/**"])
     .add_local_file(SOURCE_ROOT / "experiments" / "modal_lanes.py", "/root/experiments/modal_lanes.py")
 )

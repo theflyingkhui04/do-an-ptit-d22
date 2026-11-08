@@ -10,6 +10,7 @@ changes dtype/quantization through a named profile
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -20,6 +21,17 @@ from typing import Any, Mapping
 VLLM_VERSION = "0.30.0"
 
 APP_NAME = "ptit-vllm"
+# [M5-01 web demo] Same runner deployed as another Modal application (for example
+# ptit-vllm-demo), so benchmark deployments never replace the demo lanes.
+_APP_NAME_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?")
+
+
+def resolve_app_name(environ: Mapping[str, str]) -> str:
+    """``PTIT_APP_NAME`` (lowercase letters, digits, dashes); unset means ``ptit-vllm``."""
+    name = environ.get("PTIT_APP_NAME") or APP_NAME
+    if not _APP_NAME_RE.fullmatch(name):
+        raise ValueError(f"PTIT_APP_NAME must match [a-z0-9-] (max 40, no leading/trailing dash), got {name!r}")
+    return name
 
 TARGET_MODEL = "Qwen/Qwen2.5-7B-Instruct-AWQ"
 DRAFT_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"

@@ -13,6 +13,7 @@ import json
 import math
 import re
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -35,6 +36,20 @@ OCR_MAX_TOKENS = 1536
 OCR_TEMPERATURE = 0.0
 OCR_SEED = 42
 OCR_MAX_MODEL_LEN = 8192
+
+# [M5-01 web demo] Long-running endpoint (experiments/modal_ocr_serve.py).
+OCR_SERVE_APP = "ptit-ocr-serve"
+OCR_SERVE_NAME = "ocr"
+DEFAULT_MODAL_WORKSPACE = "nguyenduonghb940"
+
+
+def ocr_endpoint_url(environ: Mapping[str, str]) -> str:
+    """Base URL of the OCR endpoint; ``PTIT_OCR_URL`` overrides the Modal address."""
+    override = environ.get("PTIT_OCR_URL")
+    if override:
+        return override.rstrip("/")
+    workspace = environ.get("PTIT_MODAL_WORKSPACE") or DEFAULT_MODAL_WORKSPACE
+    return f"https://{workspace}--{OCR_SERVE_APP}-{OCR_SERVE_NAME}.us-east.modal.direct/v1"
 
 _FENCE = re.compile(r"^```[A-Za-z]*\s*$")
 

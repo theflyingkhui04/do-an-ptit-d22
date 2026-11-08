@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -28,6 +29,9 @@ from typing import Any, Callable, Iterator
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WORKSPACE = "nguyenduonghb940"
 APP_NAME = "ptit-vllm"
+# [M5-01 web demo] PTIT_APP_NAME selects another deployment of the same runner
+# (experiments.modal_lanes.resolve_app_name applies the same rule).
+_APP_NAME_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?")
 
 # Must match experiments.modal_lanes.LANES (checked by tests/test_modal_client.py).
 LANE_MODELS = {
@@ -145,7 +149,10 @@ def lane_base_url(lane: str) -> str:
     if override:
         return override.rstrip("/")
     workspace = os.environ.get("PTIT_MODAL_WORKSPACE", DEFAULT_WORKSPACE)
-    return f"https://{workspace}--{APP_NAME}-{lane}.us-east.modal.direct/v1"
+    app = os.environ.get("PTIT_APP_NAME") or APP_NAME
+    if not _APP_NAME_RE.fullmatch(app):
+        raise ValueError(f"PTIT_APP_NAME must match [a-z0-9-] (max 40, no leading/trailing dash), got {app!r}")
+    return f"https://{workspace}--{app}-{lane}.us-east.modal.direct/v1"
 
 
 def _sse_chunks(lines: Iterator[str]) -> Iterator[dict[str, Any]]:

@@ -136,3 +136,21 @@ def test_provenance_row_and_summary():
     assert summary["images"] == 2
     assert summary["finish_reasons"] == {"stop": 1}
     assert summary["errors"] == 1
+
+
+# [M5-01 web demo] long-running OCR endpoint (experiments/modal_ocr_serve.py)
+def test_ocr_endpoint_url_default_workspace_override_and_url_override():
+    assert ocr.ocr_endpoint_url({}) == "https://nguyenduonghb940--ptit-ocr-serve-ocr.us-east.modal.direct/v1"
+    assert ocr.ocr_endpoint_url({"PTIT_MODAL_WORKSPACE": "otherws"}).startswith("https://otherws--ptit-ocr-serve-ocr.")
+    assert ocr.ocr_endpoint_url({"PTIT_OCR_URL": "https://example.test/v1/"}) == "https://example.test/v1"
+
+
+def test_ocr_serve_app_reuses_the_batch_server_contract():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "experiments/modal_ocr_serve.py").read_text(encoding="utf-8")
+    assert "ocr.ocr_server_args(port=PORT)" in source
+    assert f'APP_NAME = "{ocr.OCR_SERVE_APP}"' in source
+    assert f'name="{ocr.OCR_SERVE_NAME}"' in source
+    assert "unauthenticated=True" not in source  # Modal proxy authentication stays on
+    assert '"ptit-ocr-cache"' in source
