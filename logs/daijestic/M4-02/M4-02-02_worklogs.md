@@ -277,3 +277,48 @@ of output correctness or timing.
 Reconciliation local validation: **147 passed**, including unchanged tree,
 solver, M3 profiler, Modal configuration, baseline and L4 cost tests.
 Canonical GPU profile files remain unchanged. Full campaigns remain prohibited.
+
+One-cell smoke after reconciliation:
+
+- Attempt `20261108-m40202-l4-one-cell-smoke-04` failed during local import because
+  PTIT_LANES was set to an empty string, which the inherited runner rejects as
+  `Unknown deployment lanes: ['']`. No Modal submission and **NO MEASUREMENT**.
+- Fresh run `20261108-m40202-l4-one-cell-smoke-05`, source
+  `11d0b412d18be2bedcb6c2073c949674d7a6d195`, app `ap-pSH077ySyLNeQWspz6KFIC`,
+  call `fc-01M6WHT41KXBHVYY3KJ2CETXPX`: only B=1, K=1, L=1024,
+  5 warmups plus 2 diagnostic repeats. Target and EAGLE checkpoint loading and
+  named extension injection confirmed in logs. Final timing outcome recorded below.
+  Warnings retained: disabled chunked prefill not officially supported; speculative
+  token budget may be suboptimal; model weights cast from half to bfloat16;
+  min_p/logit_bias unsupported by speculative decoding (not used in this run).
+
+### One-cell smoke outcome
+
+**PASS, diagnostic only.** App exited normally. NVML: NVIDIA L4/sm_89,
+23034 MB; driver 610.57.04, CUDA 13.0, torch 2.13.0+cu130, vLLM 0.30.0.
+Both pinned checkpoints loaded. Observer source hashes are in env.json.
+Fourteen raw rows retained: ten warmup rows and four post-warmup diagnostic rows
+(two components times two repeats). Every record contains an observed B=1,
+context=[1024], query_tokens_per_request=[2] verification cycle. Zero failed
+samples. No OOM, timeout or variance warning occurred in this successful smoke.
+
+| Component | Post-warmup n | Median ms | Min / max ms | Range / median | Variance warning |
+| --- | --- | --- | --- | --- | --- |
+| Real linear EAGLE K1 propose call | 2 | 3.196482 | 3.172626 / 3.220338 | .014926 | false |
+| Target linear verification forward, two query positions | 2 | 16.916567 | 16.823814 / 17.009319 | .010966 | false |
+
+These are **smoke numbers, not canonical benchmark results**. This cell contains
+no baseline CT measurement, no topology timing, no gamma calibration, no slope
+estimate, and no measured speedup. Target forward excludes logits/sampling;
+EAGLE proposal includes its input preparation and sampling. Do not sum these
+values and call the result complete tree runtime latency.
+
+Artifacts: `experiments/runs/m4_cost_profiling/20261108-m40202-l4-one-cell-smoke-05/`
+contains submission/call receipts, per-K and merged env/raw files, summary.json
+and `component_report.json`. Report is explicitly not a consumer profile and
+contains no cost_matrix_ms or gamma_attn coefficient. Existing canonical profiles
+and all approved M4-02-01/M4-02-03 code/tests match the base commit byte-for-byte.
+
+Final reconciliation state: **BLOCKED — TECHNICAL ALIGNMENT REQUIRED** for full
+M4-02-02 completion. One-cell smoke passed; do not run full campaigns or generate
+canonical profiles until verification normalization and cost provenance are aligned.
