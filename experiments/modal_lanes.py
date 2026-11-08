@@ -89,6 +89,23 @@ def resolve_max_model_len(environ: Mapping[str, str]) -> int:
     return value
 
 
+# [M5-01] vLLM runtime of the image: stock 0.30.0 (default) or the minimal
+# backport of upstream PR #55708 that the M3-05 Colab campaign used
+# (experiments/vllm_runtime_patch.py). The patch only preserves speculative
+# metrics when streamed outputs are coalesced.
+VLLM_RUNTIMES = ("stock", "backport-55708")
+# server_env.json ``runtime_variant``; the patched label equals the M3-05 evidence.
+VLLM_RUNTIME_LABELS = {"stock": "vllm-0.30.0", "backport-55708": "vllm-0.30.0-plus-backport-55708"}
+
+
+def resolve_vllm_runtime(environ: Mapping[str, str]) -> str:
+    """``PTIT_VLLM_RUNTIME`` (stock or backport-55708); unset means stock."""
+    runtime = environ.get("PTIT_VLLM_RUNTIME") or "stock"
+    if runtime not in VLLM_RUNTIMES:
+        raise ValueError(f"PTIT_VLLM_RUNTIME must be one of {VLLM_RUNTIMES}, got {runtime!r}")
+    return runtime
+
+
 @dataclass(frozen=True)
 class LaneConfig:
     served_model_name: str
@@ -223,6 +240,22 @@ def workload_file(workload: str) -> str:
     return ALL_WORKLOADS[workload]
 
 
+# [M5-01] Serving needs that differ from the M2/M3 contract. W1_V2 prompts are
+# ~2k tokens with max_tokens 3072, and outputs reach ~2.1k tokens: a 4096
+# context is too short and the harness default timeout (120 s) is close to a
+# c=32 request. Its campaign uses the same patched vLLM runtime as M3-05.
+WORKLOAD_SERVING: dict[str, dict[str, Any]] = {
+    "W1_V2": {"max_model_len": 8192, "timeout_s": 600, "vllm_runtime": "backport-55708"},
+}
+
+
+def workload_serving(workload: str) -> dict[str, Any]:
+    """Server context, harness request timeout and required runtime for a workload."""
+    workload_file(workload)
+    return {"max_model_len": DEFAULT_MAX_MODEL_LEN, "timeout_s": None, "vllm_runtime": None,
+            **WORKLOAD_SERVING.get(workload, {})}
+
+
 def server_artifact_dir(lane: str, run_id: str) -> str:
     """Volume folder holding a server's vllm.log, server_env.json and vram.jsonl."""
     return f"{ARTIFACTS_ROOT}/{lane}/{run_id}"
@@ -288,6 +321,8 @@ def bench_harness_args(
     """
     cfg = _lane(lane)
     workload_path = workload_file(workload)
+    timeout_s = workload_serving(workload)["timeout_s"]
+    timeout = [] if timeout_s is None else ["--timeout-s", str(timeout_s)]
     return [
         "--lane", lane,
         "--workload", workload,
@@ -304,6 +339,7 @@ def bench_harness_args(
         "--summary-csv", summary_csv,
         "--environment-profile", L4_ENVIRONMENT_PROFILE,
         "--server-env-json", server_env_json,
+        *timeout,
     ]
 
 
