@@ -68,6 +68,26 @@ COMMON_SERVING_ARGS = [
     "--max-num-seqs", "32",
 ]
 
+# [M5-01] W1_v2 (full-receipt OCR text, max_tokens 3072) needs a longer context.
+# The default stays 4096 so M2/M3 campaigns, protocol B and the profiler keep
+# their serving contract; long-context servers are deployed explicitly.
+DEFAULT_MAX_MODEL_LEN = 4096
+SUPPORTED_MAX_MODEL_LENS = (4096, 8192)
+
+
+def resolve_max_model_len(environ: Mapping[str, str]) -> int:
+    """``PTIT_MAX_MODEL_LEN`` (4096 or 8192); unset means the default 4096."""
+    raw = environ.get("PTIT_MAX_MODEL_LEN")
+    if raw is None:
+        return DEFAULT_MAX_MODEL_LEN
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"PTIT_MAX_MODEL_LEN must be one of {SUPPORTED_MAX_MODEL_LENS}, got {raw!r}") from None
+    if value not in SUPPORTED_MAX_MODEL_LENS:
+        raise ValueError(f"PTIT_MAX_MODEL_LEN must be one of {SUPPORTED_MAX_MODEL_LENS}, got {raw!r}")
+    return value
+
 
 @dataclass(frozen=True)
 class LaneConfig:
@@ -131,12 +151,17 @@ def build_vllm_args(
     lane: str,
     profile: str = DEFAULT_PROFILE,
     port: int = DEFAULT_PORT,
+    max_model_len: int = DEFAULT_MAX_MODEL_LEN,
 ) -> list[str]:
     """Arguments for ``vllm serve`` for one lane (model first, then flags)."""
     cfg = _lane(lane)
     if profile not in DTYPE_PROFILES:
         raise ValueError(f"Unknown dtype profile {profile!r}; expected one of {sorted(DTYPE_PROFILES)}")
+    if max_model_len not in SUPPORTED_MAX_MODEL_LENS:
+        raise ValueError(f"max_model_len must be one of {SUPPORTED_MAX_MODEL_LENS}, got {max_model_len!r}")
     dtype = DTYPE_PROFILES[profile]
+    serving = list(COMMON_SERVING_ARGS)
+    serving[serving.index("--max-model-len") + 1] = str(max_model_len)
 
     args = [TARGET_MODEL]
     if TARGET_REVISION:
@@ -147,7 +172,7 @@ def build_vllm_args(
         "--served-model-name", cfg.served_model_name,
         "--quantization", dtype["quantization"],
         "--dtype", dtype["dtype"],
-        *COMMON_SERVING_ARGS,
+        *serving,
     ]
     if cfg.speculative_config is not None:
         spec = dict(cfg.speculative_config)
@@ -184,6 +209,18 @@ BENCH_WORKLOADS = {
     "W2": "experiments/configs/w2_v2/chat_requests.jsonl",
     "W3": "experiments/configs/w3_v2/chat_requests.jsonl",
 }
+# [M5-01] Accepted for single cells but not part of the M2/M3 campaign loops.
+# W1_V2 requests need a server deployed with PTIT_MAX_MODEL_LEN=8192.
+CANDIDATE_WORKLOADS = {
+    "W1_V2": "experiments/configs/w1_v2/node1_chat_requests.jsonl",
+}
+ALL_WORKLOADS = {**BENCH_WORKLOADS, **CANDIDATE_WORKLOADS}
+
+
+def workload_file(workload: str) -> str:
+    if workload not in ALL_WORKLOADS:
+        raise ValueError(f"Unknown workload {workload!r}; expected one of {sorted(ALL_WORKLOADS)}")
+    return ALL_WORKLOADS[workload]
 
 
 def server_artifact_dir(lane: str, run_id: str) -> str:
@@ -250,14 +287,13 @@ def bench_harness_args(
     OPENAI_API_KEY environment variable, never on the command line.
     """
     cfg = _lane(lane)
-    if workload not in BENCH_WORKLOADS:
-        raise ValueError(f"Unknown workload {workload!r}; expected one of {sorted(BENCH_WORKLOADS)}")
+    workload_path = workload_file(workload)
     return [
         "--lane", lane,
         "--workload", workload,
         "--endpoint", f"{base_url.rstrip('/')}/chat/completions",
         "--model", cfg.served_model_name,
-        "--workload-file", BENCH_WORKLOADS[workload],
+        "--workload-file", workload_path,
         "--sample-policy", "cycle-rotate",
         "--concurrency", str(concurrency),
         "--repeats", str(repeats),

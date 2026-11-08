@@ -529,3 +529,56 @@ def test_gpu_override_from_env(gpu):
 def test_unknown_gpu_rejected():
     with pytest.raises(ValueError, match="PTIT_GPU"):
         lanes.resolve_gpu({"PTIT_GPU": "H100"})
+
+
+# ---------------------------------------------------------------- [M5-01] long context + W1_V2
+def test_default_max_model_len_is_unchanged():
+    assert lanes.DEFAULT_MAX_MODEL_LEN == 4096
+    for lane in lanes.LANES:
+        assert lanes.build_vllm_args(lane) == lanes.build_vllm_args(lane, max_model_len=4096)
+        assert as_dict(lanes.build_vllm_args(lane))["--max-model-len"] == "4096"
+
+
+@pytest.mark.parametrize("lane", ["vanilla", "static", "adaptive", "eagle"])
+def test_long_context_changes_only_max_model_len(lane):
+    default = lanes.build_vllm_args(lane)
+    long_context = lanes.build_vllm_args(lane, max_model_len=8192)
+    index = default.index("--max-model-len") + 1
+
+    assert long_context[index] == "8192"
+    assert long_context[:index] + long_context[index + 1:] == default[:index] + default[index + 1:]
+
+
+def test_resolve_max_model_len():
+    assert lanes.resolve_max_model_len({}) == 4096
+    assert lanes.resolve_max_model_len({"PTIT_MAX_MODEL_LEN": "8192"}) == 8192
+    for bad in ("5000", "abc", ""):
+        with pytest.raises(ValueError):
+            lanes.resolve_max_model_len({"PTIT_MAX_MODEL_LEN": bad})
+    with pytest.raises(ValueError):
+        lanes.build_vllm_args("vanilla", max_model_len=5000)
+
+
+def test_w1_v2_is_a_candidate_workload_outside_the_campaigns():
+    assert "W1_V2" not in lanes.BENCH_WORKLOADS
+    assert lanes.workload_file("W1_V2") == "experiments/configs/w1_v2/node1_chat_requests.jsonl"
+    assert lanes.workload_file("W1") == lanes.BENCH_WORKLOADS["W1"]
+    assert (ROOT / lanes.workload_file("W1_V2")).is_file()
+    with pytest.raises(ValueError):
+        lanes.workload_file("W9")
+
+    args = lanes.bench_harness_args(
+        "vanilla", base_url="https://x.test/v1", server_env_json="/a/server_env.json",
+        raw_out="/a/raw.jsonl", summary_csv="/a/h.csv", experiment_id="m5-01",
+        workload="W1_V2", concurrency=1, repeats=1, num_requests=8,
+    )
+    flags = dict(zip(args, args[1:]))
+    assert flags["--workload"] == "W1_V2"
+    assert flags["--workload-file"] == "experiments/configs/w1_v2/node1_chat_requests.jsonl"
+
+
+def test_w1_v2_label_maps_to_the_w1_package_id():
+    from experiments.workload_adapter import validate_workload_label
+
+    assert validate_workload_label("W1_V2", "w1_node1_invoice_extraction") == "W1_V2"
+    assert validate_workload_label("w1_v2", "w1_node1_invoice_extraction") == "W1_V2"

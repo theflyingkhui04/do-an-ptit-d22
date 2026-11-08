@@ -20,6 +20,7 @@ Deploy-time switches (environment variables on the machine that deploys):
     PTIT_SCALEDOWN_SECONDS  idle seconds before a container stops (default 300)
     PTIT_LANES           comma-separated lanes to deploy (default: all three)
     PTIT_GPU             L4 (default, reference) | A10G | T4 (T4 needs fp16-fallback)
+    PTIT_MAX_MODEL_LEN   4096 (default) | 8192 (needed by workload W1_V2, [M5-01])
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ else:
     SOURCE_COMMIT = os.environ.get("PTIT_SOURCE_COMMIT", "unknown")
 
 PROFILE = os.environ.get("PTIT_DTYPE_PROFILE", lanes.DEFAULT_PROFILE)
+MAX_MODEL_LEN = lanes.resolve_max_model_len(os.environ)
 RUN_ID = os.environ.get("PTIT_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 KEEP_WARM = os.environ.get("PTIT_KEEP_WARM") == "1"
 SCALEDOWN_SECONDS = int(os.environ.get("PTIT_SCALEDOWN_SECONDS", "300"))
@@ -66,7 +68,7 @@ image = (
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "0", "PTIT_SOURCE_COMMIT": SOURCE_COMMIT,
           "PTIT_RUN_ID": RUN_ID, "PTIT_LANES": ",".join(sorted(ENABLED_LANES)),
           "PTIT_DTYPE_PROFILE": PROFILE, "PTIT_KEEP_WARM": "1" if KEEP_WARM else "0",
-          "PTIT_SCALEDOWN_SECONDS": str(SCALEDOWN_SECONDS)})
+          "PTIT_SCALEDOWN_SECONDS": str(SCALEDOWN_SECONDS), "PTIT_MAX_MODEL_LEN": str(MAX_MODEL_LEN)})
     .add_local_dir(SOURCE_ROOT / "src", f"{lanes.REMOTE_PROJECT_ROOT}/src", ignore=["**/__pycache__/**"])
     .add_local_file(SOURCE_ROOT / "experiments" / "modal_lanes.py", "/root/experiments/modal_lanes.py")
 )
@@ -170,7 +172,8 @@ def _write_server_env(lane: str, run_dir: Path) -> None:
     import uuid
     env["instance_id"] = str(uuid.uuid4())
     env["modal_task_id"] = os.environ.get("MODAL_TASK_ID")
-    env["vllm_args"] = lanes.build_vllm_args(lane, profile=os.environ["PTIT_DTYPE_PROFILE"])
+    env["vllm_args"] = lanes.build_vllm_args(
+        lane, profile=os.environ["PTIT_DTYPE_PROFILE"], max_model_len=lanes.resolve_max_model_len(os.environ))
     (run_dir / SERVER_ENV_FILE).write_text(json.dumps(env, indent=2) + "\n", encoding="utf-8")
     artifacts_volume.commit()
 
@@ -207,7 +210,8 @@ def _start_vllm(lane: str) -> subprocess.Popen:
     if telemetry:
         Path(telemetry).parent.mkdir(parents=True, exist_ok=True)
 
-    cmd = ["vllm", "serve", *lanes.build_vllm_args(lane, profile=os.environ["PTIT_DTYPE_PROFILE"])]
+    cmd = ["vllm", "serve", *lanes.build_vllm_args(
+        lane, profile=os.environ["PTIT_DTYPE_PROFILE"], max_model_len=lanes.resolve_max_model_len(os.environ))]
     print(json.dumps({"event": "vllm_start", "lane": lane, "cmd": cmd}), flush=True)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
@@ -520,7 +524,7 @@ def _validate_submission(record: dict) -> None:
     if not re.fullmatch(r"[0-9a-f]{40}", record.get("commit", "")):
         raise ValueError("Submission requires a committed Git SHA")
     cell = record.get("cell", {})
-    if cell.get("workload") not in lanes.BENCH_WORKLOADS:
+    if cell.get("workload") not in lanes.ALL_WORKLOADS:
         raise ValueError("Invalid workload")
     for key in ("concurrency", "repeats", "num_requests"):
         if type(cell.get(key)) is not int or cell[key] < 1:
@@ -862,7 +866,7 @@ def _bench_cli() -> None:
     submit.add_argument("--lane", choices=tuple(lanes.LANES), default="vanilla")
     submit.add_argument("--server-run-id", required=True)
     submit.add_argument("--bench-run-id", default="")
-    submit.add_argument("--workload", choices=tuple(lanes.BENCH_WORKLOADS), default="W1")
+    submit.add_argument("--workload", choices=tuple(lanes.ALL_WORKLOADS), default="W1")
     submit.add_argument("--concurrency", type=int, default=1)
     submit.add_argument("--repeats", type=int, default=1)
     submit.add_argument("--num-requests", type=int, default=8)
