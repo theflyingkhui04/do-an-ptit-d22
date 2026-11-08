@@ -63,6 +63,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--control", default="vanilla_r2")
     parser.add_argument("--task", default=DEFAULT_TASK)
     parser.add_argument("--title", default=DEFAULT_TITLE)
+    parser.add_argument("--strip-marks", action="store_true",
+                        help="[M5-01 canonical flow] remove Vietnamese marks from labels and values before comparing")
     return parser.parse_args(argv)
 
 
@@ -106,11 +108,11 @@ def _field_summary(field: str, count: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def summarize_run(labels: dict[str, list[dict]], outputs: dict[str, dict]) -> dict[str, Any]:
+def summarize_run(labels: dict[str, list[dict]], outputs: dict[str, dict], strip_marks: bool = False) -> dict[str, Any]:
     counts = {field: {"scored": 0, "matched": 0, "blank": 0, "unscored": 0, "f1_sum": 0.0} for field in FIELDS}
     mismatches: list[dict[str, Any]] = []
     for sample_id, pairs in labels.items():
-        for field, score in score_sample(outputs.get(sample_id), pairs).items():
+        for field, score in score_sample(outputs.get(sample_id), pairs, strip_marks=strip_marks).items():
             if score.status == NO_LABEL:
                 continue
             _record(counts[field], score)
@@ -270,12 +272,13 @@ def main(argv: list[str] | None = None) -> int:
         label: {row["sample_id"]: row["payload"] for row in read_jsonl(path)}
         for label, path in args.runs
     }
-    runs = {label: summarize_run(labels, rows) for label, rows in outputs.items()}
+    runs = {label: summarize_run(labels, rows, args.strip_marks) for label, rows in outputs.items()}
     result = {
         "task": args.task,
         "title": args.title,
         "labels": args.labels.as_posix(),
         "sample_count": len(labels),
+        "strip_marks": args.strip_marks,
         "inputs": {label: path.as_posix() for label, path in args.runs},
         "runs": runs,
         "comparison": compare_runs(runs, args.baseline, args.control),
