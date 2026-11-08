@@ -1,0 +1,95 @@
+{
+  "run_id": "l4-cell-diagnostic-v5-20261108-103925",
+  "source_commit": "de369da6f494c4ee2dd980a82b0936c96c88d6cc",
+  "status": "complete",
+  "started_at_utc": "2026-11-08T10:39:27.906598+00:00",
+  "artifact_kind": "component_measurements",
+  "canonical_profile_generated": false,
+  "workers": [
+    {
+      "cell_id": "k1-b1-c1024",
+      "K": 1,
+      "batch_size": 1,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 4,
+      "attempted_generations": 4,
+      "n_raw_records": 8
+    },
+    {
+      "cell_id": "k1-b2-c1024",
+      "K": 1,
+      "batch_size": 2,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 4,
+      "attempted_generations": 4,
+      "n_raw_records": 8
+    }
+  ],
+  "error": null,
+  "finished_at_utc": "2026-11-08T10:44:34.170987+00:00",
+  "run_type": "smoke",
+  "canonical_hardware": true,
+  "n_raw_records": 16
+}
