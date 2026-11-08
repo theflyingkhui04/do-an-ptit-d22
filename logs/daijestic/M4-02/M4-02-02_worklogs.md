@@ -197,5 +197,18 @@ modal volume get ptit-run-artifacts /m4_cost_profiling/<run-id> <new-recovery-di
 
 ## Results
 
-Pending GPU validation. No fabricated timing values or replacement GPU profiles
-have been generated. Completion requires both full campaigns and profile checks.
+Local validation after observer shape tests: 125 tests (28 M4 tests).
+
+Initial submission attempts (source `dcd0382da06d20fe1c8c77e8a0c7f91db981856c`):
+
+- `20261108-m40202-l4-smoke-01`: Windows cp1252 console failed to encode U+2713;
+  no evidence folder and no benchmark submission. Set PYTHONIOENCODING=utf-8 and
+  PYTHONUTF8=1 for subsequent commands.
+- `20261108-m40202-l4-smoke-02`: Modal app
+  `ap-gjvxWR2lV316siRxi0nFca`; image build failed before main/measurement:
+  `InvalidError: An image tried to run a build step after using image.add_local_*`.
+  Move GPU/PYTHONPATH overrides to the function environment, keep inherited image
+  mounts last, use Modal's `single_use_containers=True` replacement for max_inputs.
+
+No timing measurements or replacement profiles resulted from either attempt.
+Completion still requires both full campaigns and profile checks.

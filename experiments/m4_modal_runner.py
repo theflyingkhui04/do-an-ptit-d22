@@ -18,15 +18,16 @@ from experiments import m4_cost_profiler as prof
 if PROFILE != prof.GPU_CONFIG[GPU][0]:
     raise ValueError("GPU and dtype profile must match the frozen M4 configuration")
 
-m4_image = image.env({"PTIT_GPU": GPU, "PYTHONPATH": f"{lanes.REMOTE_PROJECT_ROOT}:/root"})
+m4_image = image
 for filename in ("modal_profiler.py", "m4_cost_profiler.py", "m4_worker_observer.py"):
     m4_image = m4_image.add_local_file(SOURCE_ROOT / "experiments" / filename,
                                       f"/root/experiments/{filename}")
 
 
-@app.function(image=m4_image, gpu=GPU, timeout=3*60*60, retries=0, max_inputs=1,
+@app.function(image=m4_image, gpu=GPU, timeout=3*60*60, retries=0, single_use_containers=True,
               volumes=SERVER_VOLUMES,
-              env={"HF_HOME": lanes.HF_HOME, "HF_HUB_OFFLINE": "1",
+              env={"HF_HOME": lanes.HF_HOME, "HF_HUB_OFFLINE": "1", "PTIT_GPU": GPU,
+                   "PYTHONPATH": f"{lanes.REMOTE_PROJECT_ROOT}:/root",
                    "VLLM_CACHE_ROOT": lanes.VLLM_CACHE_ROOT})
 def measure(run_id: str, k: int, batches: list[int], context: int,
             warmup: int, repeats: int, stage: str):
