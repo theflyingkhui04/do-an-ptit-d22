@@ -199,14 +199,23 @@ def normalize_canonical_payload(
     payload: dict[str, Any],
     expected_source: object,
 ) -> list[str]:
-    """Apply only structural repairs already allowed by M1-03."""
+    """Apply only structural repairs allowed by M1-03 and M5-01."""
     normalizations: list[str] = []
 
     invoice = payload.get("invoice")
     if isinstance(invoice, dict):
         issued_date = invoice.get("issued_date")
         issued_time = invoice.get("issued_time")
-        if (
+        # [M5-01] The schema ties issued_at to both parts. On receipts that print a
+        # date without a time the model tends to invent "T00:00:00"; drop it.
+        if invoice.get("issued_at") is not None and (
+            issued_date is None or issued_time is None
+        ):
+            invoice["issued_at"] = None
+            normalizations.append(
+                "invoice.issued_at dropped: issued_date/issued_time missing"
+            )
+        elif (
             invoice.get("issued_at") is None
             and isinstance(issued_date, str)
             and isinstance(issued_time, str)

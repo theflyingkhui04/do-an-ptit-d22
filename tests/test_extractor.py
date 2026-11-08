@@ -267,6 +267,52 @@ class CanonicalizationTests(unittest.TestCase):
         )
         self.assertEqual(len(notes), 1)
 
+    def test_drops_issued_at_when_time_is_missing(self) -> None:
+        payload = {
+            "invoice": {
+                "issued_date": "2020-08-10",
+                "issued_time": None,
+                "issued_at": "2020-08-10T00:00:00",
+            }
+        }
+
+        notes = normalize_canonical_payload(payload, EXPECTED_SOURCE)
+
+        self.assertIsNone(payload["invoice"]["issued_at"])
+        self.assertEqual(payload["invoice"]["issued_date"], "2020-08-10")
+        self.assertEqual(
+            notes,
+            ["invoice.issued_at dropped: issued_date/issued_time missing"],
+        )
+
+    def test_drops_issued_at_when_date_is_missing(self) -> None:
+        payload = {
+            "invoice": {
+                "issued_date": None,
+                "issued_time": "17:12:00",
+                "issued_at": "2020-08-10T17:12:00",
+            }
+        }
+
+        notes = normalize_canonical_payload(payload, EXPECTED_SOURCE)
+
+        self.assertIsNone(payload["invoice"]["issued_at"])
+        self.assertEqual(payload["invoice"]["issued_time"], "17:12:00")
+        self.assertEqual(len(notes), 1)
+
+    def test_complete_timestamp_is_untouched(self) -> None:
+        invoice = {
+            "issued_date": "2020-08-10",
+            "issued_time": "17:12:00",
+            "issued_at": "2020-08-10T17:12:00",
+        }
+        payload = {"invoice": dict(invoice)}
+
+        notes = normalize_canonical_payload(payload, EXPECTED_SOURCE)
+
+        self.assertEqual(payload["invoice"], invoice)
+        self.assertEqual(notes, [])
+
     def test_replaces_null_money_containers(self) -> None:
         payload = {
             "totals": {
@@ -545,6 +591,25 @@ class Node1ExtractorRuntimeTests(unittest.TestCase):
         expected_request = copy.deepcopy(row["request"])
         expected_request["model"] = "qwen2.5-7b-vanilla"
         self.assertEqual(client.last_request, expected_request)
+
+    def test_run_request_accepts_invented_midnight_without_time(self) -> None:
+        payload = load_example()
+        payload["invoice"]["issued_date"] = "2020-08-10"
+        payload["invoice"]["issued_time"] = None
+        payload["invoice"]["issued_at"] = "2020-08-10T00:00:00"
+        extractor, _client = self.make_extractor(
+            response_with_content(json.dumps(payload, ensure_ascii=False))
+        )
+
+        result = extractor.run_request(make_request_row(payload))
+
+        self.assertIsInstance(result, Node1Success)
+        assert isinstance(result, Node1Success)
+        self.assertIsNone(result.canonical_payload["invoice"]["issued_at"])
+        self.assertIn(
+            "invoice.issued_at dropped: issued_date/issued_time missing",
+            result.normalizations,
+        )
 
     def test_run_request_transport_error_is_sample_failure(self) -> None:
         client = FakeClient(
