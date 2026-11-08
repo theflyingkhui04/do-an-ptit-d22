@@ -76,3 +76,12 @@ def test_functions_outside_the_allow_list_are_rejected(sql):
 def test_unparseable_sql_is_rejected():
     assert code_of("SELEC seller_name FRM") in {"PARSE_ERROR", "NOT_SELECT"}
     assert code_of("") == "EMPTY"
+
+
+def test_ordinary_predicates_and_operators_are_allowed():
+    # Regression: sqlglot models AND/OR/EXISTS as function nodes.
+    sql = ("SELECT seller_name FROM v_invoice_facts WHERE issued_date LIKE '2020-08-%' AND total_amount_value > 100000 "
+           "OR (seller_name ILIKE '%ANAN%' AND NOT total_amount_value IS NULL) AND item_count IN (1, 2) "
+           "AND total_amount_value BETWEEN 1 AND 900000 AND seller_name NOT LIKE 'x%' "
+           "AND EXISTS (SELECT 1 FROM v_item_facts WHERE v_item_facts.invoice_id = v_invoice_facts.invoice_id)")
+    assert check_demo_sql(sql).endswith("LIMIT 200")

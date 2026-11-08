@@ -30,6 +30,8 @@ NODE2_MAX_TOKENS = 256
 ANSWER_MAX_TOKENS = 256
 
 ALLOWED_FUNCTIONS = frozenset({
+    # sqlglot models these operators as function nodes too
+    "AND", "OR", "XOR", "EXISTS", "ARRAY",
     "ABS", "ARRAY_AGG", "AVG", "CASE", "CAST", "CEIL", "COALESCE", "CONCAT", "COUNT", "COUNT_IF",
     "CURRENT_DATE", "DATE_TRUNC", "EXTRACT", "FLOOR", "GREATEST", "GROUP_CONCAT", "IF", "LEAST", "LEFT",
     "LENGTH", "LOGICAL_AND", "LOGICAL_OR", "LOWER", "MAX", "MEDIAN", "MIN", "NULLIF", "PERCENTILE_CONT",
