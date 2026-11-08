@@ -407,3 +407,28 @@ EAGLE execution or approved derived-tree model. No canonical gamma, T8/T16/T32
 matrix or profile is produced. The approved scalar-alpha acceptance, bisection,
 speedup formula and 1+d infeasibility behavior remain untouched. This backend
 refactor does not declare M4-02-02 DONE.
+
+### Portable hardware-guard evidence
+
+Executed the prepared T4-smoke CLI arguments against the actual local GPU on
+clean source `2fb089a8c72d979d55fc173f9b8593e1d4305743`:
+
+```text
+Requested canonical T4 profiling but observed NVIDIA GeForce RTX 3050 Ti Laptop GPU;
+run retained as non-canonical smoke. No model loaded.
+```
+
+Run ID `20261108-m40202-local-t4-guard-01`; observed capability (8,6), sm_86,
+`canonical_hardware=false`, `working_tree_clean=true`, `run_type=smoke`,
+manifest status `hardware_mismatch`, zero model workers and zero raw rows.
+Verified all required env metadata keys and the four mandatory files:
+`env.json`, `raw.jsonl`, `component_report.json`, `run_manifest.json` under
+`experiments/runs/m4_cost_profiling/20261108-m40202-local-t4-guard-01/`.
+No cost_matrix_ms or gamma_attn coefficient is emitted. This is hardware-guard
+evidence only, **NO GPU COMPONENT MEASUREMENT** and not a Colab/T4 smoke result.
+
+Final backend-change state: **READY FOR COLAB SMOKE**. Actual T4/Linux install,
+checkpoint loading and timer execution must be validated in the provided
+notebook/runtime; they have not been run on this Windows/RTX host. Source commits
+are local; publish the task branch before cloning a newly reviewed commit in
+Colab. No new GPU campaign or canonical topology profile was created.

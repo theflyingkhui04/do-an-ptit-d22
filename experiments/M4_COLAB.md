@@ -30,6 +30,11 @@ python -m venv .venv
 .venv/bin/python -m pip check
 ```
 
+If the reviewed commit is still local, make it available on the task branch
+before the Colab clone: `git push origin feat/m4-02-02-gpu-cost-profiler`.
+The notebook requires REVISION explicitly and does not assume a remote branch
+already includes local changes. No automatic push or destructive reset is performed.
+
 The direct stack is vLLM **0.30.0**, torch **2.13.0+cu130**, nvidia-ml-py
 **13.580.82**. The existing successful Modal smoke used CUDA 13.0. This is a CUDA
 13 stack and needs a compatible host driver; the notebook conservatively requires
