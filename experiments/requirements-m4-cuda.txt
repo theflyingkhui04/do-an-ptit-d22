@@ -1,5 +1,8 @@
 # Dedicated Linux CUDA stack; do not use the repository's unpinned broad requirements.
 # Matches the successful Modal CUDA 13 / vLLM 0.30.0 smoke.
+# First install torch explicitly with --index-url https://download.pytorch.org/whl/cu130.
+# Then install this file; the exact local-version pin prevents replacing that build.
+# The extra index also makes the CUDA wheel discoverable for direct -r installs.
 --extra-index-url https://download.pytorch.org/whl/cu130
 vllm==0.30.0
 torch==2.13.0+cu130
