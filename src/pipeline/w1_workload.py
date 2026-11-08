@@ -13,7 +13,9 @@ W1_DATASET_VERSION = "w1.m1_03.v1"
 # [M5-01] Full-receipt OCR text instead of the four labelled MC-OCR lines.
 W1_V2_DATASET_VERSION = "w1.m5_01.v2"
 W1_V2_PROMPT_VERSION = "node1_extractor.v2"
-W1_DATASET_VERSIONS = (W1_DATASET_VERSION, W1_V2_DATASET_VERSION)
+# [M5-01 canonical flow] library OCR (PaddleOCR det + VietOCR), Vietnamese marks removed.
+W1_V3_DATASET_VERSION = "w1.m5_01.v3"
+W1_DATASET_VERSIONS = (W1_DATASET_VERSION, W1_V2_DATASET_VERSION, W1_V3_DATASET_VERSION)
 # Every artifact is hashed after normalizing line endings to LF.
 HASH_POLICY_LF = "lf-canonical"
 

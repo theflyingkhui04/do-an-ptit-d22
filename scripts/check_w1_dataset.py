@@ -17,6 +17,7 @@ from src.pipeline.w1_workload import (  # noqa: E402
     W1_DATASET_VERSION,
     W1_DATASET_VERSIONS,
     W1_V2_DATASET_VERSION,
+    W1_V3_DATASET_VERSION,
     W1_WORKLOAD_ID,
     artifact_sha256,
     compute_package_sha256,
@@ -30,6 +31,7 @@ DEFAULT_REPORT = Path("experiments/results/m1_03_w1_check_summary.json")
 DEFAULT_REPORTS = {
     W1_DATASET_VERSION: DEFAULT_REPORT,
     W1_V2_DATASET_VERSION: Path("experiments/results/m5_01_w1_v2_check_summary.json"),
+    W1_V3_DATASET_VERSION: Path("experiments/results/m5_01_w1_v3_check_summary.json"),
 }
 FORBIDDEN_MODEL_FACING_KEYS = {"labels", "key_text_pairs"}
 
@@ -95,6 +97,17 @@ def assert_requests_match_samples(
             )
 
 
+def assert_marks_stripped(samples: list[dict[str, Any]], package_manifest: dict[str, Any]) -> None:
+    """[M5-01 canonical flow] A package that declares mark stripping must not contain Vietnamese marks."""
+    if not package_manifest.get("mark_stripping"):
+        return
+    from src.pipeline.text_normalize import has_vietnamese_marks
+
+    marked = [s.get("sample_id") for s in samples if has_vietnamese_marks(str(s.get("raw_text", "")))]
+    if marked:
+        raise AssertionError(f"Vietnamese marks left in a mark-stripped package: {marked}")
+
+
 def assert_manifest_hashes(w1_dir: Path, package_manifest: dict[str, Any]) -> dict[str, str]:
     artifacts = package_manifest.get("artifacts")
     expected_hashes = package_manifest.get("file_hashes")
@@ -155,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             raise AssertionError(f"{sample.get('sample_id')} dataset_version does not match the manifest")
 
     assert_no_label_leakage(samples, requests)
+    assert_marks_stripped(samples, package_manifest)
     assert_requests_match_samples(samples, requests, package_manifest.get("max_tokens"))
     actual_hashes = assert_manifest_hashes(args.w1_dir, package_manifest)
 
