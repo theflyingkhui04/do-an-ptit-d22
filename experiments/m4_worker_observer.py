@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 import inspect
 import time
+import json
+import traceback
 
 from experiments.m4_cost_profiler import timed
 
@@ -31,7 +33,14 @@ def install(worker):
     def execute_observed(scheduler_output, *args, **kwargs):
         state["scheduled"] = dict(scheduler_output.num_scheduled_tokens)
         state["preempted"] = list(scheduler_output.preempted_req_ids or ())
-        return execute(scheduler_output, *args, **kwargs)
+        try:
+            return execute(scheduler_output, *args, **kwargs)
+        except Exception as exc:
+            # Diagnostic only, outside successful timing. Never attempt another
+            # forward on this context. Caller persists the original exception.
+            print(json.dumps(dict(m4_worker_failure=str(exc),phase="execute_model",
+                                  memory=memory_snapshot(),traceback=traceback.format_exc())),flush=True)
+            raise
 
     runner.execute_model = execute_observed
 
@@ -98,7 +107,8 @@ def begin(worker, batch_size, k, context_len):
 def finish(worker):
     state = worker.model_runner._m4_observer
     state["active"] = False
-    return {key: state[key] for key in ("samples", "observed_shapes")}
+    return dict(samples=state["samples"],observed_shapes=state["observed_shapes"],
+                memory=memory_snapshot())
 
 
 class M4ObserverExtension:
@@ -112,3 +122,22 @@ class M4ObserverExtension:
 
     def m4_finish(self):
         return finish(self)
+
+    def m4_memory(self):
+        return memory_snapshot()
+
+
+def memory_snapshot():
+    """Allocator and driver evidence in the CUDA worker, never a frontend guess."""
+    import torch
+    result = {}
+    try:
+        free, total = torch.cuda.mem_get_info()
+        result.update(free_bytes=free,total_bytes=total,
+                      allocated_bytes=torch.cuda.memory_allocated(),
+                      reserved_bytes=torch.cuda.memory_reserved(),
+                      peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+                      allocator_stats=dict(torch.cuda.memory_stats()))
+    except Exception as exc:
+        result["snapshot_error"] = f"{type(exc).__name__}: {exc}"
+    return result

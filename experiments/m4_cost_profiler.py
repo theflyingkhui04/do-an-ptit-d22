@@ -64,6 +64,29 @@ def engine_kwargs(gpu: str, k: int):
     return result
 
 
+def cell_engine_kwargs(gpu, k, batch, context):
+    """Frozen policy: exact B capacity, whole prefill, unchanged model limit.
+
+    With chunking disabled v0.30.0 requires token capacity >= max_model_len.
+    This changes provisioning, not the requested runtime measurement shape.
+    """
+    result = engine_kwargs(gpu, k)
+    result.update(max_num_seqs=batch,
+                  max_num_batched_tokens=max(result["max_model_len"], batch*context))
+    return result
+
+
+def failure_category(error, *, phase=None):
+    text = str(error).lower()
+    if any(word in text for word in ("out of memory", "outofmemory", "oom")):
+        return "oom"
+    if "preempt" in text or "scheduler" in text:
+        return "scheduler/preemption"
+    if any(word in text for word in ("shape", "exact requested", "proposal output")):
+        return "shape_mismatch"
+    return "engine_init_failure" if phase == "engine_init" else "runtime_exception"
+
+
 def validate_hardware(gpu, name, architecture):
     if gpu not in GPU_CONFIG or gpu not in name.split() or architecture != GPU_CONFIG[gpu][1]:
         raise ValueError(f"Hardware mismatch: requested {gpu}, observed {name}/{architecture}")
@@ -256,18 +279,27 @@ def measure_repeats(env, k, batches, contexts, operation, rpc, emit):
                 kinds = [("target", "linear_verify_forward" if k else "target_decode_forward")]
                 if k:
                     kinds.append(("propose", "eagle_propose"))
+                shape_error = ("Scheduler preemption prevented exact requested shape" if any(
+                    shape.get("preempted_req_ids") for shape in result["observed_shapes"]) else
+                    "No cycle with exact requested batch/context/query shape")
+                failed = False
                 for label, kind in kinds:
                     latency = result["samples"].get(label)
                     ok = error is None and isinstance(latency, (float, int)) and math.isfinite(latency) and latency > 0
+                    failed |= not ok
                     emit(dict(env, timestamp_utc=utc_now(), K=k, batch_size=batch, context_len=context,
                               calibration_label=f"linear_eagle_k{k}" if k else "target_baseline",
                               measurement_kind=kind, repeat=index if warm else index-env["warmup"],
                               is_warmup=warm, latency_ms=latency if ok else None,
                               status="ok" if ok else "error", error=error or
-                              (None if ok else "No cycle with exact requested batch/context/query shape"),
-                              observed_shapes=result["observed_shapes"]))
-                if error:
-                    raise RuntimeError(error)  # Never retry a broken CUDA context.
+                              (None if ok else shape_error),
+                              error_category=(failure_category(error) if error else
+                                              (None if ok else failure_category(shape_error))),
+                              observed_shapes=result["observed_shapes"],
+                              worker_memory=result.get("memory")))
+                if failed:
+                    raise RuntimeError(error or shape_error)
+                    # Never retry a failed cell or a potentially broken CUDA context.
 
 
 def validate_portable_evidence(env, records):
@@ -296,7 +328,8 @@ def validate_portable_evidence(env, records):
             raise ValueError("Duplicate repeat")
         actual.add(identity)
         if r["status"] != "ok":
-            raise ValueError("Failed component cell")
+            raise ValueError(f"Failed component cell K={r['K']} B={r['batch_size']} "
+                             f"context={r['context_len']}: {r.get('error_category')}: {r.get('error')}")
         for key in ("run_id","source_commit","gpu","target_revision","draft_revision","timing_method"):
             if r[key] != env[key]:
                 raise ValueError(f"Mixed provenance: {key}")

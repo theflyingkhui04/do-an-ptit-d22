@@ -1,6 +1,6 @@
 """Portable Linux/Colab component profiling CLI. No Modal dependency.
 
-Model engines run in fresh child processes per K. Failed/OOM cells are retained,
+Model engines run in fresh child processes per (K, B, context). Failed/OOM cells are retained,
 never retried automatically. Hardware mismatches stop before model loading.
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import traceback
 
 from experiments import m4_cost_profiler as prof
 from experiments import modal_lanes as lanes  # Pure configuration; imports no Modal SDK.
@@ -46,6 +47,8 @@ def parser():
     result.add_argument("--warmup", type=int, default=2)
     result.add_argument("--repeats", type=int, default=2)
     result.add_argument("--worker-k", type=int, help=argparse.SUPPRESS)
+    result.add_argument("--worker-batch", type=int, help=argparse.SUPPRESS)
+    result.add_argument("--worker-context", type=int, help=argparse.SUPPRESS)
     return result
 
 
@@ -115,6 +118,22 @@ def diagnostic_report(env, records, error):
                 full_repeat_requirement_met=False)
 
 
+def cell_name(k, batch, context):
+    return f"k{k}-b{batch}-c{context}"
+
+
+def generate_exact_batch(llm, prompts, sampling_params):
+    """v0.30.0 public scheduling barrier; level 0 changes no GPU allocations.
+
+    generate(list) alone does not guarantee atomic admission in EngineCoreProc.
+    Keep the observer's exact B/context invariant, including on memory pressure.
+    """
+    llm.sleep(level=0)
+    llm.enqueue(prompts, sampling_params, use_tqdm=False)
+    llm.wake_up(tags=["scheduling"])
+    return llm.wait_for_completion(use_tqdm=False)
+
+
 def run_worker(args, out):
     env = json.loads((out/"env.json").read_text(encoding="utf-8"))
     if not env["canonical_hardware"]:
@@ -122,35 +141,40 @@ def run_worker(args, out):
     sha, _ = git_identity(ROOT)
     if sha != env["source_commit"]:
         raise ValueError("Source commit changed since run reservation")
-    k = args.worker_k
-    if k not in env["k_values"]:
-        raise ValueError("Worker K outside declared grid")
-    part = out/f"k{k}"
+    k, batch, context = args.worker_k, args.worker_batch, args.worker_context
+    if k not in env["k_values"] or batch not in env["batches"] or context not in env["contexts"]:
+        raise ValueError("Worker cell outside declared grid")
+    part = out/cell_name(k,batch,context)
     part.mkdir(exist_ok=False)
-    cfg = prof.engine_kwargs(env["expected_gpu"],k)
-    # Admit all prompts together for the fixed-context first decode boundary.
-    # KV/activation exhaustion is recorded, never replaced by a smaller batch.
-    cfg["max_num_batched_tokens"] = max(4096,max(env["contexts"])*max(env["batches"]))
-    local_env = dict(env,K=k,engine_kwargs=cfg)
+    cfg = prof.cell_engine_kwargs(env["expected_gpu"],k,batch,context)
+    local_env = dict(env,K=k,batch_size=batch,context_len=context,engine_kwargs=cfg,
+                     cell_id=part.name,phase="engine_init",status="initializing")
     write_json(part/"env.json",local_env)
     with (part/"raw.jsonl").open("x",encoding="utf-8") as raw:
         try:
             from vllm import LLM, SamplingParams
             from vllm.inputs import TokensPrompt
             llm = LLM(**cfg)
+            local_env["phase"] = "observer_install"
             local_env["worker_source_hashes"] = llm.collective_rpc("m4_install")
             write_json(part/"env.json",local_env)
+            local_env["memory_before_measurement"] = llm.collective_rpc("m4_memory")
             def operation(prompts, max_tokens):
-                return llm.generate([TokensPrompt(prompt_token_ids=p) for p in prompts],
-                                    SamplingParams(max_tokens=max_tokens,temperature=0.,ignore_eos=True),use_tqdm=False)
+                return generate_exact_batch(llm,[TokensPrompt(prompt_token_ids=p) for p in prompts],
+                                            SamplingParams(max_tokens=max_tokens,temperature=0.,ignore_eos=True))
             def emit(record):
                 raw.write(json.dumps(record,allow_nan=False)+"\n")
                 raw.flush()
                 os.fsync(raw.fileno())
-            prof.measure_repeats(local_env,k,env["batches"],env["contexts"],operation,llm.collective_rpc,emit)
+            local_env["phase"] = "measurement"
+            prof.measure_repeats(local_env,k,[batch],[context],operation,llm.collective_rpc,emit)
+            local_env["memory_after_measurement"] = llm.collective_rpc("m4_memory")
             local_env["status"] = "complete"
         except Exception as exc:
-            local_env.update(status="failed",error=f"{type(exc).__name__}: {exc}")
+            local_env.update(status="failed",error=f"{type(exc).__name__}: {exc}",
+                             error_category=prof.failure_category(exc,phase=local_env["phase"]),
+                             traceback=traceback.format_exc())
+            traceback.print_exc()
         finally:
             write_json(part/"env.json",local_env)
     return 0 if local_env["status"] == "complete" else 1
@@ -181,6 +205,9 @@ def run(args, *, root=ROOT, inspect_hardware=observe_hardware, launch=subprocess
                target_boundary="model forward only; excludes logits and sampling",
                proposer_boundary="EAGLE propose call; includes preparation and sampling",
                canonical_component_run=False,
+               engine_lifecycle="fresh_process_per_k_batch_context",
+               admission_policy="sleep_level_0_enqueue_wake_scheduling",
+               engine_sizing_policy="seqs=B; tokens=max(max_model_len,B*context); utilization=0.85",
                status="inspecting")
     records, error = [], None
     manifest = dict(run_id=args.run_id,source_commit=sha,status="inspecting",started_at_utc=prof.utc_now(),
@@ -205,23 +232,50 @@ def run(args, *, root=ROOT, inspect_hardware=observe_hardware, launch=subprocess
         # Preserve a resolved installation inventory alongside direct dependency pins.
         frozen = subprocess.run([sys.executable,"-m","pip","freeze"],capture_output=True,text=True,timeout=60)
         (out/"pip-freeze.txt").write_text(frozen.stdout+frozen.stderr,encoding="utf-8")
+        failures = []
         for k in ks:
-            command = [sys.executable,"-m","experiments.m4_cost_runner","--run-id",args.run_id,
-                       "--expected-gpu",args.expected_gpu,"--worker-k",str(k)]
-            child_env = dict(os.environ,VLLM_USE_V2_MODEL_RUNNER="0",PYTHONUNBUFFERED="1")
-            with (out/f"k{k}.log").open("x",encoding="utf-8") as log:
-                child = launch(command,cwd=root,env=child_env,stdout=log,stderr=subprocess.STDOUT)
-            manifest["workers"].append(dict(K=k,returncode=child.returncode))
-            part = out/f"k{k}"
-            if (part/"raw.jsonl").exists():
-                with (out/"raw.jsonl").open("a",encoding="utf-8") as aggregate:
-                    for line in (part/"raw.jsonl").read_text(encoding="utf-8").splitlines():
-                        record = json.loads(line)
-                        records.append(record)
-                        aggregate.write(json.dumps(record)+"\n")
-            if child.returncode:
-                detail = json.loads((part/"env.json").read_text(encoding="utf-8")) if (part/"env.json").exists() else {}
-                raise RuntimeError(f"K={k} failed (exit {child.returncode}): {detail.get('error','see worker log')}; no automatic retry")
+            for batch in args.batches:
+                for context in args.contexts:
+                    name = cell_name(k,batch,context)
+                    command = [sys.executable,"-m","experiments.m4_cost_runner","--run-id",args.run_id,
+                               "--expected-gpu",args.expected_gpu,"--worker-k",str(k),
+                               "--worker-batch",str(batch),"--worker-context",str(context)]
+                    child_env = dict(os.environ,VLLM_USE_V2_MODEL_RUNNER="0",PYTHONUNBUFFERED="1")
+                    with (out/f"{name}.log").open("x",encoding="utf-8") as log:
+                        child = launch(command,cwd=root,env=child_env,stdout=log,stderr=subprocess.STDOUT)
+                    part = out/name
+                    detail = json.loads((part/"env.json").read_text(encoding="utf-8")) if (part/"env.json").exists() else {}
+                    worker = dict(cell_id=name,K=k,batch_size=batch,context_len=context,
+                                  returncode=child.returncode,
+                                  engine_kwargs=prof.cell_engine_kwargs(args.expected_gpu,k,batch,context),
+                                  status=detail.get("status","failed"),error=detail.get("error"),
+                                  error_category=detail.get("error_category"))
+                    cell_records = []
+                    # Allocator warnings may be recovered internally by torch. Preserve
+                    # them separately; a log warning alone is not a failed measurement.
+                    worker["allocator_warnings"] = [line for line in (out/f"{name}.log").read_text(
+                        encoding="utf-8",errors="replace").splitlines()
+                        if "oom" in line.lower() or "out of memory" in line.lower()]
+                    manifest["workers"].append(worker)
+                    if (part/"raw.jsonl").exists():
+                        with (out/"raw.jsonl").open("a",encoding="utf-8") as aggregate:
+                            for line in (part/"raw.jsonl").read_text(encoding="utf-8").splitlines():
+                                record = json.loads(line)
+                                records.append(record)
+                                cell_records.append(record)
+                                aggregate.write(json.dumps(record)+"\n")
+                    worker.update(planned_generation_attempts=args.warmup+args.repeats,
+                                  attempted_generations=len({(r["repeat"],r["is_warmup"]) for r in cell_records}),
+                                  n_raw_records=len(cell_records))
+                    if child.returncode or detail.get("status") != "complete":
+                        worker.update(status="failed",error=detail.get("error") or "Worker terminated; see cell log",
+                                      error_category=detail.get("error_category") or "worker_exit")
+                        failures.append(worker)
+                    # Persist progress even if a later child is interrupted. No retries.
+                    write_json(out/"run_manifest.json",manifest)
+        if failures:
+            raise RuntimeError("Failed cells (no automatic retry): " + "; ".join(
+                f"{w['cell_id']}: {w['error_category']}: {w['error']}" for w in failures))
         prof.validate_portable_evidence(env,records)
         env.update(status="complete",canonical_component_run=args.mode == "components" and clean)
         return 0
@@ -237,6 +291,7 @@ def run(args, *, root=ROOT, inspect_hardware=observe_hardware, launch=subprocess
         write_json(out/"env.json",env)
         write_json(out/"run_manifest.json",manifest)
         report = diagnostic_report(env,records,error) if error else prof.build_component_report(env,records)
+        report["cell_results"] = manifest["workers"]
         write_json(out/"component_report.json",report)
         print(f"Artifacts retained: {out}")
 

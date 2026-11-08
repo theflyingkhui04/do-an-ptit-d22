@@ -135,13 +135,14 @@ def fake_launch(command,**kwargs):
     args = runner.parser().parse_args(command[3:])
     out = p.evidence_dir(Path(kwargs["cwd"]),args.run_id)
     env = json.loads((out/"env.json").read_text())
-    part = out/f"k{args.worker_k}"
+    part = out/runner.cell_name(args.worker_k,args.worker_batch,args.worker_context)
     part.mkdir()
     rows=[]
     def rpc(method,args=()):
         return [{"samples":{"target":10+args_k,"propose":2+args_k},"observed_shapes":[]}]
     args_k=args.worker_k
-    p.measure_repeats(env,args_k,env["batches"],env["contexts"],lambda *a:None,rpc,rows.append)
+    env.update(engine_kwargs=p.cell_engine_kwargs(env["expected_gpu"],args_k,args.worker_batch,args.worker_context))
+    p.measure_repeats(env,args_k,[args.worker_batch],[args.worker_context],lambda *a:None,rpc,rows.append)
     (part/"raw.jsonl").write_text("".join(json.dumps(r)+"\n" for r in rows))
     (part/"env.json").write_text(json.dumps(dict(env,status="complete")))
     return SimpleNamespace(returncode=0)
@@ -188,7 +189,7 @@ def test_failed_worker_keeps_logs_env_and_partial_raw(tmp_path,monkeypatch):
     assert runner.run(args,root=tmp_path,inspect_hardware=hardware,launch=fail)==1
     out=p.evidence_dir(tmp_path,args.run_id)
     assert (out/"raw.jsonl").stat().st_size > 0
-    assert "OOM" in (out/"k1.log").read_text()
+    assert "OOM" in (out/"k1-b1-c1024.log").read_text()
     report=json.loads((out/"component_report.json").read_text())
     assert report["status"] == "incomplete" and not report["full_repeat_requirement_met"]
 
@@ -217,6 +218,111 @@ def test_shared_loop_retains_failure_and_stops_without_retry():
         p.measure_repeats(env,1,[1],[256],failed_operation,rpc,records.append)
     assert len(records)==2 and all(r["is_warmup"] and r["status"]=="error" for r in records)
     assert calls==["m4_begin"]
+    assert all(r["error_category"] == "oom" for r in records)
+
+
+@pytest.mark.parametrize("gpu", ["L4","T4"])
+@pytest.mark.parametrize("batch", p.BATCHES)
+def test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning(gpu,batch):
+    cfg=p.cell_engine_kwargs(gpu,1,batch,1024)
+    assert cfg["max_num_seqs"] == batch
+    assert cfg["max_num_batched_tokens"] == max(4096,batch*1024)
+    original=p.engine_kwargs(gpu,1)
+    assert {k:v for k,v in cfg.items() if k not in ("max_num_seqs","max_num_batched_tokens")} == {
+        k:v for k,v in original.items() if k not in ("max_num_seqs","max_num_batched_tokens")}
+
+
+def test_all_requests_enqueued_before_scheduling_resumes():
+    calls=[]
+    prompts=[object(),object()]
+    class Engine:
+        def sleep(self,**kwargs): calls.append(("pause",kwargs))
+        def enqueue(self,items,params,**kwargs):
+            assert items is prompts
+            calls.append(("enqueue",len(items)))
+        def wake_up(self,**kwargs): calls.append(("resume",kwargs))
+        def wait_for_completion(self,**kwargs):
+            calls.append(("wait",kwargs))
+            return "outputs"
+    assert runner.generate_exact_batch(Engine(),prompts,object()) == "outputs"
+    assert calls == [("pause",{"level":0}),("enqueue",2),
+                     ("resume",{"tags":["scheduling"]}),("wait",{"use_tqdm":False})]
+
+
+def test_oom_cell_does_not_retry_or_prevent_later_fresh_cells(tmp_path,monkeypatch):
+    fixture_setup(monkeypatch)
+    launched=[]
+    def launch(command,**kwargs):
+        args=runner.parser().parse_args(command[3:])
+        identity=(args.worker_k,args.worker_batch,args.worker_context)
+        launched.append(identity)
+        if args.worker_batch != 2:
+            return fake_launch(command,**kwargs)
+        out=p.evidence_dir(tmp_path,args.run_id)
+        part=out/runner.cell_name(*identity)
+        part.mkdir()
+        env=json.loads((out/"env.json").read_text())
+        env.update(K=args.worker_k,batch_size=2,context_len=args.worker_context,
+                   engine_kwargs=p.cell_engine_kwargs("T4",args.worker_k,2,args.worker_context),
+                   status="failed",error="OutOfMemoryError: CUDA out of memory",error_category="oom")
+        rows=[]
+        def operation(*args): raise RuntimeError(env["error"])
+        with pytest.raises(RuntimeError):
+            p.measure_repeats(env,args.worker_k,[2],[args.worker_context],operation,lambda *a,**k:None,rows.append)
+        (part/"raw.jsonl").write_text("".join(json.dumps(r)+"\n" for r in rows))
+        (part/"env.json").write_text(json.dumps(env))
+        return SimpleNamespace(returncode=1)
+    args=arguments("--batches","1,2,4","--k-values","1,2")
+    assert runner.run(args,root=tmp_path,inspect_hardware=hardware,launch=launch) == 1
+    assert launched == [(k,b,1024) for k in (1,2) for b in (1,2,4)]
+    out=p.evidence_dir(tmp_path,args.run_id)
+    report=json.loads((out/"component_report.json").read_text())
+    assert len(report["cell_results"]) == 6
+    assert [w["error_category"] for w in report["cell_results"] if w["status"]=="failed"] == ["oom","oom"]
+    rows=[json.loads(line) for line in (out/"raw.jsonl").read_text().splitlines()]
+    assert all(r["engine_kwargs"]["max_num_seqs"] == r["batch_size"] for r in rows)
+    assert sum(r["status"]=="error" for r in rows) == 4
+    assert any(r["K"]==2 and r["batch_size"]==4 and r["status"]=="ok" for r in rows)
+
+
+def test_missing_shape_sample_stops_cell_after_first_attempt():
+    records=[]; calls=[]
+    def operation(*args): calls.append("generate")
+    def rpc(*args,**kwargs): return [dict(samples={},observed_shapes=[dict(actual_batch_size=1)])]
+    with pytest.raises(RuntimeError,match="exact requested"):
+        p.measure_repeats(dict(warmup=2,repeats=2),1,[2,4],[1024],operation,rpc,records.append)
+    assert calls == ["generate"]
+    assert len(records) == 2 and all(r["error_category"]=="shape_mismatch" for r in records)
+
+
+def test_engine_init_failure_has_cell_config_and_original_error(tmp_path,monkeypatch):
+    out=tmp_path
+    env=dict(canonical_hardware=True,source_commit="a"*40,k_values=[1],batches=[2],contexts=[1024],
+             expected_gpu="T4")
+    runner.write_json(out/"env.json",env)
+    monkeypatch.setattr(runner,"git_identity",lambda root:("a"*40,True))
+    class LLM:
+        def __init__(self,**kwargs): raise RuntimeError("synthetic init failure")
+    monkeypatch.setitem(sys.modules,"vllm",SimpleNamespace(LLM=LLM,SamplingParams=object))
+    monkeypatch.setitem(sys.modules,"vllm.inputs",SimpleNamespace(TokensPrompt=object))
+    args=arguments("--worker-k","1","--worker-batch","2","--worker-context","1024")
+    assert runner.run_worker(args,out) == 1
+    part=out/"k1-b2-c1024"
+    result=json.loads((part/"env.json").read_text())
+    assert result["error_category"]=="engine_init_failure"
+    assert result["error"]=="RuntimeError: synthetic init failure"
+    assert result["engine_kwargs"]["max_num_seqs"]==2
+    assert (part/"raw.jsonl").read_text()==""  # No fabricated measured repeats.
+
+
+@pytest.mark.parametrize("error,phase,expected", [
+    ("CUDA out of memory","engine_init","oom"),
+    ("Unexpected proposal output shape","measurement","shape_mismatch"),
+    ("Scheduler preemption","measurement","scheduler/preemption"),
+    ("unrecognized failure","engine_init","engine_init_failure"),
+    ("unrecognized failure","measurement","runtime_exception")])
+def test_failure_categories(error,phase,expected):
+    assert p.failure_category(error,phase=phase)==expected
 
 
 def test_import_requires_no_modal_or_gpu_libraries():
