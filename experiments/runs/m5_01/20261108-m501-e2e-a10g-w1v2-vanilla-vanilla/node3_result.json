@@ -1,0 +1,17 @@
+{
+  "status": "ok",
+  "report_text": "### Báo cáo tổng hợp tình hình chi tiêu và thuế VAT cho tập 29 hóa đơn bán lẻ đã được trích xuất\n\n#### (1) Tổng quan\n- Tổng chi tiêu trong tháng 08/2020: Không có dữ liệu.\n- Mặt hàng được mua nhiều nhất: Sữa đàn bò đường VNM 110ml NT.\n- Cửa hàng có tổng giá trị hóa đơn cao nhất: CỬA HÀNG NAM OÁNH.\n- Số hóa đơn có phát sinh VAT: 1.\n- Tổng tiền theo từng ngày lập hóa đơn: Có dữ liệu cho các ngày từ 21/04/2019 đến 16/08/2020.\n- Mức thuế suất và tổng tiền thuế theo từng loại thuế: Có dữ liệu cho loại thuế \"Gia trị tăng\".\n\n#### (2) Mặt hàng và cửa hàng nổi bật\n- Mặt hàng nổi bật: Sữa đàn bò đường VNM 110ml NT.\n- Cửa hàng nổi bật: CỬA HÀNG NAM OÁNH.\n\n#### (3) Tình hình VAT\n- Tổng số hóa đơn có phát sinh VAT: 1.\n- Mức thuế suất và tổng tiền thuế theo loại thuế \"Gia trị tăng\": Tổng tiền thuế là 2472.73, tổng tiền thuế tính là 20000.0, và thuế suất là 10.0%.\n\n#### (4) Hạn chế của dữ liệu và đề xuất kiểm tra tiếp\n- Hạn chế: Không có dữ liệu về tổng chi tiêu trong tháng 08/2020.\n- Đề xuất: Kiểm tra lại dữ liệu nhập vào hệ thống để đảm bảo có thông tin về tổng chi tiêu trong tháng 08/2020.",
+  "error": null,
+  "latency_ms": 5403.993,
+  "prompt_tokens": 1007,
+  "completion_tokens": 393,
+  "finish_reason": "stop",
+  "input_question_ids": [
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "Q5",
+    "Q6"
+  ]
+}
