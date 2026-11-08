@@ -131,6 +131,12 @@ class RunPipelineE2ETests(unittest.TestCase):
         summary = json.loads((self.root / "t1-vanilla" / "e2e_summary.json").read_text(encoding="utf-8"))
         self.assertEqual(summary["hardware"], "modal-A10G")
 
+    def test_summary_records_node1_package(self) -> None:
+        rc = e2e.main(self.argv(), client_factory=FakeClientFactory(), node1_runner=fake_node1_runner)
+        self.assertEqual(rc, 0)
+        summary = json.loads((self.root / "t1-vanilla" / "e2e_summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["node1_package_dir"], "experiments/configs/w1")
+
     def test_hardware_label_defaults_to_none(self) -> None:
         e2e.main(self.argv(), client_factory=FakeClientFactory(), node1_runner=fake_node1_runner)
         summary = json.loads((self.root / "t1-vanilla" / "e2e_summary.json").read_text(encoding="utf-8"))
@@ -223,6 +229,21 @@ class RunPipelineE2ETests(unittest.TestCase):
         self.assertIn("experiments/configs/w1/node1_chat_requests.jsonl", cmd)
         self.assertIn("--limit", cmd)
         self.assertEqual(out, {"returncode": 3, "error": "node1_summary_missing"})
+
+    def test_node1_package_dir_selects_w1_v2(self) -> None:
+        args = e2e.parse_args(self.argv("--node1-package-dir", "experiments/configs/w1_v2"))
+        run_dir = self.root / "t1-vanilla"
+        run_dir.mkdir(parents=True)
+        with patch.object(e2e.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            e2e.run_node1(args, run_dir, "http://x/v1", "m", SECRET)
+        cmd = run.call_args.args[0]
+        self.assertEqual(cmd[cmd.index("--requests") + 1], "experiments/configs/w1_v2/node1_chat_requests.jsonl")
+        self.assertEqual(cmd[cmd.index("--package-manifest") + 1], "experiments/configs/w1_v2/package_manifest.json")
+
+    def test_node1_package_dir_must_hold_a_package(self) -> None:
+        with self.assertRaises(SystemExit):
+            e2e.parse_args(self.argv("--node1-package-dir", "experiments/configs/missing"))
 
 
 if __name__ == "__main__":
