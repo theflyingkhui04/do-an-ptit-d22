@@ -1,0 +1,39 @@
+{
+  "run_id": "l4-components-29a10c6-043738",
+  "source_commit": "29a10c6e8aa51983f31e2befebc105afd658dfdb",
+  "status": "failed",
+  "started_at_utc": "2026-11-08T04:37:40.892689+00:00",
+  "artifact_kind": "component_measurements",
+  "canonical_profile_generated": false,
+  "workers": [
+    {
+      "K": 0,
+      "returncode": 0
+    },
+    {
+      "K": 1,
+      "returncode": 0
+    },
+    {
+      "K": 2,
+      "returncode": 0
+    },
+    {
+      "K": 3,
+      "returncode": 0
+    },
+    {
+      "K": 4,
+      "returncode": 0
+    },
+    {
+      "K": 5,
+      "returncode": 0
+    }
+  ],
+  "error": "ValueError: Failed component cell",
+  "finished_at_utc": "2026-11-08T06:45:37.922771+00:00",
+  "run_type": "component_benchmark",
+  "canonical_hardware": true,
+  "n_raw_records": 3630
+}
