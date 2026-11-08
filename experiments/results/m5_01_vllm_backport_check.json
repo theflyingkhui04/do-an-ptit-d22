@@ -1,0 +1,16 @@
+{
+  "task": "M5-01",
+  "check": "vllm-0.30.0 backport #55708 reproduces the M3-05 Colab runtime bytes",
+  "checked_at_utc": "2026-11-08T09:18:37+00:00",
+  "source_url": "https://raw.githubusercontent.com/vllm-project/vllm/ced6857afa0ea7b2e3f0846a62e1394e90f15607/vllm/outputs.py",
+  "vllm_base_commit": "ced6857afa0ea7b2e3f0846a62e1394e90f15607",
+  "upstream_pr": 55708,
+  "upstream_commit": "6c2925fe5fe8156475affbfa995ed272c96fe4fa",
+  "stock_outputs_sha256": "346d1f9204a441867efc3af7c5a99d8a70ef0f69fe607dfa8a4a2557a82ca425",
+  "patch_status": "patched",
+  "patched_outputs_sha256": "8f58684245f17007863382ffa9de115d371738ae28731b0c876196eb3b3fea47",
+  "m3_05_patched_outputs_sha256": "8f58684245f17007863382ffa9de115d371738ae28731b0c876196eb3b3fea47",
+  "matches_m3_05": true,
+  "m3_05_evidence": "experiments/runs/m3_01/m305-confirmatory-colab-v1-eagle-W3-c1-a001/colab_validation.json (commit 6aa6d62, vllm_outputs_sha256)",
+  "patch_script": "experiments/vllm_runtime_patch.py"
+}
