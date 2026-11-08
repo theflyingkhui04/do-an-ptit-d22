@@ -72,7 +72,8 @@ def postgres_table_columns() -> dict[str, list[str]]:
 def test_view_columns_match_sqlite_v2():
     conn = sqlite_conn()
     pg = postgres_view_columns()
-    assert set(pg) == set(writer.VIEWS)
+    assert set(pg) == set(writer.VIEWS) | set(writer.DEMO_VIEWS)
+    assert pg["v_upload_facts"] == ["invoice_id", "source", "uploaded_at", "uploaded_date"]
     for view in writer.VIEWS:
         assert pg[view] == [row[1] for row in conn.execute(f"PRAGMA table_info({view})")], view
 
@@ -96,7 +97,7 @@ def test_reader_role_gets_only_the_three_views():
     roles = writer.ROLES_PATH.read_text(encoding="utf-8")
     grants = [line for line in roles.splitlines() if line.startswith("GRANT") and "demo_reader" in line]
     assert grants == ["GRANT USAGE ON SCHEMA demo TO demo_reader;",
-                      "GRANT SELECT ON demo.v_invoice_facts, demo.v_item_facts, demo.v_tax_facts TO demo_reader;"]
+                      "GRANT SELECT ON demo.v_invoice_facts, demo.v_item_facts, demo.v_tax_facts, demo.v_upload_facts TO demo_reader;"]
     for setting in ("default_transaction_read_only = on", "statement_timeout = '5s'", "search_path = demo"):
         assert f"ALTER ROLE demo_reader SET {setting};" in roles
     assert "PASSWORD '" not in roles.replace("PASSWORD '...'", "")
@@ -281,3 +282,14 @@ def test_postgres_store_jobs_invoices_and_readonly_queries(pg):
         with pytest.raises(psycopg.Error):
             store.run_readonly(bad)
     assert store.run_readonly("SELECT count(*) FROM v_item_facts")[1][0][0] > 0
+
+
+@needs_db
+def test_upload_view_reports_source_and_vietnam_date(pg):
+    payload = payload_with_items_and_tax()
+    writer.insert_extraction(pg, payload, RUN, source="upload")
+    row = pg.execute("SELECT source, uploaded_date, "
+                     "to_char(uploaded_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') FROM v_upload_facts").fetchone()
+    assert row[0] == "upload" and row[1] == row[2]
+    with reader_connection() as reader:
+        assert reader.execute("SELECT COUNT(*) FROM v_upload_facts WHERE source = 'upload'").fetchone()[0] == 1

@@ -78,6 +78,15 @@ def test_unparseable_sql_is_rejected():
     assert code_of("") == "EMPTY"
 
 
+def test_demo_upload_view_is_allowed_with_its_own_columns():
+    sql = check_demo_sql("SELECT COUNT(*) AS n FROM v_upload_facts WHERE source = 'upload' AND uploaded_date = '2026-11-08'")
+    assert sql.endswith("LIMIT 200")
+    join = ("SELECT f.seller_name, u.uploaded_at FROM v_invoice_facts AS f "
+            "JOIN v_upload_facts AS u ON u.invoice_id = f.invoice_id WHERE u.source = 'upload'")
+    assert check_demo_sql(join)
+    assert code_of("SELECT uploaded_by FROM v_upload_facts") == "UNKNOWN_COLUMN"
+
+
 def test_ordinary_predicates_and_operators_are_allowed():
     # Regression: sqlglot models AND/OR/EXISTS as function nodes.
     sql = ("SELECT seller_name FROM v_invoice_facts WHERE issued_date LIKE '2020-08-%' AND total_amount_value > 100000 "

@@ -25,7 +25,8 @@ SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 ROLES_PATH = Path(__file__).with_name("roles.sql")
 DEMO_INVOICE_COLUMNS: tuple[str, ...] = ("source", "storage_path")
 SOURCES = ("devset", "upload")
-VIEWS = ("v_invoice_facts", "v_item_facts", "v_tax_facts")
+VIEWS = ("v_invoice_facts", "v_item_facts", "v_tax_facts")  # mirrored from SQLite v2
+DEMO_VIEWS = ("v_upload_facts",)  # Postgres demo only
 
 
 @dataclass(frozen=True)

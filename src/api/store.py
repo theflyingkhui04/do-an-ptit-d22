@@ -13,7 +13,7 @@ from src.pipeline.postgres import writer
 
 UNFINISHED = ("queued", "ocr", "node1", "saving")
 CATEGORICAL = {"v_invoice_facts": ("extraction_status", "document_type", "currency", "payment_method"),
-               "v_tax_facts": ("tax_name",)}
+               "v_tax_facts": ("tax_name",), "v_upload_facts": ("source",)}
 MAX_ROWS = 200
 
 

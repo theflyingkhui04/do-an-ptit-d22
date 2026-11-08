@@ -21,12 +21,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA demo TO demo_writer
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA demo TO demo_writer;
 ALTER ROLE demo_writer SET search_path = demo;
 
--- Reader: runs Node 2 SQL. SELECT on the three views and nothing else; the views read
+-- Reader: runs Node 2 SQL. SELECT on the four views and nothing else; the views read
 -- the base tables with their owner's rights, so the reader never needs table access.
 REVOKE ALL ON ALL TABLES IN SCHEMA demo FROM demo_reader;
 REVOKE ALL ON SCHEMA public FROM demo_reader;
 GRANT USAGE ON SCHEMA demo TO demo_reader;
-GRANT SELECT ON demo.v_invoice_facts, demo.v_item_facts, demo.v_tax_facts TO demo_reader;
+GRANT SELECT ON demo.v_invoice_facts, demo.v_item_facts, demo.v_tax_facts, demo.v_upload_facts TO demo_reader;
 ALTER ROLE demo_reader SET search_path = demo;
 ALTER ROLE demo_reader SET default_transaction_read_only = on;
 ALTER ROLE demo_reader SET statement_timeout = '5s';

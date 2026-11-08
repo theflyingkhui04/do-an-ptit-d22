@@ -1,6 +1,6 @@
 -- [M5-01 web demo] Postgres (Supabase) mirror of src/pipeline/sqlite/schema.sql (user_version 2).
 -- Same table names, column names and view columns as SQLite v2 (tests/test_demo_store.py).
--- Demo-only additions: invoices.source, invoices.storage_path, table demo_jobs.
+-- Demo-only additions: invoices.source, invoices.storage_path, table demo_jobs, view v_upload_facts.
 -- Lives in schema "demo" (not "public", which Supabase exposes through its REST API).
 -- Roles and grants: src/pipeline/postgres/roles.sql (run after this file).
 
@@ -223,3 +223,13 @@ SELECT
     it.tax_amount_currency
 FROM invoice_taxes AS it
 JOIN invoices AS i ON i.invoice_id = it.invoice_id;
+
+-- Demo-only: when and how each invoice entered the demo (Node 2 questions about uploads).
+-- uploaded_date is the calendar date in Vietnam (UTC+7) as text YYYY-MM-DD.
+CREATE OR REPLACE VIEW v_upload_facts AS
+SELECT
+    i.invoice_id,
+    i.source,
+    i.created_at AS uploaded_at,
+    to_char(i.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') AS uploaded_date
+FROM invoices AS i;

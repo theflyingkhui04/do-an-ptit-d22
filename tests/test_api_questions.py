@@ -53,7 +53,7 @@ def service(store, sql_caller, answer_caller=None) -> QuestionService:
 
 # ---------------------------------------------------------------- 5.1 prompt
 def test_prompt_lists_the_values_present_in_the_database():
-    prompt = build_node2_prompt({"extraction_status": ["partial"], "currency": ["VND"]})
+    prompt = build_node2_prompt({"extraction_status": ["partial"], "currency": ["VND"]}, today="2026-11-08")
     assert "- extraction_status: 'partial'" in prompt
     assert "'success'" not in prompt
     assert "v_invoice_facts(invoice_id, run_id," in prompt and "v_tax_facts(" in prompt
@@ -78,7 +78,7 @@ def test_answerable_question():
     assert result["rows"] == [[4930094.0]] and result["answer"].endswith("4.930.094 đồng.")
     assert result["repairs"] == 0
     assert [c["step"] for c in result["calls"]] == ["node2", "answer"]
-    assert result["prompt_versions"] == {"node2": "node2_text_to_sql_demo.v1", "answer": "node3_answer_demo.v1"}
+    assert result["prompt_versions"] == {"node2": "node2_text_to_sql_demo.v2", "answer": "node3_answer_demo.v1"}
 
 
 def test_rejected_sql_is_repaired_once_and_never_executed():
@@ -147,3 +147,27 @@ def test_question_endpoint_validation_and_wiring():
         body = client.post("/api/questions", headers=HEADERS, json={"question": " Có bao nhiêu hoá đơn? "}).json()
     assert body["status"] == "ok" and body["answer"] == "Có 29 hoá đơn."
     assert body["question"] == "Có bao nhiêu hoá đơn?"
+
+
+def test_prompt_explains_uploads_and_today_in_vietnam():
+    prompt = build_node2_prompt({"source": ["devset", "upload"]}, today="2026-11-08")
+    assert "v_upload_facts(invoice_id, source, uploaded_at, uploaded_date)" in prompt
+    assert "2026-11-08" in prompt and "- source: 'devset', 'upload'" in prompt
+    assert "uploaded_date" in prompt and "issued_date" in prompt
+
+
+def test_vietnam_today_uses_utc_plus_seven():
+    from datetime import datetime, timezone
+
+    from src.api.questions import vietnam_today
+
+    assert vietnam_today(datetime(2026, 11, 8, 17, 30, tzinfo=timezone.utc)) == "2026-11-09"
+    assert vietnam_today(datetime(2026, 11, 8, 16, 59, tzinfo=timezone.utc)) == "2026-11-08"
+
+
+def test_withheld_answer_text_is_kept_for_audit():
+    store = QAStore([(["total"], [[4930094.0]])])
+    qa = service(store, scripted("SELECT SUM(total_amount_value) AS total FROM v_invoice_facts"),
+                 scripted("Tổng là 4.930.095 đồng."))
+    result = qa.answer("Tổng tiền là bao nhiêu?")
+    assert result["answer"] is None and result["withheld_answer"] == "Tổng là 4.930.095 đồng."

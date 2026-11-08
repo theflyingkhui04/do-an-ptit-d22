@@ -6,6 +6,7 @@ import re
 import sqlite3
 import time
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -20,9 +21,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SQLITE_SCHEMA = REPO_ROOT / "src/pipeline/sqlite/schema.sql"
 NODE2_PROMPT = REPO_ROOT / "src/pipeline/prompts/node2_text_to_sql_demo.md"
 ANSWER_PROMPT = REPO_ROOT / "src/pipeline/prompts/node3_answer_demo.md"
-NODE2_PROMPT_VERSION = "node2_text_to_sql_demo.v1"
+NODE2_PROMPT_VERSION = "node2_text_to_sql_demo.v2"
 ANSWER_PROMPT_VERSION = "node3_answer_demo.v1"
-VIEWS = ("v_invoice_facts", "v_item_facts", "v_tax_facts")
+VIEWS = ("v_invoice_facts", "v_item_facts", "v_tax_facts")  # mirrored from SQLite v2
+# Postgres demo only (src/pipeline/postgres/schema.sql): how and when an invoice entered the demo.
+DEMO_VIEW_COLUMNS = {"v_upload_facts": ("invoice_id", "source", "uploaded_at", "uploaded_date")}
+VIETNAM = timezone(timedelta(hours=7))  # Asia/Ho_Chi_Minh, no daylight saving
 ROW_LIMIT = 200
 ANSWER_TABLE_ROWS = 50
 NO_DATA_ANSWER = "Không có dữ liệu khớp câu hỏi."
@@ -50,20 +54,27 @@ class SqlCheckError(ValueError):
 
 @lru_cache(maxsize=1)
 def view_columns() -> dict[str, tuple[str, ...]]:
-    """Columns of the three views, read from the SQLite v2 schema (the Postgres mirror is tested equal)."""
+    """Columns of the three mirrored views (read from the SQLite v2 schema) plus the demo-only view."""
     conn = sqlite3.connect(":memory:")
     conn.executescript(SQLITE_SCHEMA.read_text(encoding="utf-8"))
-    return {v: tuple(row[1] for row in conn.execute(f"PRAGMA table_info({v})")) for v in VIEWS}
+    mirrored = {v: tuple(row[1] for row in conn.execute(f"PRAGMA table_info({v})")) for v in VIEWS}
+    return {**mirrored, **DEMO_VIEW_COLUMNS}
 
 
-def build_node2_prompt(categorical: dict[str, list[Any]]) -> str:
+def vietnam_today(now: datetime | None = None) -> str:
+    """Today's calendar date in Vietnam as ``YYYY-MM-DD``."""
+    return (now or datetime.now(timezone.utc)).astimezone(VIETNAM).strftime("%Y-%m-%d")
+
+
+def build_node2_prompt(categorical: dict[str, list[Any]], today: str | None = None) -> str:
     views = "\n".join(f"- {view}({', '.join(columns)})" for view, columns in view_columns().items())
     lines = []
     for column, values in categorical.items():
         shown = ", ".join("'" + str(v).replace("'", "''") + "'" for v in values) or "(no value yet)"
         lines.append(f"- {column}: {shown}")
     template = NODE2_PROMPT.read_text(encoding="utf-8")
-    return template.replace("{{VIEW_COLUMNS}}", views).replace("{{CATEGORICAL_VALUES}}", "\n".join(lines)).strip()
+    filled = template.replace("{{VIEW_COLUMNS}}", views).replace("{{CATEGORICAL_VALUES}}", "\n".join(lines))
+    return filled.replace("{{TODAY}}", today or vietnam_today()).strip()
 
 
 def _function_name(node: exp.Func) -> str:
@@ -174,8 +185,9 @@ def _table_text(columns: list[str], rows: list[list[Any]]) -> str:
 class QuestionService:
     def __init__(self, store: Store, *, lane_caller: Callable[[str], Any], lane_map: dict[str, str],
                  on_service: Callable[[str, bool, str | None], None] | None = None,
-                 redact: Callable[[str], str] = lambda s: s) -> None:
+                 redact: Callable[[str], str] = lambda s: s, today: Callable[[], str] = vietnam_today) -> None:
         self.store = store
+        self._today = today
         self.lane_caller = lane_caller
         self.lane_map = lane_map
         self._on_service = on_service or (lambda name, ok, message: None)
@@ -203,11 +215,13 @@ class QuestionService:
 
     def answer(self, question: str) -> dict[str, Any]:
         result: dict[str, Any] = {"question": question, "status": "error", "sql": None, "columns": [], "rows": [],
-                                  "row_count": 0, "answer": None, "warning": None, "error": None, "repairs": 0,
+                                  "row_count": 0, "answer": None, "withheld_answer": None, "warning": None,
+                                  "error": None, "repairs": 0,
                                   "first_error": None, "calls": [],
                                   "prompt_versions": {"node2": NODE2_PROMPT_VERSION, "answer": ANSWER_PROMPT_VERSION}}
         calls = result["calls"]
-        messages = [{"role": "system", "content": build_node2_prompt(self.store.categorical_values())},
+        system = build_node2_prompt(self.store.categorical_values(), self._today())
+        messages = [{"role": "system", "content": system},
                     {"role": "user", "content": question}]
         try:
             raw_sql = self._call("node2", messages, NODE2_MAX_TOKENS, calls)
@@ -247,4 +261,5 @@ class QuestionService:
             result["answer"] = text
         else:
             result["warning"] = "fabricated_number" if text else "empty_answer"
+            result["withheld_answer"] = text or None  # audit only; the web never shows it
         return result
