@@ -1,0 +1,24 @@
+{
+  "checked_at_utc": "2026-11-08T12:45:50+00:00",
+  "endpoint": "https://nguyenduonghb940--ptit-ocr-serve-ocr.us-east.modal.direct/v1",
+  "unauthenticated_status": 401,
+  "image": "data/processed/m0_04_mcocr_devset/images/mcocr_public_145013tlipr.jpg",
+  "finish_reason": "stop",
+  "text_chars": 473,
+  "text_first_line": "MINIMART ANAN",
+  "wall_s_including_cold_start": 53.8,
+  "metrics": {
+    "lane": "ocr",
+    "model": "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+    "latency_ms": 53687.00000003446,
+    "ttft_ms": 50592.99999999348,
+    "tpot_ms": 11.169675090400643,
+    "prompt_tokens": 4106,
+    "completion_tokens": 278,
+    "output_tokens_per_s": 5.178162311170704,
+    "finish_reason": "stop",
+    "spec_decode": null
+  },
+  "model": "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+  "revision": "536a35794df8831aa814970ee8f89eff577e7718"
+}
