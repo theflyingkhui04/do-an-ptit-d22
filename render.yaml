@@ -1,0 +1,40 @@
+# [M5-01 web demo] Render Blueprint for the FastAPI backend (src/api). Models stay on Modal,
+# data on Supabase, frontend on Vercel. Secrets are entered in the Render dashboard
+# (sync: false) and never committed.
+services:
+  - type: web
+    name: ptit-invoice-api
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r src/api/requirements.txt
+    startCommand: uvicorn src.api.main:build_app --factory --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/status
+    autoDeploy: false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: PTIT_APP_NAME
+        value: ptit-vllm-demo
+      - key: PTIT_MODAL_WORKSPACE
+        value: nguyenduonghb940
+      - key: DEMO_GPU_LABEL
+        value: A10G
+      - key: DEMO_IMAGE_BUCKET
+        value: invoice-images
+      - key: DEMO_FRONTEND_ORIGINS
+        sync: false
+      - key: DEMO_KEY
+        sync: false
+      - key: DEMO_DATABASE_URL
+        sync: false
+      - key: DEMO_READER_DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: MODAL_PROXY_TOKEN_ID
+        sync: false
+      - key: MODAL_PROXY_TOKEN_SECRET
+        sync: false
