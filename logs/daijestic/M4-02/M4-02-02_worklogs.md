@@ -322,3 +322,88 @@ and all approved M4-02-01/M4-02-03 code/tests match the base commit byte-for-byt
 Final reconciliation state: **BLOCKED — TECHNICAL ALIGNMENT REQUIRED** for full
 M4-02-02 completion. One-cell smoke passed; do not run full campaigns or generate
 canonical profiles until verification normalization and cost provenance are aligned.
+
+## Execution backend change: Modal -> Colab
+
+The user has authorized backend-independent **component** campaigns, while
+canonical topology profiles remain prohibited. Modal L4 smoke above succeeded
+for timer/infrastructure validation. Modal is no longer the primary full-component
+campaign backend because L4 capacity is unreliable. Previous successful/failed
+Modal evidence remains intact. No new Modal campaign has been submitted.
+
+Implementation:
+
+- `experiments/m4_cost_profiler.py` owns the shared generation/RPC measurement
+  loop, synchronized-worker timing contract, raw repeat schema, hardware
+  classification, aggregation and component evidence validation. No Modal SDK import.
+- `experiments/m4_cost_runner.py` provides Linux/Colab execution. A fresh child
+  process owns each K engine. The parent persists raw rows, terminal manifest,
+  environment, worker logs and component report even on mismatch/failure.
+- `experiments/m4_modal_runner.py` retains its legacy one-cell guard, existing
+  image and volumes; its repeat loop now delegates to the shared implementation.
+- `experiments/colab_m4_cost_profile.ipynb` is a thin launcher: inspect hardware,
+  checkout immutable source, isolated pinned installation, CLI invocation, export.
+- `experiments/requirements-m4-cuda.txt` pins vLLM 0.30.0, torch 2.13.0+cu130,
+  nvidia-ml-py 13.580.82. Existing broad requirements are unpinned and intentionally
+  not used. Pins follow the successful Modal runtime and published package metadata.
+  Resolved transitive versions are retained with pip freeze, not claimed identical
+  across future installs. Actual Colab installation compatibility still needs smoke.
+- `experiments/M4_COLAB.md` provides exact setup/CLI/recovery/export instructions.
+
+Scientific protocol is unchanged: worker-local CUDA synchronize / perf_counter
+around actual target-forward and EAGLE-propose boundaries; deterministic distinct
+prompts; exact observed model batch, query shape and controlled context; retain
+all warmups and post-warmup samples. Context-specific results remain separate.
+No topology approximation, gamma fit or replacement canonical profile was added.
+Full component runs require warmup >=5, repeats >=50, clean source and matching
+observed GPU. K0 baseline is included automatically before requested EAGLE K1..5.
+The first smoke is prepared as T4/B1/K1/L256/warmup2/repeats2 and is explicitly
+`run_type=smoke`; this small-context startup diagnostic is not benchmark evidence.
+
+GPU identity comes from nvidia-smi and torch device inspection, never the notebook
+configuration. Name/capability pairs must agree: L4/(8,9) or T4/(7,5). Mismatch
+retains env.json, raw.jsonl, component_report.json, run_manifest.json; records
+`canonical_hardware=false`, requested run type and actual `run_type=smoke`, then
+exits before any model load/download. There is no silent dtype/hardware fallback.
+The notebook inspects GPU before expensive installation and conservatively checks
+driver R580+ for the pinned CUDA 13 stack. An older Colab host must stop, not
+silently switch vLLM or CUDA builds.
+
+Evidence fields include source SHA/working-tree cleanliness, run type, timestamp,
+observed GPU/name/capability/VRAM/driver/nvidia-smi output, CUDA/PyTorch/vLLM,
+pinned checkpoints/revisions, dtype/quantization, grids, warmup/repeats, timing
+boundaries, requested/observed/canonical hardware. Engine failures/OOMs remain
+in per-K env/logs with partial raw evidence; no automatic retry or overwrite.
+
+Local validation: **167 passed**, including every previously relevant passing
+test plus portable GPU guard/CLI/source/path/artifact/component-only/no-gamma
+tests, fake multi-context subprocess runs, and notebook code-cell syntax checks.
+Synthetic test outputs stay in pytest temporary folders and are not experiment
+evidence. Approved FlexCostModel, TreeTopology and canonical profiles are unchanged.
+
+This execution host is Windows with NVIDIA GeForce RTX 3050 Ti Laptop GPU,
+capability (8,6), 4 GB VRAM, torch 2.6.0+cu124. It cannot prove Linux T4 execution
+or install compatibility. A real hardware-mismatch diagnostic is recorded below.
+The actual Colab T4 checkpoint/timer smoke remains **prepared, not executed**.
+
+Portable commands (from a clean checkout of the reviewed source in Linux):
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r experiments/requirements-m4-cuda.txt
+.venv/bin/python -m pip check
+.venv/bin/python -m experiments.m4_cost_runner --run-id UNIQUE-t4-smoke --expected-gpu T4 --mode smoke --contexts 256 --batches 1 --k-values 1 --warmup 2 --repeats 2
+# Only after compatibility/timer smoke validation, component measurements:
+.venv/bin/python -m experiments.m4_cost_runner --run-id UNIQUE-t4-components --expected-gpu T4 --mode components --contexts 1024 --batches 1,2,4,8,16,32 --k-values 1,2,3,4,5 --warmup 5 --repeats 50
+```
+
+Full artifact path: `experiments/runs/m4_cost_profiling/<run-id>/`. Source must
+be available at the chosen immutable revision in the Colab checkout; the notebook
+requires setting REVISION explicitly. Do not execute an old remote branch by accident.
+
+**TEAM TECHNICAL ALIGNMENT REQUIRED** remains: TreeAdaptive's N/64 verification
+formula versus FlexCostModel's max(0,N-1) formula, plus absent arbitrary-tree
+EAGLE execution or approved derived-tree model. No canonical gamma, T8/T16/T32
+matrix or profile is produced. The approved scalar-alpha acceptance, bisection,
+speedup formula and 1+d infeasibility behavior remain untouched. This backend
+refactor does not declare M4-02-02 DONE.

@@ -1,0 +1,6 @@
+# Dedicated Linux CUDA stack; do not use the repository's unpinned broad requirements.
+# Matches the successful Modal CUDA 13 / vLLM 0.30.0 smoke.
+--extra-index-url https://download.pytorch.org/whl/cu130
+vllm==0.30.0
+torch==2.13.0+cu130
+nvidia-ml-py==13.580.82

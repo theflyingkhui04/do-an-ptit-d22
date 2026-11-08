@@ -105,7 +105,7 @@ def summarize(records):
 ALIGNMENT_REQUIRED = (
     "TEAM TECHNICAL ALIGNMENT REQUIRED: TreeAdaptive N/64 versus "
     "FlexCostModel max(0,N-1) verification formulas and derived-cost provenance. "
-    "Canonical profile generation and pilot/full submission are disabled."
+    "Canonical topology profile generation is disabled. Legacy Modal pilot/full submission remains disabled."
 )
 
 
@@ -118,6 +118,8 @@ def validate_submission(gpu, batches, ks, context, warmup, repeats, stage):
 
 def validate_component_evidence(env: dict, records: list[dict]):
     """Validate the declared evidence grid without creating a consumer profile."""
+    if "run_type" in env:
+        return validate_portable_evidence(env, records)
     validate_config(env["requested_gpu"], env["batch_grid"], env["k_grid"],
                     env["context_len"], env["warmup"], env["repeats"], env["stage"])
     validate_hardware(env["requested_gpu"], env["gpu"], env["sm_architecture"])
@@ -161,24 +163,28 @@ def build_component_report(env: dict, records: list[dict]):
     rows = validate_component_evidence(env, records)
     proposal_fits = {}
     for b in env["batch_grid"]:
-        points = [(r["K"], r["median_ms"]) for r in rows
-                  if r["batch_size"] == b and r["measurement_kind"] == "eagle_propose"]
-        if len(points) < 2:
-            continue
-        xmean = statistics.mean(k for k, _ in points)
-        ymean = statistics.mean(ms for _, ms in points)
-        slope = sum((k-xmean)*(ms-ymean) for k, ms in points) / sum((k-xmean)**2 for k, _ in points)
-        intercept = ymean-slope*xmean
-        proposal_fits[str(b)] = dict(intercept_ms=intercept, marginal_step_ms=slope,
-                                    rmse_ms=math.sqrt(statistics.mean((ms-intercept-slope*k)**2 for k, ms in points)),
-                                    n_points=len(points), model="linear EAGLE K calibration only")
+        contexts = sorted({r["context_len"] for r in rows if r["batch_size"] == b})
+        for context in contexts:
+            points = [(r["K"], r["median_ms"]) for r in rows
+                      if r["batch_size"] == b and r["context_len"] == context and r["measurement_kind"] == "eagle_propose"]
+            if len(points) < 2:
+                continue
+            xmean = statistics.mean(k for k, _ in points)
+            ymean = statistics.mean(ms for _, ms in points)
+            slope = sum((k-xmean)*(ms-ymean) for k, ms in points) / sum((k-xmean)**2 for k, _ in points)
+            intercept = ymean-slope*xmean
+            key = str(b) if len(contexts) == 1 else f"b{b}_l{context}"
+            proposal_fits[key] = dict(intercept_ms=intercept, marginal_step_ms=slope,
+                                     rmse_ms=math.sqrt(statistics.mean((ms-intercept-slope*k)**2 for k, ms in points)),
+                                     n_points=len(points), context_len=context, model="linear EAGLE K calibration only")
     return dict(schema_version="m4-component-calibration-v1", artifact_kind="component_report",
                 not_consumer_profile=True, canonical_profile_generated=False,
                 runtime_tree_available=False, scientific_limitation=LIMITATION,
                 technical_alignment_status=ALIGNMENT_REQUIRED,
                 gamma_attn_status="not_calibrated_pending_formula_alignment",
                 environment=env, measurement_summary=rows, linear_proposer_fits=proposal_fits,
-                full_repeat_requirement_met=env["stage"] == "full" and env["repeats"] >= 50,
+                full_repeat_requirement_met=(env.get("run_type") == "component_benchmark" or
+                                             env.get("stage") == "full") and env["repeats"] >= 50,
                 cost_semantics={"component_latencies": "measured",
                                 "proposal_fits": "empirical_linear_regression"})
 
@@ -203,3 +209,97 @@ def validate_consumer_lookup(profile):
             if model.get_step_cost(t,b) != value:
                 raise ValueError("Lookup drift")
     return model
+
+
+def classify_hardware(name, capability, expected_gpu):
+    """Use observed name AND capability, never notebook accelerator settings."""
+    capability = tuple(capability or ())
+    observed = next((gpu for gpu, (_, sm) in GPU_CONFIG.items()
+                     if gpu in name.split() and capability ==
+                     ((8, 9) if sm == "sm_89" else (7, 5))), None)
+    return dict(expected_gpu=expected_gpu, observed_gpu=name, observed_gpu_type=observed,
+                canonical_hardware=observed == expected_gpu and observed is not None,
+                sm_architecture=f"sm_{capability[0]}{capability[1]}" if len(capability) == 2 else None)
+
+
+def validate_portable_config(mode, batches, ks, contexts, warmup, repeats):
+    if mode not in ("smoke", "components"):
+        raise ValueError("Expected smoke or components")
+    for values, allowed in ((batches, BATCHES), (ks, (0, *KS))):
+        if not values or len(set(values)) != len(values) or not set(values) <= set(allowed):
+            raise ValueError("Invalid/duplicate grid")
+    if not contexts or len(set(contexts)) != len(contexts) or not all(1 <= c <= 3072 for c in contexts):
+        raise ValueError("Invalid context grid")
+    if warmup < (5 if mode == "components" else 0) or repeats < (50 if mode == "components" else 1):
+        raise ValueError("Component benchmarks require warmup >=5 and repeats >=50")
+
+
+def measure_repeats(env, k, batches, contexts, operation, rpc, emit):
+    """Shared scientific loop. Backend supplies generation, named RPC and sink.
+
+    GPU timing remains inside m4_worker_observer. No frontend CUDA timer can
+    accidentally time a different CUDA process or count prefill as decoding.
+    """
+    for context in contexts:
+        for batch in batches:
+            prompts = prompt_token_ids(context, batch)
+            for index in range(env["warmup"] + env["repeats"]):
+                warm = index < env["warmup"]
+                result = {"samples": {}, "observed_shapes": []}
+                error = None
+                try:
+                    rpc("m4_begin", args=(batch, k, context))
+                    operation(prompts, 2*k+4)
+                    [result] = rpc("m4_finish")
+                except Exception as exc:
+                    error = f"{type(exc).__name__}: {exc}"
+                kinds = [("target", "linear_verify_forward" if k else "target_decode_forward")]
+                if k:
+                    kinds.append(("propose", "eagle_propose"))
+                for label, kind in kinds:
+                    latency = result["samples"].get(label)
+                    ok = error is None and isinstance(latency, (float, int)) and math.isfinite(latency) and latency > 0
+                    emit(dict(env, timestamp_utc=utc_now(), K=k, batch_size=batch, context_len=context,
+                              calibration_label=f"linear_eagle_k{k}" if k else "target_baseline",
+                              measurement_kind=kind, repeat=index if warm else index-env["warmup"],
+                              is_warmup=warm, latency_ms=latency if ok else None,
+                              status="ok" if ok else "error", error=error or
+                              (None if ok else "No cycle with exact requested batch/context/query shape"),
+                              observed_shapes=result["observed_shapes"]))
+                if error:
+                    raise RuntimeError(error)  # Never retry a broken CUDA context.
+
+
+def validate_portable_evidence(env, records):
+    mode = "components" if env["run_type"] == "component_benchmark" else "smoke"
+    validate_portable_config(mode, env["batches"], env["k_values"], env["contexts"], env["warmup"], env["repeats"])
+    if (not env.get("canonical_hardware") or not classify_hardware(
+            env["gpu"],env["gpu_compute_capability"],env["expected_gpu"])["canonical_hardware"]):
+        raise ValueError("Non-canonical hardware: diagnostic evidence only")
+    if mode == "components" and not env["working_tree_clean"]:
+        raise ValueError("Dirty source cannot support canonical component evidence")
+    if env["vllm_version"] != lanes.VLLM_VERSION:
+        raise ValueError("Unpinned vLLM")
+    if (env["target_revision"],env["draft_revision"]) != (lanes.TARGET_REVISION,lanes.EAGLE_REVISION):
+        raise ValueError("Unpinned model revisions")
+    expected, actual = set(), set()
+    for context in env["contexts"]:
+        for b in env["batches"]:
+            for k in env["k_values"]:
+                kinds = ("linear_verify_forward", "eagle_propose") if k else ("target_decode_forward",)
+                for kind in kinds:
+                    for warm, count in ((True, env["warmup"]), (False, env["repeats"])):
+                        expected.update((kind,b,k,context,i,warm) for i in range(count))
+    for r in records:
+        identity = (r["measurement_kind"],r["batch_size"],r["K"],r["context_len"],r["repeat"],r["is_warmup"])
+        if identity in actual:
+            raise ValueError("Duplicate repeat")
+        actual.add(identity)
+        if r["status"] != "ok":
+            raise ValueError("Failed component cell")
+        for key in ("run_id","source_commit","gpu","target_revision","draft_revision","timing_method"):
+            if r[key] != env[key]:
+                raise ValueError(f"Mixed provenance: {key}")
+    if actual != expected:
+        raise ValueError("Incomplete/unexpected evidence grid")
+    return summarize(records)

@@ -77,35 +77,15 @@ def measure(run_id: str, k: int, batches: list[int], context: int,
         # cannot be discovered through this vLLM engine frontend.
         env["batch_admission"] = "worker-observed exact B, uniform K+1 queries, context L; reject otherwise"
         persist_env()
-        for b in batches:
-            prompts = [TokensPrompt(prompt_token_ids=p) for p in prof.prompt_token_ids(context, b)]
-            for index in range(warmup+repeats):
-                is_warmup = index < warmup
-                repeat = index if is_warmup else index-warmup
-                result = {"samples": {}, "observed_shapes": []}
-                error = None
-                try:
-                    llm.collective_rpc("m4_begin", args=(b,k,context))
-                    llm.generate(prompts, SamplingParams(max_tokens=2*k+4, temperature=0., ignore_eos=True), use_tqdm=False)
-                    [result] = llm.collective_rpc("m4_finish")
-                except Exception as exc:
-                    error = f"{type(exc).__name__}: {exc}"
-                for label, kind in (("target", "linear_verify_forward" if k else "target_decode_forward"),
-                                    *(([("propose", "eagle_propose")]) if k else [])):
-                    latency = result["samples"].get(label)
-                    ok = error is None and latency is not None and latency > 0
-                    record = dict(env, timestamp_utc=prof.utc_now(), batch_size=b, measurement_kind=kind,
-                                  repeat=repeat, is_warmup=is_warmup, latency_ms=latency,
-                                  status="ok" if ok else "error", error=error if error else
-                                  (None if ok else "No cycle with exact requested batch/context/query shape"),
-                                  observed_shapes=result["observed_shapes"])
-                    raw.write(json.dumps(record)+"\n")
-                    raw.flush()
-                    records.append(record)
-                artifacts_volume.commit()
-                if error:
-                    # Do not retry a potentially corrupted CUDA context.
-                    raise RuntimeError(error)
+        def operation(prompts, max_tokens):
+            return llm.generate([TokensPrompt(prompt_token_ids=p) for p in prompts],
+                                SamplingParams(max_tokens=max_tokens, temperature=0., ignore_eos=True), use_tqdm=False)
+        def emit(record):
+            raw.write(json.dumps(record)+"\n")
+            raw.flush()
+            records.append(record)
+            artifacts_volume.commit()
+        prof.measure_repeats(env,k,batches,[context],operation,llm.collective_rpc,emit)
         env["status"] = "complete"
     except Exception as exc:
         env.update(status="failed", error=f"{type(exc).__name__}: {exc}")
