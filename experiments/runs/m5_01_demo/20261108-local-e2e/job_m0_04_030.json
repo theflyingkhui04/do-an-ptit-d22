@@ -1,0 +1,444 @@
+{
+  "job_id": "up_e9161af16eac",
+  "status": "done",
+  "error": null,
+  "result": {
+    "gpu": "A10G",
+    "ocr": {
+      "text": "MINIMART ANAN\nChợ Sủi Phu Thị Gia Lâm\nTel:\nHÓA ĐƠN BÁN HÀNG\nTên hàng SL ĐVT Đơn giá Thành tiền\n291043130000 bánh chấm pokemon yon yon N0\n1 HOP 10,000 10,000\n291020300000 kem sữa chua well yo các lo NT\n7 CAI 3,500 24,500\n291026450000 kem sữa chua subo VNM NT\n1 GOI 3,000 3,000\n8999999058371 xà bông Camay 125g NT\n1 HOP 12,000 12,000\n8935039500509 Mì chính ajnomoto 454g NT\n1 GOI 31,000 31,000\n4710168714812 Bàn chải Colgate trẻ em NT\n1 CAI 26,000 26,000\n8888826016175 Bàn cạo râu Gillette NT\n1 CAI 30,000 30,000\n8888826016182 Lưỡi cạo râu Gillette NT\n1 CAI 25,000 25,000\nTổng số: 14\nTổng cộng: 161,500\nTiền khách trả: VND 161,500\nSố GD: 000AB2212008004062 Ngày: 16/08/2020-20:27\nThu ngân: BH5\nXin cảm ơn và hẹn gặp lại quý khách!",
+      "model": "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+      "scale": 2.0,
+      "revision": "536a35794df8831aa814970ee8f89eff577e7718",
+      "finish_reason": "stop",
+      "original_size": [
+        768,
+        1024
+      ],
+      "prompt_tokens": 4106,
+      "prompt_version": "receipt_ocr_full.v1",
+      "completion_tokens": 473
+    },
+    "lanes": {
+      "eagle": {
+        "lane": "eagle",
+        "error": null,
+        "model": "qwen2.5-7b-eagle3-draft",
+        "valid": true,
+        "tpot_ms": 8.500225733625062,
+        "ttft_ms": 167984.00000005495,
+        "latency_ms": 186812.00000003446,
+        "spec_decode": {
+          "speculative_decoding": {
+            "num_spec_steps": 1046,
+            "num_spec_tokens": 3,
+            "num_draft_tokens": 2819,
+            "acceptance_histogram": [
+              493,
+              162,
+              164,
+              227
+            ],
+            "draft_acceptance_rate": 0.41539553032990423,
+            "mean_acceptance_length": 2.1195028680688335,
+            "num_accepted_draft_tokens": 1171
+          }
+        },
+        "equal_fields": 132,
+        "total_fields": 132,
+        "finish_reason": "stop",
+        "prompt_tokens": 2149,
+        "differing_fields": [],
+        "completion_tokens": 2216,
+        "output_tokens_per_s": 11.862193006871031,
+        "speedup_tpot_vs_vanilla": 1.3053962184046457,
+        "speedup_latency_vs_vanilla": 0.13666680941305018
+      },
+      "static": {
+        "lane": "static",
+        "error": null,
+        "model": "qwen2.5-7b-static-draft",
+        "valid": true,
+        "tpot_ms": 8.359367945851679,
+        "ttft_ms": 2515.00000001397,
+        "latency_ms": 21031.000000075437,
+        "spec_decode": {
+          "speculative_decoding": {
+            "num_spec_steps": 572,
+            "num_spec_tokens": 3,
+            "num_draft_tokens": 1715,
+            "acceptance_histogram": [
+              8,
+              19,
+              9,
+              536
+            ],
+            "draft_acceptance_rate": 0.9591836734693877,
+            "mean_acceptance_length": 3.875874125874126,
+            "num_accepted_draft_tokens": 1645
+          }
+        },
+        "equal_fields": 132,
+        "total_fields": 132,
+        "finish_reason": "stop",
+        "prompt_tokens": 2149,
+        "differing_fields": [],
+        "completion_tokens": 2216,
+        "output_tokens_per_s": 105.36826589282732,
+        "speedup_tpot_vs_vanilla": 1.3273925253842263,
+        "speedup_latency_vs_vanilla": 1.2139698540242432
+      },
+      "vanilla": {
+        "lane": "vanilla",
+        "error": null,
+        "model": "qwen2.5-7b-vanilla",
+        "valid": true,
+        "tpot_ms": 11.096162528260011,
+        "ttft_ms": 952.9999999795109,
+        "latency_ms": 25531.000000075437,
+        "spec_decode": null,
+        "equal_fields": 132,
+        "total_fields": 132,
+        "finish_reason": "stop",
+        "prompt_tokens": 2149,
+        "differing_fields": [],
+        "completion_tokens": 2216,
+        "output_tokens_per_s": 86.79644353897037,
+        "speedup_tpot_vs_vanilla": 1.0,
+        "speedup_latency_vs_vanilla": 1.0
+      },
+      "adaptive": {
+        "lane": "adaptive",
+        "error": null,
+        "model": "qwen2.5-7b-adaptive",
+        "valid": true,
+        "tpot_ms": 8.111963882615568,
+        "ttft_ms": 1250.0,
+        "latency_ms": 19217.99999999348,
+        "spec_decode": {
+          "speculative_decoding": {
+            "num_spec_steps": 476,
+            "num_spec_tokens": 4,
+            "num_draft_tokens": 1791,
+            "acceptance_histogram": [
+              8,
+              14,
+              35,
+              45,
+              374
+            ],
+            "draft_acceptance_rate": 0.9575656058068118,
+            "mean_acceptance_length": 4.602941176470589,
+            "num_accepted_draft_tokens": 1715
+          }
+        },
+        "equal_fields": 132,
+        "total_fields": 132,
+        "finish_reason": "stop",
+        "prompt_tokens": 2149,
+        "differing_fields": [],
+        "completion_tokens": 2216,
+        "output_tokens_per_s": 115.30856488712413,
+        "speedup_tpot_vs_vanilla": 1.3678762244047662,
+        "speedup_latency_vs_vanilla": 1.3284941201001195
+      }
+    },
+    "invoice": {
+      "buyer": {
+        "name": null,
+        "phone": null,
+        "address": null,
+        "tax_code": null
+      },
+      "items": [
+        {
+          "sku": "291043130000",
+          "quantity": {
+            "raw": "1 HOP",
+            "unit": "HOP",
+            "value": 1
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "10,000",
+            "value": 10000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "10,000",
+            "value": 10000,
+            "currency": "VND"
+          },
+          "description": "bánh chấm pokemon yon yon N0",
+          "line_number": 1
+        },
+        {
+          "sku": "291020300000",
+          "quantity": {
+            "raw": "7 CAI",
+            "unit": "CAI",
+            "value": 7
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "24,500",
+            "value": 24500,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "3,500",
+            "value": 3500,
+            "currency": "VND"
+          },
+          "description": "kem sữa chua well yo các lo NT",
+          "line_number": 2
+        },
+        {
+          "sku": "291026450000",
+          "quantity": {
+            "raw": "1 GOI",
+            "unit": "GOI",
+            "value": 1
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "3,000",
+            "value": 3000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "3,000",
+            "value": 3000,
+            "currency": "VND"
+          },
+          "description": "kem sữa chua subo VNM NT",
+          "line_number": 3
+        },
+        {
+          "sku": "8999999058371",
+          "quantity": {
+            "raw": "1 HOP",
+            "unit": "HOP",
+            "value": 1
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "12,000",
+            "value": 12000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "12,000",
+            "value": 12000,
+            "currency": "VND"
+          },
+          "description": "xà bông Camay 125g NT",
+          "line_number": 4
+        },
+        {
+          "sku": "8935039500509",
+          "quantity": {
+            "raw": "1 GOI",
+            "unit": "GOI",
+            "value": 1
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "31,000",
+            "value": 31000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "31,000",
+            "value": 31000,
+            "currency": "VND"
+          },
+          "description": "Mì chính ajnomoto 454g NT",
+          "line_number": 5
+        },
+        {
+          "sku": "4710168714812",
+          "quantity": {
+            "raw": "1 CAI",
+            "unit": "CAI",
+            "value": 1
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "26,000",
+            "value": 26000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "26,000",
+            "value": 26000,
+            "currency": "VND"
+          },
+          "description": "Bàn chải Colgate trẻ em NT",
+          "line_number": 6
+        },
+        {
+          "sku": "8888826016175",
+          "quantity": {
+            "raw": "1 CAI",
+            "unit": "CAI",
+            "value": 1
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "30,000",
+            "value": 30000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "30,000",
+            "value": 30000,
+            "currency": "VND"
+          },
+          "description": "Bàn cạo râu Gillette NT",
+          "line_number": 7
+        },
+        {
+          "sku": "8888826016182",
+          "quantity": {
+            "raw": "1 CAI",
+            "unit": "CAI",
+            "value": 1
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "25,000",
+            "value": 25000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "25,000",
+            "value": 25000,
+            "currency": "VND"
+          },
+          "description": "Lưỡi cạo râu Gillette NT",
+          "line_number": 8
+        }
+      ],
+      "taxes": [],
+      "seller": {
+        "name": "MINIMART ANAN",
+        "phone": null,
+        "address": "Chợ Sủi Phu Thị Gia Lâm",
+        "tax_code": null
+      },
+      "source": {
+        "img_id": "up_e9161af16eac",
+        "raw_text": "MINIMART ANAN\nChợ Sủi Phu Thị Gia Lâm\nTel:\nHÓA ĐƠN BÁN HÀNG\nTên hàng SL ĐVT Đơn giá Thành tiền\n291043130000 bánh chấm pokemon yon yon N0\n1 HOP 10,000 10,000\n291020300000 kem sữa chua well yo các lo NT\n7 CAI 3,500 24,500\n291026450000 kem sữa chua subo VNM NT\n1 GOI 3,000 3,000\n8999999058371 xà bông Camay 125g NT\n1 HOP 12,000 12,000\n8935039500509 Mì chính ajnomoto 454g NT\n1 GOI 31,000 31,000\n4710168714812 Bàn chải Colgate trẻ em NT\n1 CAI 26,000 26,000\n8888826016175 Bàn cạo râu Gillette NT\n1 CAI 30,000 30,000\n8888826016182 Lưỡi cạo râu Gillette NT\n1 CAI 25,000 25,000\nTổng số: 14\nTổng cộng: 161,500\nTiền khách trả: VND 161,500\nSố GD: 000AB2212008004062 Ngày: 16/08/2020-20:27\nThu ngân: BH5\nXin cảm ơn và hẹn gặp lại quý khách!",
+        "sample_id": "up_e9161af16eac",
+        "image_path": "uploads/up_e9161af16eac.jpg"
+      },
+      "totals": {
+        "discount": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "subtotal": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "vat_amount": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "total_amount": {
+          "raw": "161,500",
+          "value": 161500,
+          "currency": "VND"
+        }
+      },
+      "invoice": {
+        "currency": "VND",
+        "issued_at": "2020-08-16T20:27:00",
+        "issued_date": "2020-08-16",
+        "issued_time": "20:27:00",
+        "invoice_number": null,
+        "invoice_series": null,
+        "payment_method": null
+      },
+      "extraction": {
+        "status": "partial",
+        "warnings": [],
+        "confidence": null,
+        "field_evidence": [
+          {
+            "raw_text": "MINIMART ANAN",
+            "field_path": "seller.name",
+            "source_label": null
+          },
+          {
+            "raw_text": "16/08/2020",
+            "field_path": "invoice.issued_date",
+            "source_label": null
+          },
+          {
+            "raw_text": "20:27",
+            "field_path": "invoice.issued_time",
+            "source_label": null
+          },
+          {
+            "raw_text": "161,500",
+            "field_path": "totals.total_amount",
+            "source_label": null
+          }
+        ],
+        "missing_fields": [
+          "seller.tax_code",
+          "seller.phone",
+          "buyer.name",
+          "buyer.address",
+          "invoice.invoice_number",
+          "invoice.invoice_series",
+          "invoice.payment_method",
+          "totals.subtotal",
+          "totals.discount",
+          "totals.vat_amount"
+        ]
+      },
+      "document_type": "retail_receipt",
+      "schema_version": "invoice_extraction.v1"
+    },
+    "lane_map": {
+      "node1": "adaptive",
+      "node2": "static",
+      "answer": "static",
+      "report": "eagle"
+    },
+    "grounding": {
+      "checked_fields": 43,
+      "grounded_fields": 43,
+      "ungrounded_fields": []
+    },
+    "invoice_id": "up_e9161af16eac:up_e9161af16eac",
+    "item_check": {
+      "lines": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "invoice_sum": true
+    },
+    "timings_ms": {
+      "ocr": 9483.049900038168,
+      "node1": 186862.09459998645
+    },
+    "stored_lane": "adaptive",
+    "storage_path": "uploads/up_e9161af16eac.jpg",
+    "stored_from_fallback": false
+  },
+  "invoice_id": "up_e9161af16eac:up_e9161af16eac",
+  "created_at": "2026-11-08T20:22:38.429657+07:00",
+  "updated_at": "2026-11-08T20:25:55.263374+07:00"
+}

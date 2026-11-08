@@ -1,0 +1,237 @@
+{
+  "job_id": "up_a2851292c6c2",
+  "status": "done",
+  "error": null,
+  "result": {
+    "gpu": "A10G",
+    "ocr": {
+      "text": "MINIMART ANAN\nChợ Suli Phu Thi Gia Lam\nTel:\nHÓA ĐƠN BÁN HÀNG\nTên hàng SL ĐVT Đơn giá Thành tiền\n291026450000 kem sua chua subo VNM NT\nGiá đăng ký: 3,000\nGiá bán: 15 G0I 2,800 42,000\nTổng số: 15\nTổng cộng: 42,000\nTổng tiền: 42,000\nTiền khách trả: VND 42,000\nMã thẻ: A10000001377\n(0) nguyen thi li\nĐiểm mua: 4\nĐiểm hiện thời: 97\nHạng hiện thời:\nGiá trị thưởng tích lũy: 9,960\nSố GD: 000AC2212008001287 Ngày: 10/08/2020-17:12\nThu ngân: BH3\nXin cam on va hen gap lai quy khach!",
+      "model": "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+      "scale": 2.0,
+      "revision": "536a35794df8831aa814970ee8f89eff577e7718",
+      "finish_reason": "stop",
+      "original_size": [
+        768,
+        1024
+      ],
+      "prompt_tokens": 4106,
+      "prompt_version": "receipt_ocr_full.v1",
+      "completion_tokens": 278
+    },
+    "lanes": {
+      "vanilla": {
+        "lane": "vanilla",
+        "error": null,
+        "model": "qwen2.5-7b-vanilla",
+        "valid": true,
+        "tpot_ms": 10.971806167382828,
+        "ttft_ms": 1782.0000000065193,
+        "latency_ms": 14234.99999998603,
+        "spec_decode": null,
+        "equal_fields": 41,
+        "total_fields": 41,
+        "finish_reason": "stop",
+        "prompt_tokens": 1960,
+        "differing_fields": [],
+        "completion_tokens": 1136,
+        "output_tokens_per_s": 79.80330172118826,
+        "speedup_tpot_vs_vanilla": 1.0,
+        "speedup_latency_vs_vanilla": 1.0
+      },
+      "adaptive": {
+        "lane": "adaptive",
+        "error": null,
+        "model": "qwen2.5-7b-adaptive",
+        "valid": true,
+        "tpot_ms": 10.916299559483674,
+        "ttft_ms": 2532.0000000065193,
+        "latency_ms": 14922.00000002049,
+        "spec_decode": {
+          "speculative_decoding": {
+            "num_spec_steps": 239,
+            "num_spec_tokens": 4,
+            "num_draft_tokens": 845,
+            "acceptance_histogram": [
+              10,
+              9,
+              31,
+              44,
+              145
+            ],
+            "draft_acceptance_rate": 0.9266272189349113,
+            "mean_acceptance_length": 4.276150627615063,
+            "num_accepted_draft_tokens": 783
+          }
+        },
+        "equal_fields": 41,
+        "total_fields": 41,
+        "finish_reason": "stop",
+        "prompt_tokens": 1960,
+        "differing_fields": [],
+        "completion_tokens": 1136,
+        "output_tokens_per_s": 76.12920520027075,
+        "speedup_tpot_vs_vanilla": 1.0050847457599248,
+        "speedup_latency_vs_vanilla": 0.9539605950922453
+      }
+    },
+    "invoice": {
+      "buyer": {
+        "name": "nguyen thi li",
+        "phone": null,
+        "address": null,
+        "tax_code": null
+      },
+      "items": [
+        {
+          "sku": null,
+          "quantity": {
+            "raw": "15 G0I",
+            "unit": "G0I",
+            "value": 15
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "42,000",
+            "value": 42000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "2,800",
+            "value": 2800,
+            "currency": "VND"
+          },
+          "description": "291026450000 kem sua chua subo VNM NT",
+          "line_number": 1
+        }
+      ],
+      "taxes": [],
+      "seller": {
+        "name": "MINIMART ANAN",
+        "phone": null,
+        "address": "Chợ Suli Phu Thi Gia Lam",
+        "tax_code": null
+      },
+      "source": {
+        "img_id": "up_a2851292c6c2",
+        "raw_text": "MINIMART ANAN\nChợ Suli Phu Thi Gia Lam\nTel:\nHÓA ĐƠN BÁN HÀNG\nTên hàng SL ĐVT Đơn giá Thành tiền\n291026450000 kem sua chua subo VNM NT\nGiá đăng ký: 3,000\nGiá bán: 15 G0I 2,800 42,000\nTổng số: 15\nTổng cộng: 42,000\nTổng tiền: 42,000\nTiền khách trả: VND 42,000\nMã thẻ: A10000001377\n(0) nguyen thi li\nĐiểm mua: 4\nĐiểm hiện thời: 97\nHạng hiện thời:\nGiá trị thưởng tích lũy: 9,960\nSố GD: 000AC2212008001287 Ngày: 10/08/2020-17:12\nThu ngân: BH3\nXin cam on va hen gap lai quy khach!",
+        "sample_id": "up_a2851292c6c2",
+        "image_path": "uploads/up_a2851292c6c2.jpg"
+      },
+      "totals": {
+        "discount": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "subtotal": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "vat_amount": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "total_amount": {
+          "raw": "42,000",
+          "value": 42000,
+          "currency": "VND"
+        }
+      },
+      "invoice": {
+        "currency": "VND",
+        "issued_at": "2020-08-10T17:12:00",
+        "issued_date": "2020-08-10",
+        "issued_time": "17:12:00",
+        "invoice_number": null,
+        "invoice_series": null,
+        "payment_method": null
+      },
+      "extraction": {
+        "status": "partial",
+        "warnings": [],
+        "confidence": null,
+        "field_evidence": [
+          {
+            "raw_text": "MINIMART ANAN",
+            "field_path": "seller.name",
+            "source_label": null
+          },
+          {
+            "raw_text": "10/08/2020-17:12",
+            "field_path": "invoice.issued_at",
+            "source_label": null
+          },
+          {
+            "raw_text": "42,000",
+            "field_path": "totals.total_amount",
+            "source_label": null
+          },
+          {
+            "raw_text": "291026450000 kem sua chua subo VNM NT",
+            "field_path": "items[0].description",
+            "source_label": null
+          },
+          {
+            "raw_text": "15 G0I",
+            "field_path": "items[0].quantity",
+            "source_label": null
+          },
+          {
+            "raw_text": "2,800",
+            "field_path": "items[0].unit_price",
+            "source_label": null
+          },
+          {
+            "raw_text": "42,000",
+            "field_path": "items[0].line_total",
+            "source_label": null
+          }
+        ],
+        "missing_fields": [
+          "seller.tax_code",
+          "seller.phone",
+          "buyer.address",
+          "invoice.invoice_number",
+          "invoice.invoice_series",
+          "invoice.payment_method",
+          "totals.subtotal",
+          "totals.discount",
+          "totals.vat_amount",
+          "items[0].vat_rate"
+        ]
+      },
+      "document_type": "retail_receipt",
+      "schema_version": "invoice_extraction.v1"
+    },
+    "lane_map": {
+      "node1": "adaptive",
+      "node2": "static",
+      "answer": "static",
+      "report": "eagle"
+    },
+    "grounding": {
+      "checked_fields": 8,
+      "grounded_fields": 8,
+      "ungrounded_fields": []
+    },
+    "invoice_id": "up_a2851292c6c2:up_a2851292c6c2",
+    "item_check": {
+      "lines": [
+        true
+      ],
+      "invoice_sum": true
+    },
+    "timings_ms": {
+      "ocr": 7261.673199944198,
+      "node1": 15005.25279995054
+    },
+    "stored_lane": "adaptive",
+    "storage_path": "uploads/up_a2851292c6c2.jpg",
+    "stored_from_fallback": false
+  },
+  "invoice_id": "up_a2851292c6c2:up_a2851292c6c2",
+  "created_at": "2026-11-08T20:22:15.881397+07:00",
+  "updated_at": "2026-11-08T20:22:38.363390+07:00"
+}
