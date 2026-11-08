@@ -66,7 +66,7 @@ Kế hoạch này chi tiết hóa việc thực hiện Task `[M4-02-05]` thuộc
 
 ## 3. Chi tiết các nhiệm vụ cụ thể
 
-### Nhiệm vụ 1: Xây dựng bộ unit test khung (`tests/test_tree_adaptive_controller.py`)
+### Task 1: Xây dựng bộ unit test khung (`tests/test_tree_adaptive_controller.py`)
 - **Mục tiêu:** Tạo test suite bao phủ toàn bộ các yêu cầu trong đặc tả kỹ thuật trước khi hoàn thiện implementation (chuẩn TDD).
 - **Các test case:**
   1. `test_tree_adaptive_controller_initialization`: Kiểm tra khởi tạo tham số mặc định và tham số tùy biến.
@@ -84,7 +84,7 @@ Kế hoạch này chi tiết hóa việc thực hiện Task `[M4-02-05]` thuộc
 
 ---
 
-### Nhiệm vụ 2: Hiện thực hóa `TreeAdaptiveController` trong `src/proposer/tree_adaptive.py`
+### Task 2: Hiện thực hóa `TreeAdaptiveController` trong `src/proposer/tree_adaptive.py`
 - **Mục tiêu:** Lập trình module điều khiển cây nháp v0.2 phục vụ môi trường serving.
 - **Các bước cài đặt:**
   - Khai báo lớp dữ liệu `TreeAdaptiveDecision(BudgetDecision)` kế thừa `k` từ `BudgetDecision` và lưu các trường siêu dữ liệu mở rộng.
@@ -102,7 +102,7 @@ Kế hoạch này chi tiết hóa việc thực hiện Task `[M4-02-05]` thuộc
 
 ---
 
-### Nhiệm vụ 3: Đấu nối vào `src/proposer/adapter.py`
+### Task 3: Đấu nối vào `src/proposer/adapter.py`
 - **Mục tiêu:** Cho phép `AdaptiveProposerAdapter` phối hợp trực tiếp với `TreeAdaptiveController`.
 - **Nội dung thay đổi:**
   - Import `TreeAdaptiveController` và `TreeAdaptiveDecision` trong `src/proposer/adapter.py`.
@@ -111,7 +111,7 @@ Kế hoạch này chi tiết hóa việc thực hiện Task `[M4-02-05]` thuộc
 
 ---
 
-### Nhiệm vụ 4: Kiểm thử, đo benchmark hiệu năng và kiểm tra hồi quy
+### Task 4: Kiểm thử, đo benchmark hiệu năng và kiểm tra hồi quy
 - **Mục tiêu:** Thẩm định chất lượng code đạt chuẩn DoD của dự án.
 - **Thực thi:**
   - Chạy `pytest tests/test_tree_adaptive_controller.py -v`.
@@ -123,7 +123,7 @@ Kế hoạch này chi tiết hóa việc thực hiện Task `[M4-02-05]` thuộc
 
 ---
 
-### Nhiệm vụ 5: Viết tài liệu nghiệm thu và hoàn tất bàn giao
+### Task 5: Viết tài liệu nghiệm thu và hoàn tất bàn giao
 - **Mục tiêu:** Cập nhật tài liệu minh bạch và theo dõi tiến độ trên Trello.
 - **Thực thi:**
   - Viết worklog chi tiết tại `logs/Khoi/M4-02/M4-02-05_worklogs.md`.
