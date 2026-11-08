@@ -302,3 +302,39 @@ def test_proposer_adapter_integration():
         num_drafted=proposal.budget_k,
     )
     assert 0.0 <= new_alpha <= 1.0
+
+
+def test_tree_adaptive_controller_reset():
+    """Verifies that reset() cleans up all internal state without leakage across sequences."""
+    controller = TreeAdaptiveController(initial_alpha=0.8)
+    controller.update(num_accepted=4, num_drafted=4)
+    controller.select_budget(batch_size=1, free_vram_mb=1000.0, kv_cache_usage_pct=50.0)
+    assert controller._memory_guard_active is True
+    assert controller._step_count > 0
+
+    controller.reset(initial_alpha=0.9)
+    assert controller.initial_alpha == 0.9
+    assert controller.alpha_ema == 0.9
+    assert controller._step_count == 0
+    assert controller._fallback_steps == 0
+    assert controller._memory_guard_active is False
+    assert controller._cooldown_counter == 0
+    assert controller._guard_reason == ""
+    assert controller._last_selected_depth == 0
+    assert controller._last_selected_topology == "T0"
+
+
+def test_adapter_telemetry_forwards_topologies():
+    """Verifies that adapter.get_telemetry() includes the topologies sequence."""
+    adapter = AdaptiveProposerAdapter(
+        controller_cls=TreeAdaptiveController,
+        controller_kwargs={"initial_alpha": 0.85},
+    )
+    req_id = "req_tree_test_telemetry"
+    mock_gen = MagicMock(return_value=[1, 2, 3, 4])
+    adapter.propose(req_id, mock_gen, batch_size=1)
+    telemetry = adapter.get_telemetry(req_id)
+
+    assert "topologies" in telemetry
+    assert len(telemetry["topologies"]) >= 1
+

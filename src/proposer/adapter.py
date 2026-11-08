@@ -135,6 +135,8 @@ class AdaptiveProposerAdapter:
             telemetry["effective_alpha"] = stats["effective_alpha"]
         if "is_warmed_up" in stats:
             telemetry["is_warmed_up"] = stats["is_warmed_up"]
+        if "topologies" in stats:
+            telemetry["topologies"] = stats["topologies"]
         return telemetry
 
     def end_request(self, request_id: str) -> dict:

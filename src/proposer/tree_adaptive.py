@@ -71,6 +71,17 @@ class TreeAdaptiveController(BudgetController):
         self._last_selected_depth: int = 0
         self._last_selected_topology: str = "T0"
 
+    def reset(self, initial_alpha: Optional[float] = None) -> None:
+        """Resets controller state when beginning a new sequence/prompt."""
+        super().reset(initial_alpha=initial_alpha)
+        self._step_count = 0
+        self._fallback_steps = 0
+        self._memory_guard_active = False
+        self._cooldown_counter = 0
+        self._guard_reason = ""
+        self._last_selected_depth = 0
+        self._last_selected_topology = "T0"
+
     def get_effective_alpha(self) -> float:
         """Returns unbiased alpha taking into account warm-up bias correction."""
         if self._step_count == 0:
