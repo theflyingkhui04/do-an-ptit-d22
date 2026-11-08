@@ -2,7 +2,7 @@
 
 Example (PowerShell):
   $env:PTIT_GPU='L4'; $env:PTIT_DTYPE_PROFILE='l4-bf16'
-  modal run -m experiments.m4_modal_runner --run-id UNIQUE --stage smoke
+  modal run -m experiments.m4_modal_runner::main --run-id UNIQUE --stage smoke --ks 1
 """
 from __future__ import annotations
 
@@ -27,16 +27,17 @@ for filename in ("modal_profiler.py", "m4_cost_profiler.py", "m4_worker_observer
 @app.function(image=m4_image, gpu=GPU, timeout=3*60*60, retries=0, single_use_containers=True,
               volumes=SERVER_VOLUMES,
               env={"HF_HOME": lanes.HF_HOME, "HF_HUB_OFFLINE": "1", "PTIT_GPU": GPU,
+                   "VLLM_USE_V2_MODEL_RUNNER": "0",
                    "PYTHONPATH": f"{lanes.REMOTE_PROJECT_ROOT}:/root",
                    "VLLM_CACHE_ROOT": lanes.VLLM_CACHE_ROOT})
 def measure(run_id: str, k: int, batches: list[int], context: int,
             warmup: int, repeats: int, stage: str):
+    prof.validate_submission(GPU,batches,[k],context,warmup,repeats,stage)
     import torch
     import pynvml
     import vllm
     from vllm import LLM, SamplingParams
     from vllm.inputs import TokensPrompt
-    from experiments import m4_worker_observer as obs
 
     root = Path(lanes.ARTIFACTS_ROOT) / "m4_cost_profiling" / run_id / f"k{k}"
     root.mkdir(parents=True, exist_ok=False)
@@ -56,6 +57,7 @@ def measure(run_id: str, k: int, batches: list[int], context: int,
                target_model=lanes.TARGET_MODEL, target_revision=lanes.TARGET_REVISION,
                draft_model=lanes.EAGLE_DRAFT_MODEL, draft_revision=lanes.EAGLE_REVISION,
                draft_method="eagle3" if k else None, K=k, engine_kwargs=prof.engine_kwargs(GPU,k),
+               runner_selection="VLLM_USE_V2_MODEL_RUNNER=0",
                context_len=context, warmup=warmup, repeats=repeats, stage=stage,
                batch_grid=batches, k_grid=[k], timing_method=prof.TIMING,
                target_boundary="model forward only; excludes logits and sampling",
@@ -70,7 +72,7 @@ def measure(run_id: str, k: int, batches: list[int], context: int,
         if env["vllm_version"] != lanes.VLLM_VERSION:
             raise RuntimeError("Unpinned runtime")
         llm = LLM(**env["engine_kwargs"])
-        env["worker_source_hashes"] = llm.collective_rpc(obs.install)
+        env["worker_source_hashes"] = llm.collective_rpc("m4_install")
         # Exact batch admission is verified in worker shapes, even if capacity
         # cannot be discovered through this vLLM engine frontend.
         env["batch_admission"] = "worker-observed exact B, uniform K+1 queries, context L; reject otherwise"
@@ -83,9 +85,9 @@ def measure(run_id: str, k: int, batches: list[int], context: int,
                 result = {"samples": {}, "observed_shapes": []}
                 error = None
                 try:
-                    llm.collective_rpc(obs.begin, args=(b,k,context))
+                    llm.collective_rpc("m4_begin", args=(b,k,context))
                     llm.generate(prompts, SamplingParams(max_tokens=2*k+4, temperature=0., ignore_eos=True), use_tqdm=False)
-                    [result] = llm.collective_rpc(obs.finish)
+                    [result] = llm.collective_rpc("m4_finish")
                 except Exception as exc:
                     error = f"{type(exc).__name__}: {exc}"
                 for label, kind in (("target", "linear_verify_forward" if k else "target_decode_forward"),
@@ -128,11 +130,11 @@ def committed_source():
 
 
 @app.local_entrypoint()
-def main(run_id: str, stage: str = "smoke", batches: str = "1", ks: str = "0,1",
+def main(run_id: str, stage: str = "smoke", batches: str = "1", ks: str = "1",
          context: int = prof.CONTEXT, warmup: int = 5, repeats: int = 2):
     bs = tuple(int(x) for x in batches.split(","))
     kvals = tuple(int(x) for x in ks.split(","))
-    prof.validate_config(GPU, bs, kvals, context, warmup, repeats, stage)
+    prof.validate_submission(GPU, bs, kvals, context, warmup, repeats, stage)
     sha = committed_source()
     out = prof.evidence_dir(REPO_ROOT, run_id)
     out.mkdir(parents=True, exist_ok=False)

@@ -31,28 +31,16 @@ def evidence(gpu="L4"):
 
 
 @pytest.mark.parametrize("gpu", ["L4", "T4"])
-def test_full_profile_provenance_and_exact_lookup(gpu, monkeypatch):
+def test_component_report_preserves_measurements_without_consumer_profile(gpu):
     env, raw = evidence(gpu)
-    result = p.build_profile(env, raw, tree_ops_prior_ms=0)
-    assert len(result["cost_matrix_ms"]) == 30
-    model = FlexCostModel.from_json(result)
-    assert model.provenance == "derived_model_assisted"
-    monkeypatch.setattr(model, "get_forward_costs", lambda *a, **kw: pytest.fail("fallback"))
-    for t in p.CANONICAL_TOPOLOGIES:
-        for b in p.BATCHES:
-            key = f"topo_{t}_b{b}"
-            value = result["cost_matrix_ms"][key]
-            assert math.isfinite(value) and value > 0
-            assert model.get_step_cost(t, b) == value
-            assert result["cell_provenance"][key]["source"] == (
-                "measured" if t == "T0" else "derived_model_assisted")
-            if t == "T0":
-                assert value == 10+b
-    assert result["metadata"]["gamma_attn"] == pytest.approx(.02)
-    assert result["metadata"]["attn_verify_factor"] == result["metadata"]["gamma_attn"]
-    assert result["metadata"]["gamma_attn_fit"]["rmse_ms"] < 1e-10
-    assert not result["metadata"]["runtime_tree_available"]
-    assert result["calibration_fits"]["1"]["proposal_slope_ms"] == pytest.approx(1)
+    result = p.build_component_report(env, raw)
+    assert result["not_consumer_profile"] and not result["canonical_profile_generated"]
+    assert "cost_matrix_ms" not in result and "gamma_attn" not in result
+    assert "forward_costs_median_ms" not in result
+    assert not result["runtime_tree_available"]
+    assert result["linear_proposer_fits"]["1"]["marginal_step_ms"] == pytest.approx(1)
+    assert result["linear_proposer_fits"]["1"]["rmse_ms"] < 1e-10
+    assert next(r for r in result["measurement_summary"] if r["K"] == 0)["median_ms"] != 999
 
 
 @pytest.mark.parametrize("mutation", ["missing", "failed", "duplicate", "mixed_context", "mixed_sha", "nan", "warmup_missing", "wrong_index"])
@@ -75,16 +63,16 @@ def test_rejects_bad_evidence(mutation):
     elif mutation == "wrong_index":
         raw[-1]["repeat"] = 500
     with pytest.raises(ValueError):
-        p.build_profile(env, raw, tree_ops_prior_ms=0)
+        p.build_component_report(env, raw)
 
 
-@pytest.mark.parametrize("field,value", [("stage","smoke"), ("repeats",49),
+@pytest.mark.parametrize("field,value", [("repeats",49),
                                          ("target_revision","main"), ("vllm_version","latest")])
 def test_canonical_publication_gate(field,value):
     env, raw = evidence()
     env[field] = value
     with pytest.raises(ValueError):
-        p.build_profile(env,raw,tree_ops_prior_ms=0)
+        p.build_component_report(env,raw)
 
 
 def test_timing_synchronizes_before_and_after_work():
@@ -123,12 +111,48 @@ def test_run_id_safety(tmp_path,bad):
         p.evidence_dir(tmp_path,bad)
 
 
-def test_derived_cells_cannot_be_relabelled_measured():
+def test_canonical_generation_is_disabled_even_with_complete_evidence():
     env, raw = evidence()
-    result = p.build_profile(env,raw,tree_ops_prior_ms=0)
-    result["cell_provenance"]["topo_T8_b1"]["source"] = "measured"
-    with pytest.raises(ValueError):
-        p.validate_profile(result)
+    with pytest.raises(ValueError,match="TECHNICAL ALIGNMENT REQUIRED"):
+        p.build_profile(env,raw,tree_ops_prior_ms=0)
+
+
+def test_existing_consumer_contract_has_exact_matrix_lookup(monkeypatch):
+    # Synthetic, in-memory lookup fixture only; never GPU evidence or a file.
+    fixture = {"cost_matrix_ms": {f"topo_{t}_b{b}": 10+b+index for index,t in
+               enumerate(p.CANONICAL_TOPOLOGIES) for b in p.BATCHES}}
+    model = p.validate_consumer_lookup(fixture)
+    assert model.provenance == "measured"  # Approved M4-02-03 contract is unchanged.
+    monkeypatch.setattr(model,"get_forward_costs",lambda *a,**kw: pytest.fail("fallback"))
+    for t in p.CANONICAL_TOPOLOGIES:
+        for b in p.BATCHES:
+            assert model.get_step_cost(t,b) == fixture["cost_matrix_ms"][f"topo_{t}_b{b}"]
+
+
+@pytest.mark.parametrize("batches,ks,repeats,stage", [
+    ([1],[1],50,"smoke"), ([1],[0,1],2,"smoke"), ([1,2],[1],2,"smoke"),
+    ([1],[1],2,"pilot"), (p.BATCHES,(0,*p.KS),50,"full")])
+def test_only_one_cell_smoke_is_authorized(batches,ks,repeats,stage):
+    with pytest.raises(ValueError,match="TECHNICAL ALIGNMENT REQUIRED"):
+        p.validate_submission("L4",batches,ks,1024,5,repeats,stage)
+
+
+def test_one_cell_smoke_configuration_and_component_report():
+    p.validate_submission("L4",[1],[1],1024,5,2,"smoke")
+    env,raw = evidence()
+    env.update(stage="smoke",batch_grid=[1],k_grid=[1],repeats=2)
+    raw = [r for r in raw if r["batch_size"] == 1 and r["K"] == 1 and
+           (r["is_warmup"] or r["repeat"] < 2)]
+    report = p.build_component_report(env,raw)
+    assert not report["full_repeat_requirement_met"]
+    assert not report["linear_proposer_fits"]
+
+
+def test_worker_extension_is_named_and_does_not_enable_pickle():
+    from experiments.m4_worker_observer import M4ObserverExtension
+    cfg = p.engine_kwargs("L4",1)
+    assert cfg["worker_extension_cls"].endswith(".M4ObserverExtension")
+    assert all(callable(getattr(M4ObserverExtension,name)) for name in ("m4_install","m4_begin","m4_finish"))
 
 
 @pytest.mark.parametrize("actual_batch,context,query,expect_sample", [

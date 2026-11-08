@@ -97,7 +97,7 @@ class FlexCostModel:
             forward_target=c_target,
             forward_draft=c_draft,
             metadata=data.get("metadata", {}),
-            provenance=data.get("metadata", {}).get("profile_provenance", "measured"),
+            provenance="measured",
         )
 
     def _resolve_topology(self, topo: Union[str, TreeTopology, int]) -> TreeTopology:

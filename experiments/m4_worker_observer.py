@@ -20,6 +20,8 @@ def install(worker):
     if vllm.__version__ != "0.30.0":
         raise RuntimeError("Observer requires vLLM 0.30.0")
     runner = worker.model_runner
+    if getattr(worker, "use_v2_model_runner", False):
+        raise RuntimeError("M4 observer requires V1 model runner; set VLLM_USE_V2_MODEL_RUNNER=0")
     if hasattr(runner, "_m4_observer"):
         raise RuntimeError("Observer already installed")
     state = {"active": False, "samples": {}, "observed_shapes": []}
@@ -97,3 +99,16 @@ def finish(worker):
     state = worker.model_runner._m4_observer
     state["active"] = False
     return {key: state[key] for key in ("samples", "observed_shapes")}
+
+
+class M4ObserverExtension:
+    """Named RPCs avoid enabling arbitrary pickle/callable deserialization."""
+
+    def m4_install(self):
+        return install(self)
+
+    def m4_begin(self, batch_size, k, context_len):
+        return begin(self, batch_size, k, context_len)
+
+    def m4_finish(self):
+        return finish(self)

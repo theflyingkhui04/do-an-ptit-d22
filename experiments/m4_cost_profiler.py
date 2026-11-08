@@ -1,4 +1,4 @@
-"""M4 cost evidence and profile construction; imports without CUDA or Modal.
+"""M4 component evidence; canonical profile construction awaits alignment.
 
 Headline target boundary is model forward (including attention, excluding logits
 and sampling). Proposer boundary is the real EAGLE propose call, including its
@@ -55,6 +55,7 @@ def engine_kwargs(gpu: str, k: int):
                   gpu_memory_utilization=0.85, enable_prefix_caching=False,
                   generation_config="vllm", enforce_eager=True,
                   compilation_config={"mode": 0}, async_scheduling=False,
+                  worker_extension_cls="experiments.m4_worker_observer.M4ObserverExtension",
                   enable_chunked_prefill=False)
     if k:
         result["speculative_config"] = dict(lanes.LANES["eagle"].speculative_config,
@@ -101,140 +102,104 @@ def summarize(records):
     return rows
 
 
-def build_profile(env: dict, records: list[dict], *, tree_ops_prior_ms: float):
-    """Require complete full-campaign evidence. Never fill a failed/missing cell.
+ALIGNMENT_REQUIRED = (
+    "TEAM TECHNICAL ALIGNMENT REQUIRED: TreeAdaptive N/64 versus "
+    "FlexCostModel max(0,N-1) verification formulas and derived-cost provenance. "
+    "Canonical profile generation and pilot/full submission are disabled."
+)
 
-    Width is uncalibrated. Proposal cost uses empirical linear K=tree depth,
-    with no width multiplier. This is a depth-only proxy, NOT an upper bound.
-    Tree bookkeeping is an explicit caller-supplied prior, never measured.
-    """
-    if not math.isfinite(tree_ops_prior_ms) or tree_ops_prior_ms < 0:
-        raise ValueError("Invalid tree operations prior")
+
+def validate_submission(gpu, batches, ks, context, warmup, repeats, stage):
+    """Execution gate during reconciliation: one B/K smoke cell only."""
+    validate_config(gpu, batches, ks, context, warmup, repeats, stage)
+    if stage != "smoke" or len(batches) != 1 or len(ks) != 1 or repeats > 5:
+        raise ValueError(ALIGNMENT_REQUIRED)
+
+
+def validate_component_evidence(env: dict, records: list[dict]):
+    """Validate the declared evidence grid without creating a consumer profile."""
     validate_config(env["requested_gpu"], env["batch_grid"], env["k_grid"],
                     env["context_len"], env["warmup"], env["repeats"], env["stage"])
-    if env["stage"] != "full":
-        raise ValueError("Smoke/pilot evidence is not canonical")
     validate_hardware(env["requested_gpu"], env["gpu"], env["sm_architecture"])
     if env["vllm_version"] != lanes.VLLM_VERSION:
         raise ValueError("Unpinned vLLM")
     if (env["target_revision"], env["draft_revision"]) != (lanes.TARGET_REVISION, lanes.EAGLE_REVISION):
         raise ValueError("Unpinned model revisions")
-    rows = summarize(records)
-    lookup = {(r["measurement_kind"], r["batch_size"], r["K"]): r for r in rows}
-    if any(r["context_len"] != env["context_len"] for r in records):
-        raise ValueError("Mixed contexts")
     identities = set()
+    expected = set()
+    for b in env["batch_grid"]:
+        for k in env["k_grid"]:
+            kinds = ("linear_verify_forward", "eagle_propose") if k else ("target_decode_forward",)
+            for kind in kinds:
+                for is_warmup, count in ((True, env["warmup"]), (False, env["repeats"])):
+                    expected.update((kind, b, k, repeat, is_warmup) for repeat in range(count))
     for r in records:
         identity = (r["measurement_kind"], r["batch_size"], r["K"], r["repeat"], r["is_warmup"])
         if identity in identities:
             raise ValueError("Duplicate repeat")
         identities.add(identity)
+        if r["status"] != "ok":
+            raise ValueError("Failed component cell retained; report is incomplete")
+        if r["context_len"] != env["context_len"]:
+            raise ValueError("Mixed contexts")
         for field in ("run_id", "source_commit", "gpu", "sm_architecture", "target_revision", "draft_revision"):
             if r[field] != env[field]:
                 raise ValueError(f"Mixed provenance: {field}")
         if r["timing_method"] != TIMING:
             raise ValueError("Mixed timing boundaries")
-
-    def cell(kind, b, k):
-        r = lookup.get((kind, b, k))
-        if not r or r["n_failed"] or r["n_success"] != env["repeats"] or r["n_warmup"] != env["warmup"]:
-            raise ValueError(f"Incomplete/failed cell: {kind}, B={b}, K={k}")
-        expected = set(range(env["repeats"]))
-        observed = {x["repeat"] for x in records if x["measurement_kind"] == kind and
-                    x["batch_size"] == b and x["K"] == k and not x["is_warmup"]}
-        if observed != expected:
-            raise ValueError("Missing repeat indices")
-        return r["median_ms"]
-
-    target, draft, linear, fits = {}, {}, {}, {}
-    matrix, verification, provenance = {}, {}, {}
-    for b in BATCHES:
-        ct = cell("target_decode_forward", b, 0)
-        target[str(b)] = ct
-        points = []
-        for k in KS:
-            cd = cell("eagle_propose", b, k)
-            cv = cell("linear_verify_forward", b, k)
-            linear[f"linear_eagle_k{k}_b{b}"] = dict(propose_ms=cd, verify_forward_ms=cv,
-                                                     effective_target_tokens=b * (k + 1), source="measured")
-            points.append((k, cd, cv))
-        # OLS diagnostics characterize fixed/marginal sequential proposal work.
-        xmean = statistics.mean(p[0] for p in points)
-        ymean = statistics.mean(p[1] for p in points)
-        slope = sum((k-xmean)*(cd-ymean) for k, cd, _ in points) / sum((k-xmean)**2 for k, _, _ in points)
-        intercept = ymean - slope*xmean
-        rmse = math.sqrt(statistics.mean((cd-intercept-slope*k)**2 for k, cd, _ in points))
-        # Fit the EXISTING project verification approximation, anchored at CT.
-        # K=1 contributes a residual but no slope information. No universal law.
-        gamma = max(0.0, sum((k-1)*(cv/ct-1) for k, _, cv in points) /
-                    sum((k-1)**2 for k, _, _ in points))
-        fits[str(b)] = dict(proposal_intercept_ms=intercept, proposal_slope_ms=slope,
-                            proposal_rmse_ms=rmse, gamma_attn=gamma,
-                            verification_rmse_ms=math.sqrt(statistics.mean(
-                                (cv-ct*(1+gamma*(k-1)))**2 for k, _, cv in points)), n_points=5)
-        draft[str(b)] = linear[f"linear_eagle_k1_b{b}"]["propose_ms"]
-    # Consumer supports one scalar coefficient: least-squares in milliseconds
-    # over all batches, rather than silently using a batch-specific coefficient.
-    denom = sum((target[str(b)]*(k-1))**2 for b in BATCHES for k in KS)
-    gamma = max(0., sum(target[str(b)]*(k-1)*(linear[f"linear_eagle_k{k}_b{b}"]["verify_forward_ms"]-target[str(b)])
-                        for b in BATCHES for k in KS) / denom)
-    residuals = [linear[f"linear_eagle_k{k}_b{b}"]["verify_forward_ms"] -
-                 target[str(b)]*(1+gamma*(k-1)) for b in BATCHES for k in KS]
-    for name, topo in CANONICAL_TOPOLOGIES.items():
-        for b in BATCHES:
-            key = f"topo_{name}_b{b}"
-            ct = target[str(b)]
-            if name == "T0":
-                matrix[key] = ct
-                provenance[key] = dict(source="measured", measurement_kind="target_decode_forward")
-            else:
-                cv = ct*(1+gamma*max(0, topo.num_tokens-1))
-                cd = linear[f"linear_eagle_k{topo.depth}_b{b}"]["propose_ms"]
-                verification[key] = cv
-                matrix[key] = tree_ops_prior_ms + cd + cv
-                provenance[key] = dict(source="derived_model_assisted", proposal_proxy_k=topo.depth,
-                                       proposal_width_calibrated=False, verification_source="modeled",
-                                       verification_extrapolated=topo.num_tokens > max(KS),
-                                       tree_ops_source="explicit_prior", tree_ops_ms=tree_ops_prior_ms)
-    result = dict(schema_version="m4-cost-profile-v1", metadata={
-        **env, "device": env["gpu"], "source_run_id": env["run_id"],
-        "profile_provenance": "derived_model_assisted", "gamma_attn": gamma,
-        "attn_verify_factor": gamma, "gamma_attn_source": "measured_fit",
-        "gamma_attn_fit": dict(method="nonnegative anchored OLS in ms; x=CT(B)*(K-1)",
-                               n_points=30, rmse_ms=math.sqrt(statistics.mean(r*r for r in residuals)),
-                               residuals_ms=residuals),
-        "runtime_tree_available": False, "scientific_limitation": LIMITATION,
-        "proposal_model": "empirical linear K=depth proxy; width uncalibrated; not a conservative bound",
-        "tree_ops_prior_ms": tree_ops_prior_ms,
-        "aggregation": "per-cell median at one context; all post-warmup repeats retained",
-        "cost_semantics": dict(target_c_t="measured", draft_c_d="measured_eagle_k1_propose_call",
-                               eagle_linear_calibration="measured", gamma_attn="measured_fit",
-                               verification_costs_ms="modeled", cost_matrix_ms="derived_model_assisted")},
-        models=dict(target=lanes.TARGET_MODEL, draft=lanes.EAGLE_DRAFT_MODEL),
-        grid=dict(batches=list(BATCHES), topologies=list(CANONICAL_TOPOLOGIES), contexts=[env["context_len"]]),
-        forward_costs_median_ms=dict(target_c_t=target, draft_c_d=draft),
-        eagle_linear_calibration=linear, calibration_fits=fits, verification_costs_ms=verification,
-        cost_matrix_ms=matrix, cell_provenance=provenance, measurement_summary=rows)
-    validate_profile(result)
-    return result
+    if identities != expected:
+        raise ValueError("Incomplete/unexpected evidence grid or repeat indices")
+    return summarize(records)
 
 
-def validate_profile(profile):
+def build_component_report(env: dict, records: list[dict]):
+    """Measured component diagnostics only: NO topology matrix or gamma fit.
+
+    Linear proposer OLS characterizes sequential K work, without extrapolating
+    to branches or claiming that K1 proposal equals a draft-model forward.
+    """
+    rows = validate_component_evidence(env, records)
+    proposal_fits = {}
+    for b in env["batch_grid"]:
+        points = [(r["K"], r["median_ms"]) for r in rows
+                  if r["batch_size"] == b and r["measurement_kind"] == "eagle_propose"]
+        if len(points) < 2:
+            continue
+        xmean = statistics.mean(k for k, _ in points)
+        ymean = statistics.mean(ms for _, ms in points)
+        slope = sum((k-xmean)*(ms-ymean) for k, ms in points) / sum((k-xmean)**2 for k, _ in points)
+        intercept = ymean-slope*xmean
+        proposal_fits[str(b)] = dict(intercept_ms=intercept, marginal_step_ms=slope,
+                                    rmse_ms=math.sqrt(statistics.mean((ms-intercept-slope*k)**2 for k, ms in points)),
+                                    n_points=len(points), model="linear EAGLE K calibration only")
+    return dict(schema_version="m4-component-calibration-v1", artifact_kind="component_report",
+                not_consumer_profile=True, canonical_profile_generated=False,
+                runtime_tree_available=False, scientific_limitation=LIMITATION,
+                technical_alignment_status=ALIGNMENT_REQUIRED,
+                gamma_attn_status="not_calibrated_pending_formula_alignment",
+                environment=env, measurement_summary=rows, linear_proposer_fits=proposal_fits,
+                full_repeat_requirement_met=env["stage"] == "full" and env["repeats"] >= 50,
+                cost_semantics={"component_latencies": "measured",
+                                "proposal_fits": "empirical_linear_regression"})
+
+
+def build_profile(*args, **kwargs):
+    """Fail closed: current consumer treats any loaded matrix as measured."""
+    raise ValueError(ALIGNMENT_REQUIRED)
+
+
+def validate_consumer_lookup(profile):
+    """Read-only compatibility check, not authorization to publish a profile."""
     from src.flexsds.core.cost_model import FlexCostModel
     expected = {f"topo_{t}_b{b}" for t in CANONICAL_TOPOLOGIES for b in BATCHES}
-    if set(profile["cost_matrix_ms"]) != expected or set(profile["cell_provenance"]) != expected:
-        raise ValueError("Exactly 30 canonical cells with provenance required")
+    if set(profile["cost_matrix_ms"]) != expected:
+        raise ValueError("Exactly 30 canonical cells required")
     model = FlexCostModel.from_json(profile)
     for t in CANONICAL_TOPOLOGIES:
         for b in BATCHES:
-            key = f"topo_{t}_b{b}"
-            value = profile["cost_matrix_ms"][key]
-            if not math.isfinite(value) or value <= 0 or model.matrix[(t, b)] != value:
+            value = profile["cost_matrix_ms"][f"topo_{t}_b{b}"]
+            if not math.isfinite(value) or value <= 0 or model.matrix[(t,b)] != value:
                 raise ValueError("Invalid cost or missing exact lookup")
-            if model.get_step_cost(t, b) != value:
+            if model.get_step_cost(t,b) != value:
                 raise ValueError("Lookup drift")
-            if t == "T0":
-                if value != profile["forward_costs_median_ms"]["target_c_t"][str(b)]:
-                    raise ValueError("T0 must equal measured baseline")
-            elif profile["cell_provenance"][key]["source"] != "derived_model_assisted":
-                raise ValueError("Unavailable tree execution cannot be measured")
+    return model
