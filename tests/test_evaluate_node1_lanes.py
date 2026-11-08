@@ -129,6 +129,38 @@ class EvaluateLanesTests(unittest.TestCase):
         self.assertEqual((field["scored"], field["matched"], field["blank"]), (3, 2, 1))
         self.assertIn("s2", self.prefix.with_suffix(".md").read_text(encoding="utf-8"))
 
+    def test_runs_without_items_keep_the_m4_03_report(self) -> None:
+        result = self.five_runs()
+        text = self.prefix.with_suffix(".md").read_text(encoding="utf-8")
+        self.assertEqual(result["task"], "M4-03")
+        self.assertEqual(result["runs"]["static"]["items"]["item_rows"], 0)
+        self.assertNotIn("Mặt hàng", text)
+        self.assertTrue(text.startswith("# M4-03 — So khớp thực thể Node 1 giữa các làn"))
+
+    def test_item_checks_are_reported_when_runs_have_items(self) -> None:
+        rows = [output_row(s) for s in SAMPLES]
+        rows[0]["payload"]["items"] = [
+            {"line_number": 1, "quantity": {"value": 2}, "unit_price": {"value": 10000},
+             "line_total": {"value": 20000}},
+            {"line_number": 2, "quantity": {"value": 1}, "unit_price": {"value": 22000},
+             "line_total": {"value": 21000}},
+        ]
+        path = self.root / "vanilla_r1.jsonl"
+        self.write(path, rows)
+        argv = ["--labels", str(self.labels), "--output-prefix", str(self.prefix),
+                "--run", f"vanilla_r1={path}", "--task", "M5-01", "--title", "W1_v2 — so khớp"]
+        self.assertEqual(report.main(argv), 0)
+
+        result = json.loads(self.prefix.with_suffix(".json").read_text(encoding="utf-8"))
+        items = result["runs"]["vanilla_r1"]["items"]
+        self.assertEqual(result["task"], "M5-01")
+        self.assertEqual((items["item_rows"], items["lines_checked"], items["lines_consistent"]), (2, 2, 1))
+        self.assertEqual((items["invoices_checked"], items["invoices_consistent"]), (1, 0))
+        text = self.prefix.with_suffix(".md").read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("# W1_v2 — so khớp"))
+        self.assertIn("## Mặt hàng (kiểm tra số học)", text)
+        self.assertIn("| vanilla_r1 | 1 | 2 | 1/2 | 0/1 |", text)
+
     def test_no_comparison_without_both_vanilla_runs(self) -> None:
         result = self.evaluate(self.run_file("vanilla_r1"), self.run_file("static"))
         self.assertIsNone(result["comparison"])

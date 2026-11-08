@@ -64,6 +64,33 @@ class SchemaV2Tests(unittest.TestCase):
         stored = self.conn.execute("SELECT latency_ms FROM invoices WHERE invoice_id = ?", (invoice_id,)).fetchone()[0]
         self.assertIsNone(stored)
 
+    def test_items_and_taxes_reach_the_views(self) -> None:
+        # [M5-01] Full-receipt OCR text produces item rows and, on VAT receipts, tax lines.
+        def money(raw: str, value: float) -> dict:
+            return {"raw": raw, "value": value, "currency": "VND"}
+
+        self.payload["items"] = [
+            {"line_number": 1, "description": "Sữa tươi", "sku": "8934673", "quantity": {"raw": "2", "value": 2, "unit": "hộp"},
+             "unit_price": money("10.000", 10000), "line_total": money("20.000", 20000), "vat_rate": None},
+            {"line_number": 2, "description": "Bánh mì", "sku": None, "quantity": {"raw": None, "value": None, "unit": None},
+             "unit_price": money("22.000", 22000), "line_total": money("22.000", 22000), "vat_rate": 10},
+        ]
+        self.payload["taxes"] = [
+            {"tax_name": "VAT", "tax_rate": 10, "taxable_amount": money("20.000", 20000),
+             "tax_amount": money("2.000", 2000)},
+        ]
+        insert_extraction(self.conn, self.payload, "r1", replace=False)
+
+        items = self.conn.execute(
+            "SELECT line_number, description, sku, quantity_value, unit_price_value, line_total_value, vat_rate "
+            "FROM v_item_facts ORDER BY line_number").fetchall()
+        self.assertEqual(items, [(1, "Sữa tươi", "8934673", 2.0, 10000.0, 20000.0, None),
+                                 (2, "Bánh mì", None, None, 22000.0, 22000.0, 10.0)])
+        taxes = self.conn.execute("SELECT tax_name, tax_rate, tax_amount_value FROM v_tax_facts").fetchall()
+        self.assertEqual(taxes, [("VAT", 10.0, 2000.0)])
+        counts = self.conn.execute("SELECT item_count, tax_line_count FROM v_invoice_facts").fetchone()
+        self.assertEqual(counts, (2, 1))
+
     def test_negative_latency_rejected(self) -> None:
         with self.assertRaises(sqlite3.IntegrityError):
             insert_extraction(self.conn, self.payload, "r1", replace=False, latency_ms=-1.0)
