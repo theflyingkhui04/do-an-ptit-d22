@@ -56,6 +56,49 @@ def test_clean_source_guard():
         runner.guard_clean_source("components",False)
 
 
+@pytest.fixture
+def source_repo(tmp_path):
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-c", f"safe.directory={tmp_path.as_posix()}", *args],
+            cwd=tmp_path, text=True)
+    git("init")
+    (tmp_path / "source.py").write_text("value = 1\n")
+    evidence = tmp_path / "experiments/runs/m4_cost_profiling/previous/env.json"
+    evidence.parent.mkdir(parents=True)
+    evidence.write_text("{}\n")
+    git("add", ".")
+    git("-c", "user.name=M4 Test", "-c", "user.email=m4-test@example.invalid",
+        "-c", "commit.gpgsign=false", "commit", "-m", "Synthetic source fixture")
+    return tmp_path
+
+
+def test_only_m4_run_artifacts_are_source_clean(source_repo):
+    # Both modified tracked evidence and new artifacts must be allowed.
+    (source_repo / "experiments/runs/m4_cost_profiling/previous/env.json").write_text('{"status":"complete"}\n')
+    for directory in runner.GENERATED_EVIDENCE_PATHS:
+        artifact = source_repo / directory / "new-run/raw.jsonl"
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text("{}\n")
+    sha, clean = runner.git_identity(source_repo)
+    assert len(sha) == 40 and clean
+    runner.guard_clean_source("components", clean)
+
+
+def test_modified_tracked_python_is_source_dirty(source_repo):
+    (source_repo / "source.py").write_text("value = 2\n")
+    assert runner.git_identity(source_repo)[1] is False
+
+
+@pytest.mark.parametrize("path", ["src/new.py", "configs/new.yaml", "experiments/new.ipynb",
+                                 "experiments/runs/m4_cost_profiling_other/source.py"])
+def test_untracked_source_config_notebook_is_source_dirty(source_repo, path):
+    source = source_repo / path
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("untracked source\n")
+    assert runner.git_identity(source_repo)[1] is False
+
+
 def fixture_setup(monkeypatch,clean=True):
     monkeypatch.setattr(runner,"git_identity",lambda root: ("a"*40,clean))
     monkeypatch.setattr(runner.sys,"platform","linux")

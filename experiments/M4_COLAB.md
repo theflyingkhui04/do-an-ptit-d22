@@ -33,11 +33,22 @@ broad, unpinned requirements files for this experiment:
 git clone --branch feat/m4-02-02-gpu-cost-profiler https://github.com/theflyingkhui04/do-an-ptit-d22.git
 cd do-an-ptit-d22
 git checkout <reviewed-full-commit-sha>
+sudo apt-get update
+sudo apt-get install -y ninja-build
+ninja --version
+gcc --version
+g++ --version
+nvcc --version
 python -m venv .venv
 .venv/bin/python -m pip install --index-url https://download.pytorch.org/whl/cu130 'torch==2.13.0+cu130'
 .venv/bin/python -m pip install --index-url https://pypi.org/simple -r experiments/requirements-m4-cuda.txt
 .venv/bin/python -m pip check
 ```
+
+`ninja-build` supplies `ninja`, required by FlashInfer sampling-kernel JIT.
+The notebook installs it with Colab's root shell and checks `ninja`, `gcc`, `g++`
+and `nvcc` before Python setup or any smoke invocation. A missing build tool
+stops setup; these checks do not run measurements or change the timing protocol.
 
 If the reviewed commit is still local, make it available on the task branch
 before the Colab clone: `git push origin feat/m4-02-02-gpu-cost-profiler`.
@@ -100,7 +111,13 @@ The components command automatically includes the non-speculative K0 target
 baseline. K1..5 remain `linear_eagle_k1`..`linear_eagle_k5`, never topology labels.
 Use `--expected-gpu L4` on an observed L4; dtype/quantization follow pinned rules
 (T4 half/AWQ, L4 bfloat16/AWQ-Marlin). No frontend/HTTP concurrency is used as B.
-Component benchmarks require a clean working tree before reserving the run.
+Component benchmarks require clean source. `working_tree_clean` checks Git status
+for tracked changes and untracked files, excluding exactly the generated evidence
+directories `experiments/runs/m4_cost_profiling/` and
+`experiments/runs/m4_cost_profiling_setup/` (the setup evidence path documented
+above). Source, configs and notebooks elsewhere still make the guard fail;
+untracked files are not broadly excluded. This does not change Git ignore rules
+or prevent retaining/committing diagnostic evidence.
 Smoke may use dirty source, recorded explicitly; it is never benchmark evidence.
 
 Artifacts remain under `experiments/runs/m4_cost_profiling/<run-id>/`:

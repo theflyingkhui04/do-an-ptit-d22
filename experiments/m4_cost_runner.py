@@ -18,6 +18,11 @@ from experiments import m4_cost_profiler as prof
 from experiments import modal_lanes as lanes  # Pure configuration; imports no Modal SDK.
 
 ROOT = Path(__file__).resolve().parents[1]
+# Generated evidence only; keep every other tracked/untracked source path checked.
+GENERATED_EVIDENCE_PATHS = (
+    "experiments/runs/m4_cost_profiling/",
+    "experiments/runs/m4_cost_profiling_setup/",
+)
 
 
 def integers(value):
@@ -45,9 +50,13 @@ def parser():
 
 
 def git_identity(root):
+    """Return commit and source cleanliness, excluding only M4 generated evidence."""
     git = ["git","-c",f"safe.directory={root.as_posix()}"]
     sha = subprocess.check_output([*git,"rev-parse","HEAD"],cwd=root,text=True).strip()
-    dirty = subprocess.check_output([*git,"status","--porcelain","--untracked-files=normal"],cwd=root,text=True)
+    dirty = subprocess.check_output(
+        [*git,"status","--porcelain","--untracked-files=all","--",".",
+         *(f":(top,exclude){path}" for path in GENERATED_EVIDENCE_PATHS)],
+        cwd=root,text=True)
     return sha, not bool(dirty.strip())
 
 

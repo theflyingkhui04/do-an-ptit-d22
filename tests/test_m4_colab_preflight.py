@@ -106,3 +106,29 @@ def test_setup_uses_explicit_cuda_index_and_pinned_environment():
     assert "setup_software_versions.json" in invoke
     for index, source in enumerate(cells()):
         compile(source, f"notebook-cell-{index}", "exec")
+
+
+def test_build_tools_installed_and_preflighted_before_python_setup(monkeypatch):
+    setup = ast.parse(cells()[2])
+    # Execute the actual prerequisite block with mocked subprocess calls.
+    block = ast.Module(body=setup.body[:3], type_ignores=[])
+    commands = []
+    monkeypatch.setattr(subprocess, "check_call", lambda command, **kw: commands.append(command))
+    exec(compile(block, "build-tool-preflight", "exec"), {"subprocess": subprocess, "REPO": ROOT})
+    assert commands == [
+        ["apt-get", "update"], ["apt-get", "install", "-y", "ninja-build"],
+        ["ninja", "--version"], ["gcc", "--version"],
+        ["g++", "--version"], ["nvcc", "--version"],
+    ]
+
+
+def test_missing_build_tool_stops_setup(monkeypatch):
+    setup = ast.parse(cells()[2])
+    block = ast.Module(body=setup.body[:3], type_ignores=[])
+    def check(command, **kwargs):
+        if command == ["ninja", "--version"]:
+            raise FileNotFoundError("ninja")
+        assert command[0] == "apt-get", "Stop before subsequent setup commands"
+    monkeypatch.setattr(subprocess, "check_call", check)
+    with pytest.raises(FileNotFoundError, match="ninja"):
+        exec(compile(block, "build-tool-preflight", "exec"), {"subprocess": subprocess, "REPO": ROOT})
