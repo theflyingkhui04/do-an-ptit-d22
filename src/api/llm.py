@@ -74,6 +74,7 @@ class LaneCaller:
         url = f"{self.base_url}/chat/completions"
         start = self._clock()
         while True:
+            streaming = False
             try:
                 with self._client.stream("POST", url, json=body, headers=headers) as response:
                     if response.status_code == 503:
@@ -82,11 +83,17 @@ class LaneCaller:
                         detail = response.read().decode("utf-8", errors="replace")[:300]
                         raise self._error(f"HTTP {response.status_code} from {url}: {detail}")
                     else:
+                        streaming = True
                         return self._consume(response, start)
             except httpx.HTTPError as exc:
-                raise self._error(f"cannot reach {url}: {type(exc).__name__}") from exc
-            if self._clock() - start >= self.ready_timeout_s:
-                raise self._error(f"not ready after {self.ready_timeout_s:.0f} s (HTTP 503)")
+                if streaming:  # never retry a half-generated answer
+                    raise self._error(f"stream interrupted from {url}: {type(exc).__name__}") from exc
+                # Before any response a cold-starting Modal server may refuse or reset the connection.
+                if self._clock() - start >= self.ready_timeout_s:
+                    raise self._error(f"cannot reach {url}: {type(exc).__name__}") from exc
+            else:
+                if self._clock() - start >= self.ready_timeout_s:
+                    raise self._error(f"not ready after {self.ready_timeout_s:.0f} s (HTTP 503)")
             self._sleep(self.poll_s)
 
     def _consume(self, response: httpx.Response, start: float) -> dict[str, Any]:

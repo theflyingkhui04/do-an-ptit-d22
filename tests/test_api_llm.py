@@ -98,3 +98,40 @@ def test_single_token_answer_has_no_tpot():
     lane = caller(handler, clock=Clock(0.0, 0.2, 0.2))
     lane.chat_completions({"messages": []})
     assert lane.last_metrics.tpot_ms is None
+
+
+def test_connection_reset_during_cold_start_is_retried():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) < 3:
+            raise httpx.ReadError("connection reset by peer")
+        return httpx.Response(200, content=sse({"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}]}))
+
+    assert caller(handler).chat_completions({"messages": []})["choices"][0]["message"]["content"] == "ok"
+    assert len(calls) == 3
+
+
+def test_reset_after_the_stream_started_is_not_retried():
+    calls = []
+
+    def broken_stream():
+        yield b'data: {"choices": [{"delta": {"content": "{\\"a\\""}}]}\n\n'
+        raise httpx.ReadError("connection reset mid-stream")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, content=broken_stream())
+
+    with pytest.raises(LLMError, match="stream interrupted"):
+        caller(handler).chat_completions({"messages": []})
+    assert len(calls) == 1
+
+
+def test_connection_errors_stop_after_the_ready_timeout():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    with pytest.raises(LLMError, match="cannot reach"):
+        caller(handler, clock=Clock(0.0, 0.0, 2000.0), ready_timeout_s=1200).chat_completions({"messages": []})
