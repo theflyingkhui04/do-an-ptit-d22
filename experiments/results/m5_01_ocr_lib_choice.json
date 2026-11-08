@@ -1,0 +1,170 @@
+{
+  "task": "M5-01",
+  "step": "choose-library-ocr",
+  "run_id": "20261108-m501-ocrlib-choice",
+  "started_at_utc": "2026-11-08T16:14:43+00:00",
+  "rule": "more MC-OCR label lines found after mark stripping and whitespace collapsing wins; tie -> lower median latency",
+  "engines": {
+    "A": "PaddleOCR text detection + VietOCR vgg_transformer recognition",
+    "B": "PaddleOCR text detection + PaddleOCR recognition"
+  },
+  "versions": {
+    "paddlepaddle": "3.3.1",
+    "paddleocr": "3.7.0",
+    "vietocr": "0.3.13",
+    "torch": "2.5.1+cpu",
+    "detector": "PP-OCRv5_server_det",
+    "paddle_rec_lang": "vi",
+    "mkldnn": false,
+    "weights_url": "https://vocr.vn/data/vietocr/vgg_transformer.pth",
+    "weights_sha256": "380512193a8b6cbf6fad80deacdc9b6939d10d473d199892fc6408d13775ea59",
+    "paddlex_models": [
+      "PP-OCRv5_server_det",
+      "PP-OCRv6_medium_rec"
+    ]
+  },
+  "samples": 30,
+  "coverage": {
+    "A": {
+      "exact": {
+        "SELLER": {
+          "total": 31,
+          "found": 26
+        },
+        "ADDRESS": {
+          "total": 34,
+          "found": 19
+        },
+        "TIMESTAMPS": {
+          "total": 36,
+          "found": 15
+        },
+        "TOTAL_COST": {
+          "total": 59,
+          "found": 50
+        }
+      },
+      "stripped": {
+        "SELLER": {
+          "total": 31,
+          "found": 28
+        },
+        "ADDRESS": {
+          "total": 34,
+          "found": 26
+        },
+        "TIMESTAMPS": {
+          "total": 36,
+          "found": 16
+        },
+        "TOTAL_COST": {
+          "total": 59,
+          "found": 55
+        }
+      },
+      "errors": 0
+    },
+    "B": {
+      "exact": {
+        "SELLER": {
+          "total": 31,
+          "found": 24
+        },
+        "ADDRESS": {
+          "total": 34,
+          "found": 4
+        },
+        "TIMESTAMPS": {
+          "total": 36,
+          "found": 13
+        },
+        "TOTAL_COST": {
+          "total": 59,
+          "found": 30
+        }
+      },
+      "stripped": {
+        "SELLER": {
+          "total": 31,
+          "found": 31
+        },
+        "ADDRESS": {
+          "total": 34,
+          "found": 12
+        },
+        "TIMESTAMPS": {
+          "total": 36,
+          "found": 16
+        },
+        "TOTAL_COST": {
+          "total": 59,
+          "found": 36
+        }
+      },
+      "errors": 0
+    }
+  },
+  "median_latency_ms_cpu4": {
+    "A": 10174.900000000001,
+    "B": 16530.1
+  },
+  "found_stripped": {
+    "A": 125,
+    "B": 95
+  },
+  "qwen_vl_baseline_not_eligible": {
+    "exact": {
+      "SELLER": {
+        "total": 31,
+        "found": 26
+      },
+      "ADDRESS": {
+        "total": 34,
+        "found": 24
+      },
+      "TIMESTAMPS": {
+        "total": 36,
+        "found": 17
+      },
+      "TOTAL_COST": {
+        "total": 59,
+        "found": 55
+      }
+    },
+    "stripped": {
+      "SELLER": {
+        "total": 31,
+        "found": 31
+      },
+      "ADDRESS": {
+        "total": 34,
+        "found": 31
+      },
+      "TIMESTAMPS": {
+        "total": 36,
+        "found": 18
+      },
+      "TOTAL_COST": {
+        "total": 59,
+        "found": 56
+      }
+    }
+  },
+  "chosen_engine": "A",
+  "source_commit": "b2dc4ce7f2ee3081683ee3ea434c5b246589badf",
+  "diagnostic_ignoring_all_spaces": {
+    "note": "informational only, not part of the choice rule (rule fixed before the run)",
+    "A": {
+      "found": 143,
+      "total": 160
+    },
+    "B": {
+      "found": 112,
+      "total": 160
+    },
+    "qwen_vl": {
+      "found": 152,
+      "total": 160
+    }
+  }
+}
