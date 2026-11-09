@@ -433,6 +433,39 @@ def test_fallback_gate_vs_zero_crash_exception():
     assert "Zero-crash fallback" in dec_crash.reason
 
 
+def test_tree_adaptive_controller_reset_without_args_clears_alpha_ema():
+    """Critical 1: Verifies reset() without args resets alpha_ema to initial_alpha to avoid false fallback gate."""
+    ctrl = TreeAdaptiveController(initial_alpha=0.8, ema_beta=0.8)
+    # Simulate a degraded sequence
+    ctrl.update(num_accepted=0, num_drafted=4)
+    ctrl.update(num_accepted=0, num_drafted=4)
+    ctrl.update(num_accepted=0, num_drafted=4)
+    assert ctrl.alpha_ema < 0.5
+
+    # Reset without args (standard session recycling)
+    ctrl.reset()
+    assert ctrl.alpha_ema == 0.8  # Must not leak degraded alpha
+    assert ctrl._observation_count == 0
+
+    # New sequence has 100% acceptance
+    ctrl.update(num_accepted=4, num_drafted=4)
+    eff_alpha = ctrl.get_effective_alpha()
+    # Should be close to 1.0, NOT 0.0 (false fallback gate)
+    assert eff_alpha >= 0.9, f"False fallback gate trigger: eff_alpha={eff_alpha} < 0.9"
+
+
+def test_invalid_kv_cache_telemetry_triggers_memory_guard():
+    """Important 2: Verifies that NaN, None, < 0, and > 100 KV telemetry trigger Memory Guard defensively."""
+    ctrl = TreeAdaptiveController()
+    invalid_kvs = [None, float("nan"), -5.0, 105.0]
+    for bad_kv in invalid_kvs:
+        dec = ctrl.select_budget(batch_size=1, free_vram_mb=8000.0, kv_cache_usage_pct=bad_kv)
+        assert dec.topology_name == "T0", f"Failed for bad KV: {bad_kv}"
+        assert dec.status == "memory_guard"
+        assert "invalid KV telemetry" in dec.reason or "Memory guard active" in dec.reason
+
+
+
 
 
 

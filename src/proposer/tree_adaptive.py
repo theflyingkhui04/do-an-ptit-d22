@@ -81,6 +81,8 @@ class TreeAdaptiveController(BudgetController):
     def reset(self, initial_alpha: Optional[float] = None) -> None:
         """Resets controller state when beginning a new sequence/prompt."""
         super().reset(initial_alpha=initial_alpha)
+        if initial_alpha is None:
+            self.alpha_ema = self.initial_alpha
         self._step_count = 0
         self._observation_count = 0
         self._fallback_steps = 0
@@ -454,7 +456,7 @@ class TreeAdaptiveController(BudgetController):
             return self._make_decision(
                 topology_name="T0",
                 num_nodes=0,
-                alpha_effective=self.alpha_ema,
+                alpha_effective=self.initial_alpha,
                 alpha_star=None,
                 speedup=1.0,
                 status="zero_crash_fallback",
