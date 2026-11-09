@@ -4,8 +4,8 @@
 > **Dự án:** FlexSDS — Hardware-Aware Speculative Decoding for Self-Hosted LLMs on Consumer GPUs  
 > **Tác giả:** Cấn Đức Khôi (Lead 70%) & Bùi Đức Đại (Partner 30%)  
 > **Vị trí lưu trữ:** `logs/Khoi/spec&plan/treeAdaptiveController/spec.md`  
-> **Cơ sở đối chiếu:** Báo cáo thẩm định kỹ thuật Revision 2 (`tree (1).pdf`), chuẩn OPT-Tree (*Wang et al., 2025, TACL*), module `tree_topology.py` (M4-02-01) và `FlexCostModel` (M4-02-03) đã nghiệm thu  
-> **Trạng thái:** Bản đặc tả kỹ thuật chính thức (Revision 1.0 — 08/11/2026)
+> **Cơ sở đối chiếu:** Báo cáo thẩm định kỹ thuật 22 trang của Bùi Đức Đại (`tree (2).pdf`, 08/11/2026), chuẩn OPT-Tree (*Wang et al., 2025, TACL*), module `tree_topology.py` (M4-02-01) và `FlexCostModel` (M4-02-03) đã nghiệm thu  
+> **Trạng thái:** Bản đặc tả kỹ thuật chính thức (Revision 1.1 — 09/11/2026, cập nhật sau thẩm định kỹ thuật)
 
 ---
 
@@ -19,7 +19,7 @@ Trong chiến dịch đo kiểm hiệu năng tại mốc M3-05, bộ điều khi
 3. **Thiếu cơ chế kẹp tải đồng thời:** Khi nhiều yêu cầu cùng chạy, việc giữ kích thước nháp lớn gây quá tải tính toán và tranh chấp băng thông bộ nhớ.
 4. **Bảo vệ bộ nhớ lỏng lẻo:** Chưa có cơ chế bảo vệ hai tầng kết hợp giữa dung lượng VRAM thực tế và bộ đệm KV-cache.
 
-Task **[M4-02-05]** hiện thực hóa lớp `TreeAdaptiveController` tại đường dẫn chuẩn runtime `src/proposer/tree_adaptive.py` phục vụ việc serving trực tiếp qua `src/proposer/adapter.py`. Bộ điều khiển v0.2 nâng cấp toàn diện lên cấu trúc cây nháp 2D ($T_0, T_4, T_8, T_{16}, T_{32}$), tích hợp giải nghiệm hòa vốn động theo mô hình chi phí phần cứng và cơ chế phòng vệ hai tầng.
+Task **[M4-02-05]** hiện thực hóa lớp `TreeAdaptiveController` tại đường dẫn chuẩn runtime `src/proposer/tree_adaptive.py` phục vụ việc serving trực tiếp qua `src/proposer/adapter.py`. Bộ điều khiển v0.2 nâng cấp toàn diện lên cấu trúc cây nháp 2D ($T_0, T_4, T_8, T_{16}, T_{32}$), tích hợp giải nghiệm hòa vốn động theo mô hình chi phí phần cứng, cơ chế phòng vệ hai tầng và bộ lọc telemetry sentinel.
 
 ---
 
@@ -28,32 +28,39 @@ Task **[M4-02-05]** hiện thực hóa lớp `TreeAdaptiveController` tại đư
 ### 2.1. Mục tiêu (Goals)
 - **Hiện thực hóa `TreeAdaptiveController` tại `src/proposer/tree_adaptive.py`:** Kế thừa trực tiếp từ `BudgetController` để bảo toàn tính tương thích của hệ thống.
 - **Mở rộng cấu trúc quyết định `TreeAdaptiveDecision`:** Kế thừa từ `BudgetDecision`, duy trì trường `k` (gán bằng số node $N$) đồng thời bổ sung `topology_name`, `num_nodes`, `alpha_effective`, `alpha_star`, `speedup`.
-- **Chuẩn hóa tỷ lệ chấp nhận theo độ sâu cây:** Sử dụng độ sâu $d$ của topo vừa phát hành để chuẩn hóa bước $\alpha_{\text{step}} = \min(1.0, \text{num\_accepted} / \max(d, 1))$, tránh việc chia cho tổng số node $N$ làm sập tín hiệu $\alpha$.
-- **Cơ chế phòng vệ bộ nhớ hai tầng (Dual-Tier Memory Guard):**
-  - Ngắt về $T_0$ ($N=0$) ngay lập tức khi: $\text{free\_vram\_mb} < 1500\text{ MB}$ HOẶC $\text{kv\_cache\_usage\_pct} > 90.0\%$.
-  - Duy trì độ trễ hồi phục (hysteresis cooldown) tối thiểu 3 bước liên tiếp ở $T_0$.
-  - Chỉ cho phép khôi phục suy đoán khi: $\text{kv\_cache\_usage\_pct} \le 80.0\%$ VÀ $\text{free\_vram\_mb} \ge 1500\text{ MB}$. Nếu VRAM vẫn dưới 1500 MB, tuyệt đối không khôi phục.
-  - Cấm hoàn toàn việc phát bước thăm dò (probing) khi Memory Guard đang hoạt động dưới bất kỳ nguyên nhân nào, đồng thời reset bộ đếm thăm dò về 0.
+- **Chuẩn hóa tỷ lệ chấp nhận theo độ sâu cây (Empirical Yield Index):** Sử dụng độ sâu $d$ của topo vừa phát hành để chuẩn hóa bước $\alpha_{\text{step}} = \min(1.0, \text{num\_accepted} / \max(d, 1))$. Đây là chỉ số thu hoạch thực nghiệm đưa tín hiệu phản hồi về dải $[0, 1]$ cho bộ điều khiển mà không gây sập tín hiệu khi $N > d$.
+- **Cơ chế phòng vệ bộ nhớ hai tầng (Dual-Tier Memory Guard) kèm bộ lọc sentinel VRAM:**
+  - Nhận diện giá trị telemetry VRAM bị thiếu, âm, hoặc mang giá trị sentinel ($\ge 10^8\text{ MB}$). Khi mất tín hiệu VRAM, kích hoạt chế độ bảo vệ tăng cường bằng cách siết chặt ngưỡng kích hoạt KV-cache từ 90% xuống 75%, và ngưỡng phục hồi từ 80% xuống 65%.
+  - Ngắt về $T_0$ ($N=0$) ngay lập tức khi: $\text{free\_vram\_mb} < 1500\text{ MB}$ HOẶC $\text{kv\_cache\_usage\_pct} > \text{ngưỡng an toàn}$.
+  - Duy trì máy trạng thái ghi nhận nguồn gốc kích hoạt `_guard_trigger_source` (`"vram"`, `"kv"`, hoặc `"both"`).
+  - Độ trễ hồi phục (hysteresis cooldown) tối thiểu 3 bước liên tiếp ở $T_0$.
+  - Nếu kích hoạt có nguyên nhân do cạn kiệt VRAM vật lý, bắt buộc phải có telemetry VRAM hợp lệ $\ge 1500\text{ MB}$ mới cho phép phục hồi; nếu mất tín hiệu khi đang đói bộ nhớ, tiếp tục giữ guard để chống crash GPU.
+  - Cấm hoàn toàn việc phát bước thăm dò (probing) khi Memory Guard đang hoạt động, đồng thời reset bộ đếm thăm dò về 0.
+- **Tách biệt bộ đếm quan sát và tự phục hồi cho $\alpha$:**
+  - Tách biến đếm số quan sát thực nghiệm `_observation_count` (chỉ tăng khi `num_drafted > 0`) khỏi tổng số chu kỳ điều phối `_step_count`.
+  - Công thức khử lệch khởi động: $\beta_{\text{power}} = \beta^{N_{\text{obs}}}$, triệt tiêu hiện tượng trôi trọng số khi hệ thống chạy ở chế độ $T_0$.
+  - Tự phục hồi trạng thái: tự động chuyển `alpha_ema` về `initial_alpha` nếu bị nhiễm giá trị `NaN` hoặc `Inf`.
 - **Kẹp trần kích thước cây theo luồng đồng thời (Concurrency Throttling):**
   - $B \le 4$: Cho phép cấu hình tối đa $T_{32}$ ($N \le 32$).
   - $4 < B \le 12$: Kẹp trần tối đa $T_{16}$ ($N \le 16$).
   - $12 < B \le 24$: Kẹp trần tối đa $T_8$ ($N \le 8$).
   - $B > 24$: Kẹp trần tối đa $T_4$ ($N \le 4$), đồng thời ngắt về $T_0$ nếu $\alpha_{\text{effective}} < 0.85$.
 - **Cơ chế chuyển làn an toàn và thăm dò thích ứng (Dynamic Fallback Gate & Adaptive Probing):**
-  - Sử dụng hàm `FlexCostModel.select_optimal_topology()` để chọn topo có hệ số tăng tốc dự báo lớn nhất $S^*$. Nếu $S^* \le 1.0$, ngắt an toàn về $T_0$.
+  - Sử dụng hàm `FlexCostModel.select_optimal_topology()` để chọn topo có hệ số tăng tốc dự báo lớn nhất $S^*$. Nếu $S^* \le 1.0$, ngắt an toàn về $T_0$ với `status="fallback_gate"`.
   - Khi đang ở trạng thái ngắt an toàn $T_0$, định kỳ phát bước thăm dò với $T_4$ sau mỗi $T_{\text{probe}}(B)$ bước giải mã:
     $$T_{\text{probe}}(B) = \begin{cases} 15 \text{ bước}, & B \le 4 \\ 20 \text{ bước}, & 4 < B \le 16 \\ 30 \text{ bước}, & B > 16 \end{cases}$$
-- **Nguyên tắc không sập hệ thống (Zero-Crash):** Bọc toàn bộ logic ra quyết định trong khối bắt ngoại lệ, tự động fallback an toàn về $T_0$ nếu có lỗi tính toán phát sinh.
-- **Đấu nối vào `src/proposer/adapter.py`:** Cho phép `AdaptiveProposerAdapter` khởi tạo và điều phối `TreeAdaptiveController`.
-- **Hiệu năng ra quyết định thời gian thực:** Thời gian thực thi `select_budget()` phải đạt $< 0.05\text{ ms}$ cho mỗi lượt gọi.
+- **Nguyên tắc bọc thép không sập hệ thống (Zero-Crash):** Bọc toàn bộ logic ra quyết định trong khối bắt ngoại lệ, tự động fallback an toàn về $T_0$ (`status="zero_crash_fallback"`) nếu có lỗi tính toán nội bộ phát sinh.
+- **Đóng gói `topology_name` trong `ProposalOutput` tại `src/proposer/adapter.py`:**
+  - Bổ sung trường `topology_name: Optional[str] = None` trong `ProposalOutput` để truyền cấu trúc cây nháp ra bên ngoài cho verifier và scheduler.
+- **Hiệu năng ra quyết định thời gian thực:** Thời gian ra quyết định trung bình (mean latency) của `select_budget()` phải đạt $< 0.05\text{ ms}$ ($50\ \mu\text{s}$) trên CPU.
 
 ### 2.2. Phi mục tiêu (Non-Goals)
-- Không can thiệp vào logic lập lịch bất đồng bộ của vLLM (`AdaptiveAsyncScheduler` và `AdaptiveBudgetPlanner` thuộc phạm vi task M4-02-04).
+- Không can thiệp sửa mã nguồn của scheduler và planner thuộc phạm vi M4-02-04 của Đại (`src/server/budget_planner.py` và `src/server/adaptive_scheduler.py`). Việc gỡ bỏ trần cứng `max_k = 4` sẽ do Đại chủ động cập nhật trong task M4-02-04 dựa trên `ProposalOutput.topology_name`.
 - Không tự thu thập hay chạy micro-benchmark đo ma trận chi phí mới trên GPU (thuộc phạm vi task M4-02-02).
-- Không thực hiện chiến dịch đo kiểm quét tải sweep toàn diện 4 làn trên hạ tầng đám mây Modal (thuộc phạm vi task M4-02-06).
+- Không sửa đổi mô hình giải tích kỳ vọng nhánh trong `tree_topology.py` (vấn đề xung khắc độc lập nhánh C03 được chuyển thành đề tài nghiên cứu cho Sprint 6).
 
 ### 2.3. Phản mục tiêu (Anti-Goals)
-- Tuyệt đối không để xảy ra hiện tượng tràn bộ nhớ VRAM (OOM) trong quá trình serving do việc sinh cây nháp.
+- Giảm thiểu tối đa rủi ro tràn bộ nhớ VRAM (OOM) trong quá trình serving bằng cơ chế bảo vệ hai tầng.
 - Tuyệt đối không thăm dò vượt rào khi bộ nhớ GPU đang ở mức nguy hiểm.
 - Tuyệt đối không phá vỡ giao diện công khai của `BudgetController` khiến các unit test cũ hoặc adapter bị lỗi biên dịch.
 
@@ -68,9 +75,9 @@ Task **[M4-02-05]** hiện thực hóa lớp `TreeAdaptiveController` tại đư
   - $T_8$ ($N=8, d=3$)
   - $T_{16}$ ($N=16, d=4$)
   - $T_{32}$ ($N=32, d=5$)
-- **Mô hình chi phí:** Tích hợp với `FlexCostModel` từ `src.flexsds.core.cost_model` (đã hỗ trợ cả nạp profile thực nghiệm lẫn tính toán giải tích Analytical Fallback).
-- **Bộ khử lệch khởi động (Unbiased EMA):** Sử dụng hệ số $\beta = 0.8$ với công thức hiệu chỉnh:
-  $$\alpha_{\text{unbiased}} = \frac{\alpha_{\text{ema}} - \alpha_{\text{init}} \cdot \beta^t}{1 - \beta^t}$$
+- **Mô hình chi phí:** Tích hợp với `FlexCostModel` từ `src.flexsds.core.cost_model`.
+- **Bộ khử lệch khởi động (Unbiased EMA):** Sử dụng hệ số $\beta = 0.8$ với công thức hiệu chỉnh dựa trên số lần quan sát thực tế $N_{\text{obs}}$:
+  $$\alpha_{\text{unbiased}} = \frac{\alpha_{\text{ema}} - \alpha_{\text{init}} \cdot \beta^{N_{\text{obs}}}}{1 - \beta^{N_{\text{obs}}}}$$
 
 ---
 
@@ -79,17 +86,15 @@ Task **[M4-02-05]** hiện thực hóa lớp `TreeAdaptiveController` tại đư
 | Tiêu chí | Hướng 1: Kế thừa mở rộng và bảo toàn tương thích (Đã chọn) | Hướng 2: Xây dựng interface độc lập hoàn toàn |
 | :--- | :--- | :--- |
 | **Cấu trúc lớp** | `TreeAdaptiveController(BudgetController)` và `TreeAdaptiveDecision(BudgetDecision)`. | Lớp độc lập hoàn toàn `TreeAdaptiveController` với kiểu trả về riêng biệt. |
-| **Ảnh hưởng tới `adapter.py`** | Rất nhỏ. Adapter chỉ cần truyền thêm cấu hình, giữ nguyên lời gọi hàm `select_budget()`. | Lớn. Phải viết lại các nhánh xử lý trong `AdaptiveProposerAdapter` và đổi signature. |
+| **Ảnh hưởng tới `adapter.py`** | Rất nhỏ. Adapter chỉ cần truyền thêm cấu hình, mở rộng `ProposalOutput.topology_name`. | Lớn. Phải viết lại các nhánh xử lý trong `AdaptiveProposerAdapter` và đổi signature. |
 | **Tương thích ngược** | Đạt 100%. Các bài test cũ kiểm tra `isinstance(decision, BudgetDecision)` và `decision.k` đều tiếp tục pass. | Phá vỡ tương thích ngược với các bài test baseline M2/M3. |
 | **Độ phức tạp bảo trì** | Thấp, tái sử dụng được giao diện chung của hệ thống. | Cao, tạo ra hai nhánh điều khiển song song không đồng nhất. |
-
-Nhóm kỹ thuật đã thống nhất chọn **Hướng 1**.
 
 ---
 
 ## 5. Thiết kế kiến trúc chi tiết (Detailed Design)
 
-### 5.1. Cấu trúc dữ liệu `TreeAdaptiveDecision`
+### 5.1. Cấu trúc dữ liệu `TreeAdaptiveDecision` và `ProposalOutput`
 
 ```python
 @dataclass
@@ -101,16 +106,24 @@ class TreeAdaptiveDecision(BudgetDecision):
     alpha_star: Optional[float] = None
     speedup: float = 1.0
     status: str = "ok"  # "ok" | "memory_guard" | "concurrency_throttled" | "fallback_gate" | "probing" | "zero_crash_fallback"
-```
 
-*Ghi chú:* Thuộc tính `k` của lớp cha `BudgetDecision` được gán giá trị bằng `num_nodes` ($N \in \{0, 4, 8, 16, 32\}$) để các thành phần tiêu thụ kiểu cũ (`decision.k`) hoạt động bình thường.
+@dataclass
+class ProposalOutput:
+    """Đóng gói đầu ra từ adapter gửi tới scheduler và verifier."""
+    draft_tokens: List[int]
+    budget_k: int
+    skipped_draft: bool
+    reason: str
+    topology_name: Optional[str] = None
+```
 
 ### 5.2. Chuẩn hóa tỷ lệ chấp nhận trong `update()`
 Khi bước xác thực hoàn thành, caller gọi `update(num_accepted, num_drafted)`:
-- Bộ điều khiển ghi nhớ độ sâu $d$ của topo gần nhất được cấp phát.
-- Nếu $d > 0$:
-  $$\alpha_{\text{step}} = \min\left(1.0, \frac{\text{num\_accepted}}{\max(d, 1)}\right)$$
-- Nếu `num_drafted <= d`: tính theo `min(1.0, num_accepted / num_drafted)` để tương thích với chuỗi tuyến tính cũ.
+- Nếu `num_drafted <= 0` hoặc `num_accepted < 0`: bỏ qua cập nhật EMA, giữ nguyên `_observation_count`.
+- Nếu `num_drafted > 0`: tăng `_observation_count += 1`.
+- Chuẩn hóa:
+  * Nếu $d > 0$ và $N > d$: $\alpha_{\text{step}} = \min(1.0, \text{num\_accepted} / d)$.
+  * Ngược lại: $\alpha_{\text{step}} = \min(1.0, \text{num\_accepted} / \text{num\_drafted})$.
 - Tích lũy vào cửa sổ trượt và cập nhật EMA:
   $$\alpha_{\text{ema}} \leftarrow \beta \cdot \alpha_{\text{ema}} + (1 - \beta) \cdot \alpha_{\text{step}}$$
 
@@ -120,80 +133,65 @@ Khi bước xác thực hoàn thành, caller gọi `update(num_accepted, num_dra
 ┌────────────────────────────────────────────────────────────────────────┐
 │ select_budget(batch_size, free_vram_mb, kv_cache_usage_pct)            │
 └────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
+                                     │
+                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ TẦNG 1: DUAL-TIER MEMORY GUARD & HYSTERESIS COOLDOWN                   │
-│ • Kiểm tra VRAM < 1500 MB HOẶC KV > 90% -> Kích hoạt Guard, trả T0     │
-│ • Nếu đang Guard: Cooldown >= 3 bước. Chỉ phục hồi khi KV <= 80%      │
-│   VÀ VRAM >= 1500 MB. Cấm probing hoàn toàn, reset probe counter.      │
+│ TẦNG 1: DUAL-TIER MEMORY GUARD & SENTINEL VRAM FILTER                  │
+│ • Kiểm tra VRAM sentinel (>= 1e8) -> Siết ngưỡng KV ở 75%/65%          │
+│ • Kiểm tra VRAM < 1500 MB HOẶC KV vượt ngưỡng -> Kích hoạt Guard       │
+│ • Lưu _guard_trigger_source ('vram' | 'kv' | 'both')                   │
+│ • Cooldown >= 3 bước. Phục hồi an toàn theo nguồn kích hoạt            │
+│ • Cấm probing hoàn toàn khi đang Guard                                 │
 └────────────────────────────────────────────────────────────────────────┘
-                                    │ (Bộ nhớ an toàn)
-                                    ▼
+                                     │ (Bộ nhớ an toàn)
+                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ TẦNG 2: TÍNH TÍN HIỆU HIỆU DỤNG (UNBIASED EMA ALPHA)                   │
-│ • alpha_effective = (alpha_ema - initial_alpha * beta^t) / (1 - beta^t)│
+│ TẦNG 2: TÍNH TÍN HIỆU HIỆU DỤNG & SELF-HEALING                         │
+│ • Tự phục hồi: Nếu alpha_ema là NaN/Inf -> Đưa về initial_alpha        │
+│ • Debiasing: alpha_eff = (alpha_ema - alpha_0 * beta^N_obs)/(1 - beta) │
 └────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
+                                     │
+                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │ TẦNG 3: CONCURRENCY THROTTLING (KẸP TRẦN TOPO THEO BATCH SIZE)         │
 │ • B <= 4   -> Cho phép {T0, T4, T8, T16, T32}                          │
 │ • 4 < B<=12-> Kẹp trần T16 ({T0, T4, T8, T16})                         │
 │ • 12< B<=24-> Kẹp trần T8  ({T0, T4, T8})                              │
-│ • B > 24   -> Kẹp trần T4. Nếu alpha_effective < 0.85 -> Ngắt về T0,  │
-│               gán status="concurrency_throttled" và vào nhịp probe 30b │
+│ • B > 24   -> Kẹp trần T4. Nếu alpha_eff < 0.85 -> Ngắt về T0          │
+│               (status='concurrency_throttled') và nhịp probe 30 bước   │
 └────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
+                                     │
+                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │ TẦNG 4: DYNAMIC FALLBACK GATE & ADAPTIVE PROBING                       │
-│ • Gọi cost_model.select_optimal_topology(B, alpha_effective, candidates│
+│ • Gọi cost_model.select_optimal_topology(B, alpha_eff, candidates)     │
 │ • Nếu max Speedup <= 1.0 (hoặc chọn T0):                               │
 │     - Kiểm tra chu kỳ Adaptive Probing T_probe(B) (15 / 20 / 30 bước)  │
-│     - Nếu đến hạn thăm dò: Phát T4 để đo lại tín hiệu (status="probing"│
-│     - Nếu chưa: Giữ T0 fallback an toàn (status="fallback_gate")       │
-│ • Nếu max Speedup > 1.0: Trả về topo tối ưu T* (status="ok")           │
+│     - Nếu đến hạn thăm dò: Phát T4 (status='probing')                  │
+│     - Nếu chưa: Giữ T0 fallback an toàn (status='fallback_gate')       │
+│ • Nếu max Speedup > 1.0: Trả về topo tối ưu T* (status='ok')           │
 └────────────────────────────────────────────────────────────────────────┘
-                                    │ (Bọc toàn bộ)
-                                    ▼
+                                     │ (Bọc toàn bộ)
+                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │ TẦNG 5: ZERO-CRASH EXCEPTION HANDLER                                   │
 │ • Bắt Exception bất ngờ -> Log warning và trả về T0 an toàn            │
+│   (status='zero_crash_fallback')                                       │
 └────────────────────────────────────────────────────────────────────────┘
 ```
-
-### 5.4. Đấu nối vào `src/proposer/adapter.py`
-
-Cập nhật `AdaptiveProposerAdapter` để:
-- Hỗ trợ tham số `controller_cls` nhận `TreeAdaptiveController`.
-- Chuyển tiếp các thông tin runtime (`batch_size`, `free_vram_mb`, `kv_cache_usage_pct`) vào phương thức `select_budget()`.
-- Trong `propose()`, đối tượng `ProposalOutput` ghi nhận `budget_k = decision.k` (số lượng node nháp của cây) và đóng gói thông tin lý do quyết định.
 
 ---
 
 ## 6. Kế hoạch kiểm thử và nghiệm thu (Verification & DoD)
 
 ### 6.1. Tiêu chí hoàn thành (Definition of Done)
-1. **Độ trễ quyết định:** Hoàn tất lời gọi `select_budget()` trong thời gian $< 0.05\text{ ms}$ (được kiểm chứng qua bài test lặp 10.000 lượt).
-2. **Kích hoạt phòng vệ bộ nhớ:** Khi $\text{free\_vram\_mb} < 1500\text{ MB}$ hoặc $\text{kv\_cache} > 90.0\%$, bộ điều khiển lập tức trả về $T_0$ và đếm cooldown tối thiểu 3 bước.
-3. **Bất biến cấm thăm dò:** Khi Memory Guard được kích hoạt, tuyệt đối không phát sinh bước thăm dò $T_4$ dù đã chạm chu kỳ $T_{\text{probe}}$.
-4. **Hồi phục trễ đúng chuẩn:** Chỉ hồi phục khỏi Guard khi đồng thời thỏa mãn $\text{kv\_cache} \le 80.0\%$ VÀ $\text{free\_vram\_mb} \ge 1500\text{ MB}$.
+1. **Độ trễ quyết định:** Hoàn tất lời gọi `select_budget()` với thời gian trung bình (mean latency) $< 0.05\text{ ms}$ (được kiểm chứng qua bài test lặp 10.000 lượt, đạt $0.0164\text{ ms}$).
+2. **Kích hoạt phòng vệ bộ nhớ và sentinel:** Phát hiện sentinel $10^9\text{ MB}$, tự động siết ngưỡng KV ở $75\%$; ngắt về $T_0$ và đếm cooldown tối thiểu 3 bước.
+3. **Phục hồi an toàn theo nguồn kích hoạt:** Nếu cạn VRAM vật lý, bắt buộc phải có VRAM hợp lệ $\ge 1500\text{ MB}$ mới phục hồi, không tự ý phục hồi khi mất cảm biến.
+4. **Bất biến cấm thăm dò:** Khi Memory Guard được kích hoạt, tuyệt đối không phát sinh bước thăm dò $T_4$.
 5. **Kẹp tải đồng thời:** Khi $B = 32$, topo được chọn không bao giờ vượt quá $T_4$; khi $\alpha < 0.85$, tự động ngắt về $T_0$.
-6. **Dynamic Fallback Gate:** Khi $\alpha$ thấp khiến mọi cây đều có $\text{Speedup} \le 1.0$, hệ thống tự động fallback về $T_0$ và chỉ phát $T_4$ theo đúng nhịp $T_{\text{probe}}(B)$.
-7. **Zero-Crash:** Khi truyền các tham số dị thường hoặc giả lập lỗi cost model, bộ điều khiển không bị ném ngoại lệ ra ngoài và trả về $T_0$.
-8. **100% Pass test suite:** Vượt qua toàn bộ bài test trong `tests/test_tree_adaptive_controller.py` và bảo toàn kết quả của toàn bộ test suite cũ.
-
-### 6.2. Danh mục ca kiểm thử trong `tests/test_tree_adaptive_controller.py`
-1. `test_tree_adaptive_controller_initialization`: Kiểm tra khởi tạo mặc định và các tham số.
-2. `test_unbiased_ema_alpha_tracking`: Kiểm tra tính hội tụ và bù lệch khởi động của EMA.
-3. `test_depth_normalized_alpha_update`: Kiểm tra chuẩn hóa bước $\alpha$ theo độ sâu $d$ cho cây 2D.
-4. `test_dual_tier_memory_guard_vram_trigger`: Kiểm tra ngắt về $T_0$ khi thiếu VRAM.
-5. `test_dual_tier_memory_guard_kv_cache_trigger`: Kiểm tra ngắt về $T_0$ khi KV-cache quá tải.
-6. `test_memory_guard_cooldown_and_recovery_conditions`: Kiểm tra trễ 3 bước và điều kiện kép hồi phục.
-7. `test_no_probing_under_memory_guard`: Kiểm tra tuyệt đối không probe khi đang trong trạng thái Memory Guard.
-8. `test_concurrency_throttling_limits`: Kiểm tra kẹp trần ngân sách cây theo $B \in \{1, 4, 8, 16, 32\}$.
-9. `test_dynamic_fallback_gate_and_adaptive_probing_cycle`: Kiểm tra ngắt khi $\text{Speedup} \le 1.0$ và nhịp probe $T_{\text{probe}}(B)$.
-10. `test_zero_crash_resilience`: Kiểm tra khả năng bắt ngoại lệ và fallback an toàn.
-11. `test_decision_latency_benchmark`: Đo benchmark 10.000 lượt gọi bảo đảm $< 0.05\text{ ms}$.
-12. `test_proposer_adapter_integration`: Kiểm tra đấu nối thông suốt với `AdaptiveProposerAdapter`.
+6. **Dynamic Fallback Gate:** Khi $\alpha$ thấp khiến mọi cây đều có $\text{Speedup} \le 1.0$, hệ thống tự động fallback về $T_0$ (`fallback_gate`) và chỉ phát $T_4$ theo đúng nhịp $T_{\text{probe}}(B)$.
+7. **Zero-Crash Resilience:** Khi mô hình chi phí ném ngoại lệ bất ngờ, controller trả về $T_0$ an toàn với `status="zero_crash_fallback"`.
+8. **Đóng gói `topology_name`:** `ProposalOutput` mang đúng tên cấu trúc cây (`"T0"`, `"T4"`, v.v.) và `None` đối với linear controller.
+9. **Tách biệt quan sát và self-healing:** $T_0$ không làm trôi debiasing; giá trị `NaN` tự động được phục hồi về `initial_alpha`.
+10. **100% Pass test suite:** 19/19 tests trong `tests/test_tree_adaptive_controller.py` và 75/75 tests toàn hệ thống FlexSDS đều PASS.
