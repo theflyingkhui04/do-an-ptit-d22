@@ -380,4 +380,17 @@ def test_alpha_observation_count_and_nan_self_healing():
     assert not math.isnan(ctrl.alpha_ema)  # Self-healed
 
 
+def test_concurrency_throttling_and_probing_safety():
+    """Verifies that high concurrency throttling never probes while memory guard is active."""
+    ctrl = TreeAdaptiveController()
+    ctrl.alpha_ema = 0.5
+    ctrl._observation_count = 10
+    # Simulate steps up to probing interval (30) under memory pressure
+    for _ in range(35):
+        dec = ctrl.select_budget(batch_size=32, free_vram_mb=500.0, kv_cache_usage_pct=95.0)
+        assert dec.topology_name == "T0"
+        assert dec.status == "memory_guard"  # Never probe under memory guard!
+
+
+
 
