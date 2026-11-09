@@ -357,3 +357,27 @@ def test_memory_guard_sentinel_vram_and_recovery_safety():
     assert dec2.status == "memory_guard"
 
 
+def test_alpha_observation_count_and_nan_self_healing():
+    """Verifies that unobserved steps do not decay EMA debiasing and NaN values are self-healed."""
+    ctrl = TreeAdaptiveController(initial_alpha=0.8, ema_beta=0.8)
+    # Cold-start or T0 steps with num_drafted == 0
+    ctrl.update(num_accepted=0, num_drafted=0)
+    assert ctrl._step_count == 1
+    assert ctrl._observation_count == 0
+    assert ctrl.get_effective_alpha() == 0.8  # No decay of beta_power
+
+    # Valid step
+    ctrl.update(num_accepted=3, num_drafted=4)
+    assert ctrl._observation_count == 1
+    assert 0.0 <= ctrl.get_effective_alpha() <= 1.0
+
+    # Inject NaN into alpha_ema
+    import math
+    ctrl.alpha_ema = float("nan")
+    alpha_recovered = ctrl.get_effective_alpha()
+    assert not math.isnan(alpha_recovered)
+    assert alpha_recovered == pytest.approx(0.8)
+    assert not math.isnan(ctrl.alpha_ema)  # Self-healed
+
+
+

@@ -69,6 +69,7 @@ class TreeAdaptiveController(BudgetController):
         self.cooldown_steps = cooldown_steps
 
         self._step_count: int = 0
+        self._observation_count: int = 0
         self._fallback_steps: int = 0
         self._memory_guard_active: bool = False
         self._guard_trigger_source: str = "none"
@@ -81,6 +82,7 @@ class TreeAdaptiveController(BudgetController):
         """Resets controller state when beginning a new sequence/prompt."""
         super().reset(initial_alpha=initial_alpha)
         self._step_count = 0
+        self._observation_count = 0
         self._fallback_steps = 0
         self._memory_guard_active = False
         self._guard_trigger_source = "none"
@@ -105,11 +107,14 @@ class TreeAdaptiveController(BudgetController):
 
 
     def get_effective_alpha(self) -> float:
-        """Returns unbiased alpha taking into account warm-up bias correction."""
-        if self._step_count == 0:
+        """Returns unbiased alpha taking into account warm-up bias correction and NaN self-healing."""
+        if math.isnan(self.alpha_ema) or math.isinf(self.alpha_ema):
+            self.alpha_ema = self.initial_alpha
+
+        if self._observation_count == 0:
             return self.initial_alpha
 
-        beta_power = self.ema_beta ** self._step_count
+        beta_power = self.ema_beta ** self._observation_count
         denominator = 1.0 - beta_power
         if denominator <= 1e-6:
             return self.alpha_ema
@@ -127,6 +132,7 @@ class TreeAdaptiveController(BudgetController):
             "tree_budgets": tree_budgets,
             "topologies": topologies,
             "step_count": self._step_count,
+            "observation_count": self._observation_count,
             "mean_k": (sum(tree_budgets) / len(tree_budgets)) if tree_budgets else 0.0,
             "history": list(self._history),
             "memory_guard_active": self._memory_guard_active,
@@ -137,17 +143,21 @@ class TreeAdaptiveController(BudgetController):
         """Updates rolling alpha telemetry from the latest step verification.
 
         Normalizes by active topology depth d to avoid alpha collapse on 2D trees (where N > d).
+        Only observed draft steps (num_drafted > 0) contribute to EMA debiasing count.
         """
         self._step_count += 1
+
+        if num_drafted <= 0 or num_accepted < 0:
+            return self.alpha_ema
+
+        self._observation_count += 1
         d = self._last_selected_depth
 
         if d > 0 and num_drafted > d:
             # 2D tree topology: num_drafted is total nodes N, but max accepted along a path is d
             step_alpha = min(max(num_accepted / d, 0.0), 1.0)
-        elif num_drafted > 0:
-            step_alpha = min(max(num_accepted / num_drafted, 0.0), 1.0)
         else:
-            step_alpha = self.alpha_ema
+            step_alpha = min(max(num_accepted / num_drafted, 0.0), 1.0)
 
         self._window.append(step_alpha)
         self.alpha_ema = self.ema_beta * self.alpha_ema + (1.0 - self.ema_beta) * step_alpha
