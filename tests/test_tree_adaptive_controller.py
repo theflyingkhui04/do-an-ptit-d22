@@ -392,5 +392,25 @@ def test_concurrency_throttling_and_probing_safety():
         assert dec.status == "memory_guard"  # Never probe under memory guard!
 
 
+def test_adapter_proposal_output_carries_topology_name():
+    """Verifies that ProposalOutput exposes topology_name for TreeAdaptiveController and None for linear."""
+    from src.proposer.adapter import AdaptiveProposerAdapter
+    from src.proposer.tree_adaptive import TreeAdaptiveController
+    from src.proposer.controller import AdaptiveDraftController
+
+    # With TreeAdaptiveController
+    tree_adapter = AdaptiveProposerAdapter(controller_cls=TreeAdaptiveController)
+    out_tree = tree_adapter.propose("req_tree", lambda k: [1] * k, batch_size=1)
+    assert hasattr(out_tree, "topology_name")
+    assert out_tree.topology_name in ["T0", "T4", "T8", "T16", "T32"]
+
+    # With legacy linear AdaptiveDraftController
+    linear_adapter = AdaptiveProposerAdapter(controller_cls=AdaptiveDraftController)
+    out_linear = linear_adapter.propose("req_linear", lambda k: [1] * k, batch_size=1)
+    assert hasattr(out_linear, "topology_name")
+    assert out_linear.topology_name is None or out_linear.topology_name == "T0"
+
+
+
 
 
