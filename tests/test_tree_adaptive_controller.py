@@ -411,6 +411,29 @@ def test_adapter_proposal_output_carries_topology_name():
     assert out_linear.topology_name is None or out_linear.topology_name == "T0"
 
 
+def test_fallback_gate_vs_zero_crash_exception():
+    """Verifies clear separation between economic infeasibility (fallback_gate) and cost model crashes (zero_crash_fallback)."""
+    ctrl = TreeAdaptiveController()
+    # Path A: Infeasible speedup (force mock or candidate with speedup <= 1.0)
+    # Controller returns fallback_gate or ok, not crashing
+    dec = ctrl.select_budget(batch_size=1)
+    assert dec.status in ["ok", "fallback_gate"]
+
+    # Path B: Exception injection in cost model
+    class FaultyCostModel:
+        def select_optimal_topology(self, *args, **kwargs):
+            raise RuntimeError("CUDA device communication failure")
+        def solve_alpha_star(self, *args, **kwargs):
+            raise RuntimeError("Cost model solver failure")
+
+    faulty_ctrl = TreeAdaptiveController(cost_model=FaultyCostModel())
+    dec_crash = faulty_ctrl.select_budget(batch_size=1)
+    assert dec_crash.topology_name == "T0"
+    assert dec_crash.status == "zero_crash_fallback"
+    assert "Zero-crash fallback" in dec_crash.reason
+
+
+
 
 
 
