@@ -338,3 +338,22 @@ def test_adapter_telemetry_forwards_topologies():
     assert "topologies" in telemetry
     assert len(telemetry["topologies"]) >= 1
 
+
+def test_memory_guard_sentinel_vram_and_recovery_safety():
+    """Verifies that sentinel VRAM values (e.g. 1e9) tighten KV-cache guards and prevent premature recovery."""
+    ctrl = TreeAdaptiveController(min_free_vram_mb=1500.0, kv_cache_high_pct=90.0, kv_cache_recover_pct=80.0)
+    # Case A: VRAM sentinel 1e9 but KV high (78% > tight threshold 75%) -> guard triggers
+    dec = ctrl.select_budget(batch_size=1, free_vram_mb=1.0e9, kv_cache_usage_pct=78.0)
+    assert dec.topology_name == "T0"
+    assert dec.status == "memory_guard"
+
+    # Case B: Starved by physical VRAM then telemetry flaps to 1e9 -> must hold guard
+    ctrl.reset()
+    ctrl.select_budget(batch_size=1, free_vram_mb=1000.0, kv_cache_usage_pct=50.0)
+    assert ctrl._memory_guard_active is True
+    # Telemetry flaps to sentinel 1e9 with low KV (50%) -> should NOT prematurely recover
+    dec2 = ctrl.select_budget(batch_size=1, free_vram_mb=1.0e9, kv_cache_usage_pct=50.0)
+    assert dec2.topology_name == "T0"
+    assert dec2.status == "memory_guard"
+
+

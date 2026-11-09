@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from collections import deque
 from typing import Dict, List, Optional, Tuple, Any
@@ -16,6 +17,10 @@ except ModuleNotFoundError:
 from src.proposer.controller import BudgetController, BudgetDecision
 
 logger = logging.getLogger(__name__)
+
+# Value threshold representing missing/sentinel VRAM readings (e.g. 1e9 from server planners)
+SENTINEL_VRAM_THRESHOLD_MB = 1.0e8
+
 
 
 @dataclass
@@ -66,6 +71,7 @@ class TreeAdaptiveController(BudgetController):
         self._step_count: int = 0
         self._fallback_steps: int = 0
         self._memory_guard_active: bool = False
+        self._guard_trigger_source: str = "none"
         self._cooldown_counter: int = 0
         self._guard_reason: str = ""
         self._last_selected_depth: int = 0
@@ -77,10 +83,26 @@ class TreeAdaptiveController(BudgetController):
         self._step_count = 0
         self._fallback_steps = 0
         self._memory_guard_active = False
+        self._guard_trigger_source = "none"
         self._cooldown_counter = 0
         self._guard_reason = ""
         self._last_selected_depth = 0
         self._last_selected_topology = "T0"
+
+    @staticmethod
+    def _is_valid_vram(free_vram_mb: Optional[float]) -> bool:
+        """Validates that VRAM telemetry is present, finite, non-negative, and not a sentinel value."""
+        if free_vram_mb is None or math.isnan(free_vram_mb) or math.isinf(free_vram_mb):
+            return False
+        return 0.0 <= free_vram_mb < SENTINEL_VRAM_THRESHOLD_MB
+
+    @staticmethod
+    def _is_valid_kv(kv_cache_usage_pct: Optional[float]) -> bool:
+        """Validates that KV-cache usage percentage is present, finite, and in [0, 100]."""
+        if kv_cache_usage_pct is None or math.isnan(kv_cache_usage_pct) or math.isinf(kv_cache_usage_pct):
+            return False
+        return 0.0 <= kv_cache_usage_pct <= 100.0
+
 
     def get_effective_alpha(self) -> float:
         """Returns unbiased alpha taking into account warm-up bias correction."""
@@ -201,18 +223,52 @@ class TreeAdaptiveController(BudgetController):
             # ------------------------------------------------------------------
             # TẦNG 1: DUAL-TIER MEMORY GUARD & HYSTERESIS COOLDOWN
             # ------------------------------------------------------------------
-            is_vram_starved = free_vram_mb < self.min_free_vram_mb
-            is_kv_pressured = kv_cache_usage_pct > self.kv_cache_high_pct
+            vram_valid = self._is_valid_vram(free_vram_mb)
+            kv_valid = self._is_valid_kv(kv_cache_usage_pct)
+
+            if not kv_valid:
+                # Corrupt KV telemetry triggers defensive guard immediately
+                is_vram_starved = False
+                is_kv_pressured = True
+                effective_kv_high = self.kv_cache_high_pct
+                effective_kv_recover = self.kv_cache_recover_pct
+                trigger_source = "kv"
+            else:
+                if vram_valid:
+                    is_vram_starved = free_vram_mb < self.min_free_vram_mb
+                    effective_kv_high = self.kv_cache_high_pct
+                    effective_kv_recover = self.kv_cache_recover_pct
+                else:
+                    # Missing/sentinel VRAM: tight KV guard mode (75% / 65%)
+                    is_vram_starved = False
+                    effective_kv_high = 75.0
+                    effective_kv_recover = 65.0
+
+                is_kv_pressured = kv_cache_usage_pct > effective_kv_high
+                if is_vram_starved and is_kv_pressured:
+                    trigger_source = "both"
+                elif is_vram_starved:
+                    trigger_source = "vram"
+                elif is_kv_pressured:
+                    trigger_source = "kv"
+                else:
+                    trigger_source = "none"
 
             if is_vram_starved or is_kv_pressured:
                 self._memory_guard_active = True
+                self._guard_trigger_source = trigger_source
                 self._cooldown_counter = self.cooldown_steps
                 self._fallback_steps = 0  # Reset probe counter under pressure
                 reason_parts = []
                 if is_vram_starved:
                     reason_parts.append(f"free VRAM: {free_vram_mb:.0f}MB < {self.min_free_vram_mb:.0f}MB")
                 if is_kv_pressured:
-                    reason_parts.append(f"KV cache: {kv_cache_usage_pct:.1f}% > {self.kv_cache_high_pct:.1f}%")
+                    if not kv_valid:
+                        reason_parts.append(f"invalid KV telemetry: {kv_cache_usage_pct}")
+                    elif not vram_valid:
+                        reason_parts.append(f"KV cache: {kv_cache_usage_pct:.1f}% > tight threshold {effective_kv_high:.1f}% (missing VRAM)")
+                    else:
+                        reason_parts.append(f"KV cache: {kv_cache_usage_pct:.1f}% > {effective_kv_high:.1f}%")
                 self._guard_reason = " | ".join(reason_parts)
 
                 return self._make_decision(
@@ -228,7 +284,19 @@ class TreeAdaptiveController(BudgetController):
                 )
 
             if self._memory_guard_active:
-                can_recover = (kv_cache_usage_pct <= self.kv_cache_recover_pct) and (free_vram_mb >= self.min_free_vram_mb)
+                # Recovery condition check
+                if self._guard_trigger_source in ["vram", "both"]:
+                    # Must have VALID VRAM reading that satisfies threshold AND safe KV
+                    can_recover = (
+                        vram_valid
+                        and (free_vram_mb >= self.min_free_vram_mb)
+                        and kv_valid
+                        and (kv_cache_usage_pct <= effective_kv_recover)
+                    )
+                else:
+                    # Pure KV trigger (or telemetry was already missing)
+                    can_recover = kv_valid and (kv_cache_usage_pct <= effective_kv_recover)
+
                 if self._cooldown_counter > 0:
                     self._cooldown_counter -= 1
                     self._fallback_steps = 0
@@ -246,6 +314,7 @@ class TreeAdaptiveController(BudgetController):
                 else:
                     if can_recover:
                         self._memory_guard_active = False
+                        self._guard_trigger_source = "none"
                     else:
                         self._fallback_steps = 0
                         return self._make_decision(
@@ -255,7 +324,7 @@ class TreeAdaptiveController(BudgetController):
                             alpha_star=None,
                             speedup=1.0,
                             status="memory_guard",
-                            reason=f"Memory guard holding (conditions not met: VRAM={free_vram_mb:.0f}MB, KV={kv_cache_usage_pct:.1f}%)",
+                            reason=f"Memory guard holding (conditions not met: VRAM={free_vram_mb}MB valid={vram_valid}, KV={kv_cache_usage_pct}%)",
                             expected_tokens=1.0,
                             depth=0,
                         )
