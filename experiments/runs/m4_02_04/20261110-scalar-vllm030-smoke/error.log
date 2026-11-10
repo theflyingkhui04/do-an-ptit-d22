@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/root/smoke_runner.py", line 76, in smoke
+    assert planner.adapter.controller_cls.__name__ == "BudgetController", "Tree controller configuration drift"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tree controller configuration drift

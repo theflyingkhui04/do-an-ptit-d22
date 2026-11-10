@@ -17,7 +17,7 @@ Commands: `git status --short`, `git branch --show-current`, `git remote -v`,
 
 The sandbox account initially triggered Git's ownership check. Subsequent Git commands
 used the per-command option
-`-c safe.directory=D:/Document/Four-year/do_an/do-an-ptit-d22-m4-02-02`;
+`-c safe.directory=<repository-root>`;
 global configuration was not changed. Fetch initially could not write the linked
 worktree's `FETCH_HEAD` in the parent checkout. The approved elevated retry succeeded.
 
@@ -513,3 +513,140 @@ TREE_YIELD_CALIBRATION = TECHNICAL REVIEW REQUIRED
 
 The calibration finding remains unresolved; no tree algorithm was modified.
 PM Option A/B/C and shared trimming/padding-mask alignment remain pending.
+
+
+## L3 real scalar integration smoke — 2026-11-10
+
+Result: **L3 SCALAR PATH VERIFIED** for the bounded three-request functional
+smoke. This entry does not mark M4-02-04 DONE.
+
+- Branch `feat/m4-02-04-scheduler-telemetry-v02`; exact tested SHA
+  `a6cd6ad5cee5374738f890c270ada4ca01f0946b`. Worktree clean before evidence
+  creation. All 63 mounted worker Python source files match the committed Git
+  blobs, packaged with `experiments.bench_source.snapshot`.
+- Dedicated isolated Modal A10G function, actual GPU NVIDIA A10, Ubuntu 22.04.5,
+  driver 610.57.04, CUDA UMD 13.3 / torch CUDA 13.0, Python 3.11.5,
+  torch 2.13.0+cu130, **vllm 0.30.0**. Existing pinned image package layer reused.
+  Local Windows/torch 2.6.0+cu124/no-vLLM failed the gate and did not serve.
+  The L4 probe had no runners; cancellation was requested only for that probe. Existing
+  deployed apps were not changed or stopped.
+- Exact target `Qwen/Qwen2.5-7B-Instruct-AWQ` revision
+  `b25037543e9394b818fdfca67ab2a00ecc7dd641`; draft
+  `Qwen/Qwen2.5-0.5B-Instruct` revision
+  `7ae557604adf67be50417f59c2c2f167def9a775`.
+- Canonical Modal adaptive/l4-bf16 argv: requested awq_marlin/bfloat16,
+  draft_model/greedy, K ceiling 4, dynamic lookup [[1,32,4]], heterogeneous
+  vocabulary, AdaptiveAsyncScheduler, model length 4096, max sequences 32,
+  GPU memory utilization 0.85, generation config vllm, metrics summary.
+  Default AdaptiveDraftController; VRAM guard 1, max K 4, min batch K 0,
+  per-request 1, empty controller kwargs. Telemetry paths point into the
+  isolated worker /tmp/m40204-smoke; step telemetry additionally enabled.
+- Harness imports the committed project image and mounts complete committed
+  src/experiments trees for project imports. No scheduler/controller/runtime
+  methods were monkeypatched. See deployment.json for exact argv/environment.
+- Commands: set PYTHONIOENCODING=utf-8, PTIT_GPU=A10G,
+  PTIT_DTYPE_PROFILE=l4-bf16, PTIT_LANES=adaptive; then
+  `python -m modal run experiments/runs/m4_02_04/20261110-scalar-vllm030-smoke/smoke_runner.py::main`.
+  Validate saved evidence with
+  `python experiments/runs/m4_02_04/20261110-scalar-vllm030-smoke/validate_evidence.py`.
+- Phase A PASS: installed-source imports/signatures verified, custom scheduler
+  selected, target/draft initialize, health HTTP 200.
+- Phase B PASS: one deterministic small request HTTP 200/nonempty output.
+- Phase C PASS: 36 plans matched to SchedulerOutput K observations; 39 scheduled
+  records; naturally observed K={0,2,3,4}. Single request progressed K=3 to K=4
+  under acceptance feedback, with 37 drafted/37 accepted. Overall real callback
+  counters 83 drafted/72 accepted in 25 feedback events. No thresholds forced.
+- Phase D PASS for minimal isolation smoke: two concurrent clients completed,
+  distinct request histories, independently observed scheduler running batches
+  1 and 2. Placeholder trimming observed (shared K=2, one request budget=0).
+  Three completion aggregates are emitted after committed end_request removes
+  session/history; no subsequent steps for a completed request. No live heap
+  inspection or extended concurrency claim. Server alive after all requests.
+- Telemetry preserves separate planned/scheduled/measured fields and
+  tree_execution_verified=false throughout. planned topology null on default
+  scalar path. Aggregate executed count and executed_runtime_mode remain
+  unverified; actual counters are in step feedback.
+- ASYNC_FEEDBACK_SOURCE_LINEAGE=UNVERIFIED: feedback source plan/schedule IDs
+  remain null. **TEAM TECHNICAL ALIGNMENT REQUIRED**. Tree calibration remains
+  **TECHNICAL REVIEW REQUIRED**. No arbitrary-tree or performance claim.
+- Anomalies: Windows CLI encoding/network/live-log tooling issues; first worker
+  harness assertion used the wrong default controller name and stopped before
+  launch (preserved root error.log). Corrected harness assertion only, reran in
+  attempt2. Draft safetensors offline-discovery errors recovered with cached
+  weights. During deliberate teardown, process-manager force-kill and one
+  leaked-semaphore warning; cause UNKNOWN, no serving scheduler exception.
+- Successful app `ap-g2Y8ylml1O4z0pl2AUuWoh`, call
+  `fc-01M72GTCBKZ3SM3G0BWS4DCQBK`; isolated app completed and server terminated.
+  Unused queued L4 version call `fc-01M72GJCACZFS7W0PEFCMQZARJ`: cancellation requested twice (including terminate_containers=True); local waiting caller stopped. Final API state still pending=1, cancelled=0, runners=0. Remote cancellation UNCONFIRMED; no active containers. No shared deployed app was stopped.
+- Raw evidence root:
+  `experiments/runs/m4_02_04/20261110-scalar-vllm030-smoke/`.
+  README.md explains attempts/limitations; manifest.json indexes all artifacts;
+  attempt2 contains environment, installed scheduler sources, exact deployment,
+  server log, three requests/responses, raw steps/request telemetry, source
+  hashes, call/result and validation.json. Failed attempts retained.
+
+No production source or compatibility change, commit, push, merge, PR, Trello
+change, frozen-protocol edit, benchmark, or arbitrary-tree implementation.
+Evidence/worklog are uncommitted for review. Next action: team alignment on
+exact async feedback source lineage identifiers and callback contract.
+
+
+## Evidence-preserving checkpoint and PM closure readiness — 2026-11-10
+
+Status: **READY FOR PM OPTION-B CLOSURE DECISION**. M4-02-04 remains open;
+Option B is a technical recommendation, not PM approval or a changed DoD.
+
+### VERIFIED NOW
+
+- Planner/controller L1/L2: previously recorded 419 pytest tests and 31 subtests.
+- L3 real vLLM 0.30.0 scalar scheduling on NVIDIA A10, not a performance benchmark.
+- Dynamic scalar K={0,2,3,4}; 36 planner/SchedulerOutput matches; 83 drafted,
+  72 accepted; three requests, including two concurrent clients.
+- Tested request isolation, placeholder trimming, telemetry and completion hooks.
+- Raw reproducibility metadata and failed-attempt evidence retained. All 29
+  historical smoke manifest entries and 465 hash entries across the research
+  manifests were rechecked successfully before curation. The saved validator
+  reproduced validation.json in memory without overwriting it; all 63 worker
+  source hashes match exact tested Git blobs.
+
+### STILL UNVERIFIED
+
+- Arbitrary-tree runtime, including T8/T16/T32 masks, positions and accepted paths.
+- Tree calibration correctness and exact async source-plan lineage.
+- Performance improvement and canonical T4/L4 benchmark results.
+- Previous queued L4 probe cancellation remains unconfirmed in the saved
+  control-plane record; this checkpoint made no remote changes.
+
+`dynamic scalar K != arbitrary-tree runtime execution`.
+
+### PM DECISION STILL REQUIRED
+
+- Approve or reject Option B split scope and evidence-preserving integration.
+- Decide arbitrary-tree follow-up timing relative to M4 freeze.
+- Assign the follow-up owner and deadline.
+- Ratify final DoD and required arbitrary-tree execution claims if scope changes.
+
+### TECHNICAL ALIGNMENT
+
+- Host-side lineage is source-level feasible only for capability-checked V1,
+  UniProc, single worker, same process, scalar path. **NOT IMPLEMENTED — ALIGNMENT FIRST**.
+- Ratify actual-consumed-slot origin semantics and ownership of the
+  compatibility-sensitive executor/scheduler adapter with Đại and Khôi.
+- Agree L2/L3 observation-window, lifecycle and negative-case validation owners.
+- Review tree calibration separately; lineage does not prove tree execution.
+
+### CHECKPOINT POLICY
+
+- Evidence-only selection: smoke checkpoint_manifest.json and its explicit files,
+  scoped ignore/byte-preservation rules, and this worklog.
+- Separate design selection: three runbooks, small reproduction scripts,
+  installed/test source hash inventories and CPU inspection metadata.
+- Full upstream/installed source captures, original historical smoke manifest,
+  bytecode and superseded staging/review snapshots remain local and excluded.
+- Raw evidence is immutable. No raw artifact or failed attempt was deleted or
+  rewritten. Portable report references use repository-relative paths.
+- A read-only secret scan and manual request/deployment review found no credential
+  values. Raw worker/preflight paths and app/call/volume IDs are provenance;
+  no sensitive authentication headers, cookies or signed URLs were found.
+- Production/test source remains at the three verified implementation commits;
+  no new engine run, lineage implementation or benchmark was performed.

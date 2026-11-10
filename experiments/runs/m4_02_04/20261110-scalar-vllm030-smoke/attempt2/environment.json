@@ -1,0 +1,38 @@
+{
+  "uname": {
+    "argv": [
+      "uname",
+      "-a"
+    ],
+    "exit_code": 0,
+    "stdout": "Linux modal 4.19.0-gvisor #1 SMP Sun Jan 10 15:06:54 PST 2016 x86_64 x86_64 x86_64 GNU/Linux\n",
+    "stderr": ""
+  },
+  "os_release": "PRETTY_NAME=\"Ubuntu 22.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"22.04\"\nVERSION=\"22.04.5 LTS (Jammy Jellyfish)\"\nVERSION_CODENAME=jammy\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=jammy\n",
+  "nvidia_smi": {
+    "argv": [
+      "nvidia-smi"
+    ],
+    "exit_code": 0,
+    "stdout": "Tue Nov 10 10:42:27 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 610.57.04              KMD Version: 610.57.04     CUDA UMD Version: 13.3     |\n+-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA A10                     On  |   00000000:17:00.0 Off |                    0 |\n|  0%   39C    P8             15W /  150W |       7MiB /  23028MiB |      0%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n\n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|  No running processes found                                                             |\n+-----------------------------------------------------------------------------------------+\n",
+    "stderr": ""
+  },
+  "pip": {
+    "argv": [
+      "/usr/local/bin/python",
+      "-m",
+      "pip",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "pip 23.2.1 from /usr/local/lib/python3.11/site-packages/pip (python 3.11)\n",
+    "stderr": ""
+  },
+  "python_executable": "/usr/local/bin/python",
+  "python": "3.11.5 (main, Aug 26 2023, 07:22:50) [Clang 16.0.3 ]",
+  "torch": "2.13.0+cu130",
+  "torch_cuda": "13.0",
+  "cuda_available": true,
+  "vllm": "0.30.0",
+  "gpu": "NVIDIA A10"
+}

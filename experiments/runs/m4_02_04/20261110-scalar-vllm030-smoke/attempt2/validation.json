@@ -1,0 +1,117 @@
+{
+  "git_sha": "a6cd6ad5cee5374738f890c270ada4ca01f0946b",
+  "worker_source_files_matched_to_git_blobs": 63,
+  "record_counts": {
+    "scheduled_budget": 39,
+    "planned_decision": 36,
+    "verification_feedback": 25
+  },
+  "plan_to_schedule_matches": 36,
+  "scheduled_k": [
+    0,
+    2,
+    3,
+    4
+  ],
+  "effective_scheduler_running_batches": [
+    1,
+    2
+  ],
+  "client_concurrency": {
+    "single": 1,
+    "multi": 2
+  },
+  "requests": [
+    {
+      "request_id": "chatcmpl-a1a3396981aff836-83a946ac",
+      "scheduled_k": [
+        0,
+        3,
+        4
+      ],
+      "drafted": 37,
+      "accepted": 37,
+      "feedback_records": 10,
+      "completion_aggregate": true
+    },
+    {
+      "request_id": "chatcmpl-bb3944da3c02fb5a-b17c8798",
+      "scheduled_k": [
+        0,
+        2,
+        3
+      ],
+      "drafted": 9,
+      "accepted": 1,
+      "feedback_records": 3,
+      "completion_aggregate": true
+    },
+    {
+      "request_id": "chatcmpl-b388f6af27c1c910-82b0209a",
+      "scheduled_k": [
+        0,
+        2,
+        3,
+        4
+      ],
+      "drafted": 37,
+      "accepted": 34,
+      "feedback_records": 12,
+      "completion_aggregate": true
+    }
+  ],
+  "trim_examples": [
+    {
+      "record_type": "scheduled_budget",
+      "request_id": "chatcmpl-bb3944da3c02fb5a-b17c8798",
+      "lane": "adaptive",
+      "executed_runtime_mode": "unverified",
+      "scheduled_runtime_mode": "linear_dynamic_k",
+      "scheduled_scalar_k": 2,
+      "schedule_sequence": 21,
+      "plan_sequence": 18,
+      "budget_target": "drafts_for_future_verification",
+      "next_batch_scalar_budget": 2,
+      "next_request_placeholder_budget": 0,
+      "executed_draft_token_count": null,
+      "tree_execution_verified": false,
+      "recorded_at": 1794307558.0727673
+    },
+    {
+      "record_type": "scheduled_budget",
+      "request_id": "chatcmpl-bb3944da3c02fb5a-b17c8798",
+      "lane": "adaptive",
+      "executed_runtime_mode": "unverified",
+      "scheduled_runtime_mode": "linear_dynamic_k",
+      "scheduled_scalar_k": 2,
+      "schedule_sequence": 22,
+      "plan_sequence": 19,
+      "budget_target": "drafts_for_future_verification",
+      "next_batch_scalar_budget": 2,
+      "next_request_placeholder_budget": 0,
+      "executed_draft_token_count": null,
+      "tree_execution_verified": false,
+      "recorded_at": 1794307558.0956738
+    },
+    {
+      "record_type": "scheduled_budget",
+      "request_id": "chatcmpl-bb3944da3c02fb5a-b17c8798",
+      "lane": "adaptive",
+      "executed_runtime_mode": "unverified",
+      "scheduled_runtime_mode": "linear_dynamic_k",
+      "scheduled_scalar_k": 2,
+      "schedule_sequence": 23,
+      "plan_sequence": 20,
+      "budget_target": "drafts_for_future_verification",
+      "next_batch_scalar_budget": 2,
+      "next_request_placeholder_budget": 0,
+      "executed_draft_token_count": null,
+      "tree_execution_verified": false,
+      "recorded_at": 1794307558.1193726
+    }
+  ],
+  "cleanup_evidence": "Three completion aggregates, emitted after adapter.end_request deletes request sessions/history; no later per-request steps. Exact committed source traced, no live heap inspection.",
+  "async_feedback_source_lineage": "UNVERIFIED",
+  "tree_execution_verified": false,
+  "verdict": "L3 SCALAR PATH VERIFIED"
+}

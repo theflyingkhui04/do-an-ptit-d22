@@ -1,0 +1,5 @@
+# Local originals remain available; checkpoint_manifest.json inventories the Git selection.
+__pycache__/
+*_source.json
+attempt2/*_source.json
+/manifest.json
