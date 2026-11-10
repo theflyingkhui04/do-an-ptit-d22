@@ -1,15 +1,60 @@
 """Glue tests for AdaptiveAsyncScheduler against a stubbed vLLM AsyncScheduler.
 
-The stub mimics only what the glue touches (vLLM v0.30.0 names). Real vLLM
-compatibility is verified by the Colab smoke test (scripts/smoke_lane3_adaptive.py).
+L2 only: the stub mirrors the v0.30.0 source contract, not an installed
+engine smoke or GPU verification. See the M4-02-04 worklog for source links.
 """
 import importlib
+import ast
+import __future__
 import json
 import sys
 import types
 from types import SimpleNamespace
+from functools import lru_cache
+from pathlib import Path
 
 import pytest
+
+
+PINNED_SCHEDULER = (Path(__file__).resolve().parents[1] / "experiments/runs/m2_03"
+    / "boundary279_20261018T132244Z_15f4dae9/vllm-originals/v1/core/sched/scheduler.py")
+
+
+@lru_cache(maxsize=None)
+def pinned_method(name):
+    """L2 source fixture only; never imports or runs an installed vLLM engine."""
+    module = ast.parse(PINNED_SCHEDULER.read_text(encoding="utf-8"))
+    scheduler = next(node for node in module.body if isinstance(node, ast.ClassDef)
+                     and node.name == "Scheduler")
+    return next(node for node in scheduler.body if isinstance(node, ast.FunctionDef)
+                and node.name == name)
+
+
+@lru_cache(maxsize=1)
+def pinned_lookup_code():
+    # Execute the captured upstream lookup statements rather than duplicating
+    # our expected indexing rule inside the fake scheduler.
+    body = pinned_method("schedule").body
+    index = next(i for i, node in enumerate(body) if isinstance(node, ast.Assign)
+                 and any(isinstance(t, ast.Name) and t.id == "num_spec_tokens_to_schedule"
+                         for t in node.targets))
+    assert isinstance(body[index + 1], ast.If)
+    return compile(ast.Module(body=body[index:index + 2], type_ignores=[]),
+                   str(PINNED_SCHEDULER), "exec")
+
+
+def pinned_lookup(scheduler, scheduled):
+    scope = {"self": scheduler, "num_scheduled_tokens": scheduled}
+    exec(pinned_lookup_code(), scope)
+    return scope["num_spec_tokens_to_schedule"]
+
+
+def call_pinned_method(name, scheduler, *args):
+    namespace = {}
+    code = compile(ast.Module(body=[pinned_method(name)], type_ignores=[]),
+                   str(PINNED_SCHEDULER), "exec", flags=__future__.annotations.compiler_flag)
+    exec(code, namespace)
+    return namespace[name](scheduler, *args)
 
 
 class FakeAsyncScheduler:
@@ -23,29 +68,49 @@ class FakeAsyncScheduler:
         self.dynamic_sd_lookup = [0] + [num_spec_tokens] * max_num_seqs if dynamic else None
         self.freed = []
         self.stats_calls = []
+        self.scheduled_ids = None
 
     def get_kv_cache_usage(self):
         return self.kv_usage
 
     def schedule(self, throttle_prefills=False):
-        # Like vLLM: batch K is read from the lookup by batch size.
-        k = self.dynamic_sd_lookup[len(self.running)] if self.dynamic_sd_lookup else self.num_spec_tokens
-        return SimpleNamespace(
-            num_scheduled_tokens={r.request_id: 1 for r in self.running},
+        # v0.30.0 Scheduler.schedule reads by actual scheduled count, then
+        # calls _update_after_schedule before returning. Existing placeholders
+        # represent drafts verified NOW; K controls this output's proposer pass
+        # for drafts that will be verified by a later output.
+        scheduled = {r.request_id: 1 for r in self.running
+                     if self.scheduled_ids is None or r.request_id in self.scheduled_ids}
+        k = pinned_lookup(self, scheduled)
+        out = SimpleNamespace(
+            num_scheduled_tokens=scheduled,
             num_spec_tokens_to_schedule=k,
+            scheduled_spec_decode_tokens={r.request_id: list(r.spec_token_ids)
+                for r in self.running if r.request_id in scheduled and r.spec_token_ids},
         )
+        self._update_after_schedule(out)
+        return out
 
     def _update_after_schedule(self, scheduler_output):
         placeholders = [-1] * scheduler_output.num_spec_tokens_to_schedule
         for req_id in scheduler_output.num_scheduled_tokens:
+            # Scheduler's base hook recomputes this flag before AsyncScheduler
+            # assigns future placeholders. Model just the completion boundary.
+            if getattr(self.requests[req_id], "completes_prefill", False):
+                self.requests[req_id].is_prefill_chunk = False
+            if self.requests[req_id].is_prefill_chunk:
+                continue
             self.requests[req_id].spec_token_ids = placeholders
 
-    def make_spec_decoding_stats(self, stats, num_draft_tokens, num_accepted_tokens, invalid, request_id):
+    def make_spec_decoding_stats(self, spec_decoding_stats, num_draft_tokens, num_accepted_tokens,
+                                 num_invalid_spec_tokens, request_id):
         self.stats_calls.append((request_id, num_draft_tokens, num_accepted_tokens))
-        return stats
+        return spec_decoding_stats
 
     def _free_request(self, request, delay_free_blocks=False):
         self.freed.append(request.request_id)
+        if not delay_free_blocks:
+            self.requests.pop(request.request_id, None)
+        self.running = [r for r in self.running if r.request_id != request.request_id]
         return None, None
 
 
@@ -93,9 +158,7 @@ def add_running(scheduler, *reqs):
 
 
 def run_step(scheduler):
-    out = scheduler.schedule()
-    scheduler._update_after_schedule(out)
-    return out
+    return scheduler.schedule()
 
 
 def test_schedule_writes_batch_k_into_lookup(scheduler_module, monkeypatch, tmp_path):
@@ -238,3 +301,170 @@ def test_missing_dynamic_lookup_still_schedules(scheduler_module, monkeypatch, t
     out = run_step(sched)
 
     assert out.num_spec_tokens_to_schedule == 4
+
+
+def test_current_lookup_read_uses_scheduled_subset(scheduler_module, monkeypatch, tmp_path):
+    sched = build(scheduler_module, monkeypatch, tmp_path)
+    add_running(sched, make_request("r1"), make_request("r2"), make_request("p", prefill=True))
+    sched.scheduled_ids = {"r2"}
+    # Index one must be updated even though the planner saw three running requests.
+    sched.dynamic_sd_lookup[1] = 4
+    out = sched.schedule()
+    assert out.num_spec_tokens_to_schedule == 3
+    assert list(out.num_scheduled_tokens) == ["r2"]
+    assert sched._plan.per_request_k == {"r1": 3, "r2": 3}
+    assert sched.requests["p"].spec_token_ids == []
+
+
+def test_proposer_k_and_current_verification_budget_are_distinct(scheduler_module, monkeypatch, tmp_path):
+    sched = build(scheduler_module, monkeypatch, tmp_path)
+    req = make_request("r")
+    req.spec_token_ids = [-1] * 4
+    add_running(sched, req)
+    out = sched.schedule()
+    assert len(out.scheduled_spec_decode_tokens["r"]) == 4
+    # This output selects proposer K=3 for drafts verified in a future output.
+    assert out.num_spec_tokens_to_schedule == len(req.spec_token_ids) == 3
+
+
+def test_scheduling_telemetry_reports_placeholders_not_execution(scheduler_module, monkeypatch, tmp_path):
+    step_path = tmp_path / "steps.jsonl"
+    sched = build(scheduler_module, monkeypatch, tmp_path, ADAPTIVE_STEP_TELEMETRY_PATH=str(step_path))
+    req, prefill = make_request("r"), make_request("p", prefill=True)
+    add_running(sched, req, prefill)
+    sched.schedule()
+    records = [json.loads(line) for line in step_path.read_text().splitlines()]
+    scheduled = [r for r in records if r["record_type"] == "scheduled_budget"]
+    assert len(scheduled) == 1
+    assert scheduled[0]["request_id"] == "r"
+    assert scheduled[0]["next_request_placeholder_budget"] == 3
+    assert scheduled[0]["executed_draft_token_count"] is None
+    assert scheduled[0]["executed_runtime_mode"] == "unverified"
+    assert scheduled[0]["scheduled_runtime_mode"] == "linear_dynamic_k"
+    assert scheduled[0]["scheduled_scalar_k"] == 3
+    assert scheduled[0]["plan_sequence"] == records[0]["plan_sequence"]
+    assert scheduled[0]["schedule_sequence"] == 1
+    sched._free_request(req)
+    final = json.loads((tmp_path / "lane3.jsonl").read_text())
+    assert final["tree_execution_verified"] is False
+    assert final["executed_runtime_mode"] == "unverified"
+    assert final["scheduled_runtime_mode"] == "linear_dynamic_k"
+
+
+def test_empty_schedule_keeps_upstream_default_but_plan_is_neutral(scheduler_module, monkeypatch, tmp_path):
+    sched = build(scheduler_module, monkeypatch, tmp_path)
+    out = sched.schedule()
+    assert sched._plan.batch_k == sched._plan.batch_node_count == 0
+    assert out.num_spec_tokens_to_schedule == 4  # upstream empty-output default
+
+
+def test_free_one_request_preserves_other_controller(scheduler_module, monkeypatch, tmp_path):
+    sched = build(scheduler_module, monkeypatch, tmp_path)
+    a, b = make_request("a"), make_request("b")
+    add_running(sched, a, b)
+    sched.schedule()
+    controller_b = sched._planner.adapter.get_controller("b")
+    sched._free_request(a)
+    assert "a" not in sched._planner._last_decisions
+    assert "a" not in sched._plan.per_request_k
+    assert "a" not in sched._plan.per_request_decisions
+    assert "a" not in sched._plan.per_request_node_count
+    assert sched._planner.adapter.active_request_count == 1
+    assert sched._planner.adapter.get_controller("b") is controller_b
+
+
+def test_delayed_feedback_does_not_inherit_latest_plan(scheduler_module, monkeypatch, tmp_path):
+    path = tmp_path / "steps.jsonl"
+    sched = build(scheduler_module, monkeypatch, tmp_path, ADAPTIVE_STEP_TELEMETRY_PATH=str(path))
+    add_running(sched, make_request("r"))
+    sched.schedule()
+    sched.schedule()  # second plan exists before first verification arrives
+    sched.make_spec_decoding_stats(None, 4, 1, {"r": 1}, "r")
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    feedback = records[-1]
+    assert feedback["record_type"] == "verification_feedback"
+    assert feedback["executed_draft_token_count"] == 3
+    assert feedback["accepted_draft_token_count"] == 1
+    assert "selected_topology" not in feedback
+    assert feedback["source_plan_sequence"] is None
+    assert feedback["source_schedule_sequence"] is None
+    assert feedback["executed_runtime_mode"] == "unverified"
+    assert sched._planner.adapter.get_controller("r").alpha_ema == pytest.approx(0.8 * 0.85 + 0.2 / 3)
+
+
+def test_pinned_lookup_and_hook_order_contract():
+    body = pinned_method("schedule").body
+    lookup_line = next(node.lineno for node in ast.walk(pinned_method("schedule"))
+                       if isinstance(node, ast.Subscript)
+                       and ast.unparse(node.value) == "self.dynamic_sd_lookup")
+    hook_line = next(node.lineno for node in ast.walk(pinned_method("schedule"))
+                     if isinstance(node, ast.Call)
+                     and ast.unparse(node.func) == "self._update_after_schedule")
+    assert lookup_line < hook_line < body[-1].lineno
+    assert isinstance(body[-1], ast.Return)
+    for name in ("make_spec_decoding_stats", "_free_request"):
+        import inspect
+        assert list(inspect.signature(getattr(FakeAsyncScheduler, name)).parameters) == [
+            arg.arg for arg in pinned_method(name).args.args]
+
+
+def test_prefill_completion_observation_does_not_invent_plan(scheduler_module, monkeypatch, tmp_path):
+    path = tmp_path / "steps.jsonl"
+    sched = build(scheduler_module, monkeypatch, tmp_path, ADAPTIVE_STEP_TELEMETRY_PATH=str(path))
+    req = make_request("p", prefill=True)
+    req.completes_prefill = True
+    add_running(sched, req)
+    sched.schedule()
+    record = json.loads(path.read_text())
+    assert record["record_type"] == "scheduled_budget"
+    assert record["plan_sequence"] is None
+    assert record["schedule_sequence"] == 1
+    assert record["executed_runtime_mode"] == "unverified"
+
+
+def test_trimmed_placeholders_reach_pinned_draft_update_and_feedback(scheduler_module, monkeypatch, tmp_path):
+    sched = build(scheduler_module, monkeypatch, tmp_path)
+    reqs = [make_request(name) for name in ("two", "four", "zero")]
+    for req, alpha in zip(reqs, (0.7, 0.95, 0.4)):
+        req.is_finished = lambda: False
+        sched._planner.adapter.start_request(req.request_id, initial_alpha=alpha)
+    add_running(sched, *reqs)
+    first = sched.schedule()
+    assert first.num_spec_tokens_to_schedule == 4
+    assert [len(r.spec_token_ids) for r in reqs] == [2, 4, 0]
+    second = sched.schedule()
+    sched.structured_output_manager = SimpleNamespace(validate_tokens=lambda request, tokens: tokens)
+    drafts = SimpleNamespace(req_ids=[r.request_id for r in reqs], draft_token_ids=[[7] * 4 for r in reqs])
+    # Run the captured upstream method on the next output's placeholders;
+    # do not recreate its trim/pad implementation inside the stub.
+    call_pinned_method("update_draft_token_ids_in_output", sched, drafts, second)
+    assert {r: len(tokens) for r, tokens in second.scheduled_spec_decode_tokens.items()} == {"two": 2, "four": 4}
+    before = sched._planner.adapter.get_controller("four").alpha_ema
+    sched.make_spec_decoding_stats(None, 2, 1, second.num_invalid_spec_tokens, "two")
+    assert sched._planner.adapter.get_controller("two").alpha_ema == pytest.approx(0.66)
+    assert sched._planner.adapter.get_controller("four").alpha_ema == before
+
+
+def test_runtime_cap_applies_to_scheduler_output(scheduler_module, monkeypatch, tmp_path):
+    sched = build(scheduler_module, monkeypatch, tmp_path)
+    sched._planner.max_k = 2
+    add_running(sched, make_request("r"))
+    out = sched.schedule()
+    assert sched._plan.per_request_node_count == {"r": 3}
+    assert out.num_spec_tokens_to_schedule == len(sched.requests["r"].spec_token_ids) == 2
+
+
+def test_aggregate_io_failure_still_cleans_only_finished_request(scheduler_module, monkeypatch, tmp_path):
+    sched = build(scheduler_module, monkeypatch, tmp_path)
+    a, b = make_request("a"), make_request("b")
+    add_running(sched, a, b)
+    sched.schedule()
+    sched._planner.telemetry_path = str(tmp_path)  # directory: aggregate open fails
+    assert sched._free_request(a, delay_free_blocks=True) == (None, None)
+    assert sched.freed == ["a"]
+    assert "a" in sched.requests  # forwarded delay_free_blocks preserves base behavior
+    assert sched._planner._known_requests == {"b"}
+    assert set(sched._planner._last_decisions) == {"b"}
+    assert set(sched._planner._scheduled_runtime_modes) == {"b"}
+    assert sched._planner.adapter.active_request_count == 1
+    assert set(sched._plan.per_request_decisions) == {"b"}

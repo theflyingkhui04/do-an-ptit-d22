@@ -3,7 +3,8 @@
 Thin glue between vLLM's ``AsyncScheduler`` and ``AdaptiveBudgetPlanner``:
 
 - ``schedule``                : plan k_i for decoding requests, write K = max(k_i)
-                                into ``dynamic_sd_lookup`` so the draft model drafts K tokens.
+                                into ``dynamic_sd_lookup`` for this output's proposer pass
+                                (its drafts are verified in a later scheduling step).
 - ``_update_after_schedule``  : trim each request's draft placeholders to k_i
                                 (vLLM trims real drafts to the placeholder length).
 - ``make_spec_decoding_stats``: per-request (drafted, accepted) feedback to the controller.
@@ -36,6 +37,7 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         self._planner.max_k = min(self._planner.max_k, self.num_spec_tokens)
         self._read_vram = _env_flag(os.environ.get("ADAPTIVE_ENABLE_VRAM_GUARD", "1"))
         self._plan = StepPlan(batch_k=0, per_request_k={})
+        self._schedule_sequence = 0
 
         if self.dynamic_sd_lookup is None:
             logger.warning(
@@ -54,6 +56,7 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         )
 
     def schedule(self, *args, **kwargs):
+        self._schedule_sequence += 1
         try:
             decode_ids = [r.request_id for r in self.running if not r.is_prefill_chunk]
             self._plan = self._planner.plan_step(
@@ -75,17 +78,28 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
     def _update_after_schedule(self, scheduler_output) -> None:
         _pb177_control(self, scheduler_output)
         super()._update_after_schedule(scheduler_output)
-        if not self._planner.per_request:
-            _pb279_observe("early_schedule", self, scheduler_output)
-            return
         scheduled = scheduler_output.num_scheduled_tokens
-        for req_id, k in self._plan.per_request_k.items():
-            request = self.requests.get(req_id)
-            if request is None or req_id not in scheduled or request.is_prefill_chunk:
-                continue
-            # Only shrink: placeholders were sized to the batch K.
-            if k < len(request.spec_token_ids):
-                request.spec_token_ids = [-1] * k
+        if self._planner.per_request:
+            for req_id, k in self._plan.per_request_k.items():
+                request = self.requests.get(req_id)
+                if request is None or req_id not in scheduled or request.is_prefill_chunk:
+                    continue
+                # Only shrink: these placeholders reserve drafts for later verification.
+                if k < len(request.spec_token_ids):
+                    request.spec_token_ids = [-1] * k
+        try:
+            for req_id in scheduled:
+                request = self.requests.get(req_id)
+                if request is not None and not request.is_prefill_chunk:
+                    self._planner.record_scheduled_budget(
+                        req_id, scheduler_output.num_spec_tokens_to_schedule,
+                        len(request.spec_token_ids), dynamic=self.dynamic_sd_lookup is not None,
+                        schedule_sequence=self._schedule_sequence,
+                        plan_sequence=(self._plan.plan_sequence
+                                       if req_id in self._plan.per_request_k else None),
+                    )
+        except Exception:
+            logger.exception("AdaptiveAsyncScheduler: scheduled-budget telemetry failed")
         _pb279_observe("early_schedule", self, scheduler_output)
 
     def make_spec_decoding_stats(
@@ -116,6 +130,11 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             self._planner.finish_request(request.request_id)
         except Exception:
             logger.exception("AdaptiveAsyncScheduler: telemetry failed for %s", request.request_id)
+        finally:
+            # Drop request-owned snapshots even when aggregate I/O fails.
+            self._plan.per_request_k.pop(request.request_id, None)
+            self._plan.per_request_node_count.pop(request.request_id, None)
+            self._plan.per_request_decisions.pop(request.request_id, None)
         return super()._free_request(request, *args, **kwargs)
 
     def _free_vram_mb(self) -> Optional[float]:
