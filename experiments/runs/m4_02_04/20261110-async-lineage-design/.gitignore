@@ -1,0 +1,12 @@
+# Inspection caches remain local; manifests retain provenance and hashes.
+installed/
+upstream/
+__pycache__/
+
+# Historical staging/checkpoint snapshots superseded by the current checkpoint.
+analysis_checkpoint_files.txt
+evidence_checkpoint_files.txt
+evidence_checkpoint_manifest.json
+evidence_checkpoint_recommendation.md
+completion_audit.json
+smoke_evidence_audit.json

@@ -1,0 +1,20 @@
+[
+  {
+    "path": "tests/v1/executor/test_executor.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/executor/test_executor.py",
+    "sha256_local": "1bd2eafbe8ada9eaa50ab0297372d629228fe545679f2039332be5ae59baea0b",
+    "status": "READ ONLY; NOT EXECUTED"
+  },
+  {
+    "path": "tests/v1/worker/test_gpu_input_batch.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/worker/test_gpu_input_batch.py",
+    "sha256_local": "410d39fe64969f977f68d6ac640275ca7dd6c3a089aab3e752c4a15935fdd989",
+    "status": "READ ONLY; NOT EXECUTED"
+  },
+  {
+    "path": "tests/v1/worker/test_gpu_model_runner.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/worker/test_gpu_model_runner.py",
+    "sha256_local": "3f47fa38cb4e2363ee17d18abedad851be04b0797974f818b34b61a5d6764c85",
+    "status": "READ ONLY; NOT EXECUTED"
+  }
+]
