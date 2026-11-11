@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "/content/20261111T132628Z-scalar-observer-l4-b45a0afc-py311-venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/test_scalar_context.py",
+    "tests/test_scalar_cost_capture.py",
+    "tests/test_scalar_cost_evidence.py",
+    "tests/test_m4_cost_profiler.py",
+    "tests/test_m4_cost_runner.py",
+    "tests/test_modal_profiler.py",
+    "-rA"
+  ],
+  "exit_code": 0,
+  "git_sha": "16528241468e2624ccfe07a69a67fcc123bfe4a3",
+  "log_sha256": "feb094fbbe2c1018c2bd279388275c733bddd258fd6a44adc89d9dcd640fe2e6",
+  "passed": 230,
+  "skipped": 0
+}

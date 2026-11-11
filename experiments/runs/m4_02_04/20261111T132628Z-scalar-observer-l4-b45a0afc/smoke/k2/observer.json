@@ -1,0 +1,2033 @@
+{
+  "evidence_layer": "LIVE_L4_SMOKE",
+  "consumer_profile": false,
+  "overflow": false,
+  "events": [
+    {
+      "status": "unsupported",
+      "reason": "LIFECYCLE_STATE_UNAVAILABLE",
+      "end_ns": 3163734462631,
+      "emitted": 1,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135399530558736,
+      "model_output_object_id": 135400495243024,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v1",
+      "planned_k": 0,
+      "planned_per_request": {},
+      "placeholder_counts": {
+        "1-a74503ea": 0
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a74503ea": 9
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          16
+        ],
+        "queries": [
+          9
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "CPU_OPTIMISTIC",
+        "prefill": true,
+        "proposer_rows": 1,
+        "proposer_k": 0
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 1
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3163774258090,
+      "emitted": 1,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135399528311568,
+      "model_output_object_id": 135400189080400,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v2",
+      "planned_k": 2,
+      "planned_per_request": {
+        "1-a74503ea": 2
+      },
+      "placeholder_counts": {
+        "1-a74503ea": 2
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 2,
+      "scheduled": {
+        "1-a74503ea": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          25
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 2,
+        "cpu_contexts_forecast": [
+          25
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v2",
+        "scheduler_output_id": "135399528311568",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 2,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 25,
+            "verification_query_length": 1,
+            "query_positions": [
+              25
+            ],
+            "verification_sequence_length": 26,
+            "gpu_context_buffer_after_execution": 25,
+            "corrected_post_execution_context": 26,
+            "next_execution_eligible": true,
+            "committed_output_after": 1,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 2
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v2",
+        "scheduler_output_id": "135399528311568",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 25,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 0
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v1",
+        "shared_k": 2,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3163814248061,
+      "emitted": 3,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135402384366672,
+      "model_output_object_id": 135400188160848,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          3
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v3",
+      "planned_k": 2,
+      "planned_per_request": {
+        "1-a74503ea": 2
+      },
+      "placeholder_counts": {
+        "1-a74503ea": 2
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 2,
+      "scheduled": {
+        "1-a74503ea": 3
+      },
+      "verification_slots": {
+        "1-a74503ea": 2
+      },
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          26
+        ],
+        "queries": [
+          3
+        ],
+        "valid_drafts": [
+          2
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 2,
+        "cpu_contexts_forecast": [
+          26
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 3
+      },
+      "context_reconstruction": {
+        "execution_id": "v3",
+        "scheduler_output_id": "135402384366672",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 26,
+            "verification_query_length": 3,
+            "query_positions": [
+              26,
+              27,
+              28
+            ],
+            "verification_sequence_length": 29,
+            "gpu_context_buffer_after_execution": 26,
+            "corrected_post_execution_context": 29,
+            "next_execution_eligible": true,
+            "committed_output_after": 4,
+            "raw_valid_sampled_count": 3,
+            "useful_emitted_count": 3,
+            "valid_speculative_slots": 2,
+            "invalid_padding_slots": 0,
+            "effective_k": 2
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v3",
+        "scheduler_output_id": "135402384366672",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 26,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 1
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v2",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3163854349499,
+      "emitted": 3,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135402384362896,
+      "model_output_object_id": 135400494213264,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          3
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v4",
+      "planned_k": 2,
+      "planned_per_request": {
+        "1-a74503ea": 2
+      },
+      "placeholder_counts": {
+        "1-a74503ea": 2
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 2,
+      "scheduled": {
+        "1-a74503ea": 3
+      },
+      "verification_slots": {
+        "1-a74503ea": 2
+      },
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          29
+        ],
+        "queries": [
+          3
+        ],
+        "valid_drafts": [
+          2
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 2,
+        "cpu_contexts_forecast": [
+          29
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 3
+      },
+      "context_reconstruction": {
+        "execution_id": "v4",
+        "scheduler_output_id": "135402384362896",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 29,
+            "verification_query_length": 3,
+            "query_positions": [
+              29,
+              30,
+              31
+            ],
+            "verification_sequence_length": 32,
+            "gpu_context_buffer_after_execution": 29,
+            "corrected_post_execution_context": 32,
+            "next_execution_eligible": true,
+            "committed_output_after": 5,
+            "raw_valid_sampled_count": 3,
+            "useful_emitted_count": 3,
+            "valid_speculative_slots": 2,
+            "invalid_padding_slots": 0,
+            "effective_k": 2
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v4",
+        "scheduler_output_id": "135402384362896",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 29,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 2
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v3",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3163894523666,
+      "emitted": 3,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135402384366672,
+      "model_output_object_id": 135399530920912,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          3
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v5",
+      "planned_k": 2,
+      "planned_per_request": {
+        "1-a74503ea": 2
+      },
+      "placeholder_counts": {
+        "1-a74503ea": 2
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 2,
+      "scheduled": {
+        "1-a74503ea": 3
+      },
+      "verification_slots": {
+        "1-a74503ea": 2
+      },
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          32
+        ],
+        "queries": [
+          3
+        ],
+        "valid_drafts": [
+          2
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 2,
+        "cpu_contexts_forecast": [
+          32
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 3
+      },
+      "context_reconstruction": {
+        "execution_id": "v5",
+        "scheduler_output_id": "135402384366672",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 32,
+            "verification_query_length": 3,
+            "query_positions": [
+              32,
+              33,
+              34
+            ],
+            "verification_sequence_length": 35,
+            "gpu_context_buffer_after_execution": 32,
+            "corrected_post_execution_context": 35,
+            "next_execution_eligible": true,
+            "committed_output_after": 8,
+            "raw_valid_sampled_count": 3,
+            "useful_emitted_count": 3,
+            "valid_speculative_slots": 2,
+            "invalid_padding_slots": 0,
+            "effective_k": 2
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v5",
+        "scheduler_output_id": "135402384366672",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 32,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 5
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v4",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3163934604408,
+      "emitted": 3,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135400495245264,
+      "model_output_object_id": 135400495756560,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          3
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v6",
+      "planned_k": 2,
+      "planned_per_request": {
+        "1-a74503ea": 2
+      },
+      "placeholder_counts": {
+        "1-a74503ea": 2
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 2,
+      "scheduled": {
+        "1-a74503ea": 3
+      },
+      "verification_slots": {
+        "1-a74503ea": 2
+      },
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          35
+        ],
+        "queries": [
+          3
+        ],
+        "valid_drafts": [
+          2
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 2,
+        "cpu_contexts_forecast": [
+          35
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 3
+      },
+      "context_reconstruction": {
+        "execution_id": "v6",
+        "scheduler_output_id": "135400495245264",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 35,
+            "verification_query_length": 3,
+            "query_positions": [
+              35,
+              36,
+              37
+            ],
+            "verification_sequence_length": 38,
+            "gpu_context_buffer_after_execution": 35,
+            "corrected_post_execution_context": 38,
+            "next_execution_eligible": true,
+            "committed_output_after": 11,
+            "raw_valid_sampled_count": 3,
+            "useful_emitted_count": 3,
+            "valid_speculative_slots": 2,
+            "invalid_padding_slots": 0,
+            "effective_k": 2
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v6",
+        "scheduler_output_id": "135400495245264",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 35,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 8
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v5",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3163974591439,
+      "emitted": 3,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135399530920144,
+      "model_output_object_id": 135399530281872,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          3
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v7",
+      "planned_k": 2,
+      "planned_per_request": {
+        "1-a74503ea": 2
+      },
+      "placeholder_counts": {
+        "1-a74503ea": 2
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 2,
+      "scheduled": {
+        "1-a74503ea": 3
+      },
+      "verification_slots": {
+        "1-a74503ea": 2
+      },
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          38
+        ],
+        "queries": [
+          3
+        ],
+        "valid_drafts": [
+          2
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 2,
+        "cpu_contexts_forecast": [
+          38
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 3
+      },
+      "context_reconstruction": {
+        "execution_id": "v7",
+        "scheduler_output_id": "135399530920144",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 38,
+            "verification_query_length": 3,
+            "query_positions": [
+              38,
+              39,
+              40
+            ],
+            "verification_sequence_length": 41,
+            "gpu_context_buffer_after_execution": 38,
+            "corrected_post_execution_context": 41,
+            "next_execution_eligible": true,
+            "committed_output_after": 14,
+            "raw_valid_sampled_count": 3,
+            "useful_emitted_count": 3,
+            "valid_speculative_slots": 2,
+            "invalid_padding_slots": 0,
+            "effective_k": 2
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v7",
+        "scheduler_output_id": "135399530920144",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 38,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 11
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v6",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3164014505006,
+      "emitted": 3,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135400495245264,
+      "model_output_object_id": 135399531157520,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          3
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v8",
+      "planned_k": 2,
+      "planned_per_request": {
+        "1-a74503ea": 2
+      },
+      "placeholder_counts": {
+        "1-a74503ea": 2
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 2,
+      "scheduled": {
+        "1-a74503ea": 3
+      },
+      "verification_slots": {
+        "1-a74503ea": 2
+      },
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          41
+        ],
+        "queries": [
+          3
+        ],
+        "valid_drafts": [
+          2
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 2,
+        "cpu_contexts_forecast": [
+          41
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 3
+      },
+      "context_reconstruction": {
+        "execution_id": "v8",
+        "scheduler_output_id": "135400495245264",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 41,
+            "verification_query_length": 3,
+            "query_positions": [
+              41,
+              42,
+              43
+            ],
+            "verification_sequence_length": 44,
+            "gpu_context_buffer_after_execution": 41,
+            "corrected_post_execution_context": 44,
+            "next_execution_eligible": true,
+            "committed_output_after": 17,
+            "raw_valid_sampled_count": 3,
+            "useful_emitted_count": 3,
+            "valid_speculative_slots": 2,
+            "invalid_padding_slots": 0,
+            "effective_k": 2
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v8",
+        "scheduler_output_id": "135400495245264",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 41,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 14
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v7",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3164054572848,
+      "emitted": 3,
+      "output_rows": [
+        "1-a74503ea"
+      ],
+      "schedule_object_id": 135400495754000,
+      "model_output_object_id": 135400190274128,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a74503ea",
+          3
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v9",
+      "planned_k": 2,
+      "planned_per_request": {
+        "1-a74503ea": 2
+      },
+      "placeholder_counts": {
+        "1-a74503ea": 2
+      },
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "scheduled_k": 2,
+      "scheduled": {
+        "1-a74503ea": 3
+      },
+      "verification_slots": {
+        "1-a74503ea": 2
+      },
+      "worker": {
+        "request_ids": [
+          "1-a74503ea"
+        ],
+        "contexts": [
+          44
+        ],
+        "queries": [
+          3
+        ],
+        "valid_drafts": [
+          2
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 2,
+        "cpu_contexts_forecast": [
+          44
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a74503ea": 3
+      },
+      "context_reconstruction": {
+        "execution_id": "v9",
+        "scheduler_output_id": "135400495754000",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 44,
+            "verification_query_length": 3,
+            "query_positions": [
+              44,
+              45,
+              46
+            ],
+            "verification_sequence_length": 47,
+            "gpu_context_buffer_after_execution": 44,
+            "corrected_post_execution_context": 47,
+            "next_execution_eligible": true,
+            "committed_output_after": 20,
+            "raw_valid_sampled_count": 3,
+            "useful_emitted_count": 3,
+            "valid_speculative_slots": 2,
+            "invalid_padding_slots": 0,
+            "effective_k": 2
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v9",
+        "scheduler_output_id": "135400495754000",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 44,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 17
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v8",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    }
+  ],
+  "windows": [
+    {
+      "start_ns": 3163774258090,
+      "end_ns": 3163894523666,
+      "retirement_ids": [
+        "v3",
+        "v4",
+        "v5"
+      ],
+      "ms_per_batch": 40.08852533333333,
+      "emitted": 9
+    },
+    {
+      "start_ns": 3163894523666,
+      "end_ns": 3164014505006,
+      "retirement_ids": [
+        "v6",
+        "v7",
+        "v8"
+      ],
+      "ms_per_batch": 39.99378,
+      "emitted": 9
+    }
+  ],
+  "failures": [],
+  "observer_cpu_overhead_ns": [
+    [
+      "submission",
+      23551
+    ],
+    [
+      "preparation",
+      81225
+    ],
+    [
+      "padding",
+      8580
+    ],
+    [
+      "execution_future",
+      10163
+    ],
+    [
+      "proposer_before",
+      26480
+    ],
+    [
+      "proposer_after",
+      9118
+    ],
+    [
+      "output_future",
+      8684
+    ],
+    [
+      "submission",
+      23767
+    ],
+    [
+      "preparation",
+      78238
+    ],
+    [
+      "padding",
+      6217
+    ],
+    [
+      "execution_future",
+      8288
+    ],
+    [
+      "proposer_before",
+      26477
+    ],
+    [
+      "proposer_after",
+      9886
+    ],
+    [
+      "output_future",
+      8401
+    ],
+    [
+      "canonical_materialization",
+      2222
+    ],
+    [
+      "before_retirement",
+      47064
+    ],
+    [
+      "post_retirement_record",
+      24364
+    ],
+    [
+      "submission",
+      21331
+    ],
+    [
+      "preparation",
+      67065
+    ],
+    [
+      "padding",
+      6836
+    ],
+    [
+      "execution_future",
+      8487
+    ],
+    [
+      "proposer_before",
+      25103
+    ],
+    [
+      "proposer_after",
+      9470
+    ],
+    [
+      "output_future",
+      9609
+    ],
+    [
+      "canonical_materialization",
+      2196
+    ],
+    [
+      "before_retirement",
+      94184
+    ],
+    [
+      "post_retirement_record",
+      107084
+    ],
+    [
+      "submission",
+      25253
+    ],
+    [
+      "preparation",
+      61235
+    ],
+    [
+      "padding",
+      7362
+    ],
+    [
+      "execution_future",
+      7726
+    ],
+    [
+      "proposer_before",
+      26647
+    ],
+    [
+      "proposer_after",
+      9529
+    ],
+    [
+      "output_future",
+      9746
+    ],
+    [
+      "canonical_materialization",
+      2738
+    ],
+    [
+      "before_retirement",
+      97865
+    ],
+    [
+      "post_retirement_record",
+      113868
+    ],
+    [
+      "submission",
+      21277
+    ],
+    [
+      "preparation",
+      57362
+    ],
+    [
+      "padding",
+      6957
+    ],
+    [
+      "execution_future",
+      7406
+    ],
+    [
+      "proposer_before",
+      24830
+    ],
+    [
+      "proposer_after",
+      9320
+    ],
+    [
+      "output_future",
+      7308
+    ],
+    [
+      "canonical_materialization",
+      2930
+    ],
+    [
+      "before_retirement",
+      105460
+    ],
+    [
+      "post_retirement_record",
+      111893
+    ],
+    [
+      "submission",
+      19353
+    ],
+    [
+      "preparation",
+      58517
+    ],
+    [
+      "padding",
+      6673
+    ],
+    [
+      "execution_future",
+      6590
+    ],
+    [
+      "proposer_before",
+      25051
+    ],
+    [
+      "proposer_after",
+      10178
+    ],
+    [
+      "output_future",
+      7371
+    ],
+    [
+      "canonical_materialization",
+      2867
+    ],
+    [
+      "before_retirement",
+      112177
+    ],
+    [
+      "post_retirement_record",
+      115425
+    ],
+    [
+      "submission",
+      19675
+    ],
+    [
+      "preparation",
+      80082
+    ],
+    [
+      "padding",
+      7185
+    ],
+    [
+      "execution_future",
+      6911
+    ],
+    [
+      "proposer_before",
+      27209
+    ],
+    [
+      "proposer_after",
+      9793
+    ],
+    [
+      "output_future",
+      7342
+    ],
+    [
+      "canonical_materialization",
+      2565
+    ],
+    [
+      "before_retirement",
+      96121
+    ],
+    [
+      "post_retirement_record",
+      98990
+    ],
+    [
+      "submission",
+      20480
+    ],
+    [
+      "preparation",
+      62571
+    ],
+    [
+      "padding",
+      7962
+    ],
+    [
+      "execution_future",
+      7256
+    ],
+    [
+      "proposer_before",
+      26509
+    ],
+    [
+      "proposer_after",
+      11149
+    ],
+    [
+      "output_future",
+      7894
+    ],
+    [
+      "canonical_materialization",
+      2622
+    ],
+    [
+      "before_retirement",
+      80834
+    ],
+    [
+      "post_retirement_record",
+      98713
+    ],
+    [
+      "submission",
+      16905
+    ],
+    [
+      "preparation",
+      54664
+    ],
+    [
+      "padding",
+      5870
+    ],
+    [
+      "execution_future",
+      6714
+    ],
+    [
+      "proposer_before",
+      25584
+    ],
+    [
+      "proposer_after",
+      8146
+    ],
+    [
+      "output_future",
+      6814
+    ],
+    [
+      "canonical_materialization",
+      3159
+    ],
+    [
+      "before_retirement",
+      86099
+    ],
+    [
+      "post_retirement_record",
+      126588
+    ],
+    [
+      "submission",
+      17048
+    ],
+    [
+      "preparation",
+      51198
+    ],
+    [
+      "padding",
+      5954
+    ],
+    [
+      "execution_future",
+      6713
+    ],
+    [
+      "proposer_before",
+      25195
+    ],
+    [
+      "proposer_after",
+      7643
+    ],
+    [
+      "output_future",
+      6807
+    ],
+    [
+      "canonical_materialization",
+      1858
+    ],
+    [
+      "before_retirement",
+      95551
+    ],
+    [
+      "post_retirement_record",
+      108825
+    ],
+    [
+      "canonical_materialization",
+      2834
+    ]
+  ],
+  "overhead_scope": "partial CPU metadata and post-retirement processing; not GPU perturbation",
+  "observation_id_scope": "process-local only",
+  "process_id": 16592,
+  "worker_identity": {
+    "process_id": 16592,
+    "executor": "UniProcExecutor",
+    "device": "cuda:0"
+  },
+  "capture_complete": true,
+  "excluded_drain_pending_ids": [
+    "v10"
+  ],
+  "execution_facts": [
+    {
+      "verifier_id": "v1",
+      "schedule_object_id": 135399530558736,
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a74503ea": 25
+      },
+      "committed_output_before": {
+        "1-a74503ea": 0
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 135400190890000,
+      "output_future_id": 135400500188240,
+      "materialized_output_id": 135400495243024,
+      "lifecycle_flags": [],
+      "label": "PREFILL",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a74503ea"
+      ],
+      "queries": [
+        9
+      ],
+      "host_contexts": [
+        16
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v1",
+        "scheduler_output_id": "135399530558736",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 16,
+            "query_length": 9,
+            "previous_row": -1,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 0
+          }
+        ],
+        "correction_active": false,
+        "counts_source_execution_id": null,
+        "shared_k": 0,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 1,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    },
+    {
+      "verifier_id": "v2",
+      "schedule_object_id": 135399528311568,
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a74503ea": 25
+      },
+      "committed_output_before": {
+        "1-a74503ea": 0
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 2,
+      "target_forward_calls": 1,
+      "execution_future_id": 135400825380496,
+      "output_future_id": 135400190929808,
+      "materialized_output_id": 135400189080400,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a74503ea"
+      ],
+      "queries": [
+        1
+      ],
+      "host_contexts": [
+        25
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v2",
+        "scheduler_output_id": "135399528311568",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 25,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 0
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v1",
+        "shared_k": 2,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 0,
+      "proposer_k": 2,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        2
+      ],
+      "assigned_proposer_k": 2
+    },
+    {
+      "verifier_id": "v5",
+      "schedule_object_id": 135402384366672,
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a74503ea": 25
+      },
+      "committed_output_before": {
+        "1-a74503ea": 5
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 2,
+      "target_forward_calls": 1,
+      "execution_future_id": 135400494205200,
+      "output_future_id": 135400190911504,
+      "materialized_output_id": 135399530920912,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a74503ea"
+      ],
+      "queries": [
+        3
+      ],
+      "host_contexts": [
+        32
+      ],
+      "verification_slots": [
+        2
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v5",
+        "scheduler_output_id": "135402384366672",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 32,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 5
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v4",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 1,
+      "proposer_k": 2,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        2
+      ],
+      "assigned_proposer_k": 2
+    },
+    {
+      "verifier_id": "v4",
+      "schedule_object_id": 135402384362896,
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a74503ea": 25
+      },
+      "committed_output_before": {
+        "1-a74503ea": 2
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 2,
+      "target_forward_calls": 1,
+      "execution_future_id": 135400188160464,
+      "output_future_id": 135400187779920,
+      "materialized_output_id": 135400494213264,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a74503ea"
+      ],
+      "queries": [
+        3
+      ],
+      "host_contexts": [
+        29
+      ],
+      "verification_slots": [
+        2
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v4",
+        "scheduler_output_id": "135402384362896",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 29,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 2
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v3",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 1,
+      "proposer_k": 2,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        2
+      ],
+      "assigned_proposer_k": 2
+    },
+    {
+      "verifier_id": "v8",
+      "schedule_object_id": 135400495245264,
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a74503ea": 25
+      },
+      "committed_output_before": {
+        "1-a74503ea": 14
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 2,
+      "target_forward_calls": 1,
+      "execution_future_id": 135399530275088,
+      "output_future_id": 135400601051024,
+      "materialized_output_id": 135399531157520,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a74503ea"
+      ],
+      "queries": [
+        3
+      ],
+      "host_contexts": [
+        41
+      ],
+      "verification_slots": [
+        2
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v8",
+        "scheduler_output_id": "135400495245264",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 41,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 14
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v7",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 1,
+      "proposer_k": 2,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        2
+      ],
+      "assigned_proposer_k": 2
+    },
+    {
+      "verifier_id": "v7",
+      "schedule_object_id": 135399530920144,
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a74503ea": 25
+      },
+      "committed_output_before": {
+        "1-a74503ea": 11
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 2,
+      "target_forward_calls": 1,
+      "execution_future_id": 135400494534928,
+      "output_future_id": 135400494562448,
+      "materialized_output_id": 135399530281872,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a74503ea"
+      ],
+      "queries": [
+        3
+      ],
+      "host_contexts": [
+        38
+      ],
+      "verification_slots": [
+        2
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v7",
+        "scheduler_output_id": "135399530920144",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 38,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 11
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v6",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 1,
+      "proposer_k": 2,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        2
+      ],
+      "assigned_proposer_k": 2
+    },
+    {
+      "verifier_id": "v9",
+      "schedule_object_id": 135400495754000,
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a74503ea": 25
+      },
+      "committed_output_before": {
+        "1-a74503ea": 17
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 2,
+      "target_forward_calls": 1,
+      "execution_future_id": 135399531166928,
+      "output_future_id": 135399530558736,
+      "materialized_output_id": 135400190274128,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a74503ea"
+      ],
+      "queries": [
+        3
+      ],
+      "host_contexts": [
+        44
+      ],
+      "verification_slots": [
+        2
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v9",
+        "scheduler_output_id": "135400495754000",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 44,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 17
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v8",
+        "shared_k": 2,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 1,
+      "proposer_k": 2,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        2
+      ],
+      "assigned_proposer_k": 2
+    },
+    {
+      "verifier_id": "v10",
+      "schedule_object_id": 135400495757648,
+      "incarnations": {
+        "1-a74503ea": "1-a74503ea:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a74503ea": 25
+      },
+      "committed_output_before": {
+        "1-a74503ea": 20
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 2,
+      "target_forward_calls": 1,
+      "execution_future_id": 135399531039568,
+      "output_future_id": 135400495987152,
+      "materialized_output_id": 135399531211408,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a74503ea"
+      ],
+      "queries": [
+        3
+      ],
+      "host_contexts": [
+        47
+      ],
+      "verification_slots": [
+        2
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v10",
+        "scheduler_output_id": "135400495757648",
+        "rows": [
+          {
+            "request_id": "1-a74503ea",
+            "incarnation": "1-a74503ea:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 47,
+            "query_length": 3,
+            "previous_row": 0,
+            "previous_drafts": 2,
+            "scheduled_drafts": 2,
+            "invalid_slots": 0,
+            "effective_k": 2,
+            "committed_output_before": 20
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v9",
+        "shared_k": 2,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": null,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 1,
+      "proposer_k": 2,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        2
+      ],
+      "assigned_proposer_k": 2
+    }
+  ]
+}

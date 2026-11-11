@@ -1,0 +1,15 @@
+{
+  "artifact_kind": "scalar_observer_tiny_smoke",
+  "git_sha": "16528241468e2624ccfe07a69a67fcc123bfe4a3",
+  "timestamp_utc": "2026-11-11T14:14:06.460833+00:00",
+  "cells": [
+    0,
+    2
+  ],
+  "worker_batch": 1,
+  "intervals": 3,
+  "gpu_execution_requested_from_codex": false,
+  "production_source": "UNCHANGED",
+  "status": "FAIL",
+  "consumer_profile": false
+}

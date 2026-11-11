@@ -1,0 +1,352 @@
+........................................................................ [ 31%]
+........................................................................ [ 62%]
+........................................................................ [ 93%]
+..............                                                           [100%]
+==================================== PASSES ====================================
+_____________________ test_cli_defaults_and_component_grid _____________________
+----------------------------- Captured stderr call -----------------------------
+usage: __main__.py [-h] --run-id RUN_ID --expected-gpu {L4,T4}
+                   [--mode {smoke,components}] [--contexts CONTEXTS]
+                   [--batches BATCHES] [--k-values K_VALUES] [--warmup WARMUP]
+                   [--repeats REPEATS]
+__main__.py: error: argument --batches: Empty/duplicate grid
+_________________ test_only_m4_run_artifacts_are_source_clean __________________
+---------------------------- Captured stderr setup -----------------------------
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint: 
+hint: 	git config --global init.defaultBranch <name>
+hint: 
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint: 
+hint: 	git branch -m <name>
+_________________ test_modified_tracked_python_is_source_dirty _________________
+---------------------------- Captured stderr setup -----------------------------
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint: 
+hint: 	git config --global init.defaultBranch <name>
+hint: 
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint: 
+hint: 	git branch -m <name>
+______ test_untracked_source_config_notebook_is_source_dirty[src/new.py] _______
+---------------------------- Captured stderr setup -----------------------------
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint: 
+hint: 	git config --global init.defaultBranch <name>
+hint: 
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint: 
+hint: 	git branch -m <name>
+___ test_untracked_source_config_notebook_is_source_dirty[configs/new.yaml] ____
+---------------------------- Captured stderr setup -----------------------------
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint: 
+hint: 	git config --global init.defaultBranch <name>
+hint: 
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint: 
+hint: 	git branch -m <name>
+_ test_untracked_source_config_notebook_is_source_dirty[experiments/new.ipynb] _
+---------------------------- Captured stderr setup -----------------------------
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint: 
+hint: 	git config --global init.defaultBranch <name>
+hint: 
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint: 
+hint: 	git branch -m <name>
+_ test_untracked_source_config_notebook_is_source_dirty[experiments/runs/m4_cost_profiling_other/source.py] _
+---------------------------- Captured stderr setup -----------------------------
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint: 
+hint: 	git config --global init.defaultBranch <name>
+hint: 
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint: 
+hint: 	git branch -m <name>
+_______________ test_dirty_component_run_refuses_and_retains_env _______________
+----------------------------- Captured stdout call -----------------------------
+Artifacts retained: /tmp/pytest-of-root/pytest-4/test_dirty_component_run_refus0/experiments/runs/m4_cost_profiling/synthetic-test-only
+----------------------------- Captured stderr call -----------------------------
+ValueError: Component benchmark refused: commit changes before running on dirty source
+_____________ test_end_to_end_fake_multicontext_smoke_no_profiles ______________
+----------------------------- Captured stdout call -----------------------------
+Artifacts retained: /tmp/pytest-of-root/pytest-4/test_end_to_end_fake_multicont0/experiments/runs/m4_cost_profiling/synthetic-test-only
+___________ test_components_add_baseline_and_never_derive_topologies ___________
+----------------------------- Captured stdout call -----------------------------
+Artifacts retained: /tmp/pytest-of-root/pytest-4/test_components_add_baseline_a0/experiments/runs/m4_cost_profiling/synthetic-test-only
+______________ test_failed_worker_keeps_logs_env_and_partial_raw _______________
+----------------------------- Captured stdout call -----------------------------
+Artifacts retained: /tmp/pytest-of-root/pytest-4/test_failed_worker_keeps_logs_0/experiments/runs/m4_cost_profiling/synthetic-test-only
+----------------------------- Captured stderr call -----------------------------
+RuntimeError: Failed cells (no automatic retry): k1-b1-c1024: worker_exit: Worker terminated; see cell log
+________________ test_interrupted_run_retains_terminal_manifest ________________
+----------------------------- Captured stdout call -----------------------------
+Artifacts retained: /tmp/pytest-of-root/pytest-4/test_interrupted_run_retains_t0/experiments/runs/m4_cost_profiling/synthetic-test-only
+----------------------------- Captured stderr call -----------------------------
+KeyboardInterrupt: 
+__________ test_oom_cell_does_not_retry_or_prevent_later_fresh_cells ___________
+----------------------------- Captured stdout call -----------------------------
+Artifacts retained: /tmp/pytest-of-root/pytest-4/test_oom_cell_does_not_retry_o0/experiments/runs/m4_cost_profiling/synthetic-test-only
+----------------------------- Captured stderr call -----------------------------
+RuntimeError: Failed cells (no automatic retry): k1-b2-c1024: oom: OutOfMemoryError: CUDA out of memory; k2-b2-c1024: oom: OutOfMemoryError: CUDA out of memory
+_________ test_engine_init_failure_has_cell_config_and_original_error __________
+----------------------------- Captured stderr call -----------------------------
+Traceback (most recent call last):
+  File "/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/experiments/m4_cost_runner.py", line 157, in run_worker
+    llm = LLM(**cfg)
+          ^^^^^^^^^^
+  File "/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/tests/test_m4_cost_runner.py", line 305, in __init__
+    def __init__(self,**kwargs): raise RuntimeError("synthetic init failure")
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: synthetic init failure
+=========================== short test summary info ============================
+PASSED tests/test_scalar_context.py::test_exact_all_partial_first_rejection_bonus_and_k0[2-2]
+PASSED tests/test_scalar_context.py::test_exact_all_partial_first_rejection_bonus_and_k0[4-2]
+PASSED tests/test_scalar_context.py::test_exact_all_partial_first_rejection_bonus_and_k0[4-0]
+PASSED tests/test_scalar_context.py::test_exact_all_partial_first_rejection_bonus_and_k0[3-3]
+PASSED tests/test_scalar_context.py::test_exact_all_partial_first_rejection_bonus_and_k0[0-0]
+PASSED tests/test_scalar_context.py::test_heterogeneous_invalid_slots_and_reordered_rows
+PASSED tests/test_scalar_context.py::test_bounded_cross_product_matches_unchanged_pinned_tensor_body
+PASSED tests/test_scalar_context.py::test_existing_cpu_parse_preserves_padded_kernel_valid_counts[False]
+PASSED tests/test_scalar_context.py::test_existing_cpu_parse_preserves_padded_kernel_valid_counts[True]
+PASSED tests/test_scalar_context.py::test_terminal_raw_count_before_clipping_differs_from_useful_output[eos]
+PASSED tests/test_scalar_context.py::test_terminal_raw_count_before_clipping_differs_from_useful_output[max_tokens]
+PASSED tests/test_scalar_context.py::test_two_snapshots_inflight_resolve_without_reading_latest_host_state
+PASSED tests/test_scalar_context.py::test_lifecycle_outside_initial_protocol_is_unsupported[preemption]
+PASSED tests/test_scalar_context.py::test_lifecycle_outside_initial_protocol_is_unsupported[resume]
+PASSED tests/test_scalar_context.py::test_lifecycle_outside_initial_protocol_is_unsupported[stale]
+PASSED tests/test_scalar_context.py::test_lifecycle_outside_initial_protocol_is_unsupported[abort]
+PASSED tests/test_scalar_context.py::test_lifecycle_outside_initial_protocol_is_unsupported[prefill]
+PASSED tests/test_scalar_context.py::test_lifecycle_outside_initial_protocol_is_unsupported[discard]
+PASSED tests/test_scalar_context.py::test_missing_correction_metadata_is_never_guessed[current]
+PASSED tests/test_scalar_context.py::test_missing_correction_metadata_is_never_guessed[previous]
+PASSED tests/test_scalar_context.py::test_missing_correction_metadata_is_never_guessed[source_id]
+PASSED tests/test_scalar_context.py::test_missing_correction_metadata_is_never_guessed[incarnation]
+PASSED tests/test_scalar_context.py::test_missing_correction_metadata_is_never_guessed[bonus]
+PASSED tests/test_scalar_context.py::test_reference_match_requires_actual_mapped_trajectory_not_bins_or_equal_yield
+PASSED tests/test_scalar_context.py::test_no_new_synchronization_or_mutable_runtime_objects
+PASSED tests/test_scalar_context.py::test_observer_binds_delayed_reconstruction_to_two_inflight_snapshots
+PASSED tests/test_scalar_context.py::test_observer_keeps_raw_counts_before_delegate_mutates_output
+PASSED tests/test_scalar_context.py::test_shared_k_changes_do_not_replace_previous_verification_gate
+PASSED tests/test_scalar_cost_capture.py::test_two_inflight_out_of_order_completion_preserves_fifo_pairing
+PASSED tests/test_scalar_cost_capture.py::test_structured_output_defers_sampling_without_repairing_pair
+PASSED tests/test_scalar_cost_capture.py::test_sync_direct_and_sampled_output_paths[True]
+PASSED tests/test_scalar_cost_capture.py::test_sync_direct_and_sampled_output_paths[False]
+PASSED tests/test_scalar_cost_capture.py::test_failed_future_is_retained_and_not_retired
+PASSED tests/test_scalar_cost_capture.py::test_empty_schedule_and_missing_shape_never_count
+PASSED tests/test_scalar_cost_capture.py::test_cpu_optimistic_context_is_explicitly_unavailable
+PASSED tests/test_scalar_cost_capture.py::test_current_verification_slots_and_future_k_are_separate
+PASSED tests/test_scalar_cost_capture.py::test_identity_and_incarnation_rules[reorder]
+PASSED tests/test_scalar_cost_capture.py::test_identity_and_incarnation_rules[remove]
+PASSED tests/test_scalar_cost_capture.py::test_identity_and_incarnation_rules[reuse]
+PASSED tests/test_scalar_cost_capture.py::test_identity_and_incarnation_rules[bad_map]
+PASSED tests/test_scalar_cost_capture.py::test_lifecycle_unsafe_output_is_not_eligible[unsafe0]
+PASSED tests/test_scalar_cost_capture.py::test_lifecycle_unsafe_output_is_not_eligible[unsafe1]
+PASSED tests/test_scalar_cost_capture.py::test_lifecycle_unsafe_output_is_not_eligible[unsafe2]
+PASSED tests/test_scalar_cost_capture.py::test_window_arithmetic_counts_n_following_retirements_not_anchor
+PASSED tests/test_scalar_cost_capture.py::test_capability_guards[vllm-main]
+PASSED tests/test_scalar_cost_capture.py::test_capability_guards[executor-mp]
+PASSED tests/test_scalar_cost_capture.py::test_capability_guards[tp-2]
+PASSED tests/test_scalar_cost_capture.py::test_capability_guards[runner-V2]
+PASSED tests/test_scalar_cost_capture.py::test_capability_guards[async_scheduling-None]
+PASSED tests/test_scalar_cost_capture.py::test_observer_never_reads_a_device_object
+PASSED tests/test_scalar_cost_capture.py::test_primary_observer_has_no_sync_io_or_future_materialization_calls
+PASSED tests/test_scalar_cost_capture.py::test_pinned_scheduler_clips_before_engine_output[tokens0-10-expected0]
+PASSED tests/test_scalar_cost_capture.py::test_pinned_scheduler_clips_before_engine_output[tokens1-10-expected1]
+PASSED tests/test_scalar_cost_capture.py::test_pinned_scheduler_clips_before_engine_output[tokens2-2-expected2]
+PASSED tests/test_scalar_cost_capture.py::test_pinned_scheduler_clips_before_engine_output[tokens3-10-expected3]
+PASSED tests/test_scalar_cost_capture.py::test_ineligible_observations_break_windows[missing_worker]
+PASSED tests/test_scalar_cost_capture.py::test_ineligible_observations_break_windows[prefill]
+PASSED tests/test_scalar_cost_capture.py::test_ineligible_observations_break_windows[zero_output]
+PASSED tests/test_scalar_cost_capture.py::test_ineligible_observations_break_windows[terminal]
+PASSED tests/test_scalar_cost_capture.py::test_ineligible_observations_break_windows[query_mismatch]
+PASSED tests/test_scalar_cost_capture.py::test_ineligible_observations_break_windows[unknown_state]
+PASSED tests/test_scalar_cost_capture.py::test_failed_execute_after_none_sample_result_is_not_a_retirement
+PASSED tests/test_scalar_cost_capture.py::test_observation_error_preserves_delegate_result_and_call_count
+PASSED tests/test_scalar_cost_capture.py::test_context_signature_uses_incarnations_and_exact_trajectory
+PASSED tests/test_scalar_cost_capture.py::test_bounded_buffer_overflow_blocks_export_as_complete_evidence
+PASSED tests/test_scalar_cost_capture.py::test_pinned_async_future_materializes_only_its_own_output_once
+PASSED tests/test_scalar_cost_capture.py::test_pinned_worker_prev_positions_handles_reorder_compaction_and_slot_reuse[current0-previous0-expected0]
+PASSED tests/test_scalar_cost_capture.py::test_pinned_worker_prev_positions_handles_reorder_compaction_and_slot_reuse[current1-previous1-expected1]
+PASSED tests/test_scalar_cost_evidence.py::test_complete_matrix_and_pooled_arithmetic_exclude_warmup
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[gpu_name]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[sm_architecture]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[driver]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[cuda]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[torch]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[vllm]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[target_model]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[target_revision]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[draft_model]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[draft_revision]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[dtype]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[quantization]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[effective_quantization]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[draft_method]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[scheduler_cls]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[scheduler_base_cls]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[runtime_config_sha256]
+PASSED tests/test_scalar_cost_evidence.py::test_identity_mismatch_fails_closed[protocol]
+PASSED tests/test_scalar_cost_evidence.py::test_matching_but_noncanonical_identity_is_rejected[gpu_name-NVIDIA A10]
+PASSED tests/test_scalar_cost_evidence.py::test_matching_but_noncanonical_identity_is_rejected[draft_model-duckhoi/qwen2.5-7b-eagle3.1-speculator]
+PASSED tests/test_scalar_cost_evidence.py::test_matching_but_noncanonical_identity_is_rejected[draft_method-eagle3]
+PASSED tests/test_scalar_cost_evidence.py::test_matching_but_noncanonical_identity_is_rejected[sm_architecture-sm_75]
+PASSED tests/test_scalar_cost_evidence.py::test_matching_but_noncanonical_identity_is_rejected[protocol-m4-component-calibration-v1]
+PASSED tests/test_scalar_cost_evidence.py::test_matching_but_noncanonical_identity_is_rejected[vllm-latest]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[negative_duration]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[nan_duration]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[boundary]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[missing_shape]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[query]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[context]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[prefill]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[terminal]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[stale]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[k_label]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[request_budget]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[acceptance]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[emission]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[missing_k0_sync]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[producer_rows]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[duplicate_verifier]
+PASSED tests/test_scalar_cost_evidence.py::test_invalid_timing_and_shape_are_rejected[tree_claim]
+PASSED tests/test_scalar_cost_evidence.py::test_failed_attempts_preserved_and_run_incomplete[error]
+PASSED tests/test_scalar_cost_evidence.py::test_failed_attempts_preserved_and_run_incomplete[oom]
+PASSED tests/test_scalar_cost_evidence.py::test_failed_attempts_preserved_and_run_incomplete[timeout]
+PASSED tests/test_scalar_cost_evidence.py::test_failed_attempts_preserved_and_run_incomplete[unsupported_shape]
+PASSED tests/test_scalar_cost_evidence.py::test_missing_cells_or_warmups_cannot_be_complete
+PASSED tests/test_scalar_cost_evidence.py::test_reference_required_and_duplicates_rejected
+PASSED tests/test_scalar_cost_evidence.py::test_raw_json_roundtrip_preserves_errors_and_rejects_nan
+PASSED tests/test_scalar_cost_evidence.py::test_pooled_rate_uses_elapsed_time_instead_of_average_rates
+PASSED tests/test_scalar_cost_evidence.py::test_heterogeneous_rows_preserve_shared_cost_and_useful_yield
+PASSED tests/test_scalar_cost_evidence.py::test_t4_identity_is_separate_from_l4
+PASSED tests/test_scalar_cost_evidence.py::test_offline_cli_reads_without_rewriting_raw
+PASSED tests/test_scalar_cost_evidence.py::test_independent_cohorts_and_nonoverlapping_windows_required
+PASSED tests/test_scalar_cost_evidence.py::test_reconstructed_context_fields_and_forecast_rejection
+PASSED tests/test_m4_cost_profiler.py::test_component_report_preserves_measurements_without_consumer_profile[L4]
+PASSED tests/test_m4_cost_profiler.py::test_component_report_preserves_measurements_without_consumer_profile[T4]
+PASSED tests/test_m4_cost_profiler.py::test_rejects_bad_evidence[missing]
+PASSED tests/test_m4_cost_profiler.py::test_rejects_bad_evidence[failed]
+PASSED tests/test_m4_cost_profiler.py::test_rejects_bad_evidence[duplicate]
+PASSED tests/test_m4_cost_profiler.py::test_rejects_bad_evidence[mixed_context]
+PASSED tests/test_m4_cost_profiler.py::test_rejects_bad_evidence[mixed_sha]
+PASSED tests/test_m4_cost_profiler.py::test_rejects_bad_evidence[nan]
+PASSED tests/test_m4_cost_profiler.py::test_rejects_bad_evidence[warmup_missing]
+PASSED tests/test_m4_cost_profiler.py::test_rejects_bad_evidence[wrong_index]
+PASSED tests/test_m4_cost_profiler.py::test_canonical_publication_gate[repeats-49]
+PASSED tests/test_m4_cost_profiler.py::test_canonical_publication_gate[target_revision-main]
+PASSED tests/test_m4_cost_profiler.py::test_canonical_publication_gate[vllm_version-latest]
+PASSED tests/test_m4_cost_profiler.py::test_timing_synchronizes_before_and_after_work
+PASSED tests/test_m4_cost_profiler.py::test_summary_retains_failures_and_excludes_warmups
+PASSED tests/test_m4_cost_profiler.py::test_engine_and_hardware_contract
+PASSED tests/test_m4_cost_profiler.py::test_run_id_safety[]
+PASSED tests/test_m4_cost_profiler.py::test_run_id_safety[../bad]
+PASSED tests/test_m4_cost_profiler.py::test_run_id_safety[a/b]
+PASSED tests/test_m4_cost_profiler.py::test_run_id_safety[x..y]
+PASSED tests/test_m4_cost_profiler.py::test_run_id_safety[a\\b]
+PASSED tests/test_m4_cost_profiler.py::test_canonical_generation_is_disabled_even_with_complete_evidence
+PASSED tests/test_m4_cost_profiler.py::test_existing_consumer_contract_has_exact_matrix_lookup
+PASSED tests/test_m4_cost_profiler.py::test_only_one_cell_smoke_is_authorized[batches0-ks0-50-smoke]
+PASSED tests/test_m4_cost_profiler.py::test_only_one_cell_smoke_is_authorized[batches1-ks1-2-smoke]
+PASSED tests/test_m4_cost_profiler.py::test_only_one_cell_smoke_is_authorized[batches2-ks2-2-smoke]
+PASSED tests/test_m4_cost_profiler.py::test_only_one_cell_smoke_is_authorized[batches3-ks3-2-pilot]
+PASSED tests/test_m4_cost_profiler.py::test_only_one_cell_smoke_is_authorized[batches4-ks4-50-full]
+PASSED tests/test_m4_cost_profiler.py::test_one_cell_smoke_configuration_and_component_report
+PASSED tests/test_m4_cost_profiler.py::test_worker_extension_is_named_and_does_not_enable_pickle
+PASSED tests/test_m4_cost_profiler.py::test_worker_observer_checks_actual_shapes[2-1024-2-True]
+PASSED tests/test_m4_cost_profiler.py::test_worker_observer_checks_actual_shapes[1-1024-2-False]
+PASSED tests/test_m4_cost_profiler.py::test_worker_observer_checks_actual_shapes[2-0-1024-False]
+PASSED tests/test_m4_cost_profiler.py::test_worker_observer_checks_actual_shapes[2-1025-2-False]
+PASSED tests/test_m4_cost_profiler.py::test_worker_observer_checks_actual_shapes[2-1024-1-False]
+PASSED tests/test_m4_cost_runner.py::test_observed_name_and_capability_required[NVIDIA L4-cap0-L4-True]
+PASSED tests/test_m4_cost_runner.py::test_observed_name_and_capability_required[Tesla T4-cap1-T4-True]
+PASSED tests/test_m4_cost_runner.py::test_observed_name_and_capability_required[NVIDIA L4-cap2-L4-False]
+PASSED tests/test_m4_cost_runner.py::test_observed_name_and_capability_required[Tesla T4-cap3-T4-False]
+PASSED tests/test_m4_cost_runner.py::test_observed_name_and_capability_required[Tesla T4-cap4-L4-False]
+PASSED tests/test_m4_cost_runner.py::test_observed_name_and_capability_required[NVIDIA A100-SXM4-40GB-cap5-L4-False]
+PASSED tests/test_m4_cost_runner.py::test_observed_name_and_capability_required[-cap6-T4-False]
+PASSED tests/test_m4_cost_runner.py::test_cli_defaults_and_component_grid
+PASSED tests/test_m4_cost_runner.py::test_component_campaign_requires_full_repeats[4-50]
+PASSED tests/test_m4_cost_runner.py::test_component_campaign_requires_full_repeats[5-49]
+PASSED tests/test_m4_cost_runner.py::test_clean_source_guard
+PASSED tests/test_m4_cost_runner.py::test_only_m4_run_artifacts_are_source_clean
+PASSED tests/test_m4_cost_runner.py::test_modified_tracked_python_is_source_dirty
+PASSED tests/test_m4_cost_runner.py::test_untracked_source_config_notebook_is_source_dirty[src/new.py]
+PASSED tests/test_m4_cost_runner.py::test_untracked_source_config_notebook_is_source_dirty[configs/new.yaml]
+PASSED tests/test_m4_cost_runner.py::test_untracked_source_config_notebook_is_source_dirty[experiments/new.ipynb]
+PASSED tests/test_m4_cost_runner.py::test_untracked_source_config_notebook_is_source_dirty[experiments/runs/m4_cost_profiling_other/source.py]
+PASSED tests/test_m4_cost_runner.py::test_mismatch_retains_all_artifacts_before_model_download
+PASSED tests/test_m4_cost_runner.py::test_dirty_component_run_refuses_and_retains_env
+PASSED tests/test_m4_cost_runner.py::test_end_to_end_fake_multicontext_smoke_no_profiles
+PASSED tests/test_m4_cost_runner.py::test_components_add_baseline_and_never_derive_topologies
+PASSED tests/test_m4_cost_runner.py::test_failed_worker_keeps_logs_env_and_partial_raw
+PASSED tests/test_m4_cost_runner.py::test_interrupted_run_retains_terminal_manifest
+PASSED tests/test_m4_cost_runner.py::test_shared_loop_retains_failure_and_stops_without_retry
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[1-L4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[1-T4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[2-L4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[2-T4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[4-L4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[4-T4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[8-L4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[8-T4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[16-L4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[16-T4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[32-L4]
+PASSED tests/test_m4_cost_runner.py::test_cell_capacity_uses_exact_batch_and_no_magic_memory_tuning[32-T4]
+PASSED tests/test_m4_cost_runner.py::test_all_requests_enqueued_before_scheduling_resumes
+PASSED tests/test_m4_cost_runner.py::test_oom_cell_does_not_retry_or_prevent_later_fresh_cells
+PASSED tests/test_m4_cost_runner.py::test_missing_shape_sample_stops_cell_after_first_attempt
+PASSED tests/test_m4_cost_runner.py::test_engine_init_failure_has_cell_config_and_original_error
+PASSED tests/test_m4_cost_runner.py::test_failure_categories[CUDA out of memory-engine_init-oom]
+PASSED tests/test_m4_cost_runner.py::test_failure_categories[Unexpected proposal output shape-measurement-shape_mismatch]
+PASSED tests/test_m4_cost_runner.py::test_failure_categories[Scheduler preemption-measurement-scheduler/preemption]
+PASSED tests/test_m4_cost_runner.py::test_failure_categories[unrecognized failure-engine_init-engine_init_failure]
+PASSED tests/test_m4_cost_runner.py::test_failure_categories[unrecognized failure-measurement-runtime_exception]
+PASSED tests/test_m4_cost_runner.py::test_import_requires_no_modal_or_gpu_libraries
+PASSED tests/test_m4_cost_runner.py::test_notebook_is_thin_pinned_and_inspects_before_setup
+PASSED tests/test_modal_profiler.py::test_default_grid_covers_workloads_and_sweep_concurrency
+PASSED tests/test_modal_profiler.py::test_grid_fits_lane_max_model_len
+PASSED tests/test_modal_profiler.py::test_models_use_pinned_lane_weights
+PASSED tests/test_modal_profiler.py::test_engine_kwargs_match_lane_serving_flags
+PASSED tests/test_modal_profiler.py::test_unknown_model_rejected
+PASSED tests/test_modal_profiler.py::test_prompts_have_exact_length_and_are_distinct
+PASSED tests/test_modal_profiler.py::test_prompts_are_deterministic_per_seed
+PASSED tests/test_modal_profiler.py::test_prompt_ids_stay_in_safe_vocab_range
+PASSED tests/test_modal_profiler.py::test_fits_kv
+PASSED tests/test_modal_profiler.py::test_step_ms_from_two_timings
+PASSED tests/test_modal_profiler.py::test_step_ms_rejects_invalid_timings[1.0-1.0-64]
+PASSED tests/test_modal_profiler.py::test_step_ms_rejects_invalid_timings[1.0-0.9-64]
+PASSED tests/test_modal_profiler.py::test_step_ms_rejects_invalid_timings[0.1-1.0-0]
+PASSED tests/test_modal_profiler.py::test_measure_cell_runs_warmup_then_repeats
+PASSED tests/test_modal_profiler.py::test_summarize_median_p90_and_variance
+PASSED tests/test_modal_profiler.py::test_summarize_flags_noisy_cell_and_keeps_skipped
+PASSED tests/test_modal_profiler.py::test_evidence_dir_under_m3_02
+PASSED tests/test_modal_profiler.py::test_evidence_dir_rejects_path_tricks[../x]
+PASSED tests/test_modal_profiler.py::test_evidence_dir_rejects_path_tricks[a/b]
+PASSED tests/test_modal_profiler.py::test_evidence_dir_rejects_path_tricks[]
+PASSED tests/test_modal_profiler.py::test_evidence_dir_rejects_path_tricks[.hidden]
+PASSED tests/test_modal_profiler.py::test_evidence_dir_rejects_path_tricks[x\\y]
+PASSED tests/test_modal_profiler.py::test_profiler_import_does_not_need_modal
+PASSED tests/test_modal_profiler.py::test_parse_int_list
+PASSED tests/test_modal_profiler.py::test_prompt_ids_are_pinned_for_evidence_reproducibility
+230 passed in 6.91s
