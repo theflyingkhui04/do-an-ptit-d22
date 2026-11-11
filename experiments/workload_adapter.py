@@ -44,6 +44,8 @@ WORKLOAD_LABEL_TO_ID = {
     "W1": "w1_node1_invoice_extraction",
     # [M5-01] W1 on full-receipt OCR text (experiments/configs/w1_v2).
     "W1_V2": "w1_node1_invoice_extraction",
+    # [M5-01 canonical flow] W1 on library OCR text without marks (experiments/configs/w1_v3).
+    "W1_V3": "w1_node1_invoice_extraction",
     "W2": "w2_text_to_sql",
     "W3": "w3_free_analysis",
 }

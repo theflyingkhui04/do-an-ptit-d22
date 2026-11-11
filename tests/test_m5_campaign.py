@@ -230,7 +230,7 @@ def test_plan_is_four_lanes_by_six_concurrencies_on_w1_v2():
     record = m5.plan("cpu-m5", "a" * 40)
     assert len(record["cells"]) == 24
     assert len({c["key"] for c in record["cells"]}) == 24
-    assert {c["workload"] for c in record["cells"]} == {"W1_V2"}
+    assert {c["workload"] for c in record["cells"]} == {"W1_V3"}
     assert {(c["lane"], c["concurrency"]) for c in record["cells"]} == {
         (lane, c) for lane in lanes.LANES for c in (1, 2, 4, 8, 16, 32)}
     assert (record["warmup"], record["repeats"], record["num_requests"]) == (3, 5, 32)
@@ -241,7 +241,7 @@ def test_plan_is_four_lanes_by_six_concurrencies_on_w1_v2():
 def test_pilot_plan_is_one_eagle_c32_cell():
     record = m5.plan("cpu-m5-pilot", "a" * 40, pilot=True)
     assert record["kind"] == "pilot"
-    assert [(c["lane"], c["workload"], c["concurrency"]) for c in record["cells"]] == [("eagle", "W1_V2", 32)]
+    assert [(c["lane"], c["workload"], c["concurrency"]) for c in record["cells"]] == [("eagle", "W1_V3", 32)]
 
 
 @pytest.mark.parametrize("campaign_id, sha", [("../x", "a" * 40), ("ok", "HEAD")])
@@ -287,9 +287,9 @@ def test_drive_deploys_long_context_patched_l4_lane(monkeypatch):
     assert args == ("modal", "deploy", "-m", "experiments.modal_runner")
     assert (env["PTIT_GPU"], env["PTIT_MAX_MODEL_LEN"], env["PTIT_VLLM_RUNTIME"]) == ("L4", "8192", "backport-55708")
     assert env["PTIT_LANES"] == record["cells"][0]["lane"] and env["PTIT_KEEP_WARM"] == "0"
-    assert env["PTIT_RUN_ID"] == f"cpu-m5-{record['cells'][0]['lane']}-W1_V2-c1-a001"
+    assert env["PTIT_RUN_ID"] == f"cpu-m5-{record['cells'][0]['lane']}-W1_V3-c1-a001"
     kwargs = runner.bench_submit.call_args.kwargs
-    assert (kwargs["workload"], kwargs["repeats"], kwargs["num_requests"]) == ("W1_V2", 5, 32)
+    assert (kwargs["workload"], kwargs["repeats"], kwargs["num_requests"]) == ("W1_V3", 5, 32)
     m3.save_plan.assert_called_once_with(record, m5.PLAN_ROOT)
 
 
@@ -326,3 +326,23 @@ def test_comparison_pairs_w1_v2_with_m305_w1_by_lane_and_concurrency():
     assert "| adaptive | 1 | 1.45 | 1.30 |" in text
     assert "9.9" not in text
     assert "Colab" in text and "8192" in text
+
+
+# [M5-01 canonical flow] the campaign runs on W1_V3 (library OCR, no marks)
+def test_w1_v3_is_a_candidate_with_the_same_serving_needs():
+    from experiments.workload_adapter import validate_workload_label
+
+    assert lanes.workload_file("W1_V3") == "experiments/configs/w1_v3/node1_chat_requests.jsonl"
+    assert lanes.workload_serving("W1_V3") == lanes.workload_serving("W1_V2")
+    assert "W1_V3" not in lanes.BENCH_WORKLOADS
+    assert validate_workload_label("W1_V3", "w1_node1_invoice_extraction") == "W1_V3"
+
+
+def test_campaign_plan_defaults_to_w1_v3():
+    record = m5.plan("cpu-m5-v3", "a" * 40)
+    assert {c["workload"] for c in record["cells"]} == {"W1_V3"} and record["workload"] == "W1_V3"
+    assert record["cells"][0]["key"].endswith("__W1_V3__c1")
+    old = m5.plan("cpu-m5-v2", "a" * 40, workload="W1_V2")
+    assert {c["workload"] for c in old["cells"]} == {"W1_V2"}
+    with pytest.raises(ValueError):
+        m5.plan("cpu-m5-x", "a" * 40, workload="W1")

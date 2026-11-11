@@ -242,6 +242,8 @@ BENCH_WORKLOADS = {
 # W1_V2 requests need a server deployed with PTIT_MAX_MODEL_LEN=8192.
 CANDIDATE_WORKLOADS = {
     "W1_V2": "experiments/configs/w1_v2/node1_chat_requests.jsonl",
+    # [M5-01 canonical flow] library OCR text without Vietnamese marks
+    "W1_V3": "experiments/configs/w1_v3/node1_chat_requests.jsonl",
 }
 ALL_WORKLOADS = {**BENCH_WORKLOADS, **CANDIDATE_WORKLOADS}
 
@@ -258,6 +260,7 @@ def workload_file(workload: str) -> str:
 # c=32 request. Its campaign uses the same patched vLLM runtime as M3-05.
 WORKLOAD_SERVING: dict[str, dict[str, Any]] = {
     "W1_V2": {"max_model_len": 8192, "timeout_s": 600, "vllm_runtime": "backport-55708"},
+    "W1_V3": {"max_model_len": 8192, "timeout_s": 600, "vllm_runtime": "backport-55708"},
 }
 
 
