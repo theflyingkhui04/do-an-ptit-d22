@@ -55,7 +55,8 @@ def test_reference_answers_on_the_seeded_database(pg):  # noqa: F811  (fixture)
 
     from src.api.store import PostgresStore
 
-    seed.seed(pg, seed.load_validated(REPO_ROOT / seed.DEFAULT_VALIDATED))
+    # The v1 question set's reference rows were frozen on the W1_v2 seed: keep that seed for it.
+    seed.seed(pg, seed.load_validated(REPO_ROOT / seed.W1_V2_VALIDATED), notes=seed.W1_V2_SEED_NOTES)
     store = PostgresStore(DB_URL)
     report = ev.run(store, None, ev.load_questions())
     rows = {e["id"]: e["reference_rows"] for e in report["entries"]}

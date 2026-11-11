@@ -215,10 +215,16 @@ class FakeStorage:
 def test_seed_rows_point_to_devset_images():
     import seed_demo_db as seed
 
+    from src.pipeline.text_normalize import has_vietnamese_marks
+
+    assert seed.DEFAULT_VALIDATED == Path("experiments/runs/m5_01/m5_01_v3_adaptive/validated_outputs.jsonl")
+    assert "W1_v3" in seed.SEED_NOTES and "m5_01_v3_adaptive" in seed.SEED_NOTES
     rows = seed.load_validated(REPO_ROOT / seed.DEFAULT_VALIDATED)
-    assert len(rows) == 29 and {r["lane"] for r in rows} == {"adaptive"}
+    assert len(rows) == 25 and {r["lane"] for r in rows} == {"adaptive"}
     for row in rows:
         assert (REPO_ROOT / row["payload"]["source"]["image_path"]).is_file()
+        assert not has_vietnamese_marks(json.dumps(row["payload"], ensure_ascii=False))
+    assert len(seed.load_validated(REPO_ROOT / seed.W1_V2_VALIDATED)) == 29  # old seed kept for the old question set
     assert seed.storage_path_for("data/processed/m0_04_mcocr_devset/images/a.jpg") == "devset/a.jpg"
 
 
@@ -229,12 +235,14 @@ def test_seed_is_idempotent_and_uploads_each_image(pg):
     rows = seed.load_validated(REPO_ROOT / seed.DEFAULT_VALIDATED)
     storage = FakeStorage()
     first = seed.seed(pg, rows, storage=storage)
-    assert first == {"rows": 29, "written": 29, "skipped": 0, "images_uploaded": 29}
+    assert first == {"rows": 25, "written": 25, "skipped": 0, "images_uploaded": 25}
     assert all(content_type == "image/jpeg" and size > 0 for size, content_type in storage.uploads.values())
     second = seed.seed(pg, rows)
-    assert second["written"] == 0 and second["skipped"] == 29
-    assert pg.execute("SELECT count(*) FROM invoices WHERE source = 'devset'").fetchone()[0] == 29
-    assert pg.execute("SELECT count(*) FROM v_invoice_facts").fetchone()[0] == 29
+    assert second["written"] == 0 and second["skipped"] == 25
+    assert pg.execute("SELECT count(*) FROM invoices WHERE source = 'devset'").fetchone()[0] == 25
+    assert pg.execute("SELECT count(*) FROM v_invoice_facts").fetchone()[0] == 25
+    notes = pg.execute("SELECT DISTINCT r.notes FROM invoices i JOIN extraction_runs r USING (run_id)").fetchall()
+    assert notes == [(seed.SEED_NOTES,)]
     assert pg.execute("SELECT count(*) FROM v_item_facts").fetchone()[0] > 0
 
 
@@ -267,7 +275,7 @@ def test_postgres_store_jobs_invoices_and_readonly_queries(pg):
     assert store.get_job("up_missing0000") is None
 
     listed = store.list_invoices()
-    assert len(listed) == 30 and listed[0]["invoice_id"] == invoice_id and listed[0]["source"] == "upload"
+    assert len(listed) == 26 and listed[0]["invoice_id"] == invoice_id and listed[0]["source"] == "upload"
     assert listed[0]["item_count"] == 2 and listed[0]["lane"] == "adaptive"
     detail = store.get_invoice(invoice_id)
     assert detail["payload"]["source"]["sample_id"] == "up_bbbbbbbbbbbb"
@@ -277,7 +285,7 @@ def test_postgres_store_jobs_invoices_and_readonly_queries(pg):
     assert values["extraction_status"] == ["partial"] and "VND" in values["currency"]
 
     columns, rows = store.run_readonly("SELECT count(*) AS n FROM v_invoice_facts")
-    assert columns == ["n"] and rows == [[30]]
+    assert columns == ["n"] and rows == [[26]]
     for bad in ("DELETE FROM invoices", "SELECT raw_json FROM invoices"):
         with pytest.raises(psycopg.Error):
             store.run_readonly(bad)

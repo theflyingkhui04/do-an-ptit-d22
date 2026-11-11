@@ -1,9 +1,11 @@
-"""[M5-01 web demo] Seed the demo Postgres with the W1_v2 adaptive devset extractions.
+"""[M5-01 web demo] Seed the demo Postgres with the W1_v3 adaptive devset extractions.
 
-Writes the 29 valid Node 1 extractions of lane adaptive on W1_v2
-(experiments/runs/m5_01/m5_01_adaptive/validated_outputs.jsonl, commit b668709)
-as ``source = 'devset'`` and uploads each invoice's devset image to the private
-bucket. Re-running changes nothing (existing invoices are skipped).
+Canonical flow: writes the 25 valid Node 1 extractions of lane adaptive on W1_v3
+(library OCR text without Vietnamese marks;
+experiments/runs/m5_01/m5_01_v3_adaptive/validated_outputs.jsonl) as ``source = 'devset'``
+and uploads each invoice's devset image to the private bucket. Re-running changes nothing
+(existing invoices are skipped). The W1_v2 seed (29 extractions, commit b668709) stays
+available with ``--validated`` for the v1 question set whose reference rows were frozen on it.
 
     python scripts/seed_demo_db.py --apply-schema          # DEMO_DATABASE_URL = owner connection
     python scripts/seed_demo_db.py --no-images             # DB only
@@ -28,8 +30,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.pipeline.postgres import writer
 
-DEFAULT_VALIDATED = Path("experiments/runs/m5_01/m5_01_adaptive/validated_outputs.jsonl")
-SEED_NOTES = "seed: experiments/runs/m5_01/m5_01_adaptive (W1_v2, commit b668709)"
+DEFAULT_VALIDATED = Path("experiments/runs/m5_01/m5_01_v3_adaptive/validated_outputs.jsonl")
+SEED_NOTES = "seed: experiments/runs/m5_01/m5_01_v3_adaptive (W1_v3, library OCR, marks stripped)"
+W1_V2_VALIDATED = Path("experiments/runs/m5_01/m5_01_adaptive/validated_outputs.jsonl")
+W1_V2_SEED_NOTES = "seed: experiments/runs/m5_01/m5_01_adaptive (W1_v2, commit b668709)"
 
 
 class ImageStore(Protocol):
@@ -47,14 +51,22 @@ def load_validated(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def seed_notes(validated: Path) -> str:
+    if validated == DEFAULT_VALIDATED:
+        return SEED_NOTES
+    if validated == W1_V2_VALIDATED:
+        return W1_V2_SEED_NOTES
+    return f"seed: {validated.parent.as_posix()}"
+
+
 def seed(conn: Any, rows: list[dict[str, Any]], *, storage: ImageStore | None = None,
-         images_root: Path = REPO_ROOT) -> dict[str, int]:
+         images_root: Path = REPO_ROOT, notes: str = SEED_NOTES) -> dict[str, int]:
     written = skipped = uploaded = 0
     for row in rows:
         payload = row["payload"]
         image_path = payload["source"]["image_path"]
         run = writer.RunInfo(run_id=row["run_id"], lane=row["lane"], model_name=row["model"],
-                             prompt_version="node1_extractor.v2", notes=SEED_NOTES)
+                             prompt_version="node1_extractor.v2", notes=notes)
         if storage is not None:
             image = images_root / image_path
             storage.upload(storage_path_for(image_path), image.read_bytes(),
@@ -92,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.apply_schema:
             writer.apply_schema(conn, roles=True)
         conn.execute("SET search_path = demo")
-        summary = seed(conn, rows, storage=storage)
+        summary = seed(conn, rows, storage=storage, notes=seed_notes(args.validated))
     print(json.dumps(summary, ensure_ascii=False))
     return 0
 
