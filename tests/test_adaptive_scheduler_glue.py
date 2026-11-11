@@ -423,7 +423,8 @@ def test_prefill_completion_observation_does_not_invent_plan(scheduler_module, m
 
 
 def test_trimmed_placeholders_reach_pinned_draft_update_and_feedback(scheduler_module, monkeypatch, tmp_path):
-    sched = build(scheduler_module, monkeypatch, tmp_path)
+    path = tmp_path / "steps.jsonl"
+    sched = build(scheduler_module, monkeypatch, tmp_path, ADAPTIVE_STEP_TELEMETRY_PATH=str(path))
     reqs = [make_request(name) for name in ("two", "four", "zero")]
     for req, alpha in zip(reqs, (0.7, 0.95, 0.4)):
         req.is_finished = lambda: False
@@ -431,6 +432,9 @@ def test_trimmed_placeholders_reach_pinned_draft_update_and_feedback(scheduler_m
     add_running(sched, *reqs)
     first = sched.schedule()
     assert first.num_spec_tokens_to_schedule == 4
+    assert sched._plan.per_request_k == {"two": 2, "four": 4, "zero": 0}
+    assert {rid: decision.k for rid, decision in sched._plan.per_request_decisions.items()} == {
+        "two": 2, "four": 4, "zero": 0}
     assert [len(r.spec_token_ids) for r in reqs] == [2, 4, 0]
     second = sched.schedule()
     sched.structured_output_manager = SimpleNamespace(validate_tokens=lambda request, tokens: tokens)
@@ -439,10 +443,129 @@ def test_trimmed_placeholders_reach_pinned_draft_update_and_feedback(scheduler_m
     # do not recreate its trim/pad implementation inside the stub.
     call_pinned_method("update_draft_token_ids_in_output", sched, drafts, second)
     assert {r: len(tokens) for r, tokens in second.scheduled_spec_decode_tokens.items()} == {"two": 2, "four": 4}
-    before = sched._planner.adapter.get_controller("four").alpha_ema
+    adapter = sched._planner.adapter
+    four = adapter.get_controller("four")
+    before = (four.alpha_ema, four.get_window_samples(), four.get_stats())
     sched.make_spec_decoding_stats(None, 2, 1, second.num_invalid_spec_tokens, "two")
-    assert sched._planner.adapter.get_controller("two").alpha_ema == pytest.approx(0.66)
-    assert sched._planner.adapter.get_controller("four").alpha_ema == before
+    assert adapter.get_controller("two").alpha_ema == pytest.approx(0.66)
+    assert (four.alpha_ema, four.get_window_samples(), four.get_stats()) == before
+    sched.make_spec_decoding_stats(None, 4, 4, second.num_invalid_spec_tokens, "four")
+    assert adapter._accepted_history == {"two": [1], "four": [4], "zero": []}
+
+    # K=0 still reaches completion without any draft feedback. Finish it while
+    # the two speculative requests remain active, then exercise another step.
+    sched._free_request(reqs[2])
+    assert set(sched.requests) == {"two", "four"}
+    assert set(adapter._active_sessions) == set(adapter._accepted_history) == {"two", "four"}
+    assert set(sched._plan.per_request_k) == set(sched._plan.per_request_decisions) == {"two", "four"}
+    assert set(sched._plan.per_request_node_count) == {"two", "four"}
+    assert sched._planner._known_requests == {"two", "four"}
+    assert set(sched._planner._last_decisions) == set(sched._planner._scheduled_runtime_modes) == {"two", "four"}
+    assert adapter.get_controller("four") is four
+    third = sched.schedule()
+    assert third.num_spec_tokens_to_schedule == 4
+    assert sched._plan.per_request_k == {"two": 0, "four": 4}
+    for req in reqs[:2]:
+        sched._free_request(req)
+    assert sched.requests == {} and sched.running == []
+    assert adapter._active_sessions == adapter._accepted_history == {}
+    assert sched._planner._known_requests == set()
+    assert sched._planner._last_decisions == sched._planner._scheduled_runtime_modes == {}
+    assert sched._plan.per_request_k == sched._plan.per_request_node_count == sched._plan.per_request_decisions == {}
+
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    aggregates = {r["request_id"]: r for r in
+                  map(json.loads, (tmp_path / "lane3.jsonl").read_text().splitlines())}
+    assert set(aggregates) == {"two", "four", "zero"}
+    assert aggregates["zero"]["step_count"] == 0
+    assert aggregates["zero"]["tree_budgets"] == [0, 0]
+    assert aggregates["two"]["tree_budgets"] == [2, 2, 0]
+    assert aggregates["four"]["tree_budgets"] == [4, 4, 4]
+    assert aggregates["two"]["mean_accept_len"] == 1
+    assert aggregates["four"]["mean_accept_len"] == 4
+    plans = {(r["request_id"], r["plan_sequence"]): r for r in records
+             if r["record_type"] == "planned_decision"}
+    for record in records:
+        rid = record["request_id"]
+        if record["record_type"] == "scheduled_budget":
+            plan = plans[rid, record["plan_sequence"]]
+            assert record["scheduled_scalar_k"] == plan["batch_scalar_budget"] == 4
+            assert record["next_request_placeholder_budget"] == plan["scalar_runtime_budget"]
+            assert record["schedule_sequence"] == record["plan_sequence"]
+            assert record["executed_draft_token_count"] is None
+        elif record["record_type"] == "verification_feedback":
+            assert (record["executed_draft_token_count"], record["accepted_draft_token_count"]) == {
+                "two": (2, 1), "four": (4, 4)}[rid]
+            assert record["alpha_ema"] == pytest.approx({"two": 0.66, "four": 0.96}[rid])
+            assert record["source_plan_sequence"] is record["source_schedule_sequence"] is None
+        assert record["recorded_at"] <= aggregates[rid]["finished_at"]
+    for rid, raw, effective in (("two", 0.66, 0.5), ("four", 0.96, 1.0)):
+        last = aggregates[rid]["last_planned_decision"]
+        assert last["acceptance_rate_ema"] == pytest.approx(raw)
+        assert last["effective_alpha"] == pytest.approx(effective)
+        assert aggregates[rid]["executed_draft_token_count"] is None
+    for record in [*records, *aggregates.values()]:
+        assert record["tree_execution_verified"] is False
+        assert record["executed_runtime_mode"] == "unverified"
+        assert record.get("selected_topology") is None
+
+
+def test_feedback_drives_scheduler_k_transition(scheduler_module, monkeypatch, tmp_path):
+    """L2: real scalar feedback changes future K, never the current draft count."""
+    sched = build(scheduler_module, monkeypatch, tmp_path)
+    req = make_request("r")
+    req.is_finished = lambda: False
+    # Three outstanding placeholders can precede a new K=2 decision in async
+    # serving. Each next output verifies the preceding output's draft budget.
+    req.spec_token_ids = [-1] * 3
+    sched._planner.adapter.start_request("r", initial_alpha=0.7)
+    add_running(sched, req)
+    sched.structured_output_manager = SimpleNamespace(validate_tokens=lambda request, tokens: tokens)
+    controller = sched._planner.adapter.get_controller("r")
+    for current_drafts, accepted, future_k, effective in (
+        (3, 2, 2, 2 / 3),
+        (2, 2, 2, 23 / 27),
+        (2, 2, 3, 167 / 183),
+    ):
+        out = sched.schedule()
+        assert out.num_spec_tokens_to_schedule == future_k
+        assert sched._plan.per_request_k == {"r": future_k}
+        assert len(req.spec_token_ids) == future_k
+        drafts = SimpleNamespace(req_ids=["r"], draft_token_ids=[[7] * current_drafts])
+        call_pinned_method("update_draft_token_ids_in_output", sched, drafts, out)
+        assert len(out.scheduled_spec_decode_tokens["r"]) == current_drafts
+        sched.make_spec_decoding_stats(None, current_drafts, accepted, out.num_invalid_spec_tokens, "r")
+        assert controller.get_effective_alpha() == pytest.approx(effective)
+    final = sched.schedule()
+    assert final.num_spec_tokens_to_schedule == len(req.spec_token_ids) == 4
+    assert controller.get_stats()["tree_budgets"] == [2, 2, 3, 4]
+    assert controller.get_window_samples() == [2 / 3, 1.0, 1.0]
+
+
+@pytest.mark.parametrize("signal", ["kv", "vram"])
+def test_runtime_memory_boundary_fallback_and_recovery(scheduler_module, monkeypatch, tmp_path, signal):
+    """L2 signal producer -> planner units -> guard -> output/placeholders."""
+    fake_torch, calls = _fake_torch(initialized=True, free_bytes=1500 * 1024 * 1024)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    sched = build(scheduler_module, monkeypatch, tmp_path, ADAPTIVE_ENABLE_VRAM_GUARD="1")
+    req = make_request("r")
+    add_running(sched, req)
+    sched.kv_usage = 0.90
+    assert sched.schedule().num_spec_tokens_to_schedule == 3  # equality is safe
+    if signal == "kv":
+        sched.kv_usage = 0.9001
+    else:
+        fake_torch.cuda.mem_get_info = lambda: (1499 * 1024 * 1024, 16000 * 1024 * 1024)
+    assert sched.schedule().num_spec_tokens_to_schedule == 0
+    assert req.spec_token_ids == []
+    assert signal.upper() in sched._plan.per_request_decisions["r"].reason.upper()
+    fake_torch.cuda.mem_get_info = lambda: (1500 * 1024 * 1024, 16000 * 1024 * 1024)
+    sched.kv_usage = 0.80
+    # Trigger counts as cooldown step one; equality at recovery remains held.
+    assert [sched.schedule().num_spec_tokens_to_schedule for _ in range(3)] == [0, 0, 0]
+    sched.kv_usage = 0.7999
+    assert sched.schedule().num_spec_tokens_to_schedule == len(req.spec_token_ids) == 3
+    assert calls
 
 
 def test_runtime_cap_applies_to_scheduler_output(scheduler_module, monkeypatch, tmp_path):

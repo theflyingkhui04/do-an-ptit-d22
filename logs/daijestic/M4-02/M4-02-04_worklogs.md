@@ -650,3 +650,113 @@ Option B is a technical recommendation, not PM approval or a changed DoD.
   no sensitive authentication headers, cookies or signed URLs were found.
 - Production/test source remains at the three verified implementation commits;
   no new engine run, lineage implementation or benchmark was performed.
+
+## 2026-11-11 — PM-approved Option B integration validation
+
+Baseline: clean `feat/m4-02-04-scheduler-telemetry-v02` at
+`b4c13637149b14b3ebab20412b044639b7e4c40f`. Ending HEAD is unchanged.
+The implementation inventory was reported before edits. Only L2 tests and this
+worklog were changed; no production fix, commit or external publication.
+
+### PM requirement inventory
+
+| Requirement | Production path and evidence | Status |
+| --- | --- | --- |
+| hardware/runtime-aware threshold | Scheduler passes running count, KV fraction and optional CUDA free memory to planner. Planner converts KV to percent and VRAM to controller input. Default adapter instantiates `AdaptiveDraftController`, whose scalar rule ignores batch size and hardware cost profile. Runtime memory guards are integrated; hardware-derived alpha-star is not. | PARTIAL |
+| adaptive K | `AdaptiveDraftController.select_budget` -> `AdaptiveBudgetPlanner.plan_step` -> `AdaptiveAsyncScheduler.schedule`; L1 rules, L2 natural transition, existing L3 K=0/2/3/4. | IMPLEMENTED_AND_INTEGRATION_TESTED |
+| per-request budget | Adapter sessions/history and planner detached decisions preserve K_i while shared K=max(K_i); L1 planner/adapter, L2 heterogeneous lifecycle, L3 concurrent requests. | IMPLEMENTED_AND_INTEGRATION_TESTED |
+| AsyncScheduler integration | Lookup -> SchedulerOutput -> placeholders -> pinned draft update -> stats callback; L2 captured v0.30.0 methods and existing installed-engine L3. | IMPLEMENTED_AND_INTEGRATION_TESTED |
+| trimming/isolation | `_update_after_schedule` shrinks future placeholders; pinned `update_draft_token_ids_in_output` trims incoming draft IDs. L2 checks 2/4/0, feedback and cleanup; L3 observes shared K=2/request K=0. | IMPLEMENTED_AND_INTEGRATION_TESTED |
+| telemetry planned/scheduled/measured | Planner `plan_step`, `record_scheduled_budget`, `record_verification`, `finish_request`; L1 field semantics, L2 complete request lifecycle, L3 saved JSONL. | IMPLEMENTED_AND_INTEGRATION_TESTED |
+| real pinned-vLLM smoke evidence | Existing A10/Ubuntu/vLLM 0.30.0 attempt2 revalidated locally; no new GPU run. | IMPLEMENTED_AND_INTEGRATION_TESTED |
+
+### Threshold trace and technical review boundary
+
+- Raw acceptance is accepted/drafted after invalid placeholders are subtracted
+  by the scheduler callback. EMA beta defaults to 0.8. Effective alpha removes
+  the initial prior using `(ema - initial_alpha * beta**n)/(1-beta**n)`, clamped
+  to [0,1], with a small-denominator fallback.
+- Serving acceptance thresholds are configured defaults 0.65/0.80/0.90;
+  below 0.65 selects K=0 (periodic probes), [0.65,0.80) selects K=2,
+  [0.80,0.90) selects K=3, and >=0.90 selects K=4.
+- Runtime KV fraction is multiplied by 100; >90% triggers K=0. CUDA bytes are
+  divided by 1024**2 (MiB despite the historical `_mb` name); <1500 triggers
+  K=0. Equality at the high boundary is safe. After cooldown, KV must be
+  strictly <80% to recover. Missing CUDA readings use the planner sentinel,
+  so they do not trigger the VRAM guard; KV still applies.
+- Batch input is the number of running requests, including prefills, rather
+  than client concurrency or the final scheduled subset. The scalar controller
+  accepts it but does not use it to select K. No hardware profile is loaded by
+  `AdaptiveBudgetPlanner.from_env` or canonical lane configuration.
+- `src/proposer/tree_adaptive.py` has batch-aware topology selection and
+  `FlexCostModel.solve_alpha_star` solves expected yield = C_spec/C_vanilla
+  (both costs in ms, ratio dimensionless). It is not the serving controller.
+  `src/flexsds/core/controller.py` also contains a separate hardware-aware
+  scalar policy, but it is not wired into canonical serving either.
+- **TECHNICAL REVIEW REQUIRED**: the mandatory hardware-aware threshold serving
+  gate is unmet. Do not activate a different controller or change its formula
+  under the guise of test coverage. Tree yield/probability calibration remains
+  deferred. Other scalar integration work can proceed independently.
+
+### L1 review and L2 changes
+
+Existing `test_budget_controller.py` covers rules/EMA, `test_memory_pressure_rule.py`
+covers guard hysteresis, `test_budget_planner.py` covers budget aggregation,
+caps and telemetry, `test_proposer_adapter.py` covers session feedback/cleanup,
+and `test_tree_adaptive_controller.py`/`test_cost_model_solver.py` cover separate
+policy/model behavior. Those tests do not prove hardware policy is served.
+No duplicate unit cases or production changes were added.
+
+Extended `tests/test_adaptive_scheduler_glue.py`:
+
+- Strengthened `test_trimmed_placeholders_reach_pinned_draft_update_and_feedback`
+  into one heterogeneous 2/4/0 lifecycle: actual draft structures, independent
+  EMA/windows/history, K=0 completion while others stay active, next-step
+  adaptation, all planner/adapter/scheduler-owned request maps cleared, and
+  planned/scheduled/measured/aggregate telemetry consistency.
+- Added `test_feedback_drives_scheduler_k_transition`: default thresholds,
+  real feedback ratios 2/3, 2/2, 2/2, effective alpha 2/3, 23/27, 167/183,
+  and scheduler-visible future K=2,2,3,4. Outstanding current drafts remain
+  separate from the new proposer K; no exact async source lineage is inferred.
+- Added `test_runtime_memory_boundary_fallback_and_recovery` for KV and CUDA
+  free-memory inputs through planner units, guard, output K and placeholders.
+
+These are **L2**, using the existing controlled scheduler harness and real
+project classes. Upstream lookup and draft trimming execute captured source;
+the harness does not execute GPU workers, target verification, token generation
+or engine stop detection. Existing L3 supplies real functional serving evidence.
+
+### Current verification results
+
+- Baseline: `python -m pytest -q tests/test_budget_planner.py tests/test_adaptive_scheduler_glue.py tests/test_proposer_adapter.py tests/test_budget_controller.py`
+  -> **84 passed**.
+- Baseline related suites: `python -m pytest -q tests/test_tree_adaptive_controller.py tests/test_cost_model_solver.py tests/test_memory_pressure_rule.py tests/test_budget_transition_scenarios.py tests/test_budget_fallback_recovery.py -k 'not benchmark'`
+  -> **58 passed, 1 deselected**. The timing benchmark was intentionally excluded.
+- Updated L2: `python -m pytest -q tests/test_adaptive_scheduler_glue.py`
+  -> **26 passed**.
+- Combined: `python -m pytest -q tests/test_budget_planner.py tests/test_adaptive_scheduler_glue.py tests/test_proposer_adapter.py tests/test_budget_controller.py tests/test_tree_adaptive_controller.py tests/test_cost_model_solver.py tests/test_memory_pressure_rule.py tests/test_budget_transition_scenarios.py tests/test_budget_fallback_recovery.py tests/test_modal_runner_config.py -k 'not benchmark'`
+  -> **195 passed, 1 deselected**.
+- `python experiments/runs/m4_02_04/20261110-scalar-vllm030-smoke/validate_evidence.py`
+  -> **L3 SCALAR PATH VERIFIED**: 36 plans, 39 scheduled records, 25 feedback
+  records, 3 aggregates, 36 plan/schedule joins, K=0/2/3/4, 83 drafted/72 accepted.
+- Read-only hash checks: all **63** worker source files match current HEAD;
+  **28** non-cache manifest artifacts match SHA-256. AST comparisons of the L2
+  fixture and installed L3 captures match for `schedule`,
+  `update_draft_token_ids_in_output`, `make_spec_decoding_stats`, `_free_request`.
+
+### Verdict and claim boundary
+
+**NO PRODUCTION FIX REQUIRED — INTEGRATION COVERAGE ADDED** for the existing
+scalar path. **STILL VALID** for the existing L3 smoke, limited to its three
+requests and recorded environment; production behavior is unchanged.
+
+**NOT READY FOR OPTION-B CLOSURE REVIEW**: hardware-derived threshold is not on
+the serving path. The validated behavior is runtime-memory-aware, feedback-driven
+scalar K; this must not be expanded into a hardware-cost-aware serving claim.
+Exact async source-plan/schedule lineage stays null/unverified by design.
+Tree policy/catalog code is kept as DORMANT_TREE_POLICY/RESEARCH_REFERENCE,
+not runtime-executed topology. No arbitrary T8/T16/T32 runtime execution or
+performance improvement is established.
+
+First action: technical review to resolve the missing hardware-aware scalar
+threshold serving connection within Option B.
