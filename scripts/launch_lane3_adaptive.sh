@@ -56,4 +56,5 @@ $VLLM_CMD Qwen/Qwen2.5-7B-Instruct-AWQ \
   --max-num-seqs 32 \
   --speculative-config "$SPEC_CONFIG" \
   --scheduler-cls src.server.adaptive_scheduler.AdaptiveAsyncScheduler \
+  --distributed-executor-backend src.server.lineage_executor.LineageUniProcExecutor \
   --per-request-spec-decode-metrics summary

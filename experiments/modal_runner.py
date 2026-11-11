@@ -69,6 +69,10 @@ image = (
           "PTIT_SCALEDOWN_SECONDS": str(SCALEDOWN_SECONDS)})
     .add_local_dir(SOURCE_ROOT / "src", f"{lanes.REMOTE_PROJECT_ROOT}/src", ignore=["**/__pycache__/**"])
     .add_local_file(SOURCE_ROOT / "experiments" / "modal_lanes.py", "/root/experiments/modal_lanes.py")
+    # Scheduler observer imports and the exact-source lineage manifest must be
+    # available in the serving image, not only in the benchmark image.
+    .add_local_dir(SOURCE_ROOT / "experiments", f"{lanes.REMOTE_PROJECT_ROOT}/experiments",
+                   ignore=["runs/**", "results/**", "notebooks/**", "**/__pycache__/**"])
 )
 
 model_volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)

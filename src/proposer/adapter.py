@@ -9,10 +9,6 @@ from src.proposer.controller import (
     BudgetDecision,
     CostProfile,
 )
-from src.proposer.tree_adaptive import (
-    TreeAdaptiveController,
-    TreeAdaptiveDecision,
-)
 
 
 @dataclass

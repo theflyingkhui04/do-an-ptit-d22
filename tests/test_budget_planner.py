@@ -263,7 +263,7 @@ def test_step_telemetry_is_separate_from_final_aggregate(tmp_path):
     assert [r["record_type"] for r in records] == ["planned_decision", "verification_feedback"]
     planned, feedback = records
     assert planned["selected_topology"] == {"name": "T8", "total_nodes_N": 8,
-        "depth_d": 3, "parent_indices": [-1, 0, 0, 1, 1, 2, 2, 3, 5]}
+        "depth_d": None, "parent_indices": None}
     assert planned["scalar_runtime_budget"] == 4
     assert planned["executed_draft_token_count"] is None
     assert planned["tree_execution_verified"] is False
@@ -313,8 +313,36 @@ def test_required_v02_fields_and_catalog_are_detached(tmp_path):
     assert required <= record.keys()
     assert record["memory_status"]["free_vram_mb"] is None
     final = planner.finish_request("r")
-    final["selected_topology"]["parent_indices"][1] = 999
+    assert final["selected_topology"]["parent_indices"] is None
+    final["selected_topology"]["name"] = "changed"
+    assert record["selected_topology"]["name"] == "T8"
     assert get_tree_topology("T8").parent_indices[1] == 0
+
+
+def test_canonical_serving_does_not_import_future_tree():
+    import subprocess
+    import sys
+    from pathlib import Path
+    code = '''
+import sys
+class BlockTree:
+    def find_spec(self, fullname, path=None, target=None):
+        if "tree_adaptive" in fullname or "tree_topology" in fullname:
+            raise AssertionError("canonical serving imported " + fullname)
+sys.meta_path.insert(0, BlockTree())
+from src.server.budget_planner import AdaptiveBudgetPlanner
+p = AdaptiveBudgetPlanner()
+for rid, alpha in [("two", .7), ("four", .95), ("zero", .4)]:
+    p.adapter.start_request(rid, initial_alpha=alpha)
+plan = p.plan_step(["two", "four", "zero"], 3, .1)
+assert plan.per_request_k == {"two": 2, "four": 4, "zero": 0}
+assert plan.batch_k == 4
+assert all(r["selected_topology"] is None for r in p._last_decisions.values())
+assert all(r["tree_execution_verified"] is False for r in p._last_decisions.values())
+'''
+    result = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
 def test_heterogeneous_two_four_zero_contract():

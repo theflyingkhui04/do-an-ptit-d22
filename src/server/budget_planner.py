@@ -17,7 +17,6 @@ from typing import Dict, Iterable, Mapping, Optional, Set, Tuple
 
 from src.proposer.adapter import AdaptiveProposerAdapter
 from src.proposer.controller import BudgetDecision
-from src.proposer.tree_adaptive import get_tree_topology
 
 # Free VRAM value passed to the controller when no reading is available,
 # so the VRAM guard never fires on a missing signal.
@@ -157,11 +156,20 @@ class AdaptiveBudgetPlanner:
             except (OSError, ValueError):
                 logger.exception("AdaptiveBudgetPlanner: step telemetry write failed")
 
-    def record_verification(self, req_id: str, num_drafted: int, num_accepted: int) -> None:
+    def record_lineage_failure(self, req_id: str, reason: str) -> None:
+        logger.warning("Adaptive feedback skipped for %s: %s", req_id, reason)
+        self._write_step({"record_type": "verification_feedback_skipped", "request_id": req_id,
+                          "lane": "adaptive", "lineage_status": reason,
+                          "source_plan_sequence": None, "source_schedule_sequence": None,
+                          "tree_execution_verified": False})
+
+    def record_verification(self, req_id: str, num_drafted: int, num_accepted: int,
+                            *, source=None) -> None:
         """Feeds one verification result back to the request's controller.
 
-        A request that just finished prefill may be verified before it is planned,
-        so an unseen request id is registered here instead of being dropped.
+        Direct planner callers supply synchronous counts. Production scheduler
+        callers MUST validate execution provenance before invoking this method.
+        A newly completed prefill may have an exact schedule but no decode plan.
         """
         if num_drafted <= 0:
             return
@@ -177,7 +185,11 @@ class AdaptiveBudgetPlanner:
                 "lane": "adaptive", "executed_draft_token_count": num_drafted,
                 "accepted_draft_token_count": num_accepted,
                 "executed_runtime_mode": "unverified",
-                "source_plan_sequence": None, "source_schedule_sequence": None,
+                "source_plan_sequence": source.plan_sequence if source else None,
+                "source_schedule_sequence": source.schedule_sequence if source else None,
+                "source_request_scalar_k": source.request_k if source else None,
+                "source_batch_scalar_k": source.batch_k if source else None,
+                "lineage_status": "attributed" if source else "unverified",
                 "tree_execution_verified": False,
                 "alpha_ema": self.adapter.get_telemetry(req_id)["alpha_ema"],
             })
@@ -242,7 +254,8 @@ def _decision_record(decision: BudgetDecision, nodes: int, batch_size: int,
     """Additive Interface A v0.2 decision fields (spec §4.6).
 
     Never derive a topology from a scalar count. Unknown identities keep their
-    name/count and null structure; canonical structure comes from the catalog.
+    name/count and null structure. Canonical linear serving has no topology;
+    this module must not load the dormant future-tree catalog for telemetry.
     Unmeasured latency, hardware identity and tau are explicitly unavailable.
     """
     def finite(value: Optional[float]) -> Optional[float]:
@@ -253,12 +266,6 @@ def _decision_record(decision: BudgetDecision, nodes: int, batch_size: int,
     if name is not None:
         topology = {"name": name, "total_nodes_N": nodes,
                     "depth_d": None, "parent_indices": None}
-        try:
-            canonical = get_tree_topology(name)
-        except (KeyError, ValueError):
-            canonical = None
-        if canonical is not None and canonical.num_tokens == nodes:
-            topology.update(depth_d=canonical.depth, parent_indices=list(canonical.parent_indices))
     status = getattr(decision, "status", None)
     return {
         "engine_version": None, "hardware_profile": None,
