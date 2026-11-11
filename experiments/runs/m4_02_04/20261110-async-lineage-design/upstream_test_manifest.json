@@ -1,0 +1,38 @@
+[
+  {
+    "path": "tests/v1/core/test_async_scheduler.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/core/test_async_scheduler.py",
+    "sha256_local": "cf131ae24be485b74ce7cb90e53a4c401eb2b3d48328bec9388eabd9377ec0ea",
+    "purpose": "Static reading of official pinned tests; NOT executed; local text snapshot may normalize trailing newline."
+  },
+  {
+    "path": "tests/v1/core/test_deferred_block_free.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/core/test_deferred_block_free.py",
+    "sha256_local": "7797c1769e185b8af94b982afc9ee5cd4a65822cd0ca84da358c1b1a2423dece",
+    "purpose": "Static reading of official pinned tests; NOT executed; local text snapshot may normalize trailing newline."
+  },
+  {
+    "path": "tests/v1/core/test_scheduler.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/core/test_scheduler.py",
+    "sha256_local": "1c6d7e1c9d42d501fe05e3a5206703d781907b4ec220d929d5e6ad87d7f53cc8",
+    "purpose": "Static reading of official pinned tests; NOT executed; local text snapshot may normalize trailing newline."
+  },
+  {
+    "path": "tests/v1/engine/test_engine_core.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/engine/test_engine_core.py",
+    "sha256_local": "216710872a71125a5763f377bd74630bf86da94695ea9e9b192ea0653a14ce0b",
+    "purpose": "Static reading of official pinned tests; NOT executed; local text snapshot may normalize trailing newline."
+  },
+  {
+    "path": "tests/v1/engine/test_engine_core_client.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/engine/test_engine_core_client.py",
+    "sha256_local": "cccc2fdb821091905f7266a12cd5f3c15744d8e259517ae0847643f8cffbb553",
+    "purpose": "Static reading of official pinned tests; NOT executed; local text snapshot may normalize trailing newline."
+  },
+  {
+    "path": "tests/v1/spec_decode/test_dynamic_sd.py",
+    "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/spec_decode/test_dynamic_sd.py",
+    "sha256_local": "90e6d378f1f4db887e69dba814ddb7c145acc591ec4675824c234a9e74a69302",
+    "purpose": "Static reading of official pinned tests; NOT executed; local text snapshot may normalize trailing newline."
+  }
+]

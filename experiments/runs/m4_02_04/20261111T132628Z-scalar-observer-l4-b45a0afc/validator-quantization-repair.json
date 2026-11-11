@@ -1,0 +1,12 @@
+{
+  "type": "OFFLINE_VALIDATOR_QUANTIZATION_IDENTITY_REPAIR",
+  "canonical_git_sha": "16528241468e2624ccfe07a69a67fcc123bfe4a3",
+  "file": "experiments/scalar_cost_evidence.py",
+  "overlay_only": true,
+  "production_source_changed": false,
+  "before_sha256": "b7d2e85800d03abe6be808d392931ad615f03c9156327fc63fa3202ca8c39b53",
+  "after_sha256": "2268812ddad34b5ecd77ae5c8e4a2f44b1922afa7f0766eb7f01618df101c40a",
+  "old_identity": "awq_marlin",
+  "new_identity": "auto_awq",
+  "reason": "vLLM 0.30.0 AutoAWQConfig reports auto_awq; Marlin is an execution backend/kernel."
+}

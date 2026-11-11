@@ -1,0 +1,5 @@
+{
+  "source_commit": "a6cd6ad5cee5374738f890c270ada4ca01f0946b",
+  "phases": {},
+  "error": "Traceback (most recent call last):\n  File \"/root/smoke_runner.py\", line 76, in smoke\n    assert planner.adapter.controller_cls.__name__ == \"BudgetController\", \"Tree controller configuration drift\"\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Tree controller configuration drift\n"
+}

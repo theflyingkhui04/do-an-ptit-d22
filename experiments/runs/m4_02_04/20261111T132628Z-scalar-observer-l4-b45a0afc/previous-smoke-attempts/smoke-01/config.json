@@ -1,0 +1,31 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+  "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+  "dtype": "bfloat16",
+  "quantization": "awq_marlin",
+  "gpu_memory_utilization": 0.85,
+  "max_model_len": 4096,
+  "max_num_seqs": 32,
+  "tensor_parallel_size": 1,
+  "pipeline_parallel_size": 1,
+  "distributed_executor_backend": "uni",
+  "async_scheduling": true,
+  "scheduler_cls": "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
+  "speculative_config": {
+    "method": "draft_model",
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "num_speculative_tokens": 4,
+    "num_speculative_tokens_per_batch_size": [
+      [
+        1,
+        32,
+        4
+      ]
+    ],
+    "use_heterogeneous_vocab": true,
+    "draft_sample_method": "greedy",
+    "revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+  },
+  "seed": 42,
+  "per_request_spec_decode_metrics": "summary"
+}

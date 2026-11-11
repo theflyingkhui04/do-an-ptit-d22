@@ -1,0 +1,7 @@
+upstream/
+__pycache__/
+
+# Historical pre-commit review snapshots retained locally.
+completion_audit.json
+review_files.txt
+review_manifest.json

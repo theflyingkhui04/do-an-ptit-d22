@@ -1,0 +1,16 @@
+{
+  "request": {
+    "model": "qwen2.5-7b-adaptive",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Count down from twenty to one, separated by commas."
+      }
+    ],
+    "temperature": 0,
+    "seed": 42,
+    "max_tokens": 48
+  },
+  "status": 200,
+  "response": "{\"id\":\"chatcmpl-b388f6af27c1c910\",\"object\":\"chat.completion\",\"created\":1794307556,\"model\":\"qwen2.5-7b-adaptive\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8\",\"refusal\":null,\"annotations\":null,\"audio\":null,\"function_call\":null,\"reasoning\":null},\"logprobs\":null,\"finish_reason\":\"length\",\"stop_reason\":null,\"token_ids\":null,\"routed_experts\":null}],\"service_tier\":null,\"system_fingerprint\":\"vllm-0.30.0-5f94a4f4\",\"usage\":{\"prompt_tokens\":40,\"total_tokens\":88,\"completion_tokens\":48,\"prompt_tokens_details\":null,\"completion_tokens_details\":null},\"prompt_logprobs\":null,\"prompt_token_ids\":null,\"prompt_text\":null,\"kv_transfer_params\":null,\"ec_transfer_params\":null,\"metrics\":{\"time_to_first_token_ms\":null,\"generation_time_ms\":null,\"queue_time_ms\":null,\"mean_itl_ms\":null,\"tokens_per_second\":null,\"speculative_decoding\":{\"mean_acceptance_length\":3.8333333333333335,\"draft_acceptance_rate\":0.918918918918919,\"acceptance_histogram\":[1,0,3,4,4],\"num_spec_steps\":12,\"num_accepted_draft_tokens\":34,\"num_draft_tokens\":37,\"num_spec_tokens\":4,\"per_step_accepted\":null,\"per_step_drafted\":null}}}"
+}

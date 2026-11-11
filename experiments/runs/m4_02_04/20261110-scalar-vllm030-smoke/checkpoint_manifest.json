@@ -1,0 +1,187 @@
+{
+  "status": "L3 SCALAR PATH VERIFIED; PM SCOPE DECISION PENDING",
+  "tested_git_sha": "a6cd6ad5cee5374738f890c270ada4ca01f0946b",
+  "vllm": "0.30.0",
+  "claim_boundary": "dynamic scalar K != arbitrary-tree runtime execution",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 192,
+      "sha256": "fe8e808f337bb54990d5d4080803fde9f4cd4ed2215d67dd3f767b809c8fcd41"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 162,
+      "sha256": "8302e7a30748b8dac98fb62d1db3db63e2357842d79c706ce306f2ca70c68d92"
+    },
+    {
+      "path": "README.md",
+      "bytes": 9953,
+      "sha256": "463c7f53376ed89b35f8bc24c34b513b66e026ae3fb5dba7ad6b6dcb52670644"
+    },
+    {
+      "path": "attempt2/call.json",
+      "bytes": 114,
+      "sha256": "53b94218e7cea11b3869da698f2fb01cb6fc0b65b71eadf14cc378bebb2bde92"
+    },
+    {
+      "path": "attempt2/concurrent_0.json",
+      "bytes": 1540,
+      "sha256": "59b953920b096d06b64d9d9c5b0d4a288ccb9cd9f94cc2fa1cb29cc07a275063"
+    },
+    {
+      "path": "attempt2/concurrent_1.json",
+      "bytes": 1564,
+      "sha256": "9334f46ee6d831f8eda4132096b4010d3321f73f1c57c44a3ea35bfcce46d0ce"
+    },
+    {
+      "path": "attempt2/deployment.json",
+      "bytes": 1525,
+      "sha256": "be0256311cd2da754f28d4588046e06e02a66188d23f3f726cc9b18e627e078f"
+    },
+    {
+      "path": "attempt2/environment.json",
+      "bytes": 2993,
+      "sha256": "54473160ae4a4ddc2e29a3877c129b9d00428555fdb0d0edc99498f3a34ee478"
+    },
+    {
+      "path": "attempt2/import_api.json",
+      "bytes": 2134,
+      "sha256": "1b15e89643cccf1c2e596743423a9262213afadd92e9dc2210b72bc2d14c4b50"
+    },
+    {
+      "path": "attempt2/result.json",
+      "bytes": 227,
+      "sha256": "84a378ee12a58596affdf186dae62cb2aad3a739abf3858dde2e0b22b97ce505"
+    },
+    {
+      "path": "attempt2/server.log",
+      "bytes": 28064,
+      "sha256": "bf5ed0633d5d4521711c9db2c0c3a36df78bc831b1ccac6f4ffd6089505c5e65"
+    },
+    {
+      "path": "attempt2/single_request.json",
+      "bytes": 1530,
+      "sha256": "fcff6bdc9da51f7a49214e23eefdd3db2a3a5bbcc15989e20ef118ace5e63615"
+    },
+    {
+      "path": "attempt2/steps.jsonl",
+      "bytes": 60186,
+      "sha256": "6cfe4988937b5c08e5e6a1cced7e2d833658c41a6315a117d2a8fb90ada4e0be"
+    },
+    {
+      "path": "attempt2/telemetry.jsonl",
+      "bytes": 6064,
+      "sha256": "7a3279d1800c1591b3983478f780317e8781601b74993863001d06306b6272a8"
+    },
+    {
+      "path": "attempt2/validation.json",
+      "bytes": 3415,
+      "sha256": "ea190c9e74f47f08316d886fabe94d554a6e6c81573ab7923f3ed2d1ee36b8bb"
+    },
+    {
+      "path": "attempt2/worker_source_hashes.json",
+      "bytes": 7163,
+      "sha256": "564ba5d61da75321d555a1e70c4be9578e7ad800c4fafc94cb22303022cce093"
+    },
+    {
+      "path": "call.json",
+      "bytes": 114,
+      "sha256": "970ea98a29af79b411a995205d7cca383f39b3620372c3387a10b7fee3249e63"
+    },
+    {
+      "path": "checkpoint_verify.py",
+      "bytes": 823,
+      "sha256": "1c8448fbccbb26cf1aa1aa4098f9975291f2b2083f3f87afd8028a2dfb9b4de8"
+    },
+    {
+      "path": "environment.json",
+      "bytes": 2993,
+      "sha256": "e3a30ea354de7f3ca460649569f629f0360516cb495271f07140a17b68866c61"
+    },
+    {
+      "path": "error.log",
+      "bytes": 327,
+      "sha256": "98ce3fecf46e8eb39538a7b3b5469dc70ed737a1dcc9b669fb2283f5866551f1"
+    },
+    {
+      "path": "import_api.json",
+      "bytes": 2134,
+      "sha256": "954b3f0859bb1acddf845f27ee94aa0de7f5f2f5ec5bb34d64bd2d00b0ce17db"
+    },
+    {
+      "path": "l4_probe_cleanup.json",
+      "bytes": 1038,
+      "sha256": "99e0cf5f2e10397f1d0bc441217b1f82e64a8ca5d7faff330546afbbcfa32a5d"
+    },
+    {
+      "path": "local_preflight.json",
+      "bytes": 2721,
+      "sha256": "0deef606304bd68684fd8f6650dd9a8a74688de9fdef7e9fc03005b007964547"
+    },
+    {
+      "path": "result.json",
+      "bytes": 433,
+      "sha256": "b9d402151930a20daad0b863bb7b8b1392fd63e170d9c6805a9cea986aaf36f3"
+    },
+    {
+      "path": "smoke_runner.py",
+      "bytes": 7777,
+      "sha256": "80fca1e826af4ee74875604a1a040ead6f9a333685fb947806a01e2d66b47913"
+    },
+    {
+      "path": "validate_evidence.py",
+      "bytes": 3984,
+      "sha256": "bbcef6ca00d7bd7d09019a19a24c67502711382cd46d6dad82a697cd618e39d9"
+    },
+    {
+      "path": "worker_source_hashes.json",
+      "bytes": 7163,
+      "sha256": "dedbfee8e81edeb634a22f63ca38838579ff299a353b49412a40919713dae237"
+    }
+  ],
+  "excluded_local_originals": [
+    {
+      "path": "__pycache__/smoke_runner.cpython-311.pyc",
+      "bytes": 14428,
+      "sha256": "9951b96ab5430f04bc735092d0326a83e1859cf1cce9a775fdbf7b0b6917abfa",
+      "reason": "Transient bytecode"
+    },
+    {
+      "path": "AsyncScheduler_source.json",
+      "bytes": 3033,
+      "sha256": "4795da603daf7d2b300911469bd53e99b84f7843bf2878fe44d1ef55e87a6c75",
+      "reason": "Full copied installed class source retained locally; not vendored",
+      "upstream_url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/sched/async_scheduler.py"
+    },
+    {
+      "path": "attempt2/AsyncScheduler_source.json",
+      "bytes": 3033,
+      "sha256": "4795da603daf7d2b300911469bd53e99b84f7843bf2878fe44d1ef55e87a6c75",
+      "reason": "Full copied installed class source retained locally; not vendored",
+      "upstream_url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/sched/async_scheduler.py"
+    },
+    {
+      "path": "attempt2/Scheduler_source.json",
+      "bytes": 153288,
+      "sha256": "4a7796bdae74ce10a4ee9768b08e42876c51434b0fdeb2889f0a1e397c43daf6",
+      "reason": "Full copied installed class source retained locally; not vendored",
+      "upstream_url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/sched/scheduler.py"
+    },
+    {
+      "path": "Scheduler_source.json",
+      "bytes": 153288,
+      "sha256": "4a7796bdae74ce10a4ee9768b08e42876c51434b0fdeb2889f0a1e397c43daf6",
+      "reason": "Full copied installed class source retained locally; not vendored",
+      "upstream_url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/sched/scheduler.py"
+    }
+  ],
+  "historical_manifest": {
+    "path": "manifest.json",
+    "sha256": "150bb5e417628d70e2c5cdd536fa6a8f999385562fdc1d873921de9d98f4a989",
+    "policy": "Preserved locally unchanged; includes transient bytecode and copied source. Not required for curated verification."
+  },
+  "raw_evidence_policy": "Original run artifacts unchanged. Git -text preserves original bytes. README is the historical run report; current checkpoint/governance status is in the worklog.",
+  "verification": "python experiments/runs/m4_02_04/20261110-scalar-vllm030-smoke/checkpoint_verify.py",
+  "reproduction": "Original smoke_runner.py requires tested production HEAD a6cd6ad5cee5374738f890c270ada4ca01f0946b in a separate checkout. Preserve this evidence directory; collect a rerun into a different directory. No rerun performed here."
+}
