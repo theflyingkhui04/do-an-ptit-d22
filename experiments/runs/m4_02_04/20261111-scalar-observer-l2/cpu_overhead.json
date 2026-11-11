@@ -1,0 +1,61 @@
+{
+  "evidence_layer": "CPU_SYNTHETIC_OVERHEAD_ONLY",
+  "not_gpu_evidence": true,
+  "not_profitability_evidence": true,
+  "git_sha": "b4c13637149b14b3ebab20412b044639b7e4c40f",
+  "source_dirty": true,
+  "observer_sha256": "6818f85c9cbbc10cf9a7fa0784857ba872e05a3428c8de27f7da0433daa9146f",
+  "python": "3.11.0",
+  "platform": "Windows-10-10.0.26300-SP0",
+  "clock": "perf_counter_ns",
+  "repeats": 7,
+  "measurements": [
+    {
+      "batch": 1,
+      "iterations": 1000,
+      "disabled_ns": [
+        54100,
+        53400,
+        56600,
+        49800,
+        48300,
+        62100,
+        53600
+      ],
+      "enabled_ns": [
+        25772500,
+        17536600,
+        16737900,
+        18122900,
+        15910700,
+        18954000,
+        19061400
+      ],
+      "median_added_us_per_call": 18.0731
+    },
+    {
+      "batch": 2,
+      "iterations": 1000,
+      "disabled_ns": [
+        53300,
+        49700,
+        47500,
+        62800,
+        67800,
+        68400,
+        67600
+      ],
+      "enabled_ns": [
+        20169200,
+        19725900,
+        19213800,
+        22921800,
+        22823100,
+        25025000,
+        22283300
+      ],
+      "median_added_us_per_call": 22.215700000000002
+    }
+  ],
+  "limitations": "No installed vLLM execution; supplied synthetic measured-context labels; no CUDA workload; no GPU perturbation bound. Input snapshots and record capture included. Export/JSON/file I/O excluded from timed region."
+}

@@ -760,3 +760,32 @@ performance improvement is established.
 
 First action: technical review to resolve the missing hardware-aware scalar
 threshold serving connection within Option B.
+
+### 2026-11-11 — corrected scalar context source/L2 proof
+
+Measurement-only follow-up; production behavior and earlier Option-B blockers
+are unchanged. Derived the pinned vLLM0.30.0 GPU recurrence from preserved
+installed sources: participating rows use previous GPU context plus previous
+raw valid sampled count; other rows use the actual preparation's host copy.
+Positions and verification sequence length follow corrected C and scheduled Q.
+Raw CPU sampled counts are frozen after canonical materialization and before
+scheduler EOS/max_tokens clipping. They are distinct from useful emitted tokens.
+
+Added frozen CPU reconstruction snapshots and versioned observer evidence,
+execution/incarnation/dependency binding, exact fixture-context matching, and
+fail-closed lifecycle/history guards. Compared the unchanged pinned correction
+body on CPU tensors over 512 combinations, plus stop/clipping, row reorder,
+heterogeneous/invalid slots, K changes, and two-in-flight integration scenarios.
+The helper adds no GPU readback, wait, event synchronization, or future access.
+
+Validation: `python -m pytest -q tests/test_scalar_context.py tests/test_scalar_cost_capture.py tests/test_scalar_cost_evidence.py tests/test_m4_cost_profiler.py tests/test_m4_cost_runner.py tests/test_modal_profiler.py`
+→ **230 passed in 17.10s**. `git diff --check` passed; production/config/script
+diff remains empty. Prior CPU overhead reports predate this observer extension.
+
+Verdict: **CORRECTED CONTEXT RECONSTRUCTION VERIFIED**, guarded source/L2 scope.
+Live worker snapshot transport remains unverified; no L3 collector fidelity,
+matched reference, profitability, or performance improvement is claimed.
+See `docs/runbooks/m4-02-04-corrected-context.md` for source hashes, tensor/D2H
+lifetimes, formulas, matching contract, and prepared tiny L4 smoke specification.
+Small smoke: **NOT RUN — AWAITING REVIEW**. Full grid: **NOT RUN**.
+Production source: **UNCHANGED**. No commit, push, PR, merge, or Trello change.

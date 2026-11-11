@@ -1,0 +1,62 @@
+{
+  "evidence_layer": "CPU_SYNTHETIC_OVERHEAD_ONLY",
+  "not_gpu_evidence": true,
+  "not_profitability_evidence": true,
+  "git_sha": "b4c13637149b14b3ebab20412b044639b7e4c40f",
+  "source_dirty": true,
+  "observer_sha256": "07bc91d9c4ca2ca9977495c6bc5eb16790e970f8c3611e4b4b6a98765570e608",
+  "harness_sha256": "e25660a4799e2e31f9af28ee29012a54cbb4ce01c9404e08e533eadef2698a95",
+  "python": "3.11.0",
+  "platform": "Windows-10-10.0.26300-SP0",
+  "clock": "perf_counter_ns",
+  "repeats": 7,
+  "measurements": [
+    {
+      "batch": 1,
+      "iterations": 1000,
+      "disabled_ns": [
+        59900,
+        56500,
+        60900,
+        51300,
+        49800,
+        52200,
+        49900
+      ],
+      "enabled_ns": [
+        19186300,
+        16728500,
+        15571800,
+        14742500,
+        16363100,
+        19567700,
+        19427700
+      ],
+      "median_added_us_per_call": 16.672
+    },
+    {
+      "batch": 2,
+      "iterations": 1000,
+      "disabled_ns": [
+        55100,
+        52200,
+        49800,
+        72900,
+        49900,
+        109700,
+        116800
+      ],
+      "enabled_ns": [
+        18501300,
+        17905800,
+        17352100,
+        20444700,
+        19894900,
+        20654200,
+        23355700
+      ],
+      "median_added_us_per_call": 19.845
+    }
+  ],
+  "limitations": "Synthetic CPU snapshots only; no installed vLLM or GPU execution. No GPU perturbation bound. Export/serialization/storage excluded from timed regions."
+}
