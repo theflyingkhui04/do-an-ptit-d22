@@ -1,0 +1,62 @@
+{
+  "task": "M4-03",
+  "step": "run-node1-extractor",
+  "backend": "openai-compatible",
+  "serving_backend": "modal",
+  "hardware": "modal-A10G",
+  "lane": "vanilla",
+  "base_url": "https://nguyenduonghb940--ptit-vllm-demo-vanilla.us-east.modal.direct/v1",
+  "model": "qwen2.5-7b-vanilla",
+  "run_id": "m5_01_v3_vanilla_r1",
+  "schema_version": "invoice_extraction.v1",
+  "prompt_version": "node1_extractor.v2",
+  "workload_id": "w1_node1_invoice_extraction",
+  "dataset_version": "w1.m5_01.v3",
+  "w1_package_sha256": "5e22c3cbdfd1252181d913480caad79fea1e9dc4323c6f16d67f4066ba245005",
+  "artifact_hashes": {
+    "samples_jsonl": "b52c4e569c0f877769e002b7dda581c0ffe1d718a107f7d11ca5bea853d1697c",
+    "provenance_jsonl": "d1f306c034335f1857369c007cb110425ce4cb817dc737d195ff793780d84990",
+    "manifest_csv": "4a80f9ef3d2778d419d41dd168924fd6894e421d73c9b23a7812a12d0277d2e8",
+    "node1_inputs_jsonl": "aed894b060b9c929401fd6e95f7e18beb39daf1ba026e1ea45d74a65b5a9019d",
+    "node1_chat_requests_jsonl": "0b7474f99637a1291a53c17a2553514d55922a5d19434ff5523a8b36c1bdd611",
+    "system_prompt": "4609cddd127fc429aa19d73f824751f43b30353eab95bd3b2a2f98b10587a13a",
+    "json_schema": "0baf01bb2d98ae40aa09e7595e5c9f440e0d8bec0b9ccddd80be9a4a76b60eb7"
+  },
+  "request_count": 30,
+  "fully_validated_count": 25,
+  "sample_failure_count": 5,
+  "persistence_failure_count": 0,
+  "failure_counts": {
+    "SOURCE_BINDING_ERROR": 5
+  },
+  "rates": {
+    "transport_success_rate": 1.0,
+    "strict_json_rate": 1.0,
+    "source_binding_rate": 0.833333,
+    "schema_valid_rate": 0.833333
+  },
+  "acceptance": {
+    "threshold": 0.95,
+    "pass": false,
+    "formula": "fully_validated_count / request_count"
+  },
+  "normalization_count": 9,
+  "latency_ms": {
+    "mean": 16922.72,
+    "median": 16490.547,
+    "min": 11718.408,
+    "max": 26510.266
+  },
+  "usage": {
+    "prompt_tokens": 59814,
+    "completion_tokens": 42924,
+    "total_tokens": 102738
+  },
+  "database": "data/processed/invoices_m5_01_v3_vanilla_r1.db",
+  "outputs": {
+    "raw_responses": "experiments/runs/m5_01/m5_01_v3_vanilla_r1/raw_responses.jsonl",
+    "validated_outputs": "experiments/runs/m5_01/m5_01_v3_vanilla_r1/validated_outputs.jsonl",
+    "failures": "experiments/runs/m5_01/m5_01_v3_vanilla_r1/failures.jsonl",
+    "summary": "experiments/runs/m5_01/m5_01_v3_vanilla_r1/summary.json"
+  }
+}
