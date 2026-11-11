@@ -21,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SQLITE_SCHEMA = REPO_ROOT / "src/pipeline/sqlite/schema.sql"
 NODE2_PROMPT = REPO_ROOT / "src/pipeline/prompts/node2_text_to_sql_demo.md"
 ANSWER_PROMPT = REPO_ROOT / "src/pipeline/prompts/node3_answer_demo.md"
-NODE2_PROMPT_VERSION = "node2_text_to_sql_demo.v2"
+NODE2_PROMPT_VERSION = "node2_text_to_sql_demo.v3"
 ANSWER_PROMPT_VERSION = "node3_answer_demo.v1"
 VIEWS = ("v_invoice_facts", "v_item_facts", "v_tax_facts")  # mirrored from SQLite v2
 # Postgres demo only (src/pipeline/postgres/schema.sql): how and when an invoice entered the demo.
@@ -122,6 +122,8 @@ def check_demo_sql(raw: str) -> str:
         if column.name and column.name.lower() not in known:
             raise SqlCheckError("UNKNOWN_COLUMN", column.sql(dialect="postgres"))
 
+    _check_fanout(tree, columns)
+
     limit = tree.args.get("limit")
     current = None
     if limit is not None:
@@ -130,6 +132,31 @@ def check_demo_sql(raw: str) -> str:
     if current is None or current > ROW_LIMIT:
         tree = tree.limit(ROW_LIMIT)
     return tree.sql(dialect="postgres")
+
+
+FANOUT_VIEWS = ("v_item_facts", "v_tax_facts")
+
+
+def _check_fanout(tree: exp.Expression, columns: dict[str, tuple[str, ...]]) -> None:
+    """[M5-01 canonical flow] Reject SUM/AVG/COUNT of an invoice-level column in a SELECT that joins
+    v_invoice_facts with item or tax rows: each invoice would be counted once per item/tax row."""
+    invoice_only = set(columns["v_invoice_facts"]).difference(*(columns[v] for v in FANOUT_VIEWS))
+    for select in tree.find_all(exp.Select):
+        tables = {t.name.lower() for t in select.find_all(exp.Table) if t.find_ancestor(exp.Select) is select}
+        joined = tables.intersection(FANOUT_VIEWS)
+        if "v_invoice_facts" not in tables or not joined:
+            continue
+        for agg in select.find_all(exp.Sum, exp.Avg, exp.Count):
+            if agg.find_ancestor(exp.Select) is not select:
+                continue
+            if isinstance(agg, exp.Count) and isinstance(agg.this, exp.Distinct):
+                continue
+            hit = sorted({c.name.lower() for c in agg.find_all(exp.Column)} & invoice_only)
+            if hit:
+                raise SqlCheckError(
+                    "JOIN_FANOUT",
+                    f"{agg.sql(dialect='postgres')} adds invoice-level column {', '.join(hit)} once per row of "
+                    f"{', '.join(sorted(joined))}; aggregate v_invoice_facts without that join (use EXISTS to filter)")
 
 
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
@@ -244,7 +271,7 @@ class QuestionService:
                 result["error"] = self._redact(str(second))[:400]
                 return result
         result.update(sql=sql, columns=columns, rows=rows, row_count=len(rows))
-        if not rows:
+        if not rows or all(cell is None for row in rows for cell in row):  # nothing to answer from
             result.update(status="no_data", answer=NO_DATA_ANSWER)
             return result
         answer_messages = [

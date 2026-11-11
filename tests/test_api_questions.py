@@ -78,7 +78,7 @@ def test_answerable_question():
     assert result["rows"] == [[4930094.0]] and result["answer"].endswith("4.930.094 đồng.")
     assert result["repairs"] == 0
     assert [c["step"] for c in result["calls"]] == ["node2", "answer"]
-    assert result["prompt_versions"] == {"node2": "node2_text_to_sql_demo.v2", "answer": "node3_answer_demo.v1"}
+    assert result["prompt_versions"] == {"node2": "node2_text_to_sql_demo.v3", "answer": "node3_answer_demo.v1"}
 
 
 def test_rejected_sql_is_repaired_once_and_never_executed():
@@ -171,3 +171,29 @@ def test_withheld_answer_text_is_kept_for_audit():
                  scripted("Tổng là 4.930.095 đồng."))
     result = qa.answer("Tổng tiền là bao nhiêu?")
     assert result["answer"] is None and result["withheld_answer"] == "Tổng là 4.930.095 đồng."
+
+
+def test_all_null_result_is_no_data_without_the_answer_model():
+    answer = scripted()
+    store = QAStore([(["buyer_tax_code"], [[None]])])
+    qa = service(store, scripted("SELECT DISTINCT buyer_tax_code FROM v_invoice_facts"), answer)
+    result = qa.answer("Mã số thuế của người mua là gì?")
+    assert result["status"] == "no_data" and result["answer"] == NO_DATA_ANSWER
+    assert answer.calls == []
+
+
+def test_zero_is_a_value_not_missing_data():
+    store = QAStore([(["n"], [[0]])])
+    qa = service(store, scripted("SELECT COUNT(*) AS n FROM v_invoice_facts WHERE issued_date LIKE '2030-%'"),
+                 scripted("Có 0 hoá đơn."))
+    assert qa.answer("Năm 2030 có bao nhiêu hoá đơn?")["answer"] == "Có 0 hoá đơn."
+
+
+def test_question_is_sent_as_typed_and_prompt_says_data_has_no_marks():
+    sql_caller = scripted("SELECT COUNT(*) AS n FROM v_invoice_facts")
+    store = QAStore([(["n"], [[29]])])
+    qa = service(store, sql_caller, scripted("Có 29 hoá đơn."))
+    qa.answer("Có bao nhiêu hoá đơn Sữa tươi?")
+    messages = sql_caller.calls[0]["messages"]
+    assert messages[1]["content"] == "Có bao nhiêu hoá đơn Sữa tươi?"
+    assert "no Vietnamese marks" in messages[0]["content"]

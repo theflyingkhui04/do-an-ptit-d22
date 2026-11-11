@@ -94,3 +94,30 @@ def test_ordinary_predicates_and_operators_are_allowed():
            "AND total_amount_value BETWEEN 1 AND 900000 AND seller_name NOT LIKE 'x%' "
            "AND EXISTS (SELECT 1 FROM v_item_facts WHERE v_item_facts.invoice_id = v_invoice_facts.invoice_id)")
     assert check_demo_sql(sql).endswith("LIMIT 200")
+
+
+# [M5-01 canonical flow] fan-out joins
+A2_SQL = ("SELECT SUM(vi.total_amount_value) AS tong_tien FROM v_invoice_facts AS vi JOIN v_item_facts AS fi "
+          "ON vi.invoice_id = fi.invoice_id WHERE vi.seller_name ILIKE '%MINIMART ANAN%' AND vi.issued_date LIKE '2020-08-12%'")
+
+
+@pytest.mark.parametrize("sql", [
+    A2_SQL,
+    "SELECT AVG(total_amount_value) FROM v_invoice_facts JOIN v_tax_facts ON v_tax_facts.invoice_id = v_invoice_facts.invoice_id",
+    "SELECT COUNT(f.extraction_status) FROM v_invoice_facts AS f JOIN v_item_facts AS i ON i.invoice_id = f.invoice_id",
+])
+def test_invoice_level_aggregates_over_item_or_tax_joins_are_rejected(sql):
+    assert code_of(sql) == "JOIN_FANOUT"
+
+
+@pytest.mark.parametrize("sql", [
+    "SELECT SUM(i.line_total_value) FROM v_invoice_facts AS f JOIN v_item_facts AS i ON i.invoice_id = f.invoice_id",
+    "SELECT SUM(total_amount_value) FROM v_invoice_facts",
+    "SELECT COUNT(DISTINCT f.total_amount_value) FROM v_invoice_facts AS f JOIN v_item_facts AS i ON i.invoice_id = f.invoice_id",
+    "SELECT COUNT(*) FROM v_invoice_facts AS f JOIN v_item_facts AS i ON i.invoice_id = f.invoice_id",
+    "SELECT SUM(f.total_amount_value) FROM v_invoice_facts AS f JOIN v_upload_facts AS u ON u.invoice_id = f.invoice_id",
+    ("SELECT SUM(t) AS s FROM (SELECT f.total_amount_value AS t FROM v_invoice_facts AS f WHERE EXISTS "
+     "(SELECT 1 FROM v_item_facts AS i WHERE i.invoice_id = f.invoice_id)) AS x"),
+])
+def test_aggregates_without_fanout_stay_allowed(sql):
+    assert check_demo_sql(sql)
