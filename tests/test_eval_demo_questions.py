@@ -76,3 +76,64 @@ def test_reference_answers_on_the_seeded_database(pg):  # noqa: F811  (fixture)
 
     full = ev.run(store, Oracle(), ev.load_questions())
     assert full["summary"]["correct"] == 15 and full["summary"]["executed_writes"] == 0
+
+
+# ---------------------------------------------------------------- [M5-01 canonical flow] locked question set
+def canonical():
+    return ev.load_questions(REPO_ROOT / ev.CANONICAL_QUESTIONS)
+
+
+def test_canonical_set_is_well_formed_locked_and_new():
+    data = canonical()
+    dev = {q["question"].casefold() for q in ev.load_questions()["questions"]}
+    prompt = NODE2_PROMPT.read_text(encoding="utf-8")
+    assert data["version"] == "canonical_questions.v1"
+    assert sum(q["expected_status"] == "no_data" for q in data["questions"]) == 2
+    for question in data["questions"]:
+        assert check_demo_sql(question["reference_sql"])
+        assert (question["expected_status"] == "no_data") == (question["reference_rows"] == [])
+        assert question["question"].casefold() not in dev and question["question"] not in prompt
+    assert ev.report_path(data) == Path("experiments/results/m5_01_canonical_questions_eval.json")
+    assert ev.report_path(ev.load_questions()) == ev.DEFAULT_OUTPUT
+
+
+class RowsStore:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def run_readonly(self, sql):
+        return ["n"], self.rows
+
+
+def test_a_database_that_is_not_the_locked_seed_is_refused():
+    import pytest
+
+    data = {"version": "x", "questions": [{"id": "c01", "question": "?", "reference_sql": "SELECT 1",
+                                           "reference_rows": [[2]], "expected_status": "ok"}]}
+    assert ev.run(RowsStore([[2.0]]), None, data)["entries"][0]["reference_rows"] == [[2.0]]
+    with pytest.raises(SystemExit, match="c01: .*locked"):
+        ev.run(RowsStore([[3]]), None, data)
+
+
+def test_report_records_the_question_set_hash():
+    class Answer:
+        def answer(self, question):
+            return {"status": "ok", "rows": [[2]], "sql": "SELECT 2", "answer": "Có 2 hoá đơn."}
+
+    data = {"version": "x", "questions": [{"id": "c01", "question": "?", "reference_sql": "SELECT 1",
+                                           "reference_rows": [[2]], "expected_status": "ok"}]}
+    report = ev.run(RowsStore([[2]]), Answer(), data, questions_sha256="ab" * 32)
+    assert report["questions_sha256"] == "ab" * 32 and report["summary"]["correct"] == 1
+    assert ev.file_sha256(REPO_ROOT / ev.CANONICAL_QUESTIONS) == __import__("hashlib").sha256(
+        (REPO_ROOT / ev.CANONICAL_QUESTIONS).read_bytes()).hexdigest()
+
+
+@needs_db
+def test_canonical_reference_rows_on_the_w1_v3_seed(pg):  # noqa: F811  (fixture)
+    import seed_demo_db as seed
+
+    from src.api.store import PostgresStore
+
+    seed.seed(pg, seed.load_validated(REPO_ROOT / seed.DEFAULT_VALIDATED))
+    report = ev.run(PostgresStore(DB_URL), None, canonical())  # raises if a locked answer differs
+    assert len(report["entries"]) == 15
