@@ -789,3 +789,33 @@ See `docs/runbooks/m4-02-04-corrected-context.md` for source hashes, tensor/D2H
 lifetimes, formulas, matching contract, and prepared tiny L4 smoke specification.
 Small smoke: **NOT RUN — AWAITING REVIEW**. Full grid: **NOT RUN**.
 Production source: **UNCHANGED**. No commit, push, PR, merge, or Trello change.
+
+
+### 2026-11-11 — Git-based Colab measurement checkpoint
+
+Reviewed and classified every entry dirty/untracked file before staging; see
+`docs/runbooks/m4-02-04-checkpoint-inventory.md`. Production serving source is
+unchanged. Checkpoint A separates Option-B integration coverage; B preserves
+measurement/context helpers, tests, runbooks and historical CPU-only evidence.
+The hash-only pinned-source loader permits the same L2 suite against exact
+installed vLLM bytes without committing temporary upstream captures.
+
+Colab preparation now uses Git as code and durable evidence transport: a detached
+RUN_REPO at explicit CODE_SHA, a separate writable EVIDENCE_REPO, Secrets-based
+GIT_ASKPASS, source gates, explicit evidence staging and two remote-divergence
+checks. The reviewed reference notebook supplies structure only; none of its grid
+cells are copied. The user approved committing a SHA-placeholder template, then
+rendering a local handoff copy with the final pushed SHA (no self-reference).
+Previous ZIP packages and their builder stay local and are not the primary path.
+
+Pre-checkpoint gates: six-file scalar measurement suite 230 passed (zero skips);
+Option-B integration suite 26 passed. Colab-specific CPU tests additionally cover
+S/future/O transport, raw/context replay, no-op exclusion, K0 dispatch semantics,
+Git source cleanliness, auth cleanup, evidence-only commits, remote advance/race
+refusal and failed preflight preventing model launch. Final exact test and push
+receipts are retained in the local checkpoint handoff directory.
+
+No local/remote model or GPU smoke was executed. LIVE OBSERVER NOT YET VERIFIED;
+CORRECTED CONTEXT RECONSTRUCTION VERIFIED remains a source/L2 claim.
+Profitability NOT EVALUATED; full grid NOT RUN. No production policy, tree
+runtime, PR, merge, force push, rebase or Trello change belongs to this checkpoint.
