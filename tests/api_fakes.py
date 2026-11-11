@@ -12,14 +12,17 @@ from PIL import Image
 
 from src.api.app import Deps, create_app
 from src.api.jobs import InvoicePipeline
+from src.api.library_ocr_client import LibraryOcrResult
 from src.api.llm import CallMetrics, LLMError
 from src.api.settings import Settings
 from src.api.warmup import WarmupManager
+from src.pipeline.text_normalize import strip_vietnamese_marks
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = json.loads((REPO_ROOT / "src/pipeline/examples/node1_extractor_output_m0_04_001.json")
                      .read_text(encoding="utf-8"))
 OCR_TEXT = "MINIMART ANAN\nChợ Sủi Phú Thị Gia Lâm\nNgày: 10/08/2020 - 17:12\nTổng tiền\n42,000"
+OCR_TEXT_PLAIN = strip_vietnamese_marks(OCR_TEXT)  # what Node 1 sees: marks removed first
 DEMO_KEY = "demo-key-123456"
 SECRET_URL = "postgresql://demo_writer:pw-very-secret@db.example:5432/postgres"
 
@@ -94,12 +97,23 @@ class FakeStorage:
         return f"https://storage.test/{path}?token=t"
 
 
+def strip_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        return strip_vietnamese_marks(value)
+    if isinstance(value, list):
+        return [strip_strings(v) for v in value]
+    if isinstance(value, dict):
+        return {k: strip_strings(v) for k, v in value.items()}
+    return value
+
+
 def node1_answer(request: dict, mutate: Callable[[dict], None] | None = None) -> str:
-    """Example payload bound to the request's own SOURCE_METADATA and OCR_TEXT."""
+    """Example payload, unaccented as a model reading unaccented OCR text writes it, bound to the request's
+    own SOURCE_METADATA and OCR_TEXT."""
     user = request["messages"][1]["content"]
     metadata = json.loads(user.split("SOURCE_METADATA:\n", 1)[1].split("\n", 1)[0])
     raw_text = user.split("OCR_TEXT:\n", 1)[1].rstrip("\n")
-    payload = copy.deepcopy(EXAMPLE)
+    payload = strip_strings(copy.deepcopy(EXAMPLE))
     payload["source"] = {**metadata, "raw_text": raw_text}
     if mutate:
         mutate(payload)
@@ -132,6 +146,22 @@ class FakeCaller:
                 "usage": {"prompt_tokens": 10, "completion_tokens": 50}}
 
 
+class FakeOcrReader:
+    """Stands in for LibraryOcrClient: ``read(data)`` returns a LibraryOcrResult or raises."""
+
+    def __init__(self, text: str = OCR_TEXT, *, error: Exception | None = None) -> None:
+        self.text = text
+        self.error = error
+        self.calls: list[bytes] = []
+
+    def read(self, data: bytes) -> LibraryOcrResult:
+        self.calls.append(data)
+        if self.error is not None:
+            raise self.error
+        return LibraryOcrResult(text=self.text, boxes=self.text.count("\n") + 1, latency_ms=900.0, engine="A",
+                                versions={"vietocr": "0.3.13"})
+
+
 def lane_callers(**overrides: FakeCaller) -> Callable[[str], FakeCaller]:
     def make(lane: str) -> FakeCaller:
         if lane in overrides:
@@ -140,7 +170,7 @@ def lane_callers(**overrides: FakeCaller) -> Callable[[str], FakeCaller]:
     return make
 
 
-def build(*, store: FakeStore | None = None, ocr: FakeCaller | None = None,
+def build(*, store: FakeStore | None = None, ocr: FakeOcrReader | None = None,
           lanes: Callable[[str], FakeCaller] | None = None, storage: FakeStorage | None = None,
           questions: Any = None, clock: Callable[[], float] | None = None,
           settings: Settings | None = None) -> tuple[Any, FakeStore, FakeStorage]:
@@ -148,8 +178,8 @@ def build(*, store: FakeStore | None = None, ocr: FakeCaller | None = None,
     storage = storage or FakeStorage()
     settings = settings or Settings(demo_key=DEMO_KEY, frontend_origins=("https://demo.vercel.app",),
                                     writer_url=SECRET_URL)
-    ocr_caller = ocr or FakeCaller("ocr", content=OCR_TEXT)
-    pipeline = InvoicePipeline(store, ocr_caller=lambda: ocr_caller, lane_caller=lanes or lane_callers(),
+    ocr_reader = ocr or FakeOcrReader()
+    pipeline = InvoicePipeline(store, ocr_reader=lambda: ocr_reader, lane_caller=lanes or lane_callers(),
                                lane_map=settings.lane_map, storage=storage, gpu_label="A10G")
     warmup = WarmupManager({"database": store.ping}, background=False)
     deps = Deps(store=store, pipeline=pipeline, warmup=warmup, storage=storage, questions=questions,

@@ -8,6 +8,12 @@ Both use the same detector and the fixed line rule of src/pipeline/library_ocr.p
 
 writes experiments/runs/m5_01/<run>/ocr_lib_{A,B}.jsonl (raw OCR text, devset images only) and
 experiments/results/m5_01_ocr_lib_choice.json (coverage after mark stripping, timings, pre-set rule, choice).
+
+The chosen engine A also runs as a long-running server for the web demo (Modal proxy auth):
+
+    modal deploy -m experiments.modal_ocr_lib      # POST /v1/ocr {image_b64} -> {text, boxes, ...}
+
+Switches: PTIT_SCALEDOWN_SECONDS (default 300), PTIT_KEEP_WARM=1 keeps one container up.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ import base64
 import hashlib
 import io
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -44,6 +51,7 @@ image = (
     .pip_install("torch==2.5.1", "torchvision==0.20.1", index_url="https://download.pytorch.org/whl/cpu")
     .pip_install(f"vietocr=={VIETOCR_VERSION}", extra_options="--no-deps")
     .pip_install("einops==0.8.0", "gdown==5.2.0", "pyyaml", "requests")
+    .pip_install("fastapi==0.162.2", "uvicorn==0.54.0")
     .env({"PADDLE_PDX_CACHE_HOME": f"{CACHE}/paddlex", "PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK": "True"})
     .add_local_dir(REPO_ROOT / "src", f"{REMOTE_PROJECT_ROOT}/src", ignore=["**/__pycache__/**"])
 )
@@ -194,3 +202,72 @@ def main(run_id: str, samples: str = DEFAULT_SAMPLES.as_posix()) -> None:
     }
     (REPO_ROOT / CHOICE_REPORT).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: report[k] for k in ("found_stripped", "median_latency_ms_cpu4", "chosen_engine")}))
+
+
+# --------------------------------------------------------------------------
+# [M5-01 canonical flow] Long-running server of the chosen engine A (web demo)
+# --------------------------------------------------------------------------
+SERVER_PORT = 8000
+FROZEN_WEIGHTS_SHA256 = "380512193a8b6cbf6fad80deacdc9b6939d10d473d199892fc6408d13775ea59"  # m5_01_ocr_lib_choice.json
+SCALEDOWN_SECONDS = int(os.environ.get("PTIT_SCALEDOWN_SECONDS", "300"))
+KEEP_WARM = os.environ.get("PTIT_KEEP_WARM") == "1"
+
+
+@app.server(name="ocr", cpu=4.0, memory=8192, volumes={CACHE: cache}, port=SERVER_PORT, startup_timeout=20 * 60,
+            scaledown_window=SCALEDOWN_SECONDS, min_containers=1 if KEEP_WARM else 0, max_containers=1,
+            target_concurrency=2)
+class LibraryOcrServer:
+    @modal.enter()
+    def start(self) -> None:
+        sys.path.insert(0, REMOTE_PROJECT_ROOT)
+        import threading
+
+        import numpy as np
+        import uvicorn
+        from fastapi import FastAPI, HTTPException
+        from paddleocr import TextDetection
+        from PIL import Image
+
+        from src.pipeline.library_ocr import Box, boxes_to_text
+        from src.pipeline.ocr import OcrError
+        from src.pipeline.text_normalize import strip_vietnamese_marks
+
+        detector = TextDetection(model_name=DET_MODEL, device="cpu", enable_mkldnn=False)
+        vietocr, meta = _vietocr_predictor()
+        if meta["weights_sha256"] != FROZEN_WEIGHTS_SHA256:  # the engine chosen on 08/11, nothing else
+            raise RuntimeError(f"VietOCR weights sha256 {meta['weights_sha256']} != frozen {FROZEN_WEIGHTS_SHA256}")
+        versions = {"paddleocr": PADDLEOCR_VERSION, "paddlepaddle": PADDLEPADDLE_VERSION, "vietocr": VIETOCR_VERSION,
+                    "detector": DET_MODEL, "mkldnn": False, **meta}
+        lock = threading.Lock()  # one image at a time: the predictors are not thread-safe
+        api = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+        @api.get("/health")
+        def health() -> dict:
+            return {"status": "ok", "engine": "A"}
+
+        @api.post("/v1/ocr")
+        def read(payload: dict) -> dict:
+            started = time.perf_counter()
+            try:
+                data = base64.b64decode(payload["image_b64"])
+                rgb = np.array(Image.open(io.BytesIO(data)).convert("RGB"))
+            except Exception as exc:  # client error, reported as 400
+                raise HTTPException(400, f"not a decodable image: {type(exc).__name__}") from exc
+            with lock:
+                polys = list(detector.predict(rgb)[0]["dt_polys"])
+                crops = [_crop(rgb, Box.from_polygon("x", p)) for p in polys]
+                texts = vietocr.predict_batch(crops) if crops else []
+            boxes = [Box.from_polygon(t, p) for t, p in zip(texts, polys)]
+            try:
+                text = strip_vietnamese_marks(boxes_to_text(boxes))  # unaccented: the marks are often wrong
+            except OcrError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            return {"text": text, "boxes": len(boxes), "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+                    "engine": "A", "versions": versions}
+
+        self.server = uvicorn.Server(uvicorn.Config(api, host="0.0.0.0", port=SERVER_PORT, log_level="warning"))
+        threading.Thread(target=self.server.run, daemon=True).start()
+
+    @modal.exit()
+    def stop(self) -> None:
+        self.server.should_exit = True

@@ -9,11 +9,16 @@ from fastapi.testclient import TestClient
 from src.api.compare import compare_fields
 from src.api.grounding import grounding_report
 from src.api.jobs import NODE1_MAX_TOKENS, node1_system_prompt
+from src.api.llm import LLMError
+from src.pipeline.ocr import OcrError
+from src.pipeline.text_normalize import has_vietnamese_marks
 from tests.api_fakes import (
     EXAMPLE,
     HEADERS,
     OCR_TEXT,
+    OCR_TEXT_PLAIN,
     FakeCaller,
+    FakeOcrReader,
     FakeStore,
     build,
     jpeg_bytes,
@@ -42,7 +47,9 @@ def test_valid_upload_runs_to_done_and_stores_the_adaptive_extraction():
         job = finished_job(client, r.json()["job_id"])
     assert job["status"] == "done" and job["error"] is None
     result = job["result"]
-    assert result["ocr"]["text"] == OCR_TEXT and result["ocr"]["finish_reason"] == "stop"
+    assert result["ocr"]["text"] == OCR_TEXT_PLAIN and not has_vietnamese_marks(result["ocr"]["text"])
+    assert result["ocr"]["engine"] == "A" and result["ocr"]["marks_stripped"] is True
+    assert result["ocr"]["kind"] == "library" and "finish_reason" not in result["ocr"]
     assert result["stored_lane"] == "adaptive" and result["stored_from_fallback"] is False
     assert job["invoice_id"] == result["invoice_id"] == f"{job['job_id']}:{job['job_id']}"
     for lane in ("adaptive", "vanilla"):
@@ -53,7 +60,7 @@ def test_valid_upload_runs_to_done_and_stores_the_adaptive_extraction():
     assert result["grounding"]["ungrounded_fields"] == []
     payload, run = store.saved[0]
     assert run.lane == "adaptive" and run.prompt_version == "node1_extractor.v2"
-    assert payload["source"]["raw_text"] == OCR_TEXT
+    assert payload["source"]["raw_text"] == OCR_TEXT_PLAIN
     assert storage.uploads == {f"uploads/{job['job_id']}.jpg": storage.uploads[f"uploads/{job['job_id']}.jpg"]}
 
 
@@ -74,6 +81,25 @@ def test_node1_request_uses_prompt_v2_and_3072_tokens():
     assert request["messages"][0]["content"] == node1_system_prompt()
     package_prompt = (REPO_ROOT / "experiments/configs/w1_v2/system_prompt.md").read_text(encoding="utf-8")
     assert node1_system_prompt() == package_prompt.rstrip("\n")
+    ocr_part = request["messages"][1]["content"].split("OCR_TEXT:\n", 1)[1]
+    assert OCR_TEXT_PLAIN in ocr_part and not has_vietnamese_marks(ocr_part)
+
+
+def test_node1_input_matches_the_w1_v3_package_construction():
+    """Same text path as experiments/configs/w1_v3: strip marks, then build_chat_request normalises lines."""
+    import json
+
+    from src.api.jobs import node1_request_row
+    from src.pipeline.text_normalize import strip_vietnamese_marks
+
+    package = REPO_ROOT / "experiments/configs/w1_v3/node1_chat_requests.jsonl"
+    first = json.loads(package.read_text(encoding="utf-8").splitlines()[0])
+    raw = first["expected_source"]["raw_text"]
+    row = node1_request_row("up_x", "uploads/up_x.jpg", strip_vietnamese_marks(raw), first["request"]["model"])
+    assert row["request"]["messages"][0] == first["request"]["messages"][0]
+    assert row["expected_source"]["raw_text"] == raw
+    ocr_part = row["request"]["messages"][1]["content"].split("OCR_TEXT:\n", 1)[1]
+    assert ocr_part == first["request"]["messages"][1]["content"].split("OCR_TEXT:\n", 1)[1]
 
 
 def test_pdf_and_non_image_bytes_are_415_without_a_job():
@@ -91,15 +117,17 @@ def test_file_over_10_mb_is_413_without_a_job():
     assert store.jobs == {}
 
 
-def test_empty_or_truncated_ocr_fails_at_ocr_without_calling_node1():
-    for ocr in (FakeCaller("ocr", content="   "), FakeCaller("ocr", content=OCR_TEXT, finish_reason="length")):
+def test_no_text_or_ocr_down_fails_at_ocr_without_calling_node1():
+    cases = (FakeOcrReader(error=OcrError("no text detected")), FakeOcrReader("  \n "),
+             FakeOcrReader(error=LLMError("ocr: cannot reach https://ocr.test/v1/ocr: ConnectError")))
+    for ocr in cases:
         called = []
         lanes = lane_callers(adaptive=FakeCaller("adaptive", content=lambda r, called=called: called.append(1) or node1_answer(r)))
         app, store, _ = build(ocr=ocr, lanes=lanes)
         with TestClient(app) as client:
             job = finished_job(client, upload(client).json()["job_id"])
         assert job["status"] == "failed" and job["error"].startswith("ocr:")
-        assert called == [] and store.saved == []
+        assert called == [] and store.saved == [] and len(ocr.calls) == 1
 
 
 def test_source_binding_failure_on_every_lane_stores_nothing():

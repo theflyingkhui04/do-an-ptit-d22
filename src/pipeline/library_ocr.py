@@ -92,3 +92,18 @@ def coverage_found(coverage: dict[str, dict[str, int]]) -> int:
 def choose_engine(stripped_coverage: dict[str, dict[str, dict[str, int]]], median_latency_ms: dict[str, float]) -> str:
     """Pre-set rule: more label lines found after mark stripping wins; a tie goes to the faster engine."""
     return max(stripped_coverage, key=lambda e: (coverage_found(stripped_coverage[e]), -median_latency_ms[e]))
+
+
+# [M5-01 canonical flow] Long-running endpoint of the chosen engine (experiments/modal_ocr_lib.py).
+LIBRARY_OCR_APP = "ptit-ocr-lib"
+LIBRARY_OCR_SERVER = "ocr"
+CHOSEN_ENGINE = "A"  # experiments/results/m5_01_ocr_lib_choice.json, frozen 08/11/2026
+
+
+def library_ocr_url(environ) -> str:
+    """Base URL of the library OCR server; ``PTIT_LIBRARY_OCR_URL`` overrides the Modal address."""
+    override = environ.get("PTIT_LIBRARY_OCR_URL")
+    if override:
+        return override.rstrip("/")
+    workspace = environ.get("PTIT_MODAL_WORKSPACE") or "nguyenduonghb940"
+    return f"https://{workspace}--{LIBRARY_OCR_APP}-{LIBRARY_OCR_SERVER}.us-east.modal.direct"

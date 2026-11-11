@@ -1,4 +1,4 @@
-"""Upload job: image -> OCR -> Node 1 (lane map + vanilla comparison) -> demo database."""
+"""Upload job: image -> library OCR (marks stripped) -> Node 1 (lane map + vanilla comparison) -> demo database."""
 
 from __future__ import annotations
 
@@ -13,11 +13,13 @@ from typing import Any
 from src.api.compare import compare_fields, speedup
 from src.api.grounding import grounding_report
 from src.api.store import Store
-from src.pipeline import ocr
 from src.pipeline.extractor import Node1Extractor, Node1Success
 from src.pipeline.item_consistency import invoice_sum_consistent, line_consistent
-from src.pipeline.node1_request import build_chat_request
+from src.pipeline.library_ocr import CHOSEN_ENGINE
+from src.pipeline.node1_request import build_chat_request, normalize_text
+from src.pipeline.ocr import OcrError
 from src.pipeline.postgres.writer import RunInfo
+from src.pipeline.text_normalize import strip_vietnamese_marks
 from src.pipeline.w1_workload import W1_V2_PROMPT_VERSION, compose_node1_prompt_v2
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -50,13 +52,13 @@ class JobFailed(Exception):
 
 
 class InvoicePipeline:
-    def __init__(self, store: Store, *, ocr_caller: Callable[[], Any], lane_caller: Callable[[str], Any],
+    def __init__(self, store: Store, *, ocr_reader: Callable[[], Any], lane_caller: Callable[[str], Any],
                  lane_map: dict[str, str], storage: Any = None, gpu_label: str = "A10G",
                  on_service: Callable[[str, bool, str | None], None] | None = None,
                  redact: Callable[[str], str] = lambda s: s) -> None:
         self.store = store
         self.storage = storage
-        self.ocr_caller = ocr_caller
+        self.ocr_reader = ocr_reader
         self.lane_caller = lane_caller
         self.lane_map = lane_map
         self.gpu_label = gpu_label
@@ -84,23 +86,23 @@ class InvoicePipeline:
         result["storage_path"] = storage_path
 
         self.store.update_job(job_id, "ocr", result=result)
-        caller = self.ocr_caller()
+        reader = self.ocr_reader()
         started = time.perf_counter()
         try:
-            ocr_result = ocr.run_ocr(caller, data)
+            ocr_result = reader.read(data)
         except Exception as exc:
-            if not isinstance(exc, ocr.OcrError):  # transport failure: the OCR service itself is down
+            if not isinstance(exc, OcrError):  # transport failure: the OCR service itself is down
                 self._on_service("ocr", False, str(exc))
             raise JobFailed("ocr", self._redact(str(exc))) from exc
         self._on_service("ocr", True, None)
         result["timings_ms"]["ocr"] = (time.perf_counter() - started) * 1000
-        result["ocr"] = {"text": ocr_result.text, "finish_reason": ocr_result.finish_reason,
-                         "prompt_tokens": ocr_result.prompt_tokens, "completion_tokens": ocr_result.completion_tokens,
-                         "scale": ocr_result.image.scale, "original_size": list(ocr_result.image.original_size),
-                         "model": ocr.OCR_MODEL, "revision": ocr.OCR_REVISION,
-                         "prompt_version": ocr.OCR_PROMPT_VERSION}
-        if ocr_result.finish_reason != "stop":
-            raise JobFailed("ocr", f"OCR finish_reason={ocr_result.finish_reason} (text may be cut)")
+        # Same text path as the W1_v3 package: marks stripped (the library OCR gets them wrong), lines normalised.
+        text = normalize_text(strip_vietnamese_marks(ocr_result.text))
+        result["ocr"] = {"text": text, "kind": "library", "engine": ocr_result.engine or CHOSEN_ENGINE,
+                         "marks_stripped": True, "boxes": ocr_result.boxes, "latency_ms": ocr_result.latency_ms,
+                         "versions": ocr_result.versions}
+        if not text:
+            raise JobFailed("ocr", "no text detected")
 
         self.store.update_job(job_id, "node1", result=result)
         node1_lane = self.lane_map["node1"]
@@ -108,7 +110,7 @@ class InvoicePipeline:
         started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=len(lanes)) as pool:
             outcomes = dict(zip(lanes, pool.map(lambda lane: self._run_lane(job_id, storage_path,
-                                                                            ocr_result.text, lane), lanes)))
+                                                                            text, lane), lanes)))
         result["timings_ms"]["node1"] = (time.perf_counter() - started) * 1000
         result["lanes"] = {lane: outcome["report"] for lane, outcome in outcomes.items()}
         self._compare(outcomes, result)
@@ -124,7 +126,7 @@ class InvoicePipeline:
         result["stored_lane"] = stored_lane
         result["stored_from_fallback"] = stored_lane != node1_lane
         result["invoice"] = payload
-        result["grounding"] = grounding_report(payload, ocr_result.text)
+        result["grounding"] = grounding_report(payload, text)
         result["item_check"] = {"lines": [line_consistent(item) for item in payload.get("items") or []],
                                 "invoice_sum": invoice_sum_consistent(payload)}
 

@@ -5,7 +5,8 @@
 Required environment: DEMO_KEY, DEMO_FRONTEND_ORIGINS, DEMO_DATABASE_URL (demo_writer),
 DEMO_READER_DATABASE_URL (demo_reader), MODAL_PROXY_TOKEN_ID, MODAL_PROXY_TOKEN_SECRET.
 Optional: SUPABASE_URL + SUPABASE_SERVICE_KEY (images), DEMO_IMAGE_BUCKET, PTIT_APP_NAME
-(default ptit-vllm-demo here), PTIT_MODAL_WORKSPACE, PTIT_OCR_URL, DEMO_LANE_<STEP>, DEMO_GPU_LABEL.
+(default ptit-vllm-demo here), PTIT_MODAL_WORKSPACE, PTIT_LIBRARY_OCR_URL (library OCR server,
+Modal app ptit-ocr-lib by default), DEMO_LANE_<STEP>, DEMO_GPU_LABEL.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from fastapi import FastAPI
 
 from src.api.app import Deps, create_app
 from src.api.jobs import InvoicePipeline
+from src.api.library_ocr_client import LibraryOcrClient
 from src.api.llm import LaneCaller
 from src.api.security import RedactingJsonFormatter, redact
 from src.api.settings import Settings
@@ -27,7 +29,7 @@ from src.api.storage import SupabaseStorage
 from src.api.store import PostgresStore
 from src.api.warmup import WarmupManager
 from src.client.modal_client import LANE_MODELS, lane_base_url
-from src.pipeline import ocr
+from src.pipeline.library_ocr import library_ocr_url
 
 DEMO_APP_NAME = "ptit-vllm-demo"
 PING = {"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1, "temperature": 0}
@@ -39,6 +41,11 @@ def configure_logging(settings: Settings) -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(logging.INFO)
+
+
+def library_ocr_reader(environ: Mapping[str, str], token: str, http: httpx.Client) -> LibraryOcrClient:
+    """OCR of the canonical flow: the library server (engine A), never the vision-language model."""
+    return LibraryOcrClient(library_ocr_url(environ), token, client=http)
 
 
 def warm_lanes(settings: Settings) -> list[str]:
@@ -66,17 +73,17 @@ def build_app(environ: Mapping[str, str] | None = None) -> FastAPI:
     http = httpx.Client(timeout=httpx.Timeout(600.0, connect=30.0))
     token = settings.modal_token
 
-    def ocr_caller() -> LaneCaller:
-        return LaneCaller("ocr", ocr.ocr_endpoint_url(environ), token, ocr.OCR_MODEL, client=http)
+    def ocr_reader() -> LibraryOcrClient:
+        return library_ocr_reader(environ, token, http)
 
     def lane_caller(lane: str) -> LaneCaller:
         return LaneCaller(lane, lane_base_url(lane), token, LANE_MODELS[lane], client=http)
 
-    probes = {"database": store.ping, "ocr": lambda: ocr_caller().chat_completions(PING)}
+    probes = {"database": store.ping, "ocr": lambda: ocr_reader().health()}
     for lane in warm_lanes(settings):
         probes[lane] = lambda lane=lane: lane_caller(lane).chat_completions(PING)
     warmup = WarmupManager(probes, redact=scrub)
-    pipeline = InvoicePipeline(store, ocr_caller=ocr_caller, lane_caller=lane_caller, lane_map=settings.lane_map,
+    pipeline = InvoicePipeline(store, ocr_reader=ocr_reader, lane_caller=lane_caller, lane_map=settings.lane_map,
                                storage=storage, gpu_label=settings.gpu_label, on_service=warmup.mark,
                                redact=scrub)
     questions = None
