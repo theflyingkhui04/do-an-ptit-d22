@@ -1025,3 +1025,219 @@ review live observer evidence
 ```
 
 Không implement policy trước khi measured cost contract được duyệt.
+
+---
+
+# 25. Item 8 async lineage + canonical linear cleanup (2026-11-11)
+
+## Baseline and read-only audit
+
+- Refreshed `origin/develop`: `53b813a0b6ce8fef530c4286fbd8bf4da5b4a149` (PR #36 merge).
+- Original worktree branch: `feat/m4-02-04-scheduler-telemetry-v02`, HEAD
+  `b6ef6fa9aa9b6e41eb792eb5968703f751a72576`; no tracked modifications.
+- Existing untracked evidence directories were preserved untouched:
+  `20261111-checkpoint-preparation/`, `20261111T115100Z-colab-observer-package/`,
+  `20261111T120000Z-colab-observer-package/` under `experiments/runs/m4_02_04/`.
+- Git initially rejected sandbox ownership; a command-scoped safe.directory
+  exception was used. Fetch and local ref/index writes required elevated access
+  because worktree Git metadata lives in the parent checkout. No global Git
+  configuration was changed.
+- Audited source/tests/worklog matched the original checkout's tracked bytes;
+  `git diff HEAD origin/develop -- src tests ...` was empty. Repository-wide
+  lineage/tree searches found 291 matching tracked paths. No AGENTS.md found.
+- **Pre-edit classification: PARTIAL.** Scheduler/planner already stamp plan
+  and schedule sequences, but `make_spec_decoding_stats` forwarded only request
+  ID/counts; planner source IDs were null. The delayed-feedback test protected
+  null attribution while still mutating request state. It did not join a draft
+  producer to the execution actually consuming its rows.
+- New branch `feat/m4-02-04-async-lineage-v02` was created from the exact audited
+  remote SHA. Immediately before edits, branch HEAD and origin/develop both
+  equaled `53b813a0b6ce8fef530c4286fbd8bf4da5b4a149`.
+- Local `develop` remained `9bc0f8d86e7a1f620a4f8cdaee79230b3bc41b14`.
+  No develop edit/commit/merge, reset, rebase, clean, force update, PR or Trello write.
+
+## Pinned authority and implementation
+
+**IMPLEMENTED / source-contract VERIFIED**, implementation commit
+`5563e16eebacf35e0b0ced9866919b8656a87d42`.
+
+Authority: vLLM **0.30.0**, V1, UniProc, one worker, async padded `draft_model`.
+Inspected the committed captured scheduler at
+`experiments/runs/m2_03/boundary279_20261018T132244Z_15f4dae9/vllm-originals/v1/core/sched/scheduler.py`,
+and the local installed-source capture at
+`experiments/runs/m4_02_04/20261110-async-lineage-design/installed/vllm/`.
+All 15 captured files in `experiments/scalar_vllm_source_manifest.json` matched
+their preserved SHA-256 values. No installed vLLM package is available in the
+local Python environment. Captures remain unchanged evidence, not runtime code.
+
+The same SchedulerOutput proposes NEW drafts while verifying OLD drafts. The
+implementation therefore does not label old feedback with that output's new K:
+
+1. `LineageLedger.register` stores detached frozen producer plan/schedule/K
+   records and request incarnations for each exact output object.
+2. `LineageUniProcExecutor` gates version, source bytes, single-worker config,
+   async padded draft_model, and exact V1 GPUModelRunner class. It observes the
+   existing `_copy_draft_token_ids_to_cpu` call after real proposal, distinguishes
+   synthetic zeros, and stamps every buffer generation even on tensor reuse.
+3. Immediately after inline execute_model, before sample_tokens overwrites old
+   fields, it freezes actual `prev_positions` row/prefix bindings to the prior
+   generation. Buffer witness, previous width, row identity and prefix bounds
+   must agree. CPU-only/no-buffer/unobserved paths remain unattributed.
+4. `update_from_output(S, O)` scopes feedback to S's frozen consumed origins;
+   source IDs identify the producer of those drafts, not S's new proposal.
+   Model output row, request object/incarnation, counts and stale state are checked.
+5. Each binding is consumed once. Missing/corrupt/stale/duplicate provenance
+   emits a warning plus `verification_feedback_skipped`; it never calls the
+   adaptive updater. Upstream statistics are forwarded unchanged. Invalid
+   tokens retain upstream D=N-I accounting and accepted count A unchanged.
+6. Retirement finally blocks release output records even without callbacks;
+   request completion purges its origins without affecting other rows. Future
+   errors/cancellation and shutdown clear the ledger. Config identity isolates
+   engine instances; shutdown deregisters the process-local rendezvous.
+
+No worker/result/SchedulerOutput shared schema, upstream fixture, algorithm,
+tree estimator, CUDA tensor values or GPU kernel was changed. No added tensor
+readback or CUDA synchronization. Legacy direct planner simulations can still
+supply synchronous counts; production scheduler feedback requires provenance.
+
+## Tree preservation and canonical serving
+
+- **VERIFIED preservation:** new local `future/tree-adaptive-v02` at
+  `53b813a0b6ce8fef530c4286fbd8bf4da5b4a149`, created before cleanup. This contains
+  all audited tree source/history. No existing future-work branch was overwritten.
+  It includes the tree controller tip `a2510f2` through develop's merge history.
+  Preservation was **NOT PUSHED**.
+- **VERIFIED canonical path:** local launcher / Modal adaptive lane ->
+  AdaptiveAsyncScheduler + LineageUniProcExecutor -> AdaptiveBudgetPlanner ->
+  AdaptiveProposerAdapter -> AdaptiveDraftController -> per-request scalar K_i,
+  shared scalar K=max(K_i) -> upstream linear draft_model proposer -> exact
+  output retirement -> provenance-validated scalar acceptance update.
+- Removed unused eager TreeAdaptive imports from adapter and planner's catalog
+  reconstruction. Package tree exports are lazy for explicit future users.
+  `selected_topology` remains present (null for canonical scalar decisions).
+  Explicit injected future-tree decision names/counts retain unknown/null
+  structure; parent arrays are not reconstructed by canonical telemetry.
+  `tree_execution_verified` remains false.
+- Dormant tree controllers/catalog/tests remain because explicit future-work
+  imports and existing consumers can continue to inspect them. Canonical
+  serving neither selects these controllers nor builds parent arrays, ancestor
+  masks, tree position IDs or accepted-tree paths. Keeping dormant source and
+  lazy compatibility exports avoids deleting another owner's future work.
+- Modal serving now mounts committed experiment source (excluding run/result/
+  notebook evidence) for the source manifest and existing scheduler observer
+  imports. Launcher/config tests verify custom executor wiring. CLI/README
+  TreeAdaptive marketing text remains historical/non-evidence; CLI inspected
+  here is a configuration wizard, not this scheduler's execution path.
+
+## Test matrix and execution ledger
+
+Environment for all tests: Windows PowerShell, CPython 3.11.0, local CPU pytest;
+torch CPU tensors where noted. No installed vLLM engine, remote requests,
+profitability benchmark or GPU smoke. Test-local Git remotes in existing
+scalar Git tests are temporary fixtures, not a project branch push.
+
+| Requirement | Result and evidence in test_adaptive_scheduler_glue.py |
+| --- | --- |
+| T1 single source/feedback | VERIFIED: feedback_reaches_controller_and_super; exact producer IDs in delayed-feedback test |
+| T2 multiple in flight | VERIFIED: multiple_inflight_changing_k_exact_producer |
+| T3 normal retirement | VERIFIED: FIFO parameter, interleaved source sequences 1/2 |
+| T4 delayed identity stress | VERIFIED at L1/L2: reverse parameter is synthetic ledger stress, NOT true out-of-order pinned runtime (EngineCore FIFO) |
+| T5 interleaved requests | VERIFIED: interleaved_requests_and_reordered_rows; a/b counts and sources isolated |
+| T6 K=2 -> K=4 | VERIFIED: old verifier retains source K=2 after K=4 plan/proposal exists |
+| T7 K=0 | VERIFIED: positive old feedback during new K=0; 30 empty-feedback retirements leave no output orphan |
+| T8 invalid/trimmed | VERIFIED: captured upstream grammar trimming/padding, D=N-I, exact prior source |
+| T9 completion/reuse | VERIFIED: completed request cannot update reused ID/controller; other request unaffected; shutdown clears |
+| T10 missing/corrupt | VERIFIED: missing/count/incarnation/request/stale/accepted corruption; duplicate callbacks/retirement; no adaptive mutation, upstream stats preserved, observable warning/event |
+
+Additional source-contract tests execute unchanged captured `_compute_prev_positions`
+and `_prepare_input_ids` on CPU tensors (reorder/compaction/prefix identity), and
+unchanged UniProc `collective_rpc` / AsyncOutputFuture (inline worker invocation,
+deferred host materialization). Production executor wrapper tests simulate the
+worker and cover deferred grammar sampling, same-buffer generations, synthetic
+zeros, future error cleanup, registry shutdown and unsupported version/worker gates.
+These are NOT real-runtime integration verification. Four capture-dependent tests
+can skip on another machine without the optional local installed-source cache;
+they ran in the final local checks.
+
+Canonical cleanup C1-C8: VERIFIED at source/unit level. A fresh-process import
+blocker rejects tree module/catalog imports while scalar {2,4,0}, batch K=4 and
+null topology/false tree-execution telemetry remain intact. Existing scalar,
+observer, scheduler, adapter and dormant-tree functional regressions passed.
+Preservation ref/SHA recorded above. Real serving remains IMPLEMENTED BUT UNVERIFIED.
+
+Commands below use these exact groups:
+
+```text
+TARGET = python -m pytest -q tests/test_adaptive_scheduler_glue.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py
+GLUE = python -m pytest -q tests/test_adaptive_scheduler_glue.py
+BROAD = python -m pytest -q tests/test_adaptive_scheduler_glue.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py tests/test_budget_controller.py tests/test_budget_fallback_recovery.py tests/test_proposer_adapter.py tests/test_tree_adaptive_controller.py tests/test_tree_topology.py tests/test_cost_model_l4.py tests/test_cost_model_solver.py tests/test_modal_runner_config.py tests/test_modal_smoke.py tests/test_scalar_context.py tests/test_scalar_colab_smoke.py tests/test_scalar_colab_git.py tests/test_scalar_cost_capture.py tests/test_scalar_cost_evidence.py
+FUNCTIONAL = BROAD with tests/test_modal_smoke.py omitted and -k "not test_decision_latency_benchmark and not test_cache_alpha_star_performance"
+FINAL = TARGET plus tests/test_modal_runner_config.py
+```
+
+| Run | Command | Exit | Passed | Failed | Skipped | Deselected | Interpretation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | TARGET | 1 | 61 | 5 | 0 | 0 | Legacy direct callback tests correctly fail closed without execution context |
+| 2 | TARGET | 0 | 66 | 0 | 0 | 0 | Legacy tests now use retirement contexts |
+| 3 | TARGET | 0 | 79 | 0 | 0 | 0 | Added T1-T10 stress coverage |
+| 4 | GLUE | 0 | 41 | 0 | 2 | 0 | Wrong cache path caused temporary skips; corrected |
+| 5 | TARGET | 1 | 82 | 1 | 0 | 0 | CPU fixture sampled-token dtype int64 vs upstream int32; corrected |
+| 6 | TARGET | 0 | 83 | 0 | 0 | 0 | Installed-source checks and executor wrapper stable before tree cleanup |
+| 7 | TARGET | 0 | 84 | 0 | 0 | 0 | Canonical import isolation added |
+| 8 | BROAD | 1 | 385 | 8 | 0 | 0 | Six inherited workload-byte failures + two unchanged timing assertions; details below |
+| 9 | FUNCTIONAL | 0 | 376 | 0 | 0 | 2 | Timing checks explicitly excluded; no test thresholds changed |
+| 10 | TARGET | 0 | 85 | 0 | 0 | 0 | Added actual captured inline-RPC contract |
+| 11 | TARGET | 0 | 85 | 0 | 0 | 0 | Explicit same-buffer birth stamp assertion |
+| 12 | FINAL | 0 | 136 | 0 | 0 | 0 | Final production packaging and backend configuration included |
+
+Broad failures retained:
+
+- `test_tree_adaptive_controller.py::test_decision_latency_benchmark`: measured
+  0.064274 ms against <0.05 ms; tree implementation unchanged.
+- `test_cost_model_solver.py::test_cache_alpha_star_performance`: measured
+  0.010800 ms against <0.01 ms; cost model unchanged. No performance pass claimed.
+- Six `test_modal_smoke.py` cases: frozen W1 SHA mismatch. Baseline Git blob
+  SHA-256 is `0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360`
+  (the manifest value), whereas existing CRLF checkout bytes hash to
+  `19808e79c743443bf9c8b989b797becc23c9f0483282b93e2c967f416b493386`.
+  Read-only comparison proved `worktree.replace(CRLF, LF) == baseline_blob`;
+  Git core.autocrlf is true. Frozen workloads/manifests were not modified.
+
+## Changed files, claim ceiling and remaining work
+
+- `src/server/lineage.py`: immutable origins, identity ledger, request lifecycle.
+- `src/server/lineage_executor.py`: pinned UniProc observation/source/config gates.
+- `src/server/adaptive_scheduler.py`: exact retirement scope, validation, fail-safe.
+- `src/server/budget_planner.py`: source-aware telemetry; no tree catalog import.
+- `src/proposer/adapter.py`, `src/proposer/__init__.py`: remove eager tree dependency,
+  retain explicit lazy compatibility exports.
+- `scripts/launch_lane3_adaptive.sh`, `experiments/modal_lanes.py`: executor wiring.
+- `experiments/modal_runner.py`: serving runtime source/manifest packaging.
+- `tests/test_adaptive_scheduler_glue.py`, `tests/test_budget_planner.py`,
+  `tests/test_modal_runner_config.py`: lineage, canonical isolation and launch checks.
+- This worklog: audit, preservation, failures/skips, commands and claim ceiling.
+
+**Claim ceiling:** async feedback lineage is IMPLEMENTED and source-contract
+tested within pinned V1 / UniProc / single-worker padded draft_model assumptions.
+Real pinned-runtime integration is **IMPLEMENTED BUT UNVERIFIED**. Strict source
+hash gates intentionally reject other installations. Old launchers using the
+scheduler without the lineage executor retain upstream stats but skip adaptive
+feedback with observable missing-lineage warnings; they must use the paired backend.
+Private vLLM hooks and deployment startup still require real-runtime validation.
+
+Historical L4 scalar/observer evidence is unchanged and does not verify this
+new lineage mechanism. Distributed/multiworker lineage and arbitrary-tree
+execution are OUT OF SCOPE; profitability/hardware-derived policy NOT EVALUATED.
+No expensive GPU rerun was performed merely for cleanup. Full suite is not green:
+the eight broad failures above remain unresolved outside this implementation.
+
+Self-review checked latest-plan attribution, duplicate/missing/stale lineage,
+request reuse, no-callback/K=0 cleanup, invalid-token counts, source gates,
+scalar behavior, dormant-tree reachability and unsupported claims. `git diff
+--check` and staged diff checks passed. Only exact task paths were staged;
+original untracked evidence remains untouched. Implementation is committed on
+the new feature branch; nothing pushed or merged. Worklog evidence follows in
+a separate local commit.
+
+Next action: review the local feature diff before authorizing pinned-runtime
+integration validation.
