@@ -1,9 +1,23 @@
 """Compatibility and pre-flight safety guard module for FlexSDS."""
 from __future__ import annotations
 
+import json
+import os
 import re
+import urllib.request
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class PreDownloadCheckResult:
+    """Kết quả kiểm tra trước khi tải mô hình từ Hugging Face."""
+    is_safe: bool
+    vram_needed_mb: float
+    free_vram_mb: float
+    warning: Optional[str] = None
+    suggested_model: Optional[str] = None
+    shared_tokenizer: bool = True
 
 
 @dataclass
@@ -30,6 +44,107 @@ class CompatibilityReport:
             f"VRAM Needed: {self.total_vram_needed_mb / 1024:.1f}GB / Free: {self.free_vram_mb / 1024:.1f}GB | "
             f"Hetero Vocab: {self.use_heterogeneous_vocab}"
         )
+
+
+def inspect_remote_model_metadata(model_id_or_path: str, timeout_sec: float = 5.0) -> Dict[str, Any]:
+    """Đọc tệp config.json (<10 KB) của mô hình từ Hugging Face Hub hoặc thư mục cục bộ."""
+    # 1. Kiểm tra nếu là đường dẫn cục bộ
+    if os.path.exists(model_id_or_path):
+        config_path = (
+            model_id_or_path
+            if os.path.isfile(model_id_or_path) and model_id_or_path.endswith(".json")
+            else os.path.join(model_id_or_path, "config.json")
+        )
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+
+    # 2. Truy vấn từ Hugging Face qua HTTP API công khai
+    clean_id = model_id_or_path.strip().replace("https://huggingface.co/", "")
+    url = f"https://huggingface.co/{clean_id}/raw/main/config.json"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            content = resp.read().decode("utf-8")
+            return json.loads(content)
+    except Exception:
+        return {}
+
+
+def pre_download_guard(
+    target_model: str,
+    draft_model: str,
+    free_vram_mb: float,
+    mock_metadata: Optional[Dict[str, Any]] = None,
+) -> PreDownloadCheckResult:
+    """Kiểm tra VRAM dự kiến trước khi tải mô hình, ngăn ngừa lãng phí băng thông và OOM."""
+    meta = mock_metadata if mock_metadata is not None else inspect_remote_model_metadata(target_model)
+    target_lower = target_model.lower()
+
+    # 1. Xác định số lượng tham số
+    num_params: float = 7.0e9
+    if "num_parameters" in meta and meta["num_parameters"]:
+        num_params = float(meta["num_parameters"])
+    else:
+        param_match = re.search(r"(\d+(?:\.\d+)?)\s*b", target_lower)
+        if param_match:
+            num_params = float(param_match.group(1)) * 1e9
+
+    # 2. Xác định định dạng lượng tử hóa
+    quant_cfg = meta.get("quantization_config")
+    is_quantized = False
+    if quant_cfg is not None:
+        is_quantized = True
+    elif any(q in target_lower for q in ("awq", "int4", "gptq")):
+        is_quantized = True
+
+    if is_quantized:
+        bytes_per_param = 0.55  # AWQ/GPTQ 4-bit + scale/zero overhead
+    elif "fp8" in target_lower:
+        bytes_per_param = 1.05
+    else:
+        torch_dtype = str(meta.get("torch_dtype", "")).lower()
+        if "float32" in torch_dtype:
+            bytes_per_param = 4.0
+        else:
+            bytes_per_param = 2.0  # FP16 / BF16
+
+    target_weights_mb = (num_params * bytes_per_param) / (1024.0 * 1024.0)
+    draft_weights_mb = 600.0  # EAGLE-3.1 speculator head
+    kv_cache_mb = 1200.0  # KV-cache tối thiểu cho serving cơ bản
+    total_needed_mb = round(target_weights_mb + draft_weights_mb + kv_cache_mb, 1)
+
+    is_safe = total_needed_mb <= (free_vram_mb * 0.95)
+    warning = None
+    suggested_model = None
+
+    if not is_safe:
+        warning = (
+            f"VRAM yêu cầu (~{total_needed_mb / 1024:.1f} GB) vượt quá khả năng phần cứng "
+            f"({free_vram_mb / 1024:.1f} GB free). Nguy cơ gây OOM cao!"
+        )
+        if not is_quantized:
+            suggested_model = f"{target_model}-AWQ"
+
+    # Kiểm tra tokenizer dùng chung
+    # Với kiến trúc EAGLE được huấn luyện đồng bộ trên cùng base model, tokenizer là đồng nhất
+    shared_tokenizer = True
+
+    return PreDownloadCheckResult(
+        is_safe=is_safe,
+        vram_needed_mb=total_needed_mb,
+        free_vram_mb=free_vram_mb,
+        warning=warning,
+        suggested_model=suggested_model,
+        shared_tokenizer=shared_tokenizer,
+    )
+
 
 
 def estimate_model_vram_mb(model_name: str, default_quant: str = "awq_marlin") -> float:

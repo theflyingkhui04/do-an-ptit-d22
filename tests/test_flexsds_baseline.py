@@ -116,3 +116,15 @@ def test_tree_adaptive_controller_budget_selection():
     decision_low = controller.select_budget(batch_size=1, free_vram_mb=20000.0)
     assert decision_low.k == 0
     assert "fallback" in decision_low.reason.lower()
+
+
+def test_flexsds_core_tree_adaptive_controller_vendored():
+    from flexsds.core.controller import TreeAdaptiveController, TreeAdaptiveDecision
+    ctrl = TreeAdaptiveController(min_free_vram_mb=1500.0)
+    decision = ctrl.select_budget(batch_size=1, free_vram_mb=8000.0, kv_cache_usage_pct=20.0)
+    assert isinstance(decision, TreeAdaptiveDecision)
+    assert hasattr(decision, "topology_name")
+    assert hasattr(decision, "alpha_effective")
+    assert hasattr(decision, "speedup")
+    assert decision.status in ("ok", "memory_guard", "concurrency_throttled", "fallback_gate", "probing", "zero_crash_fallback")
+
