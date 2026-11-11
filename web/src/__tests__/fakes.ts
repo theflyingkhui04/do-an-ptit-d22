@@ -55,7 +55,7 @@ export function doneJob(extra: Partial<Job["result"]> = {}): Job {
     invoice_id: "up_0123456789ab:up_0123456789ab",
     result: {
       gpu: "A10G",
-      ocr: { text: "MINIMART ANAN\nTổng tiền\n42,000", finish_reason: "stop" },
+      ocr: { text: "MINIMART ANAN\nTong tien\n42,000", kind: "library", engine: "A", marks_stripped: true },
       lanes: { vanilla: lane("vanilla"), adaptive: lane("adaptive") },
       stored_lane: "adaptive",
       stored_from_fallback: false,

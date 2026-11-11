@@ -38,6 +38,7 @@ describe("demo key gate", () => {
     await user.click(screen.getByRole("button", { name: "Vào demo" }));
     expect(await screen.findByRole("tab", { name: "Trích xuất hoá đơn" })).toBeInTheDocument();
     expect(window.sessionStorage.getItem("ptit-demo-key")).toBe("good-key-123");
+    expect(screen.getByTestId("marks-note")).toHaveTextContent("Văn bản đã bỏ dấu để tránh sai dấu");
   });
 
   it("returns to the key prompt when the API answers 401", async () => {
@@ -64,6 +65,7 @@ describe("upload flow", () => {
     expect(api.upload).toHaveBeenCalledWith(expect.any(File), false);
     expect(job).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("ocr-text")).toHaveTextContent("MINIMART ANAN");
+    expect(screen.getByText(/Văn bản OCR/)).toHaveTextContent("đã bỏ dấu");
     expect(screen.getAllByText("MINIMART ANAN").length).toBeGreaterThan(0);
     expect(within(screen.getByRole("table", { name: "Bảng mặt hàng" })).getByText("Sữa tươi")).toBeInTheDocument();
     const adaptive = screen.getByTestId("lane-adaptive");
@@ -102,13 +104,13 @@ describe("upload flow", () => {
       status: "failed",
       invoice_id: null,
       error: "node1: adaptive: SOURCE_BINDING_ERROR at SOURCE_BINDING: mismatch",
-      result: { ocr: { text: "CỬA HÀNG NAM OÁNH", finish_reason: "stop" } },
+      result: { ocr: { text: "CUA HANG NAM OANH", kind: "library", engine: "A", marks_stripped: true } },
     };
     render(<UploadPanel api={fakeApi({ job: vi.fn(async () => failed) })} pollMs={0} />);
     await chooseAndSubmit();
     expect(await screen.findByText(/SOURCE_BINDING_ERROR/)).toBeInTheDocument();
     expect(screen.getByTestId("step-node1")).toHaveAttribute("data-state", "failed");
-    expect(screen.getByTestId("ocr-text")).toHaveTextContent("CỬA HÀNG NAM OÁNH");
+    expect(screen.getByTestId("ocr-text")).toHaveTextContent("CUA HANG NAM OANH");
   });
 
   it("shows a slower lane's speed-up as it is", async () => {

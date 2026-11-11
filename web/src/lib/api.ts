@@ -64,7 +64,8 @@ export interface LaneReport {
 
 export interface JobResult {
   gpu?: string;
-  ocr?: { text: string; finish_reason: string | null; completion_tokens?: number | null };
+  // Library OCR (canonical flow): text without Vietnamese marks.
+  ocr?: { text: string; kind?: string; engine?: string; marks_stripped?: boolean; latency_ms?: number };
   lanes?: Record<string, LaneReport>;
   stored_lane?: string;
   stored_from_fallback?: boolean;

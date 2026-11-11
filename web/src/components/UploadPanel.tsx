@@ -159,7 +159,9 @@ export default function UploadPanel({ api, pollMs = 1000, onStored }: Props) {
         )}
         {result?.ocr && (
           <details className="rounded-lg border border-slate-200 bg-white p-4" open={job?.status === "failed"}>
-            <summary className="cursor-pointer text-sm font-semibold text-slate-900">Văn bản OCR</summary>
+            <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+              Văn bản OCR{result.ocr.marks_stripped ? " · đã bỏ dấu" : ""}
+            </summary>
             <pre data-testid="ocr-text" className="mt-2 whitespace-pre-wrap text-xs text-slate-700">
               {result.ocr.text}
             </pre>

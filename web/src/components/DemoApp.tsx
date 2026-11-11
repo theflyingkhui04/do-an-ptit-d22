@@ -70,6 +70,9 @@ export default function DemoApp({ makeApi, pollMs }: Props) {
             <p className="text-xs text-slate-500">
               OCR → Node 1 trích xuất → DB → hỏi dữ liệu · speculative decoding (vanilla / static / adaptive / eagle)
             </p>
+            <p data-testid="marks-note" className="text-xs text-slate-500">
+              Văn bản đã bỏ dấu để tránh sai dấu (OCR thư viện); câu hỏi gõ có dấu hay không dấu đều được.
+            </p>
           </div>
           <StatusBar api={api} />
         </div>
