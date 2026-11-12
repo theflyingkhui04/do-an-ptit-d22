@@ -1,0 +1,19 @@
+{
+  "flexsds_version": "0.2.0-alpha",
+  "action": "serve",
+  "backend": "modal",
+  "target_model": "dhfdj",
+  "draft_model": "djmhgjdmg",
+  "draft_method": "draft_model",
+  "use_heterogeneous_vocab": false,
+  "enable_adaptive": false,
+  "profile_applied": "profile_sm89_l4.json",
+  "target_gpu": "L4",
+  "colab_tunnel_url": "",
+  "modal_deploy": false,
+  "hardware": {
+    "device_name": "CPU",
+    "sm_architecture": "cpu",
+    "free_vram_mb": 2297.9
+  }
+}
