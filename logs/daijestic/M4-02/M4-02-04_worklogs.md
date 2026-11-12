@@ -1397,7 +1397,9 @@ of the F1 startup-pairing fix before real pinned-runtime integration validation.
 
 # 27. R1/R2 startup-generation ownership correction (2026-11-12)
 
-**R1 BLOCKER: RESOLVED at CPU/source-contract level.**
+**Historical R1 BLOCKER verdict: RESOLVED at CPU/source-contract level for
+already-consumed readiness only; superseded by the failed-startup F1 review
+and startup-attempt correction in section 28.**
 **R2 MAJOR: RESOLVED at CPU/source-contract level.**
 Implementation commit: `8912950` (local feature branch).
 Independent technical review remains the next gate. The earlier F1 implementation
@@ -1470,7 +1472,7 @@ No installed engine, external latest-upstream assumptions, or GPU were used.
   scheduler/speculative config modules are captured). No uniqueness guarantee
   from VllmConfig internals is needed or claimed.
 
-## Current corrected ownership model
+## Generation ownership model at this checkpoint
 
 `register_lineage_executor(config, executor)` now allocates a fresh ledger and
 returns an immutable, identity-based `LineageRegistration` with an opaque token,
@@ -1574,7 +1576,7 @@ Changed files: `src/server/lineage.py`, `src/server/lineage_executor.py`,
 this worklog. Shell/Modal launch wiring, historical Colab source handling,
 TreeAdaptive, topology, scalar policy, cost model and benchmark protocol unchanged.
 
-**Maximum claim:** Adaptive async lineage startup pairing, engine-generation
+**Historical maximum claim (reduced by the F1 review below):** Adaptive async lineage startup pairing, engine-generation
 ownership, and owner-specific revocation are source-contract tested for the
 pinned V1 / UniProc / single-worker assumptions.
 
@@ -1585,3 +1587,206 @@ only; three untracked evidence directories preserved; no push, merge, PR, Trello
 mutation, GPU, live Colab or Modal execution.
 
 Next action: independent technical review of the corrected ownership handshake.
+
+---
+
+# 28. F1 failed-startup ownership correction (2026-11-12)
+
+**F1 BLOCKER: RESOLVED at CPU/source-contract level; independent review pending.**
+Implementation commit: `9fb6685eee1e3db4d8cb1be6e5f8e6c48b085be8`
+(`fix(m4-02-04): bind lineage readiness to engine startup attempt`).
+Real pinned-vLLM runtime integration remains UNVERIFIED. The second independent
+review found that the generation fix protected consumption/revocation but did
+not establish complete startup-attempt ownership. Section 27's R1 resolution
+was too broad. Historical sequence is preserved: initial pairing fix -> R1/R2
+ownership review -> generation fix -> failed-startup F1 review -> this fix.
+
+## Verified baseline and reproduction BEFORE editing
+
+- Retained branch `feat/m4-02-04-async-lineage-v02`.
+- Pre-fix HEAD `d9cb8ea6c1dd10405f6f6d1e3c7107f6ebc128f9`.
+- Base `origin/develop`: `53b813a0b6ce8fef530c4286fbd8bf4da5b4a149`.
+- Clean tracked state and exactly the original three untracked evidence dirs.
+- Command-scoped safe.directory only; no global Git configuration changes.
+
+Reproduced against that HEAD using production lineage/executor/scheduler code,
+CPU upstream worker/base stubs, and the unchanged captured EngineCore constructor
+prefix through scheduler construction. Captured EngineCore, core client,
+LLMEngine, AsyncLLM and Executor bytes were independently SHA-256 verified against
+`20261110-async-lineage-design/installed_source_manifest.json`.
+
+```text
+A: lineage executor publishes; injected KV setup failure before scheduler
+   GA token id:   1826647988416
+   GA consumed:   False
+   GA owner live: True (exception traceback retained)
+   GA ledger id:  1826694311824
+B: exact same config, same thread, plain executor
+   scheduler result: ACCEPTED (incorrect)
+   bound ledger id: 1826694311824
+   B ledger is failed A ledger: True
+```
+
+Config identity + Thread object identity + executor liveness + unconsumed state
+did not identify an EngineCore invocation. Weakrefs cannot revoke an executor
+retained by an exception traceback. Existing E2 tested only consumed GA and
+therefore missed this gap. No forced GC was needed to reproduce it.
+
+## Pinned lifecycle audit and integration choice
+
+Authority: captured/hash-verified vLLM **0.30.0**, V1/UniProc/single-worker/padded
+draft_model. No latest-main behavior was assumed or upstream fixture edited.
+
+The actual EngineCore constructor calls the executor at core.py:134, KV setup
+at :145, structured-output setup at :146, scheduler class resolution at :149,
+block-size resolution at :158-160 and scheduler construction at :162-170.
+Intervening failure boundaries include executor failure-callback registration,
+elastic setup when selected, KV-spec retrieval, memory profiling, cache-config
+generation/validation, worker cache initialization, compilation/warmup,
+structured-output setup, scheduler import/class resolution, empty-cache config
+adjustment/logging and block-size resolution. Executor.__init__ itself also
+performs assignments and set allocation after the overridden _init_executor.
+
+A cleanup list tied to selected errors would be incomplete. The chosen mechanism
+is a **project-owned wrapper around the complete EngineCore.__init__ call**.
+No vLLM package source file is modified. Importing LineageUniProcExecutor installs
+the wrapper idempotently; pinned LLMEngine/AsyncLLM resolve/import the executor
+with Executor.get_class before creating their engine/client. An AST/hash contract
+checks both factory routes and constructor ordering, not just line numbers.
+
+Installation checks vLLM version, the original constructor's source path, and
+EngineCore file SHA-256 against the existing scalar manifest. Unknown constructor
+wrappers/source fail closed. Publication outside an active boundary also fails
+closed; it never invents a startup lease. This deliberately uses a private pinned
+entrypoint. Its real-process import/bootstrap behavior still needs independent
+review followed by real pinned-runtime validation; these CPU tests do not prove it.
+
+## Attempt identity, orphan policy and synchronization
+
+- Every constructor invocation creates a frozen, identity-based StartupAttempt
+  with a fresh opaque token, exact config and Thread object. The attempt token
+  is distinct from the existing generation token and is not computed from IDs.
+- A ContextVar holds mutable attempt state for the constructor's dynamic extent.
+  Registration records that exact attempt. Publication requires its active
+  config/thread context and permits one publication per attempt.
+- Scheduler consumption requires the **identical active attempt**, in addition
+  to the existing live-owner, exact-ledger, thread and exclusive-consumption checks.
+- The wrapper gives plain and nested constructors their own contexts too. Plain
+  B cannot inherit outer A's live/unconsumed readiness. Normal non-adaptive
+  construction does not require or publish registry state.
+- On any constructor exception, including BaseException, finally marks that
+  attempt inactive and revokes/clears only its own generation. Successful exit
+  without consumption also revokes an orphan. Successful consumed generations
+  remain registered until generation-specific shutdown/release/GC.
+- Context reset is in a separate finally. Nested construction restores the outer
+  context; copied contexts share inactive state and cannot reactivate an exited
+  attempt. Failure before publication has no registration to revoke.
+- The registry RLock protects attempt-state transitions, publication, consumption,
+  failure cleanup, release and GC. Installation has a separate lock so source
+  reads do not hold the registry lock. EngineCore/worker runtime calls execute
+  outside that lock. Ledger mutation is not made generally thread-safe.
+- A failed A can remain strongly alive. Its orphan has already been revoked, so
+  valid lineage B using the same config can immediately publish a fresh attempt,
+  generation and ledger. No caller release or GC is required for recovery.
+- Existing handle/token identity checks remain authoritative for teardown. Old A
+  release, GC, or delayed attempt cleanup cannot remove B or clear B's ledger.
+
+## Regression evidence
+
+`tests/test_lineage_startup.py` uses production project wrappers, the actual
+captured Executor constructor, and the unchanged EngineCore constructor prefix
+through scheduler creation, with CPU dependencies. This is a source-contract
+fixture, NOT full EngineCore execution, an installed-engine smoke, or GPU proof.
+
+| Gate | Explicit regression | Result |
+| --- | --- | --- |
+| F1 | KV failure leaves GA unconsumed but deterministically revoked | PASS |
+| F2 | Later plain UniProc stand-in cannot consume failed A; rejection before base scheduler/readiness | PASS |
+| F3 | Retained exception/traceback keeps A live without authorizing B; no GC | PASS |
+| F4 | Valid B restart has fresh attempt/token, generation/token and ledger; exact owner binding | PASS |
+| F5 | A and B use the exact same config object | PASS |
+| F6 | A and B execute sequentially on the exact same Thread object | PASS |
+| F7 | Registry absent after A failure, B registered/consumed after recovery; context reset | PASS |
+| F8 | Old A shutdown, repeated release, deterministic old callback and real GC preserve B marker/registration | PASS |
+
+Additional focused cases cover failure before publication, immediately after
+publication inside pinned Executor.__init__, KV setup, structured setup, scheduler
+resolution, block-size setup, BaseException, and base scheduler failure after
+consumption. Within an active attempt, constructor failure does not roll back
+consumed state into reusable readiness. Whole EngineCore failure revokes that
+generation. Owner release remains harmless afterward.
+
+Also checked: live nested attempt mismatch without consuming A; nested plain
+EngineCore cannot inherit A; delayed outer failure cleanup cannot remove a nested
+replacement; copied-context expiry; idempotent/source-rejecting hook installation;
+ordinary non-adaptive paths with plain and lineage executors.
+
+E1-E8 remain PASS with all existing identity/marker/failure assertions retained;
+E6 still exercises old release/GC BEFORE B consumption. CPU fixtures now explicitly
+enter startup boundaries instead of registering readiness outside an engine
+attempt. P1-P7 and T1-T10 remain PASS. Canonical shell/Modal pairing and packaging,
+historical scalar Colab guard, execution provenance, tree code, policies, workload
+bytes/hashes and benchmark protocols were not changed.
+
+## Final CPU checks and self-review
+
+Commands use `python -B`, `PYTHONDONTWRITEBYTECODE=1` and
+`-p no:cacheprovider` to avoid repository bytecode/cache writes. No GPU workloads
+or installed-engine launches were run. Windows PowerShell / CPython 3.11 CPU.
+
+```text
+python -B -m pytest -p no:cacheprovider -q tests/test_lineage_startup.py --tb=short
+25 passed, 0 failed, 0 skipped, exit 0.
+
+python -B -m pytest -p no:cacheprovider -q tests/test_lineage_startup.py -k startup_f --tb=short
+14 passed, 0 failed, 0 skipped, 11 deselected, exit 0.
+(Eight named F1-F8 tests plus six parameterized failure-boundary cases.)
+
+python -B -m pytest -p no:cacheprovider -q tests/test_adaptive_scheduler_glue.py -k ownership --tb=short
+13 passed, 0 failed, 0 skipped, 54 deselected, exit 0.
+
+python -B -m pytest -p no:cacheprovider -q tests/test_adaptive_scheduler_glue.py tests/test_lineage_startup.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py tests/test_modal_runner_config.py tests/test_scalar_colab_smoke.py --tb=short
+200 passed, 0 failed, 0 skipped, exit 0 (final code).
+
+python -B -m pytest -p no:cacheprovider -q --tb=short tests/test_adaptive_scheduler_glue.py tests/test_lineage_startup.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py tests/test_budget_controller.py tests/test_budget_fallback_recovery.py tests/test_proposer_adapter.py tests/test_tree_adaptive_controller.py tests/test_tree_topology.py tests/test_cost_model_l4.py tests/test_cost_model_solver.py tests/test_modal_runner_config.py tests/test_modal_smoke.py tests/test_scalar_context.py tests/test_scalar_colab_smoke.py tests/test_scalar_colab_git.py tests/test_scalar_cost_capture.py tests/test_scalar_cost_evidence.py
+438 passed, 7 failed, 0 skipped, exit 1 (final code; no deselection).
+```
+
+The broad failures are six unchanged W1 CRLF/hash mismatches in
+test_modal_smoke.py and one recurrence of the historical tree-controller timing
+failure: **68.579 us >= 50 us**. The latest independent baseline had 414 passed /
+6 failed with that timing check passing; this run adds the 25 focused cases and
+observes the timing recurrence, resulting in 438 passed / 7 failed. The failing
+workload hash remains `19808e79...` versus expected `0de2387c...`. Neither the
+workload/manifests nor tree controller/test/threshold was modified. No previously
+unseen failure category appeared. The cost-model timing test passed. Broader
+regression is **NOT green**; no rerun was used to hide/chase the timing failure.
+
+During CPU fixture migration, an intermediate glue run had three failures from
+old tests publishing without a startup context; those callers were migrated to
+the production context contract and their original behavioral assertions were
+retained. A subsequent 199-pass targeted run preceded the final BaseException
+case; final counts above supersede it. No production runtime bypass was added.
+
+Self-reviewed full production/test diffs, the new files, registry lock scope,
+distinct attempt/generation identities, exceptional and nested context reset,
+stale copied contexts, deterministic orphan cleanup/restart, old-owner release/GC,
+delayed attempt cleanup, E1-E8/P1-P7/T1-T10 assertions and non-adaptive behavior.
+`git diff --check` passes. All changed paths are task-specific; three existing
+untracked evidence directories remain untouched. Exact-path local staging only;
+no reset/rebase/clean, push, merge, PR, Trello mutation, deployment or GPU work.
+
+Implementation paths: `src/server/lineage.py`, `src/server/lineage_startup.py`,
+`src/server/lineage_executor.py`, `tests/test_adaptive_scheduler_glue.py`,
+`tests/test_lineage_startup.py`. Documentation: this worklog.
+
+## Claim ceiling
+
+Adaptive async lineage startup pairing, startup-attempt ownership, exclusive
+generation consumption, and generation-specific revocation are CPU/source-contract
+tested for pinned V1 / UniProc / single-worker assumptions.
+
+Real pinned runtime, deployment, GPU behavior, distributed/multiprocess startup
+ownership, TreeAdaptive runtime, profitability, and hardware-aware measured policy
+remain UNVERIFIED. Historical L4 scalar observer evidence is unchanged and does not
+validate startup-attempt ownership. Independent technical review is the next gate.
