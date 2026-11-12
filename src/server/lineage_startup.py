@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import RLock
 
 from src.server.lineage import _engine_startup
+from src.server.lineage_diagnostics import observe
 
 
 _installation_lock = RLock()
@@ -37,8 +38,10 @@ def install_enginecore_startup_binding():
 
         @wraps(original)
         def initialize(self, vllm_config, executor_class, *args, **kwargs):
+            observe("enginecore_wrapper_entered", executor_class=f"{executor_class.__module__}.{executor_class.__name__}")
             with _engine_startup(vllm_config):
                 return original(self, vllm_config, executor_class, *args, **kwargs)
 
         initialize._lineage_startup_binding = True
         EngineCore.__init__ = initialize
+        observe("hook_installed", vllm_version=vllm.__version__, enginecore_sha256=record["sha256"])

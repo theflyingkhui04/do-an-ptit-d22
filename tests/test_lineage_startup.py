@@ -125,6 +125,36 @@ def reject_plain_b(runtime, monkeypatch):
     assert lineage._startup.get() is None
 
 
+def test_diagnostics_trace_exact_attempt_without_retaining_ownership(startup_runtime, monkeypatch, tmp_path):
+    path = tmp_path / "startup.jsonl"
+    monkeypatch.setenv("ADAPTIVE_STARTUP_TELEMETRY_PATH", str(path))
+    r = startup_runtime
+    engine = r.core(r.config, r.executor, False)
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    events = {row["event"]: row for row in rows}
+    names = ["attempt_created", "executor_published", "scheduler_consumed",
+             "scheduler_initialized", "attempt_closed"]
+    assert len({events[name]["attempt_id"] for name in names}) == 1
+    assert len({events[name]["generation_id"] for name in names[1:]}) == 1
+    assert len({events[name]["ledger_id"] for name in names[1:]}) == 1
+    assert events["scheduler_consumed"]["same_active_attempt"] is True
+    closed = events["attempt_closed"]
+    assert closed["succeeded"] and closed["context_reset"]
+    assert closed["registration_retained"] and closed["consumed"]
+    assert rows[0]["event"] == "enginecore_wrapper_entered"
+    registration = r.publications[-1][0]
+    lineage.release_ledger(registration)
+    assert id(r.config) not in lineage._registry
+    assert engine.scheduler._lineage is registration.ledger
+
+
+def test_diagnostics_io_failure_does_not_reject_startup(startup_runtime, monkeypatch, tmp_path):
+    monkeypatch.setenv("ADAPTIVE_STARTUP_TELEMETRY_PATH", str(tmp_path / "absent" / "x.jsonl"))
+    r = startup_runtime
+    engine = r.core(r.config, r.executor, False)
+    assert engine.scheduler._lineage is r.publications[-1][0].ledger
+
+
 def test_startup_f1_failed_attempt_revokes_unconsumed_generation(startup_runtime):
     r = startup_runtime
     error = failed_a(r)

@@ -25,6 +25,7 @@ from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 
 from src.server.budget_planner import AdaptiveBudgetPlanner, StepPlan, _env_flag
 from src.server.lineage import require_lineage_executor, release_ledger
+from src.server.lineage_diagnostics import observe
 from experiments.protocol_b_boundary_observer import observe as _pb279_observe
 from experiments.protocol_b_boundary_observer import control_producer as _pb177_control
 
@@ -46,6 +47,8 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         self._lineage_registration = registration
         self._lineage = registration.ledger
         self._retiring = None
+        observe("scheduler_initialized", registration=registration,
+                scheduler_class=f"{type(self).__module__}.{type(self).__name__}")
 
         if self.dynamic_sd_lookup is None:
             logger.warning(

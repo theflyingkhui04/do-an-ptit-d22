@@ -10,6 +10,7 @@ from weakref import ref
 from threading import RLock, current_thread
 from contextlib import contextmanager
 from contextvars import ContextVar
+from src.server.lineage_diagnostics import observe
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,7 @@ def _engine_startup(config):
         state = _StartupState(StartupAttempt(config, current_thread(), object()))
         context_token = _startup.set(state)
     succeeded = False
+    observe("attempt_created", attempt=state.attempt)
     try:
         yield state.attempt
         succeeded = True
@@ -171,6 +173,14 @@ def _engine_startup(config):
                     release_ledger(registration)
         finally:
             _startup.reset(context_token)
+            observe("attempt_closed", attempt=state.attempt, registration=state.registration,
+                    succeeded=succeeded, context_reset=_startup.get() is not state,
+                    registration_retained=(state.registration is not None
+                        and (current := _registry.get(id(config))) is not None
+                        and current.registration is state.registration),
+                    consumed=(current.consumed if state.registration is not None
+                              and (current := _registry.get(id(config))) is not None
+                              and current.registration is state.registration else False))
 
 
 @dataclass(frozen=True, eq=False)
@@ -226,6 +236,8 @@ def register_lineage_executor(config, executor):
                                            startup.attempt)
         _registry[id_key] = _RegistrationState(registration)
         startup.registration = registration
+        observe("executor_published", registration=registration,
+                executor_class=f"{type(executor).__module__}.{type(executor).__name__}")
         return registration
 
 
@@ -252,6 +264,8 @@ def require_lineage_executor(config):
                 reason = "registration belongs to another EngineCore startup attempt"
             else:
                 state.consumed = True
+                observe("scheduler_consumed", registration=registration, consumed=state.consumed,
+                        same_active_attempt=startup.attempt is registration.attempt)
                 return registration
         backend = getattr(getattr(config, "parallel_config", None),
                           "distributed_executor_backend", "<missing VllmConfig/backend>")

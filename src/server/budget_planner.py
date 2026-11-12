@@ -174,6 +174,8 @@ class AdaptiveBudgetPlanner:
         if num_drafted <= 0:
             return
         self._known_requests.add(req_id)
+        alpha_before = (self.adapter.get_telemetry(req_id)["alpha_ema"]
+                        if self.step_telemetry_path else None)
         self.adapter.on_verification_completed(
             request_id=req_id,
             num_accepted=num_accepted,
@@ -192,6 +194,7 @@ class AdaptiveBudgetPlanner:
                 "lineage_status": "attributed" if source else "unverified",
                 "tree_execution_verified": False,
                 "alpha_ema": self.adapter.get_telemetry(req_id)["alpha_ema"],
+                "alpha_ema_before": alpha_before,
             })
 
     def finish_request(self, req_id: str) -> Optional[dict]:
