@@ -1241,3 +1241,149 @@ a separate local commit.
 
 Next action: review the local feature diff before authorizing pinned-runtime
 integration validation.
+
+---
+
+# 26. F1 startup pairing enforcement (2026-11-12)
+
+**F1: MAJOR -> RESOLVED at CPU/source-contract level.** Real pinned-runtime
+integration remains UNVERIFIED; no GPU, deployment or runtime benchmark was run.
+Fix commit: `eeb62ee32ac033a7e64bf3aa1b870dd70767f102`.
+
+## Verified starting state and root cause
+
+- Existing branch retained: `feat/m4-02-04-async-lineage-v02`.
+- Pre-fix HEAD: `9f80960b8f86ad0fc425db2ff9e8d720fef926de`.
+- Local origin/develop and merge base: `53b813a0b6ce8fef530c4286fbd8bf4da5b4a149`.
+- No tracked changes before edits. The three previously recorded untracked
+  evidence directories were preserved. No branch switch/new branch or fetch
+  was needed for this expected local feature-state fix.
+- Scheduler previously called `ledger_for(config)`, which created an empty
+  ledger without proving executor readiness. Its ready log preceded the first
+  missing-lineage warning; ordinary UniProc serving could therefore start
+  without project adaptive feedback.
+- Pinned authority remains captured vLLM **0.30.0**, V1, UniProc, one worker,
+  padded draft_model. Inspected the installed capture under
+  `experiments/runs/m4_02_04/20261110-async-lineage-design/installed/vllm/`,
+  especially `v1/engine/core.py`, `v1/executor/abstract.py`,
+  `v1/executor/uniproc_executor.py`, and scheduler configuration. Existing
+  source-hash checks passed; no installed local vLLM engine was used.
+
+## Startup boundary and chosen handshake
+
+Pinned `EngineCore.__init__` initializes `executor_class(vllm_config)` BEFORE
+constructing `Scheduler(vllm_config=vllm_config, ...)`. The same config object
+survives both calls. Configured backend resolution is available via pinned
+`Executor.get_class`, including a qualified class name, but a configured name
+alone does not establish that a live observer was installed. The existing
+config-scoped ledger rendezvous supplied the minimal project-owned boundary;
+there was no existing readiness registration to reuse.
+
+- `register_lineage_executor(config, executor)` publishes a weak owner reference
+  on that exact ledger/config only after the executor passes source/config/
+  runner gates and installs its observer hook. Duplicate live owners and wrong
+  config/ledger identities are rejected.
+- `AdaptiveAsyncScheduler.__init__` calls `require_lineage_executor(config)`
+  BEFORE base scheduler initialization, controller creation, readiness logging,
+  scheduling or verification feedback. Missing/expired/unregistered capability
+  raises RuntimeError explaining the required lineage-capable executor and the
+  observed `distributed_executor_backend`.
+- Merely configuring the right class string, supplying a lookalike class or
+  pre-creating a ledger cannot satisfy startup. Neither an environment bypass
+  nor an implicit diagnostic mode exists. CPU fixtures explicitly register a
+  simulated executor through the same production contract; the executor-wrapper
+  test exercises real registration after its initialization gates.
+- Registration is engine-local and revoked on ledger release/shutdown. A weak
+  owner prevents a destroyed executor from leaving usable readiness. Existing
+  feedback, origin, count, trimming and controller algorithms are unchanged.
+- No circular initialization: executor needs only config, never the scheduler.
+  This check is early scheduler initialization, not a claim that invalid config
+  is rejected before upstream executor/model allocation.
+
+## Launch paths and historical Colab handling
+
+Shell Lane 3 and Modal generated args already select AdaptiveAsyncScheduler +
+LineageUniProcExecutor; their runtime packaging remains unchanged. Tests verify
+both, and the wrapper test resolves the actual generated backend using the
+captured pinned `Executor.get_class` before exercising paired startup.
+Non-adaptive schedulers/executors do not call the new validation.
+
+The Colab script is the historical scalar observer reproduction, not current
+lineage validation. Its CONFIG and exact plain-UniProc expectation remain intact.
+Its live CLI stages now require the original immutable source SHA
+`16528241468e2624ccfe07a69a67fcc123bfe4a3` before hardware checks. Reproduction
+must use that frozen historical checkout; current lineage source has no bypass.
+Offline validation of existing evidence remains available. Module documentation
+and the runbook explicitly distinguish this historical profile from current
+async-lineage QA. No historical raw/evidence files were modified or relabeled.
+
+## Tests and results
+
+Environment: Windows PowerShell, CPython 3.11.0, CPU pytest/source contracts,
+using existing local pinned-source captures. No GPU/runtime execution.
+
+| Gate | Evidence | Result |
+| --- | --- | --- |
+| P1 paired startup | keyword/positional config plus production executor-wrapper registration and shared-ledger assertion | PASS |
+| P2 plain UniProc | `uni` backend + unregistered ledger rejected | PASS |
+| P3 unrelated executor | unrelated name, uninitialized correct name, lookalike class with marker rejected | PASS |
+| P4 non-adaptive | normal scheduler construction with `uni`; no global executor requirement | PASS (CPU stub) |
+| P5 shell pairing | existing launcher/config tests | PASS |
+| P6 Modal pairing | generated backend, source packaging and pinned class resolution | PASS (source/config) |
+| P7 early failure | base-init/feedback sentinels prove failure before either boundary | PASS |
+| P8 lineage regression | existing T1-T10 tests retain their origin/count/isolation/fail-safe assertions | PASS (CPU/source-contract) |
+
+Additional tests cover config identity isolation, revoked/garbage-collected
+owners, missing config, failed executor initialization, shutdown, pinned startup
+order, and historical source rejection before live stages. No production check
+is monkeypatched away in scheduler tests.
+
+Commands/results (all local CPU; skipped tests are not counted as passes):
+
+```text
+1. python -m pytest -q tests/test_adaptive_scheduler_glue.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py tests/test_modal_runner_config.py
+   exit 0; 145 passed, 0 failed, 0 skipped (initial pairing tests).
+
+2. python -m pytest -q tests/test_adaptive_scheduler_glue.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py tests/test_modal_runner_config.py tests/test_scalar_colab_smoke.py
+   exit 0; 162 passed, 0 failed, 0 skipped (final source-resolution, lookalike and historical-profile coverage included).
+
+3. python -m pytest -q --tb=short tests/test_adaptive_scheduler_glue.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py tests/test_budget_controller.py tests/test_budget_fallback_recovery.py tests/test_proposer_adapter.py tests/test_tree_adaptive_controller.py tests/test_tree_topology.py tests/test_cost_model_l4.py tests/test_cost_model_solver.py tests/test_modal_runner_config.py tests/test_modal_smoke.py tests/test_scalar_context.py tests/test_scalar_colab_smoke.py tests/test_scalar_colab_git.py tests/test_scalar_cost_capture.py tests/test_scalar_cost_evidence.py
+   exit 1; 400 passed, 7 failed, 0 skipped; no timing tests deselected.
+```
+
+Broad failures are the six known W1 CRLF/hash cases in test_modal_smoke.py and
+test_tree_adaptive_controller.py::test_decision_latency_benchmark
+(0.050354 ms against <0.05 ms). The cost-model timing test passed this time.
+CRLF failures remain PROVEN PRE-EXISTING / UNRELATED by the preceding review's
+baseline-module replay and raw-byte comparison. Timing failures remain LIKELY
+PRE-EXISTING BUT NOT PROVEN; their timed implementation/tests are unchanged.
+No new failure category appeared. Frozen workloads, hashes and timing thresholds
+were not normalized or changed. The broader suite is NOT green.
+
+## Changed files, self-review and ceiling
+
+- `src/server/lineage.py`: explicit executor registration/require/revocation.
+- `src/server/lineage_executor.py`: publish capability after gates/hook installation.
+- `src/server/adaptive_scheduler.py`: require capability before base initialization.
+- `tests/test_adaptive_scheduler_glue.py`: explicit CPU pairing fixtures, P1-P8,
+  actual pinned construction-order/class-selection contracts.
+- `experiments/scalar_colab_smoke.py`, `tests/test_scalar_colab_smoke.py`:
+  historical-only live-source guard and offline-validation coverage.
+- `docs/runbooks/m4-02-04-colab-observer-smoke.md`: historical/current boundary.
+- This worklog: F1 root cause, fix, tests, failures and evidence ceiling.
+
+Self-review: unpaired adaptive startup now fails; valid registered startup
+passes; ordinary non-adaptive paths remain outside the check; canonical Lane 3
+still selects both classes; there is no default-enabled bypass. No changes to
+TreeAdaptive, hardware cost policy, acceptance thresholds, profiler, origin
+algorithm, benchmark protocol or canonical scalar topology telemetry.
+`future/tree-adaptive-v02` remains at the audited baseline SHA. Diff checks pass.
+
+**Maximum claim:** adaptive async lineage implementation and scheduler/executor
+pairing are source-contract tested for pinned V1 / UniProc / single-worker
+configuration. Real pinned-runtime lineage, deployment, GPU, distributed/tree
+execution, profitability and hardware-aware policy are NOT VERIFIED by this work.
+
+Local feature-branch commits only, with exact-path staging. No push, merge, PR,
+Trello mutation or historical evidence rewrite. Next action: technical review
+of the F1 startup-pairing fix before real pinned-runtime integration validation.
