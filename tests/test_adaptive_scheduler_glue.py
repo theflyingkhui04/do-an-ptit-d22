@@ -164,24 +164,25 @@ def scheduler_module(monkeypatch):
     finally:
         from src.server.lineage import release_ledger
         for owner in module._cpu_executor_owners:
-            release_ledger(owner.vllm_config)
+            release_ledger(owner._lineage_registration)
 
 
-def paired_cpu_config(module):
+def paired_cpu_config(module, config=None):
     """Explicit CPU observer stand-in; use the production registration contract.
 
     No runtime bypass is enabled. Tests simulate worker observations separately;
     test_executor_observation_and_terminal_cleanup uses the executor wrapper.
     """
-    from src.server.lineage import ledger_for, register_lineage_executor
+    from src.server.lineage import register_lineage_executor
     class CpuExecutor:
         pass
-    config = SimpleNamespace(parallel_config=SimpleNamespace(
-        distributed_executor_backend="tests.CpuLineageExecutor"))
+    if config is None:
+        config = SimpleNamespace(parallel_config=SimpleNamespace(
+            distributed_executor_backend="tests.CpuLineageExecutor"))
     owner = CpuExecutor()
     owner.vllm_config = config
-    owner._lineage = ledger_for(config)
-    register_lineage_executor(config, owner)
+    owner._lineage_registration = register_lineage_executor(config, owner)
+    owner._lineage = owner._lineage_registration.ledger
     module._cpu_executor_owners.append(owner)
     return config
 
@@ -892,7 +893,7 @@ def test_actual_pinned_row_copy_binds_reorder_and_compaction(scheduler_module, m
 def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch, tmp_path):
     """Production executor wrapper, simulated worker; no installed engine."""
     from concurrent.futures import Future
-    from src.server.lineage import ledger_for, release_ledger, require_lineage_executor
+    from src.server.lineage import release_ledger, require_lineage_executor
     config = SimpleNamespace(parallel_config=SimpleNamespace(world_size=1, data_parallel_size=1),
         scheduler_config=SimpleNamespace(async_scheduling=True),
         speculative_config=SimpleNamespace(method="draft_model", disable_padded_drafter_batch=False))
@@ -979,8 +980,7 @@ def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch
     executor.shutdown()
     with pytest.raises(RuntimeError, match="lineage-capable executor"):
         require_lineage_executor(config)
-    assert ledger_for(config) is not sched._lineage
-    release_ledger(config)
+    release_ledger(executor._lineage_registration)
 
 
 def test_source_gate_against_captured_installed_bytes(scheduler_module, monkeypatch):
@@ -1027,11 +1027,11 @@ def test_pinned_uniproc_nonblocking_rpc_runs_inline():
 @pytest.mark.parametrize("positional", [False, True])
 def test_paired_scheduler_startup_uses_registered_executor(scheduler_module, positional):
     """P1: same config/registered capability succeeds before any scheduling."""
-    from src.server.lineage import require_lineage_executor
     config = paired_cpu_config(scheduler_module)
     sched = (scheduler_module.AdaptiveAsyncScheduler(config) if positional else
              scheduler_module.AdaptiveAsyncScheduler(vllm_config=config))
-    assert sched._lineage is require_lineage_executor(config)
+    assert sched._lineage is scheduler_module._cpu_executor_owners[-1]._lineage
+    assert sched._lineage_registration is scheduler_module._cpu_executor_owners[-1]._lineage_registration
     assert sched._lineage.executions == {}
     assert sched._planner.adapter.active_request_count == 0
 
@@ -1041,19 +1041,14 @@ def test_paired_scheduler_startup_uses_registered_executor(scheduler_module, pos
     type("LineageUniProcExecutor", (), {"LINEAGE_CAPABLE": True})])
 def test_unpaired_scheduler_rejected_before_base_init_or_feedback(scheduler_module, monkeypatch, backend):
     """P2/P3/P7: even the right configured NAME cannot fake live readiness."""
-    from src.server.lineage import ledger_for, release_ledger
     config = SimpleNamespace(parallel_config=SimpleNamespace(distributed_executor_backend=backend))
-    ledger_for(config)  # An empty ledger is not a completed executor handshake.
     def unexpected(*args, **kwargs):
         pytest.fail("Unpaired startup reached scheduler init or feedback")
     monkeypatch.setattr(FakeAsyncScheduler, "__init__", unexpected)
     monkeypatch.setattr(scheduler_module.AdaptiveAsyncScheduler, "make_spec_decoding_stats", unexpected)
-    try:
-        with pytest.raises(RuntimeError, match="Adaptive async lineage requires a lineage-capable executor") as exc:
-            scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
-        assert str(backend) in str(exc.value)
-    finally:
-        release_ledger(config)
+    with pytest.raises(RuntimeError, match="Adaptive async lineage requires a lineage-capable executor") as exc:
+        scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    assert str(backend) in str(exc.value)
 
 
 def test_missing_config_is_not_a_scheduler_test_bypass(scheduler_module):
@@ -1068,7 +1063,7 @@ def test_executor_registration_is_engine_local_and_revoked(scheduler_module):
     second = SimpleNamespace(parallel_config=first.parallel_config)
     with pytest.raises(RuntimeError, match="exact VllmConfig"):
         require_lineage_executor(second)
-    release_ledger(first)
+    release_ledger(scheduler_module._cpu_executor_owners[-1]._lineage_registration)
     with pytest.raises(RuntimeError, match="lineage-capable executor"):
         require_lineage_executor(first)
     dead = paired_cpu_config(scheduler_module)
@@ -1076,7 +1071,6 @@ def test_executor_registration_is_engine_local_and_revoked(scheduler_module):
     gc.collect()
     with pytest.raises(RuntimeError, match="lineage-capable executor"):
         require_lineage_executor(dead)
-    release_ledger(dead)
 
 
 def test_non_adaptive_scheduler_does_not_require_lineage_registration():
@@ -1098,3 +1092,255 @@ def test_pinned_engine_constructs_executor_before_scheduler_with_same_config():
     assert executor.lineno < scheduler.lineno
     assert ast.unparse(executor.args[0]) == "vllm_config"
     assert ast.unparse(next(k.value for k in scheduler.keywords if k.arg == "vllm_config")) == "vllm_config"
+
+
+# R1/R2 ownership regressions. All identities below are actual objects, not
+# readiness flags or configured class-name comparisons.
+def test_ownership_distinct_configs_have_distinct_generations(scheduler_module):
+    configs = [paired_cpu_config(scheduler_module) for _ in range(2)]
+    a, b = [scheduler_module.AdaptiveAsyncScheduler(vllm_config=c) for c in configs]
+    assert a._lineage is not b._lineage
+    assert a._lineage_registration.token is not b._lineage_registration.token
+    for sched, owner in zip((a, b), scheduler_module._cpu_executor_owners):
+        assert sched._lineage is owner._lineage
+        assert sched._lineage_registration is owner._lineage_registration
+
+
+def test_ownership_same_config_plain_second_engine_rejected(scheduler_module, monkeypatch):
+    """R1/E2: previously B inherited A's exact ledger with backend='uni'."""
+    config = paired_cpu_config(scheduler_module)
+    a = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    ledger_a = a._lineage
+    config.parallel_config.distributed_executor_backend = "uni"
+    def unexpected(*args, **kwargs):
+        pytest.fail("Second engine reached base initialization/feedback")
+    monkeypatch.setattr(FakeAsyncScheduler, "__init__", unexpected)
+    monkeypatch.setattr(scheduler_module.AdaptiveAsyncScheduler, "make_spec_decoding_stats", unexpected)
+    with pytest.raises(RuntimeError, match="already consumed"):
+        scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    assert a._lineage is ledger_a
+    assert scheduler_module._cpu_executor_owners[0]._lineage is ledger_a
+
+
+def test_ownership_single_consumer_even_without_backend_mutation(scheduler_module):
+    config = paired_cpu_config(scheduler_module)
+    a = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    with pytest.raises(RuntimeError, match="already consumed"):
+        scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    # Scheduler collection is deliberately not permission to reuse a generation.
+    token = a._lineage_registration.token
+    del a
+    with pytest.raises(RuntimeError, match="already consumed"):
+        scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    assert scheduler_module._cpu_executor_owners[0]._lineage_registration.token is token
+
+
+def test_ownership_restart_stale_release_and_old_gc(scheduler_module):
+    """R2/E3-E6: GA release, GB publish, stale GA release/GC cannot affect GB."""
+    import gc
+    from weakref import ref
+    from src.server.lineage import release_ledger
+    config = paired_cpu_config(scheduler_module)
+    owner_a = scheduler_module._cpu_executor_owners.pop()
+    a = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    ga = owner_a._lineage_registration
+    release_ledger(ga)
+    paired_cpu_config(scheduler_module, config)
+    owner_b = scheduler_module._cpu_executor_owners[-1]
+    gb = owner_b._lineage_registration
+    assert ga is not gb and ga.token is not gb.token and ga.ledger is not gb.ledger
+    marker = object()
+    gb.ledger.active["B"] = marker
+    release_ledger(ga)
+    release_ledger(ga)
+    # Invoke the real former weakref callback deterministically as well as GC.
+    ga.owner.__callback__(ga.owner)
+    old = ref(owner_a)
+    del owner_a
+    gc.collect()
+    assert old() is None
+    b = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    assert b._lineage_registration is gb and b._lineage is gb.ledger
+    assert b._lineage.active["B"] is marker
+    a.shutdown()
+    a.shutdown()
+    assert b._lineage.active["B"] is marker
+    b.shutdown()
+
+
+def test_ownership_live_same_config_replacement_rejected(scheduler_module):
+    from src.server.lineage import register_lineage_executor
+    config = paired_cpu_config(scheduler_module)
+    a = scheduler_module._cpu_executor_owners[-1]
+    class Owner:
+        vllm_config = config
+    with pytest.raises(RuntimeError, match="already registered"):
+        register_lineage_executor(config, Owner())
+    # No replacement occurred, and the original remains consumable.
+    sched = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    assert sched._lineage is a._lineage
+
+
+def test_ownership_config_cannot_authorize_release(scheduler_module):
+    from src.server.lineage import release_ledger
+    config = paired_cpu_config(scheduler_module)
+    with pytest.raises(TypeError, match="registration handle"):
+        release_ledger(config)
+    sched = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    assert sched._lineage is scheduler_module._cpu_executor_owners[-1]._lineage
+
+
+def test_ownership_pending_generation_cannot_cross_threads(scheduler_module):
+    from concurrent.futures import ThreadPoolExecutor
+    from src.server.lineage import require_lineage_executor
+    config = paired_cpu_config(scheduler_module)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(require_lineage_executor, config)
+        with pytest.raises(RuntimeError, match="another initialization thread"):
+            future.result()
+    # Wrong-thread attempt did not consume or change the rightful generation.
+    sched = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+    assert sched._lineage is scheduler_module._cpu_executor_owners[-1]._lineage
+
+
+def test_ownership_concurrent_distinct_engine_initializations():
+    """E8: independent publication/consumption on simultaneous CPU threads."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from src.server.lineage import register_lineage_executor, require_lineage_executor, release_ledger
+    barrier = Barrier(4)
+    class Owner:
+        pass
+    def engine(index):
+        config = SimpleNamespace()
+        owner = Owner()
+        owner.vllm_config = config
+        handle = register_lineage_executor(config, owner)
+        owner._lineage = handle.ledger
+        handle.ledger.active[index] = owner
+        barrier.wait(timeout=10)
+        try:
+            assert require_lineage_executor(config) is handle
+            assert handle.ledger.active == {index: owner}
+            return handle
+        finally:
+            release_ledger(handle)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        handles = list(pool.map(engine, range(4)))
+    assert len({id(h.token) for h in handles}) == 4
+    assert len({id(h.ledger) for h in handles}) == 4
+
+
+def test_ownership_concurrent_same_config_publication_is_exclusive():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from src.server.lineage import register_lineage_executor, release_ledger
+    barrier = Barrier(4)
+    config = SimpleNamespace()
+    class Owner:
+        vllm_config = config
+    owners = [Owner() for _ in range(4)]
+    def publish(owner):
+        barrier.wait(timeout=10)
+        try:
+            return register_lineage_executor(config, owner)
+        except RuntimeError as error:
+            assert "already registered" in str(error)
+            return None
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        handles = [h for h in pool.map(publish, owners) if h is not None]
+    assert len(handles) == 1
+    release_ledger(handles[0])
+
+
+@pytest.mark.parametrize("executor_first", [False, True])
+def test_ownership_production_shutdown_orders_and_stale_restart(
+        scheduler_module, monkeypatch, executor_first):
+    """Both real project shutdown methods; upstream worker/scheduler are CPU stubs."""
+    class Base:
+        def _init_executor(self):
+            runner_type = type("GPUModelRunner", (), {
+                "__module__": "vllm.v1.worker.gpu_model_runner"})
+            runner = runner_type()
+            runner.use_async_scheduling = True
+            runner._copy_draft_token_ids_to_cpu = lambda *a, **kw: None
+            self.driver_worker = SimpleNamespace(worker=SimpleNamespace(model_runner=runner))
+        def shutdown(self):
+            pass
+    mod = types.ModuleType("vllm.v1.executor.uniproc_executor")
+    mod.UniProcExecutor = Base
+    monkeypatch.setitem(sys.modules, mod.__name__, mod)
+    monkeypatch.delitem(sys.modules, "src.server.lineage_executor", raising=False)
+    executor_module = importlib.import_module("src.server.lineage_executor")
+    monkeypatch.setattr(executor_module, "verify_sources", lambda: None)
+    config = SimpleNamespace(
+        parallel_config=SimpleNamespace(world_size=1, data_parallel_size=1),
+        scheduler_config=SimpleNamespace(async_scheduling=True),
+        speculative_config=SimpleNamespace(method="draft_model", disable_padded_drafter_batch=False))
+    def start():
+        executor = executor_module.LineageUniProcExecutor()
+        executor.vllm_config = config
+        executor._init_executor()
+        sched = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+        assert sched._lineage is executor._lineage
+        assert sched._lineage_registration is executor._lineage_registration
+        return executor, sched
+    ea, sa = start()
+    first, second = (ea, sa) if executor_first else (sa, ea)
+    first.shutdown()
+    eb, sb = start()
+    assert ea._lineage is not eb._lineage
+    assert sa._lineage_registration.token is not sb._lineage_registration.token
+    marker = object()
+    eb._lineage.active["B"] = marker
+    second.shutdown()
+    first.shutdown()
+    second.shutdown()
+    assert sb._lineage.active["B"] is marker
+    sb.shutdown()
+    eb.shutdown()
+    sb.shutdown()
+    eb.shutdown()
+
+
+def test_ownership_pinned_single_scheduler_and_shutdown_contract():
+    """Hash verified exact lifecycle, not an assumption of config uniqueness."""
+    import hashlib
+    capture = installed_capture()
+    manifest = json.loads((capture.parent.parent / "installed_source_manifest.json").read_text())
+    paths = ["vllm/v1/engine/core.py", "vllm/v1/executor/abstract.py",
+             "vllm/v1/executor/uniproc_executor.py", "vllm/v1/core/sched/scheduler.py"]
+    for path in paths:
+        record = next(r for r in manifest["files"] if r["path"] == path)
+        assert hashlib.sha256((capture.parent / path).read_bytes()).hexdigest() == record["sha256"]
+    tree = ast.parse((capture / "v1/engine/core.py").read_text())
+    engine = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "EngineCore")
+    assignments = [n for n in ast.walk(engine) if isinstance(n, (ast.Assign, ast.AnnAssign))
+                   and any(isinstance(t, ast.Attribute) and ast.unparse(t) == "self.scheduler"
+                           for t in (n.targets if isinstance(n, ast.Assign) else [n.target]))]
+    assert len(assignments) == 1
+    shutdown = next(n for n in engine.body if isinstance(n, ast.FunctionDef) and n.name == "shutdown")
+    source = ast.unparse(shutdown)
+    assert source.index("self.model_executor.shutdown()") < source.index("self.scheduler.shutdown()")
+
+
+def test_ownership_gc_clears_current_ledger_without_retaining_config():
+    import gc
+    from weakref import ref
+    from src.server.lineage import register_lineage_executor
+    class Config:
+        pass
+    class Owner:
+        pass
+    config, owner = Config(), Owner()
+    owner.vllm_config = config
+    handle = register_lineage_executor(config, owner)
+    owner._lineage_registration = handle
+    owner._lineage = handle.ledger
+    ledger = handle.ledger
+    ledger.active["request"] = object()
+    config_ref, owner_ref = ref(config), ref(owner)
+    del config, owner, handle
+    gc.collect()
+    assert owner_ref() is None and config_ref() is None
+    assert ledger.active == {} and ledger.executions == {} and ledger.generation is None

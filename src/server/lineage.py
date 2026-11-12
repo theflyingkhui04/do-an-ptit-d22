@@ -7,6 +7,7 @@ No token values, GPU tensors or mutable Requests are stored in origins.
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from weakref import ref
+from threading import RLock, current_thread
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,6 @@ class LineageLedger:
         self.active = {}
         self._incarnation = 0
         self.generation = None
-        self._executor = None
 
     def request_key(self, request):
         current = self.active.get(request.request_id)
@@ -117,59 +117,99 @@ class LineageLedger:
         self.generation = None
 
 
-# Config identity scopes the same-process executor/scheduler rendezvous.
-# Explicit shutdown deregisters it; there is no global "latest engine".
-_ledgers = {}
+# Process-local rendezvous only: config identity indexes a slot, never ownership.
+# Pinned EngineCore constructs exactly one scheduler after its executor on the
+# same initialization thread. A publication can be consumed exactly once. Live
+# same-config overlap is rejected; reuse requires release of the old handle.
+_registry = {}
+_registry_lock = RLock()
 
 
-def ledger_for(config):
-    if config is None:  # isolated tests / no supported executor: fail closed
-        return LineageLedger()
-    key = id(config)
-    if key not in _ledgers:
-        _ledgers[key] = (config, LineageLedger())
-    assert _ledgers[key][0] is config
-    return _ledgers[key][1]
+@dataclass(frozen=True, eq=False)
+class LineageRegistration:
+    config: object
+    ledger: LineageLedger
+    owner: object  # weak reference; never retain the executor through the registry
+    publisher_thread: object
+    token: object
+
+
+@dataclass
+class _RegistrationState:
+    registration: LineageRegistration
+    consumed: bool = False
+
+
+def _expire_registration(key, token):
+    # Callback closes over only an integer key and an opaque generation token.
+    # Neither the config, owner nor registration participates in a strong cycle.
+    with _registry_lock:
+        state = _registry.get(key)
+        if state is not None and state.registration.token is token:
+            del _registry[key]
+            state.registration.ledger.clear()
 
 
 def register_lineage_executor(config, executor):
-    """Publish readiness after the executor installs its validated observer.
+    """Publish one successfully initialized executor generation; return its handle.
 
-    Pinned EngineCore constructs the executor before the scheduler, using the
-    identical config object. Registration is engine-local, not a class-name or
-    environment-variable promise. A weak owner prevents stale readiness after
-    executor destruction; shutdown removes the registration with the ledger.
+    Publication allocates a fresh ledger; the executor retains it from the handle.
+    Only that handle authorizes teardown. A config/backend name is not evidence
+    of ownership, and an active registration cannot be replaced implicitly.
     """
     if config is None or executor.vllm_config is not config:
         raise RuntimeError("Lineage executor registration requires its exact VllmConfig")
-    ledger = ledger_for(config)
-    owner = ledger._executor() if ledger._executor is not None else None
-    if owner is not None and owner is not executor:
-        raise RuntimeError("A lineage executor is already registered for this VllmConfig")
-    if executor._lineage is not ledger:
-        raise RuntimeError("Lineage executor registration requires its exact ledger")
-    ledger._executor = ref(executor)
+    with _registry_lock:
+        if id(config) in _registry:
+            raise RuntimeError("A lineage executor generation is already registered for this VllmConfig; release it first")
+        ledger = LineageLedger()
+        token = object()
+        id_key = id(config)
+        owner = ref(executor, lambda unused: _expire_registration(id_key, token))
+        registration = LineageRegistration(config, ledger, owner, current_thread(), token)
+        _registry[id_key] = _RegistrationState(registration)
+        return registration
 
 
 def require_lineage_executor(config):
-    """Reject unpaired adaptive startup without creating a permissive ledger."""
-    pair = _ledgers.get(id(config)) if config is not None else None
-    ledger = pair[1] if pair is not None and pair[0] is config else None
-    owner = ledger._executor() if ledger is not None and ledger._executor is not None else None
-    if (owner is None or owner.vllm_config is not config
-            or owner._lineage is not ledger):
+    """Atomically consume readiness for one pinned executor-before-scheduler init.
+
+    No ledger is created on failure. Keeping a bound scheduler/owner alive cannot
+    make its consumed readiness reusable by another engine sharing the config.
+    """
+    with _registry_lock:
+        state = _registry.get(id(config)) if config is not None else None
+        registration = state.registration if state is not None else None
+        owner = registration.owner() if registration is not None else None
+        reason = "no ready executor registration was found"
+        if (owner is not None and registration.config is config
+                and owner.vllm_config is config
+                and getattr(owner, "_lineage", None) is registration.ledger):
+            if state.consumed:
+                reason = "registration already consumed by another scheduler initialization"
+            elif registration.publisher_thread is not current_thread():
+                reason = "registration belongs to another initialization thread"
+            else:
+                state.consumed = True
+                return registration
         backend = getattr(getattr(config, "parallel_config", None),
                           "distributed_executor_backend", "<missing VllmConfig/backend>")
         raise RuntimeError(
             "Adaptive async lineage requires a lineage-capable executor initialized "
-            "with this exact VllmConfig; no ready executor registration was found. "
+            f"with this exact VllmConfig; {reason}. "
             f"Observed distributed_executor_backend={backend!r}. Configure "
             "src.server.lineage_executor.LineageUniProcExecutor.")
-    return ledger
 
 
-def release_ledger(config):
-    pair = _ledgers.pop(id(config), None)
-    if pair is not None:
-        pair[1]._executor = None
-        pair[1].clear()
+def release_ledger(registration):
+    """Revoke/clear only the supplied generation, including on repeated teardown."""
+    if registration is None:  # executor initialization failed before publication
+        return
+    if not isinstance(registration, LineageRegistration):
+        raise TypeError("Lineage release requires a registration handle, not a config")
+    with _registry_lock:
+        state = _registry.get(id(registration.config))
+        if state is not None and state.registration is registration:
+            del _registry[id(registration.config)]
+        # A stale handle can clear only its own ledger, never a replacement's.
+        registration.ledger.clear()

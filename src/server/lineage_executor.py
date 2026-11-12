@@ -11,7 +11,7 @@ from pathlib import Path
 import vllm
 from vllm.v1.executor.uniproc_executor import UniProcExecutor
 
-from src.server.lineage import ledger_for, register_lineage_executor, release_ledger
+from src.server.lineage import register_lineage_executor, release_ledger
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,6 @@ class LineageUniProcExecutor(UniProcExecutor):
                 or type(runner).__name__ != "GPUModelRunner" or not runner.use_async_scheduling):
             raise RuntimeError("Async lineage requires the pinned V1 GPUModelRunner")
         self._lineage_runner = runner
-        self._lineage = ledger_for(config)
         self._lineage_pending = None
         self._lineage_sampling = None
         original = runner._copy_draft_token_ids_to_cpu
@@ -67,7 +66,8 @@ class LineageUniProcExecutor(UniProcExecutor):
         runner._copy_draft_token_ids_to_cpu = observe_birth
         # Publish only after source/config/runner checks and observer installation.
         # EngineCore constructs its scheduler later with the same config object.
-        register_lineage_executor(config, self)
+        self._lineage_registration = register_lineage_executor(config, self)
+        self._lineage = self._lineage_registration.ledger
 
     def execute_model(self, scheduler_output, non_block=False):
         runner = self._lineage_runner
@@ -120,4 +120,4 @@ class LineageUniProcExecutor(UniProcExecutor):
         try:
             return super().shutdown()
         finally:
-            release_ledger(self.vllm_config)
+            release_ledger(getattr(self, "_lineage_registration", None))
