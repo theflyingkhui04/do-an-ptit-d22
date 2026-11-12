@@ -6,7 +6,8 @@ import modal
 from experiments.modal_runner import (image, SOURCE_COMMIT, GPU, SERVER_VOLUMES,
                                       lanes, RUN_ID, PROFILE)
 
-app = modal.App("ptit-async-lineage-preflight", image=image)
+app = modal.App("ptit-async-lineage-preflight", include_source=False,
+                image=image.env({"PYTHONPATH": f"{lanes.REMOTE_PROJECT_ROOT}:/root"}))
 
 
 @app.function(timeout=600)
