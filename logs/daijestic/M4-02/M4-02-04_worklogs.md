@@ -1246,7 +1246,9 @@ integration validation.
 
 # 26. F1 startup pairing enforcement (2026-11-12)
 
-**F1: MAJOR -> RESOLVED at CPU/source-contract level.** Real pinned-runtime
+**Historical F1 verdict: MAJOR -> RESOLVED at CPU/source-contract level for
+fresh unpaired startup only; superseded by the R1/R2 ownership review below.**
+The previous tests passed but did not establish generation ownership. Real pinned-runtime
 integration remains UNVERIFIED; no GPU, deployment or runtime benchmark was run.
 Fix commit: `eeb62ee32ac033a7e64bf3aa1b870dd70767f102`.
 
@@ -1293,8 +1295,10 @@ there was no existing readiness registration to reuse.
   nor an implicit diagnostic mode exists. CPU fixtures explicitly register a
   simulated executor through the same production contract; the executor-wrapper
   test exercises real registration after its initialization gates.
-- Registration is engine-local and revoked on ledger release/shutdown. A weak
-  owner prevents a destroyed executor from leaving usable readiness. Existing
+- The previous design described registration as engine-local, but it was only
+  config-scoped: independent review subsequently disproved exclusive ownership
+  and safe revocation when that config was reused (R1/R2 below). A weak
+  owner prevented destroyed executors from leaving usable readiness. Existing
   feedback, origin, count, trimming and controller algorithms are unchanged.
 - No circular initialization: executor needs only config, never the scheduler.
   This check is early scheduler initialization, not a claim that invalid config
@@ -1387,3 +1391,197 @@ execution, profitability and hardware-aware policy are NOT VERIFIED by this work
 Local feature-branch commits only, with exact-path staging. No push, merge, PR,
 Trello mutation or historical evidence rewrite. Next action: technical review
 of the F1 startup-pairing fix before real pinned-runtime integration validation.
+
+
+---
+
+# 27. R1/R2 startup-generation ownership correction (2026-11-12)
+
+**R1 BLOCKER: RESOLVED at CPU/source-contract level.**
+**R2 MAJOR: RESOLVED at CPU/source-contract level.**
+Implementation commit: `8912950` (local feature branch).
+Independent technical review remains the next gate. The earlier F1 implementation
+passed its tests but FAILED independent ownership review; its historical fresh
+startup results above do not establish the current ownership properties.
+
+## Baseline and pre-edit reproductions
+
+Verified before writes:
+
+- Branch: `feat/m4-02-04-async-lineage-v02` (retained).
+- HEAD: `afc4f13dc89367fa845cea00d8e014879119f31a`.
+- `origin/develop`: `53b813a0b6ce8fef530c4286fbd8bf4da5b4a149`.
+- Clean tracked state; exactly the original three untracked evidence directories.
+- Command-scoped `git -c safe.directory=...` handles sandbox UID ownership;
+  no global Git configuration changes, reset, clean, rebase or branch switch.
+
+Executed a minimal CPU reproduction using the actual pre-fix registration and
+AdaptiveAsyncScheduler code, with a stubbed upstream base, BEFORE editing:
+
+```text
+R1 config id:                1614188539056
+   owner A id:               1614180709840
+   registration return:      None (no generation handle existed)
+   registration weakref id:  1614188085792
+   executor A ledger id:     1614188039568
+   scheduler A ledger id:    1614188039568
+   scheduler B ledger id:    1614188039568
+   backend after reuse:      'uni'
+   inherited:                True (incorrect startup success)
+R2 owner B id:               1614188180944
+   ledger B id:              1614188180304
+   B valid after A release/new B registration: True
+   repeated release(A.vllm_config): removed B
+   subsequent require(C): RuntimeError, no ready executor registration
+```
+
+R1 root cause: `ledger_for(config)` returned the same ledger and readiness was
+reusable indefinitely. The old executor remaining alive made scheduler B appear
+paired, even after ordinary UniProc backend selection.
+R2 root cause: `release_ledger(config)` unconditionally popped the config slot;
+it could not distinguish A teardown from the currently registered B generation.
+These sequences are now explicit regression tests with actual object identities.
+
+## Pinned construction authority and scope
+
+Used the local captured installed **vLLM 0.30.0** source under
+`experiments/runs/m4_02_04/20261110-async-lineage-design/installed/vllm/`.
+The lifecycle test verifies raw SHA-256 against the captured
+`installed_source_manifest.json` for EngineCore, Executor, UniProcExecutor and
+Scheduler. Existing source-gate tests also verify the committed scalar manifest.
+No installed engine, external latest-upstream assumptions, or GPU were used.
+
+- `EngineCore.__init__` directly constructs `executor_class(vllm_config)` at
+  core.py:134, then `Scheduler(vllm_config=vllm_config, ...)` at :162-163 on the
+  same Python initialization thread. Executor.__init__ retains the config and
+  synchronously calls `_init_executor`. The config is passed through directly;
+  there is NO assumption that it is unique to an engine.
+- There is exactly one assignment to `self.scheduler` in captured EngineCore;
+  no scheduler recreation/multiple-consumer path exists in this pinned scope.
+  Failed scheduler initialization does not restore consumed readiness: retry
+  requires teardown and fresh executor publication.
+- EngineCore.shutdown at :756-762 shuts down executor before scheduler.
+  UniProc shutdown calls worker.shutdown; scheduler shutdown stops its own
+  publishers/connectors. Neither creates a replacement scheduler.
+- Inspected pinned Executor.get_class: `uni` resolves ordinary UniProcExecutor;
+  qualified names resolve a subclass. Backend names/classes are configuration,
+  never generation ownership evidence. Existing canonical resolution tests stay.
+- Config class implementation itself is not in this local capture (only
+  scheduler/speculative config modules are captured). No uniqueness guarantee
+  from VllmConfig internals is needed or claimed.
+
+## Current corrected ownership model
+
+`register_lineage_executor(config, executor)` now allocates a fresh ledger and
+returns an immutable, identity-based `LineageRegistration` with an opaque token,
+exact config, weak executor owner and publishing Thread object. The executor
+retains both handle and its exact ledger after source/config/runner gates and
+observer installation. The old config-indexed ledger factory is removed.
+
+Config identity indexes a process-local rendezvous slot; it does not authorize
+consumption more than once, identify a generation, or authorize release.
+`require_lineage_executor(config)` atomically consumes that slot ONCE under an
+RLock, checks live owner/config/ledger identities and publishing-thread identity,
+and returns the exact handle to the scheduler before upstream scheduler init,
+controller construction, readiness logging or feedback. The scheduler retains
+that handle and binds only `handle.ledger`; it never creates a fallback ledger.
+
+This uses the pinned synchronous executor-before-one-scheduler sequence, not
+config uniqueness. A later scheduler cannot consume A's already bound token,
+even if A remains live or the backend changes. Cross-thread pending-generation
+consumption fails without consuming the rightful thread's publication. Live
+same-config replacement/overlap is explicitly rejected; same-config restart is
+supported only after old handle release. Concurrent different-config initializations
+are isolated. This is a process-local handshake, not distributed synchronization.
+
+`release_ledger(handle)` removes the slot only when its current handle IS that
+handle, then clears only the supplied generation's ledger. Passing a config now
+raises TypeError; None is harmless for pre-publication executor init failure.
+Repeated/stale scheduler or executor shutdown cannot remove B or clear B's ledger.
+Owner GC callbacks capture only integer config key + opaque token; they compare
+the current token before deletion/clear. They retain neither owner nor config
+nor handle. A GC test proves current-owner expiration clears its ledger and
+releases the config; stale callbacks after B publication leave B intact.
+
+The registry lock protects publication, consumption, explicit release and weak
+expiration. It does not claim to make upstream worker execution or speculative
+ledger mutation generally thread-safe. Runtime origins, row binding, feedback,
+request retirement and scalar controller behavior are unchanged.
+
+## Ownership and startup regression evidence
+
+| Gate | Regression evidence | Result |
+| --- | --- | --- |
+| E1 | Two configs, actual distinct ledger/token identities and exact owner bindings | PASS |
+| E2 / R1 | Bound A; same config switched to uni; B rejected before base init/feedback | PASS |
+| E3 | A released, B valid restart; distinct handle/token/ledger | PASS |
+| E4 / R2 | Repeated stale A release and A scheduler teardown preserve B marker/registration | PASS |
+| E5 | Repeated executor/scheduler shutdown, before and after restart | PASS |
+| E6 | Real old-owner GC plus deterministic old callback after B publication; B still binds | PASS |
+| E7 | Second scheduler rejected with consumed diagnostic, even after first scheduler deletion | PASS |
+| E8 | Four concurrent distinct-config initializations; all ledger/token identities unique | PASS |
+
+Additional ownership tests prove live same-config replacement fails without
+changing A, config-only release is invalid, wrong-thread binding fails without
+consumption, concurrent same-config publications yield exactly one winner,
+and registry weak ownership does not retain a collected config/owner.
+Production executor and scheduler shutdown methods are exercised with CPU upstream
+stubs for both executor-first (pinned) and scheduler-first (defensive) ordering;
+B starts between old component shutdown calls, and both old shutdowns repeat.
+
+P1-P7 remain PASS: valid keyword/positional paired startup; fresh plain and
+unrelated/uninitialized/lookalike executor rejection; ordinary non-adaptive
+scheduler unaffected; shell and Modal canonical pairing/packaging/resolution;
+rejection before base init and feedback. T1-T10 all remain PASS in the existing
+CPU/source-contract tests, retaining exact origin/count/identity assertions.
+Historical scalar Colab guard and its scientific evidence were not modified.
+
+Environment: Windows PowerShell / CPython 3.11.0 / CPU pytest + captured-source
+contracts. Exact commands and totals:
+
+```text
+python -m pytest -q tests/test_adaptive_scheduler_glue.py -k ownership --tb=short
+13 passed, 0 failed, 0 skipped (54 deselected), exit 0.
+
+python -m pytest -q tests/test_adaptive_scheduler_glue.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py tests/test_modal_runner_config.py tests/test_scalar_colab_smoke.py --tb=short
+175 passed, 0 failed, 0 skipped, exit 0 (final code).
+
+python -m pytest -q --tb=short tests/test_adaptive_scheduler_glue.py tests/test_budget_planner.py tests/test_budget_transition_scenarios.py tests/test_budget_controller.py tests/test_budget_fallback_recovery.py tests/test_proposer_adapter.py tests/test_tree_adaptive_controller.py tests/test_tree_topology.py tests/test_cost_model_l4.py tests/test_cost_model_solver.py tests/test_modal_runner_config.py tests/test_modal_smoke.py tests/test_scalar_context.py tests/test_scalar_colab_smoke.py tests/test_scalar_colab_git.py tests/test_scalar_cost_capture.py tests/test_scalar_cost_evidence.py
+413 passed, 7 failed, 0 skipped, exit 1 (final code; no deselection).
+```
+
+The first broad run, before adding the final GC-retention test/publication-window
+guard, reported 412 passed, 7 failed, 0 skipped; timing was 53.627 us > 50 us.
+Final broad failures exactly match the known categories: six W1 CRLF/hash
+failures in test_modal_smoke.py and the unchanged tree-controller decision
+latency benchmark at 50.540 us > 50 us. No new failure category or unexplained
+regression appeared. The cost-model timing test passed. The historical baseline
+was 400 passed / 7 failed / 0 skipped; the 13 added ownership cases all pass.
+No frozen CRLF inputs, workload hashes, controller implementations or timing
+thresholds were changed. Broader regression is NOT green.
+
+## Self-review, changed files and claim ceiling
+
+Reviewed full diff/status and exact-path scope; `git diff --check` passes.
+Checked: consumed readiness cannot be reused, config-only release is impossible,
+stale owner callback/shutdown cannot touch a newer ledger, no scheduler/global
+ledger fallback, actual identity assertions, no new registry strong-reference
+cycle, atomic registry mutations, and non-adaptive isolation. No shared external
+interface owner/caller was found; all local API callers were migrated together.
+
+Changed files: `src/server/lineage.py`, `src/server/lineage_executor.py`,
+`src/server/adaptive_scheduler.py`, `tests/test_adaptive_scheduler_glue.py`, and
+this worklog. Shell/Modal launch wiring, historical Colab source handling,
+TreeAdaptive, topology, scalar policy, cost model and benchmark protocol unchanged.
+
+**Maximum claim:** Adaptive async lineage startup pairing, engine-generation
+ownership, and owner-specific revocation are source-contract tested for the
+pinned V1 / UniProc / single-worker assumptions.
+
+Real pinned-runtime, deployment, GPU, distributed/multi-process ownership,
+TreeAdaptive runtime, profitability and hardware-aware policy remain UNVERIFIED.
+Historical L4 evidence does not validate this handshake. Local exact-path commits
+only; three untracked evidence directories preserved; no push, merge, PR, Trello
+mutation, GPU, live Colab or Modal execution.
+
+Next action: independent technical review of the corrected ownership handshake.
