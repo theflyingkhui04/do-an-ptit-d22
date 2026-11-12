@@ -6,6 +6,7 @@ No token values, GPU tensors or mutable Requests are stored in origins.
 """
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from weakref import ref
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class LineageLedger:
         self.active = {}
         self._incarnation = 0
         self.generation = None
+        self._executor = None
 
     def request_key(self, request):
         current = self.active.get(request.request_id)
@@ -130,7 +132,44 @@ def ledger_for(config):
     return _ledgers[key][1]
 
 
+def register_lineage_executor(config, executor):
+    """Publish readiness after the executor installs its validated observer.
+
+    Pinned EngineCore constructs the executor before the scheduler, using the
+    identical config object. Registration is engine-local, not a class-name or
+    environment-variable promise. A weak owner prevents stale readiness after
+    executor destruction; shutdown removes the registration with the ledger.
+    """
+    if config is None or executor.vllm_config is not config:
+        raise RuntimeError("Lineage executor registration requires its exact VllmConfig")
+    ledger = ledger_for(config)
+    owner = ledger._executor() if ledger._executor is not None else None
+    if owner is not None and owner is not executor:
+        raise RuntimeError("A lineage executor is already registered for this VllmConfig")
+    if executor._lineage is not ledger:
+        raise RuntimeError("Lineage executor registration requires its exact ledger")
+    ledger._executor = ref(executor)
+
+
+def require_lineage_executor(config):
+    """Reject unpaired adaptive startup without creating a permissive ledger."""
+    pair = _ledgers.get(id(config)) if config is not None else None
+    ledger = pair[1] if pair is not None and pair[0] is config else None
+    owner = ledger._executor() if ledger is not None and ledger._executor is not None else None
+    if (owner is None or owner.vllm_config is not config
+            or owner._lineage is not ledger):
+        backend = getattr(getattr(config, "parallel_config", None),
+                          "distributed_executor_backend", "<missing VllmConfig/backend>")
+        raise RuntimeError(
+            "Adaptive async lineage requires a lineage-capable executor initialized "
+            "with this exact VllmConfig; no ready executor registration was found. "
+            f"Observed distributed_executor_backend={backend!r}. Configure "
+            "src.server.lineage_executor.LineageUniProcExecutor.")
+    return ledger
+
+
 def release_ledger(config):
     pair = _ledgers.pop(id(config), None)
     if pair is not None:
+        pair[1]._executor = None
         pair[1].clear()

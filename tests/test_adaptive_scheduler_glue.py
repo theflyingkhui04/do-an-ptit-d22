@@ -157,20 +157,47 @@ def scheduler_module(monkeypatch):
     }.items():
         monkeypatch.setitem(sys.modules, name, mod)
     monkeypatch.delitem(sys.modules, "src.server.adaptive_scheduler", raising=False)
-    return importlib.import_module("src.server.adaptive_scheduler")
+    module = importlib.import_module("src.server.adaptive_scheduler")
+    module._cpu_executor_owners = []
+    try:
+        yield module
+    finally:
+        from src.server.lineage import release_ledger
+        for owner in module._cpu_executor_owners:
+            release_ledger(owner.vllm_config)
+
+
+def paired_cpu_config(module):
+    """Explicit CPU observer stand-in; use the production registration contract.
+
+    No runtime bypass is enabled. Tests simulate worker observations separately;
+    test_executor_observation_and_terminal_cleanup uses the executor wrapper.
+    """
+    from src.server.lineage import ledger_for, register_lineage_executor
+    class CpuExecutor:
+        pass
+    config = SimpleNamespace(parallel_config=SimpleNamespace(
+        distributed_executor_backend="tests.CpuLineageExecutor"))
+    owner = CpuExecutor()
+    owner.vllm_config = config
+    owner._lineage = ledger_for(config)
+    register_lineage_executor(config, owner)
+    module._cpu_executor_owners.append(owner)
+    return config
 
 
 def make_request(req_id, prefill=False):
     return SimpleNamespace(request_id=req_id, is_prefill_chunk=prefill, spec_token_ids=[])
 
 
-def build(scheduler_module, monkeypatch, tmp_path, **env):
+def build(scheduler_module, monkeypatch, tmp_path, *, vllm_config=None, **env):
     monkeypatch.setenv("ADAPTIVE_CONTROLLER_KWARGS", json.dumps({"initial_alpha": 0.85}))
     monkeypatch.setenv("ADAPTIVE_TELEMETRY_PATH", str(tmp_path / "lane3.jsonl"))
     monkeypatch.setenv("ADAPTIVE_ENABLE_VRAM_GUARD", "0")
     for key, value in env.items():
         monkeypatch.setenv(key, value)
-    sched = scheduler_module.AdaptiveAsyncScheduler()
+    config = vllm_config if vllm_config is not None else paired_cpu_config(scheduler_module)
+    sched = scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
     sched._test_runner = SimpleNamespace(
         input_batch=SimpleNamespace(req_ids=[], prev_sampled_token_ids=object()),
         prev_positions=SimpleNamespace(np=[]), prev_num_spec_tokens=0,
@@ -283,7 +310,8 @@ def test_max_k_capped_by_num_spec_tokens(scheduler_module, monkeypatch, tmp_path
     sched = build(scheduler_module, monkeypatch, tmp_path)
 
     assert sched._planner.max_k == 4
-    sched2 = scheduler_module.AdaptiveAsyncScheduler(num_spec_tokens=3)
+    sched2 = scheduler_module.AdaptiveAsyncScheduler(
+        vllm_config=paired_cpu_config(scheduler_module), num_spec_tokens=3)
     assert sched2._planner.max_k == 3
 
 
@@ -332,7 +360,8 @@ def test_free_vram_not_read_without_cuda_context(scheduler_module, monkeypatch, 
 
 def test_missing_dynamic_lookup_still_schedules(scheduler_module, monkeypatch, tmp_path):
     monkeypatch.setenv("ADAPTIVE_ENABLE_VRAM_GUARD", "0")
-    sched = scheduler_module.AdaptiveAsyncScheduler(dynamic=False)
+    sched = scheduler_module.AdaptiveAsyncScheduler(
+        vllm_config=paired_cpu_config(scheduler_module), dynamic=False)
     add_running(sched, make_request("r1"))
 
     out = run_step(sched)
@@ -863,7 +892,7 @@ def test_actual_pinned_row_copy_binds_reorder_and_compaction(scheduler_module, m
 def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch, tmp_path):
     """Production executor wrapper, simulated worker; no installed engine."""
     from concurrent.futures import Future
-    from src.server.lineage import ledger_for, release_ledger
+    from src.server.lineage import ledger_for, release_ledger, require_lineage_executor
     config = SimpleNamespace(parallel_config=SimpleNamespace(world_size=1, data_parallel_size=1),
         scheduler_config=SimpleNamespace(async_scheduling=True),
         speculative_config=SimpleNamespace(method="draft_model", disable_padded_drafter_batch=False))
@@ -897,6 +926,13 @@ def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch
     monkeypatch.delitem(sys.modules, "src.server.lineage_executor", raising=False)
     executor_module = importlib.import_module("src.server.lineage_executor")
     capture = installed_capture()
+    from experiments.modal_lanes import build_vllm_args
+    args = build_vllm_args("adaptive")
+    config.parallel_config.distributed_executor_backend = args[args.index("--distributed-executor-backend") + 1]
+    get_class = captured_function(capture / "v1/executor/abstract.py", "Executor", "get_class", {
+        "Executor": Base, "resolve_obj_by_qualname": lambda name: getattr(
+            importlib.import_module(name.rsplit(".", 1)[0]), name.rsplit(".", 1)[1])})
+    assert get_class(config) is executor_module.LineageUniProcExecutor
     monkeypatch.setattr(executor_module.vllm, "__version__", "0.30.0", raising=False)
     monkeypatch.setattr(executor_module.vllm, "__file__", str(capture / "__init__.py"), raising=False)
     executor_module.verify_sources()
@@ -909,10 +945,12 @@ def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch
     config.parallel_config.world_size = 2
     with pytest.raises(RuntimeError, match="single-worker"):
         executor._init_executor()
+    with pytest.raises(RuntimeError, match="lineage-capable executor"):
+        require_lineage_executor(config)  # failed executor init never publishes readiness
     config.parallel_config.world_size = 1
     executor._init_executor()
-    sched = build(scheduler_module, monkeypatch, tmp_path)
-    sched._lineage = ledger_for(config)
+    sched = build(scheduler_module, monkeypatch, tmp_path, vllm_config=config)
+    assert sched._lineage is executor._lineage
     # Disable the fake schedule's simulated dispatch: exercise the wrapper.
     sched._test_runner = None
     req = make_request("r")
@@ -939,6 +977,8 @@ def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch
     f2.set_exception(RuntimeError("async copy failure"))
     assert sched._lineage.executions == {} and sched._lineage.generation is None
     executor.shutdown()
+    with pytest.raises(RuntimeError, match="lineage-capable executor"):
+        require_lineage_executor(config)
     assert ledger_for(config) is not sched._lineage
     release_ledger(config)
 
@@ -982,3 +1022,79 @@ def test_pinned_uniproc_nonblocking_rpc_runs_inline():
     assert events == ["worker-ran"] and not future.done()
     assert future.result() == "paired-result"
     assert events == ["worker-ran", "materialized"]
+
+
+@pytest.mark.parametrize("positional", [False, True])
+def test_paired_scheduler_startup_uses_registered_executor(scheduler_module, positional):
+    """P1: same config/registered capability succeeds before any scheduling."""
+    from src.server.lineage import require_lineage_executor
+    config = paired_cpu_config(scheduler_module)
+    sched = (scheduler_module.AdaptiveAsyncScheduler(config) if positional else
+             scheduler_module.AdaptiveAsyncScheduler(vllm_config=config))
+    assert sched._lineage is require_lineage_executor(config)
+    assert sched._lineage.executions == {}
+    assert sched._planner.adapter.active_request_count == 0
+
+
+@pytest.mark.parametrize("backend", ["uni", "unrelated.Executor",
+    "src.server.lineage_executor.LineageUniProcExecutor",
+    type("LineageUniProcExecutor", (), {"LINEAGE_CAPABLE": True})])
+def test_unpaired_scheduler_rejected_before_base_init_or_feedback(scheduler_module, monkeypatch, backend):
+    """P2/P3/P7: even the right configured NAME cannot fake live readiness."""
+    from src.server.lineage import ledger_for, release_ledger
+    config = SimpleNamespace(parallel_config=SimpleNamespace(distributed_executor_backend=backend))
+    ledger_for(config)  # An empty ledger is not a completed executor handshake.
+    def unexpected(*args, **kwargs):
+        pytest.fail("Unpaired startup reached scheduler init or feedback")
+    monkeypatch.setattr(FakeAsyncScheduler, "__init__", unexpected)
+    monkeypatch.setattr(scheduler_module.AdaptiveAsyncScheduler, "make_spec_decoding_stats", unexpected)
+    try:
+        with pytest.raises(RuntimeError, match="Adaptive async lineage requires a lineage-capable executor") as exc:
+            scheduler_module.AdaptiveAsyncScheduler(vllm_config=config)
+        assert str(backend) in str(exc.value)
+    finally:
+        release_ledger(config)
+
+
+def test_missing_config_is_not_a_scheduler_test_bypass(scheduler_module):
+    with pytest.raises(RuntimeError, match="missing VllmConfig"):
+        scheduler_module.AdaptiveAsyncScheduler()
+
+
+def test_executor_registration_is_engine_local_and_revoked(scheduler_module):
+    from src.server.lineage import require_lineage_executor, release_ledger
+    import gc
+    first = paired_cpu_config(scheduler_module)
+    second = SimpleNamespace(parallel_config=first.parallel_config)
+    with pytest.raises(RuntimeError, match="exact VllmConfig"):
+        require_lineage_executor(second)
+    release_ledger(first)
+    with pytest.raises(RuntimeError, match="lineage-capable executor"):
+        require_lineage_executor(first)
+    dead = paired_cpu_config(scheduler_module)
+    scheduler_module._cpu_executor_owners.pop()
+    gc.collect()
+    with pytest.raises(RuntimeError, match="lineage-capable executor"):
+        require_lineage_executor(dead)
+    release_ledger(dead)
+
+
+def test_non_adaptive_scheduler_does_not_require_lineage_registration():
+    """P4: validation is confined to our adaptive subclass, not global vLLM."""
+    normal = FakeAsyncScheduler(vllm_config=SimpleNamespace(parallel_config=SimpleNamespace(
+        distributed_executor_backend="uni")))
+    assert normal.requests == {} and normal.stats_calls == []
+
+
+def test_pinned_engine_constructs_executor_before_scheduler_with_same_config():
+    """Source contract for the early handshake; no live engine construction."""
+    source = installed_capture() / "v1/engine/core.py"
+    module = ast.parse(source.read_text(encoding="utf-8"))
+    engine = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == "EngineCore")
+    init = next(n for n in engine.body if isinstance(n, ast.FunctionDef) and n.name == "__init__")
+    calls = [n for n in ast.walk(init) if isinstance(n, ast.Call)]
+    executor = next(n for n in calls if ast.unparse(n.func) == "executor_class")
+    scheduler = next(n for n in calls if ast.unparse(n.func) == "Scheduler")
+    assert executor.lineno < scheduler.lineno
+    assert ast.unparse(executor.args[0]) == "vllm_config"
+    assert ast.unparse(next(k.value for k in scheduler.keywords if k.arg == "vllm_config")) == "vllm_config"

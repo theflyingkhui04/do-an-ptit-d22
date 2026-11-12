@@ -11,7 +11,7 @@ from pathlib import Path
 import vllm
 from vllm.v1.executor.uniproc_executor import UniProcExecutor
 
-from src.server.lineage import ledger_for, release_ledger
+from src.server.lineage import ledger_for, register_lineage_executor, release_ledger
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,9 @@ class LineageUniProcExecutor(UniProcExecutor):
             return result
 
         runner._copy_draft_token_ids_to_cpu = observe_birth
+        # Publish only after source/config/runner checks and observer installation.
+        # EngineCore constructs its scheduler later with the same config object.
+        register_lineage_executor(config, self)
 
     def execute_model(self, scheduler_output, non_block=False):
         runner = self._lineage_runner

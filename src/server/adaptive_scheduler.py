@@ -24,7 +24,7 @@ from vllm.logger import init_logger
 from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 
 from src.server.budget_planner import AdaptiveBudgetPlanner, StepPlan, _env_flag
-from src.server.lineage import ledger_for, release_ledger
+from src.server.lineage import require_lineage_executor, release_ledger
 from experiments.protocol_b_boundary_observer import observe as _pb279_observe
 from experiments.protocol_b_boundary_observer import control_producer as _pb177_control
 
@@ -33,14 +33,18 @@ logger = init_logger(__name__)
 
 class AdaptiveAsyncScheduler(AsyncScheduler):
     def __init__(self, *args, **kwargs) -> None:
+        config = kwargs.get("vllm_config", args[0] if args else None)
+        # Fail before base scheduler initialization/readiness or any feedback.
+        # The pinned EngineCore has already initialized its executor here.
+        ledger = require_lineage_executor(config)
         super().__init__(*args, **kwargs)
         self._planner = AdaptiveBudgetPlanner.from_env()
         self._planner.max_k = min(self._planner.max_k, self.num_spec_tokens)
         self._read_vram = _env_flag(os.environ.get("ADAPTIVE_ENABLE_VRAM_GUARD", "1"))
         self._plan = StepPlan(batch_k=0, per_request_k={})
         self._schedule_sequence = 0
-        self._lineage_config = kwargs.get("vllm_config", args[0] if args else None)
-        self._lineage = ledger_for(self._lineage_config)
+        self._lineage_config = config
+        self._lineage = ledger
         self._retiring = None
 
         if self.dynamic_sd_lookup is None:
