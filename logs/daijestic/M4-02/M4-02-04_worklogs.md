@@ -1919,3 +1919,125 @@ conversion; SHA256SUMS.json covers the exact captured files. Raw CLI logs retain
 their emitted trailing spaces (flagged by staging whitespace checks); no log was
 sanitized. Final working-tree diff check and committed-blob hash checks verify
 the preserved result. Runtime source paths remain identical to fb454416.
+
+---
+
+# 2026-11-12 12:26 +07:00 — final offline evidence-audit closure
+
+**READY FOR PM HANDOFF.** Independent audit verdict at starting HEAD
+`d023e3f79c896f8e0044ef37bdbeabe2edc5968a` was VERIFIED WITH MINOR DOCUMENTATION
+ISSUES; all three remaining MINOR findings are now resolved offline.
+
+Runtime-tested SHA: `fb4544166c428e73b164756a2ef0e11ad6b97d6f`.
+Reviewed pre-runtime SHA: `f889865f82bb91681d436e80570815490b179da5`.
+Closure implementation HEAD / hardened-validator revision:
+`cb4d28282fbe40ff1f3cfe71449638013aa1dd29`.
+Current closure HEAD is the final documentation commit containing this section,
+resolved at handoff by `git rev-parse HEAD`; its permanent historical locator is
+`git log -1 --format=%H -- experiments/runs/m4_02_04/20261112T014441Z-async-lineage-pinned-runtime/CLOSURE.md`.
+The final report records the literal SHA. A commit cannot contain its own literal
+hash. Final HEAD is a runtime-source-equivalent validator/evidence/doc descendant;
+it was **not** itself executed on GPU. No runtime correctness source changed.
+
+Evidence root:
+`experiments/runs/m4_02_04/20261112T014441Z-async-lineage-pinned-runtime/`,
+canonical runtime subtree `runtime-04/`.
+The README is sealed, so it remains unchanged; successor `CLOSURE.md` supplies
+current provenance, corrected shutdown wording and safe reproduction commands.
+`CLOSURE-VALIDATION.json` records the new offline validation and independent
+recomputation. Both are explicitly outside the original seal.
+
+- **R1 RESOLVED:** seal integrity including a pinned index digest, plan/schedule
+  uniqueness, exact request/source joins, producer row/time/order checks,
+  compatible latest-plan redirection rejection, runtime log failures, strict
+  integer feedback counts, raw/aggregate agreement, EMA, child bootstrap and
+  startup identities, exact tested SHA and unchanged 15-file source gate.
+  Thirteen gates PASS. Read-only `--no-write` added; sealed output overwrite
+  refused. Tests use temporary complete mirrors and assert specific semantic
+  FAIL gates independently of integrity FAIL.
+- **R2 RESOLVED:** acquisition mechanism retained as `modal volume get` from
+  `ptit-run-artifacts`, path
+  `lane3/20261112T014441Z-async-lineage-pinned-runtime-fb454416-a10g/telemetry.jsonl`.
+  Exact retrieval timestamp, source-side digest and transfer receipt:
+  **NOT RETAINED**. Retrieval time is APPROXIMATE / BOUNDED BY aggregate
+  finished_at 2026-11-12T02:10:43.251384Z and first evidence commit
+  97bf088c889bd84703d8835bbb2b32ef6b7ea6db at 2026-11-12T02:17:29Z;
+  not an authenticated transfer timestamp. Local sealed aggregate digest is
+  e9b9661c1c5b08576f6150de8105287723a9c510c4125cfcf3c6ed6c85784dff,
+  not a claimed source-side receipt. Tested vs audited vs validator vs closure
+  revisions are explicit. Requested Modal resource class: **A10G**;
+  runtime-observed GPU device string: **NVIDIA A10**. Historical captured source:
+  **392 files matched historical capture manifest**; actual runtime source gate:
+  **15 production/version-sensitive files checked**. Some bootstrap dependencies
+  are outside this gate; no full environment reproducibility claim.
+- **R3 RESOLVED:** canonical vllm.log explicitly records abort mode / timeout=0s
+  and force killing EngineCore PID 32. **EngineCore was force-killed during
+  abort-mode shutdown; a semaphore/resource warning was observed.** Positive
+  startup/feedback evidence remains VALID. Graceful runtime shutdown and runtime
+  revocation during graceful shutdown are **RUNTIME UNVERIFIED / NOT VERIFIED**.
+  Generation-specific revocation remains CPU/source-contract verified separately.
+
+Safe hardened-validator command (actually executed on an isolated full mirror;
+can also be used read-only on the canonical root):
+
+```text
+python -B -m experiments.validate_async_lineage_runtime experiments/runs/m4_02_04/20261112T014441Z-async-lineage-pinned-runtime/runtime-04 --expected-sha fb4544166c428e73b164756a2ef0e11ad6b97d6f --no-write
+```
+
+Result: **13/13 gates PASS, exit 0**. Validator source SHA-256:
+`ef7c10c37e9986825f42e5b113c4b5bb7cfd819b6d2c52306530a4cfc85e461f`.
+The sealed original validation.json is historical and was not overwritten.
+
+Independent recomputation outside the validator parsed canonical raw JSONL:
+**13 events / 49 drafted / 49 accepted**, source plans 1..13 joined to schedules
+2..14 with matching requests. First three counts 3/3, remaining ten 4/4.
+Alpha **0.8 -> 0.98900488372224**, maximum per-event difference **0** using
+the exact source EMA expression. A preliminary alternate arithmetic expression
+produced a 3.33e-16 rounding difference; source-expression recomputation resolved
+it exactly. Seal verification found **37/37 working files AND committed Git blobs
+matching**, before/after execution; original index unchanged.
+
+All pytest commands used `python -B -m pytest -p no:cacheprovider -q --tb=short`:
+
+| Selection | Passed | Failed | Skipped | Deselected |
+| --- | ---: | ---: | ---: | ---: |
+| tests/test_async_lineage_runtime_validator.py | 51 | 0 | 0 | 0 |
+| Six targeted async-lineage CPU suites | 202 | 0 | 0 | 0 |
+| Same reconstructed 18-file historical broader CPU selection | 441 | 6 | 0 | 0 |
+
+Targeted paths: tests/test_adaptive_scheduler_glue.py,
+tests/test_lineage_startup.py, tests/test_budget_planner.py,
+tests/test_budget_transition_scenarios.py, tests/test_modal_runner_config.py,
+tests/test_scalar_colab_smoke.py. Full broader selection and failing test names
+are preserved in CLOSURE.md. The six failures are the known W1 CRLF/hash category
+in tests/test_modal_smoke.py, actual 19808e79... versus expected 0de2387c....
+Tree-controller timing passed this run. Broader regression is **NOT green**;
+no new unexplained failure category, workload change or timing threshold change.
+Final validator tests include all A1-A20 mutation classes and CLI/seal-safety
+checks. No GPU, Modal integration, benchmark or real negative runtime test ran.
+
+Exact runtime claim: at tested SHA fb4544166c428e73b164756a2ef0e11ad6b97d6f,
+async feedback lineage and positive startup ownership were verified on the tested
+pinned vLLM 0.30.0 V1 / UniProc / single-worker NVIDIA A10 runtime configuration.
+Request chatcmpl-863a80d9a3f74fb9 produced 13 verification events, 49 drafted
+speculative tokens and 49 accepted speculative tokens, with exact producer
+source-plan/source-schedule attribution, zero observed missing-lineage events,
+and controller alpha from 0.8 to 0.98900488372224.
+
+Invalid scheduler/executor pair, failed-startup recovery and K=0 runtime sanity
+remain **RUNTIME UNVERIFIED**. Their CPU/source-contract evidence remains separate.
+NO profitability, adaptive-vs-vanilla speedup, generalized 100% acceptance,
+distributed/multiworker lineage, arbitrary TreeAdaptive runtime, hardware-aware
+measured-cost policy, graceful shutdown, graceful-shutdown revocation,
+invalid-pair runtime, failed-startup recovery runtime or K=0 runtime claim.
+The 49/49 speculative counts are not emitted-token or performance claims.
+
+Self-reviewed the full closure diff, gates/tests, scope and provenance. Every
+changed path since tested SHA is validator, validator tests, evidence metadata,
+documentation or worklog; runtime correctness source unchanged. `git diff --check`
+passes. Branch feat/m4-02-04-async-lineage-v02, exact-path local commits only,
+tracked tree clean after commit; the three pre-existing untracked evidence
+directories remain. develop and future/tree-adaptive-v02 untouched; nothing
+pushed/merged, no PR, no Trello write. PM handoff prepared in final response.
+Final technical status: **READY FOR PM HANDOFF**.
+Next action: PM/reviewer reviews the closure evidence and local commits.
