@@ -3,9 +3,10 @@
 ## 0. Thông Tin Công Việc
 
 - **Task:** `[M4-02-04] Scheduler Telemetry / Adaptive Scalar Budget Integration`
-- **Người thực hiện:** Bùi Thiên Đại (`daijestic`)
+- **Người thực hiện:** Bùi Đức Đại (`daijestic`)
 - **Repository:** `theflyingkhui04/do-an-ptit-d22`
-- **Branch:** `feat/m4-02-04-scheduler-telemetry-v02`
+- **Current closure branch:** `feat/m4-02-04-async-lineage-v02`
+- **Historical scalar branch:** `feat/m4-02-04-scheduler-telemetry-v02`
 - **Frozen implementation / Colab source SHA:** `16528241468e2624ccfe07a69a67fcc123bfe4a3`
 - **Final L4 evidence commit:** `6906985eeb0b53bfce312847dbcf104d6254b1ed`
 - **Canonical live-smoke evidence root:**  
@@ -21,7 +22,7 @@
 - **Target revision:** `b25037543e9394b818fdfca67ab2a00ecc7dd641`
 - **Draft:** `Qwen/Qwen2.5-0.5B-Instruct`
 - **Draft revision:** `7ae557604adf67be50417f59c2c2f167def9a775`
-- **Trạng thái kỹ thuật hiện tại:** `READY FOR CLOSURE REVIEW`
+- **Trạng thái kỹ thuật hiện tại:** `READY FOR PM HANDOFF`
 - **Production source sau live smoke:** `UNCHANGED`
 - **Profitability benchmark:** `NOT EVALUATED`
 - **Full profiling grid:** `NOT RUN`
@@ -208,7 +209,7 @@ arbitrary topology verified
 Canonical serving controller tại thời điểm review vẫn dùng fixed acceptance bands:
 
 ```text
-alpha < 0.65       -> K=0
+alpha < 0.65        -> K=0
 0.65 <= alpha<0.80 -> K=2
 0.80 <= alpha<0.90 -> K=3
 alpha >= 0.90      -> K=4
@@ -1391,7 +1392,6 @@ execution, profitability and hardware-aware policy are NOT VERIFIED by this work
 Local feature-branch commits only, with exact-path staging. No push, merge, PR,
 Trello mutation or historical evidence rewrite. Next action: technical review
 of the F1 startup-pairing fix before real pinned-runtime integration validation.
-
 
 ---
 
