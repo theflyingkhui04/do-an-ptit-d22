@@ -126,8 +126,8 @@ def pre_download_guard(
 
     if not is_safe:
         warning = (
-            f"VRAM yêu cầu (~{total_needed_mb / 1024:.1f} GB) vượt quá khả năng phần cứng "
-            f"({free_vram_mb / 1024:.1f} GB free). Nguy cơ gây OOM cao!"
+            f"Estimated VRAM (~{total_needed_mb / 1024:.1f} GB) exceeds available VRAM "
+            f"({free_vram_mb / 1024:.1f} GB free). High risk of OOM!"
         )
         if not is_quantized:
             suggested_model = f"{target_model}-AWQ"

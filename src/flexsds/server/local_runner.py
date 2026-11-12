@@ -105,27 +105,31 @@ class LocalServingRunner:
         env = self.setup_environment(config)
 
         if dry_run:
-            print("\n[FlexSDS] Lệnh khởi chạy mô phỏng (Dry-run):")
+            print("\n[FlexSDS] Dry-run execution command:")
             print(" ".join(cmd))
-            print(f"Môi trường: ADAPTIVE_ENABLE_VRAM_GUARD={env.get('ADAPTIVE_ENABLE_VRAM_GUARD')}")
+            print(f"Environment: ADAPTIVE_ENABLE_VRAM_GUARD={env.get('ADAPTIVE_ENABLE_VRAM_GUARD')}")
             return None
 
-        if background:
-            log_path = "flexsds_server.log"
-            log_file = open(log_path, "a", encoding="utf-8")
-            proc = subprocess.Popen(
-                cmd,
-                env=env,
-                preexec_fn=os.setsid,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-            )
-            with open(pid_file, "w", encoding="utf-8") as f:
-                f.write(f"{proc.pid}\n")
-            print(f"[FlexSDS] Máy chủ đã khởi chạy ngầm (PID: {proc.pid}, Log: {log_path})")
-            return proc
-        else:
-            return subprocess.Popen(cmd, env=env)
+        try:
+            if background:
+                log_path = "flexsds_server.log"
+                log_file = open(log_path, "a", encoding="utf-8")
+                proc = subprocess.Popen(
+                    cmd,
+                    env=env,
+                    preexec_fn=os.setsid,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                )
+                with open(pid_file, "w", encoding="utf-8") as f:
+                    f.write(f"{proc.pid}\n")
+                print(f"[FlexSDS] Server started in background (PID: {proc.pid}, Log: {log_path})")
+                return proc
+            else:
+                return subprocess.Popen(cmd, env=env)
+        except FileNotFoundError:
+            print("\n\033[31m[Error]\033[0m Server binary not found in PATH.")
+            return None
 
     def stop(self, pid_file: str = ".flexsds.pid") -> bool:
         """Dừng nhóm tiến trình máy chủ vLLM và dọn dẹp sạch tiến trình con."""

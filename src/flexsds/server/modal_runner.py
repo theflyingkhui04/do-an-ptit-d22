@@ -49,12 +49,16 @@ class ModalServingRunner:
         cmd = self.build_modal_command(config, deploy=deploy)
 
         if dry_run:
-            mode_desc = "Cố định (Persistent Deploy)" if deploy else "Tạm thời (Ephemeral Run)"
-            print(f"\n[FlexSDS Modal] Lệnh thực thi ({mode_desc} - Dry-run):")
+            mode_desc = "Persistent Deploy" if deploy else "Ephemeral Run"
+            print(f"\n[FlexSDS Modal] Dry-run command ({mode_desc}):")
             print(" ".join(cmd))
             return None
 
-        return subprocess.Popen(cmd)
+        try:
+            return subprocess.Popen(cmd)
+        except FileNotFoundError:
+            print("\n\033[31m[Error]\033[0m 'modal' CLI not found. Install via: pip install modal")
+            return None
 
     def stop(self, app_name: str = DEFAULT_APP_NAME) -> bool:
         """Dừng ứng dụng đang chạy trên hạ tầng Modal Cloud."""

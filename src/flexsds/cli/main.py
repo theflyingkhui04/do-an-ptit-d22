@@ -34,45 +34,45 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "-v", "--version", action="version", version=f"flexsds {__version__}"
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Hành động thực thi")
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
-    # Lệnh: detect
-    subparsers.add_parser("detect", help="Quét và hiển thị thông số phần cứng GPU")
+    # Command: detect
+    subparsers.add_parser("detect", help="Detect and display hardware / GPU specs")
 
-    # Lệnh: profile
-    subparsers.add_parser("profile", help="Đo đạc hồ sơ chi phí phần cứng GPU")
+    # Command: profile
+    subparsers.add_parser("profile", help="Load hardware cost profile for current GPU")
 
-    # Lệnh: stop
-    subparsers.add_parser("stop", help="Dừng máy chủ FlexSDS đang chạy")
+    # Command: stop
+    subparsers.add_parser("stop", help="Stop running local FlexSDS server")
 
-    # Lệnh: serve
-    serve_parser = subparsers.add_parser("serve", help="Khởi chạy phục vụ mô hình")
-    serve_parser.add_argument("--target", type=str, help="Tên mô hình đích")
-    serve_parser.add_argument("--draft", type=str, help="Tên mô hình nháp")
+    # Command: serve
+    serve_parser = subparsers.add_parser("serve", help="Launch speculative serving server")
+    serve_parser.add_argument("--target", type=str, help="Target model identifier")
+    serve_parser.add_argument("--draft", type=str, help="Draft model or speculator head identifier")
     serve_parser.add_argument(
-        "--backend", choices=["modal", "local", "colab"], default="modal", help="Nền tảng phục vụ"
+        "--backend", choices=["modal", "local", "colab"], default="modal", help="Serving backend platform"
     )
     serve_parser.add_argument(
-        "--port", type=int, default=8000, help="Cổng mạng phục vụ API"
+        "--port", type=int, default=8000, help="API server port"
     )
     serve_parser.add_argument(
-        "--background", action="store_true", help="Chạy máy chủ ở chế độ nền"
+        "--background", action="store_true", help="Run local server as background daemon"
     )
     serve_parser.add_argument(
-        "--deploy", action="store_true", help="Triển khai cố định trên Modal Cloud"
+        "--deploy", action="store_true", help="Deploy persistently on Modal Cloud"
     )
     serve_parser.add_argument(
-        "--no-adaptive", action="store_true", help="Tắt lớp thích ứng TreeAdaptive"
+        "--no-adaptive", action="store_true", help="Disable TreeAdaptive optimization engine"
     )
     serve_parser.add_argument(
-        "--dry-run", action="store_true", help="Chỉ xuất lệnh phục vụ, không khởi chạy"
+        "--dry-run", action="store_true", help="Print execution command without launching"
     )
 
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    """Điểm vào chính của giao diện dòng lệnh FlexSDS."""
+    """Main entry point for FlexSDS command-line interface."""
     args = parse_args(argv)
     hw_info = detect_hardware()
 
@@ -80,26 +80,26 @@ def main(argv: Optional[list[str]] = None) -> int:
         local_runner = LocalServingRunner()
         local_stopped = local_runner.stop()
         if local_stopped:
-            print("\033[32m✔ Đã dừng tiến trình máy chủ vLLM cục bộ thành công.\033[0m")
+            print("\033[32m✔ Local vLLM server process stopped successfully.\033[0m")
         else:
-            print("\033[90mKhông tìm thấy tiến trình máy chủ cục bộ đang chạy (hoặc đã dừng).\033[0m")
+            print("\033[90mNo active local server process found.\033[0m")
         return 0
 
-    # Hiển thị banner khi khởi chạy tương tác hoặc theo lệnh thông thường
+    # Display banner on interactive startup or regular commands
     print_banner(hw_info)
 
     if args.command == "detect":
-        print(f"\n\033[1;32m✔ Trạng thái phần cứng: {hw_info.summary()}\033[0m")
+        print(f"\n\033[1;32m✔ Hardware: {hw_info.summary()}\033[0m")
         return 0
 
     if args.command == "profile":
         _, profile_name = load_profile_for_hardware(hw_info)
-        print(f"\n\033[1;32m✔ Đã liên kết với hồ sơ phần cứng: {profile_name}\033[0m")
+        print(f"\n\033[1;32m✔ Linked hardware profile: {profile_name}\033[0m")
         return 0
 
     if args.command == "serve" and args.target and args.draft:
-        # Chế độ non-interactive qua CLI flags
-        print(f"\n\033[1;33mKhởi chạy phục vụ (CLI Mode): Target={args.target}, Draft={args.draft}, Backend={args.backend}\033[0m")
+        # Non-interactive CLI flags mode
+        print(f"\n\033[1;37mLaunching server: Target={args.target}, Draft={args.draft}, Backend={args.backend}\033[0m")
         report = check_compatibility(args.target, args.draft, free_vram_mb=hw_info.free_vram_mb)
         print(f"  ✔ {report.summary()}")
 
@@ -122,10 +122,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             m_runner.launch(cfg, deploy=args.deploy, dry_run=args.dry_run)
         else:
             if args.dry_run:
-                print("  ✔ [Dry-run] Colab notebook URL sẵn sàng.")
+                print("  ✔ [Dry-run] Colab notebook URL ready.")
         return 0
 
-    # Mặc định: Chạy giao diện hỏi-đáp tương tác (Wizard)
+    # Default: Interactive serving wizard
     run_interactive_wizard(hw_info)
     return 0
 
