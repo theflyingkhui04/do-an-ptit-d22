@@ -1913,3 +1913,9 @@ deployment beyond this ephemeral canonical path, TreeAdaptive, profitability,
 and hardware-derived policy remain unverified. No unsupported performance claim.
 No develop/preservation-ref modification, push, merge, PR or Trello mutation.
 Next action: independent review of the preserved runtime evidence.
+
+Evidence byte preservation: a directory-scoped `.gitattributes` disables newline
+conversion; SHA256SUMS.json covers the exact captured files. Raw CLI logs retain
+their emitted trailing spaces (flagged by staging whitespace checks); no log was
+sanitized. Final working-tree diff check and committed-blob hash checks verify
+the preserved result. Runtime source paths remain identical to fb454416.

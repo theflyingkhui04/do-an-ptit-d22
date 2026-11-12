@@ -149,3 +149,10 @@ ownership, deployment compatibility beyond this ephemeral canonical launcher,
 TreeAdaptive runtime, profitability and hardware-derived policy remain unverified.
 
 No push, merge, PR, Trello change, develop modification or preservation-ref change.
+
+Evidence storage: this directory's `.gitattributes` disables newline conversion;
+SHA256SUMS.json seals captured bytes for checkout and committed-blob verification.
+Staging whitespace checks flagged trailing spaces emitted by Modal/vLLM in raw
+logs. Those original log bytes are preserved rather than sanitized. This is not
+a production-code whitespace defect or runtime-gate failure. The final
+uncommitted `git diff --check` is clean.
