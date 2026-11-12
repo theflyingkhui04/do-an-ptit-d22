@@ -12,6 +12,7 @@ import vllm
 from vllm.v1.executor.uniproc_executor import UniProcExecutor
 
 from src.server.lineage import register_lineage_executor, release_ledger
+from src.server.lineage_startup import install_enginecore_startup_binding
 
 logger = logging.getLogger(__name__)
 
@@ -121,3 +122,8 @@ class LineageUniProcExecutor(UniProcExecutor):
             return super().shutdown()
         finally:
             release_ledger(getattr(self, "_lineage_registration", None))
+
+
+# Pinned executor resolution happens before EngineCore.__init__. If a caller
+# bypasses that boundary, publication fails closed rather than inventing a lease.
+install_enginecore_startup_binding()

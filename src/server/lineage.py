@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from weakref import ref
 from threading import RLock, current_thread
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 
 @dataclass(frozen=True)
@@ -119,10 +121,56 @@ class LineageLedger:
 
 # Process-local rendezvous only: config identity indexes a slot, never ownership.
 # Pinned EngineCore constructs exactly one scheduler after its executor on the
-# same initialization thread. A publication can be consumed exactly once. Live
-# same-config overlap is rejected; reuse requires release of the old handle.
+# same initialization thread and inside one project-owned startup boundary.
+# A publication can be consumed exactly once by that attempt. Live same-config
+# overlap is rejected; failure revokes the orphan and success requires release.
 _registry = {}
 _registry_lock = RLock()
+_startup = ContextVar("lineage_engine_startup", default=None)
+
+
+@dataclass(frozen=True, eq=False)
+class StartupAttempt:
+    config: object
+    publisher_thread: object
+    token: object
+
+
+@dataclass
+class _StartupState:
+    attempt: StartupAttempt
+    active: bool = True
+    registration: object = None
+
+
+@contextmanager
+def _engine_startup(config):
+    """One EngineCore.__init__ invocation, never a config/thread-scoped lease.
+
+    The pinned constructor wrapper owns this boundary. Failed construction and
+    successful construction without consumption both revoke their exact handle.
+    A copied context cannot reactivate a completed attempt. Nested constructors
+    get fresh identities and restore the outer context in finally.
+    """
+    with _registry_lock:
+        state = _StartupState(StartupAttempt(config, current_thread(), object()))
+        context_token = _startup.set(state)
+    succeeded = False
+    try:
+        yield state.attempt
+        succeeded = True
+    finally:
+        try:
+            with _registry_lock:
+                state.active = False
+                registration = state.registration
+                current = _registry.get(id(config))
+                if registration is not None and (
+                        not succeeded or (current is not None
+                        and current.registration is registration and not current.consumed)):
+                    release_ledger(registration)
+        finally:
+            _startup.reset(context_token)
 
 
 @dataclass(frozen=True, eq=False)
@@ -132,6 +180,7 @@ class LineageRegistration:
     owner: object  # weak reference; never retain the executor through the registry
     publisher_thread: object
     token: object
+    attempt: StartupAttempt
 
 
 @dataclass
@@ -160,14 +209,23 @@ def register_lineage_executor(config, executor):
     if config is None or executor.vllm_config is not config:
         raise RuntimeError("Lineage executor registration requires its exact VllmConfig")
     with _registry_lock:
+        startup = _startup.get()
+        if (startup is None or not startup.active
+                or startup.attempt.config is not config
+                or startup.attempt.publisher_thread is not current_thread()):
+            raise RuntimeError("Lineage publication requires an active EngineCore startup attempt")
+        if startup.registration is not None:
+            raise RuntimeError("A lineage generation was already published by this startup attempt")
         if id(config) in _registry:
             raise RuntimeError("A lineage executor generation is already registered for this VllmConfig; release it first")
         ledger = LineageLedger()
         token = object()
         id_key = id(config)
         owner = ref(executor, lambda unused: _expire_registration(id_key, token))
-        registration = LineageRegistration(config, ledger, owner, current_thread(), token)
+        registration = LineageRegistration(config, ledger, owner, current_thread(), token,
+                                           startup.attempt)
         _registry[id_key] = _RegistrationState(registration)
+        startup.registration = registration
         return registration
 
 
@@ -189,6 +247,9 @@ def require_lineage_executor(config):
                 reason = "registration already consumed by another scheduler initialization"
             elif registration.publisher_thread is not current_thread():
                 reason = "registration belongs to another initialization thread"
+            elif ((startup := _startup.get()) is None or not startup.active
+                    or startup.attempt is not registration.attempt):
+                reason = "registration belongs to another EngineCore startup attempt"
             else:
                 state.consumed = True
                 return registration
