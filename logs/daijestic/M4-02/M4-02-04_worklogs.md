@@ -1790,3 +1790,126 @@ Real pinned runtime, deployment, GPU behavior, distributed/multiprocess startup
 ownership, TreeAdaptive runtime, profitability, and hardware-aware measured policy
 remain UNVERIFIED. Historical L4 scalar observer evidence is unchanged and does not
 validate startup-attempt ownership. Independent technical review is the next gate.
+
+---
+
+# 2026-11-12 — async lineage pinned-runtime integration
+
+## Result and immutable source
+
+**VERIFIED for the tested pinned runtime configuration.** Server startup,
+child hook bootstrap, exact startup-attempt pairing, real speculative feedback
+and the offline validator each PASS separately. No profitability benchmark ran.
+
+Reviewed baseline: `f889865f82bb91681d436e80570815490b179da5`, branch
+`feat/m4-02-04-async-lineage-v02`; merge base/origin/develop
+`53b813a0b6ce8fef530c4286fbd8bf4da5b4a149`. Tracked baseline clean; three
+pre-existing untracked evidence directories preserved.
+
+Successful runtime SHA: `fb4544166c428e73b164756a2ef0e11ad6b97d6f`.
+Local diagnostic/harness commits: aeada583 (opt-in process/UUID events and
+before-update alpha, CPU tests, canonical launcher harness), c7eda977 (disable
+automatic checkout mounts), fb454416 (function-level import path). No correctness
+rule, dependency pin, upstream source, policy, workload matrix, or model revision
+changed. Later offline-validator and evidence/docs commits do not change the
+runtime source attribution.
+
+Evidence: `experiments/runs/m4_02_04/20261112T014441Z-async-lineage-pinned-runtime/`;
+canonical successful process/request artifacts are in `runtime-04/`. Historical
+`20261111T132628Z-scalar-observer-l4-b45a0afc/` is unchanged and was not relabeled.
+
+## Actual environment and process bootstrap
+
+Modal ephemeral canonical Lane 3 `_start_vllm` / `_stop_vllm`, NVIDIA A10
+(documented A10G fallback), 23028 MiB, driver 610.57.04, CUDA 13.0,
+Python 3.11.5, PyTorch 2.13.0+cu130, vLLM **0.30.0**. Installed-only hash gate
+PASS for all 15 pinned sources, including EngineCore, UniProcExecutor, scheduler
+and AsyncScheduler. Requested/effective config is in launch.json, server_env.json
+and the actual EngineCore log: V1 model runner, BF16, auto_awq/Marlin kernel,
+world_size=DP=PP=TP=1, canonical dynamic scalar K ceiling 4, VRAM guard enabled.
+
+Target Qwen/Qwen2.5-7B-Instruct-AWQ @
+`b25037543e9394b818fdfca67ab2a00ecc7dd641`; draft Qwen/Qwen2.5-0.5B-Instruct @
+`7ae557604adf67be50417f59c2c2f167def9a775`.
+
+API server PID 10, real EngineCore child PID 32 / parent PID 10. Child module
+import installs the hook before EngineCore wrapper entry. Wrapper and constructor
+lifecycle observations report spawn. The earlier child import-time hook event
+reports fork; this raw observation remains preserved, not normalized away.
+Actual executor class: `src.server.lineage_executor.LineageUniProcExecutor`;
+actual scheduler: `src.server.adaptive_scheduler.AdaptiveAsyncScheduler`.
+
+Attempt `999c9934abe7414584845896aadd7385`, generation
+`55b13c4336134c20927d83873b96bc7d`, ledger
+`90617d84beb44dfcbd668bf6559ca5a1` match through executor publication,
+scheduler consumption and successful constructor cleanup. Events prove attempt
+creation before publication, exact active-attempt consumption, consumed=true,
+context reset and retained bound registration. No raw object addresses are used
+as the durable ownership evidence.
+
+## Real feedback and deterministic offline checks
+
+One greedy request, concurrency 1, max_tokens 64. Response ID
+`chatcmpl-863a80d9a3f74fb9`; internal request
+`chatcmpl-863a80d9a3f74fb9-b0204581`. Thirteen attributed feedback events:
+**49 drafted, 49 accepted**. Source plans 1..13 join exact schedules 2..14 and
+their K values; first K=3, later K=4. First alpha update 0.8 -> 0.84;
+final alpha 0.98900488372224, final controller step_count=13. Every event's EMA
+update, response totals and aggregate state agree. No missing-lineage/skipped
+feedback occurs. Runtime semantics remain linear_dynamic_k, selected topology
+null, tree_execution_verified=false. Conservative production metadata fields
+remain unchanged; the separate validator supplies the scoped runtime conclusion.
+
+```text
+python -B -m experiments.validate_async_lineage_runtime experiments/runs/m4_02_04/20261112T014441Z-async-lineage-pinned-runtime/runtime-04 --expected-sha fb4544166c428e73b164756a2ef0e11ad6b97d6f
+All seven gates PASS; offline_validator=PASS; exit 0.
+```
+
+CPU checks: 143 source-contract tests before instrumentation; 180 focused tests
+after instrumentation; 16 final validator tests including missing/wrong child,
+SHA/source, attempt/generation, lineage/count/EMA and scope evidence mutations.
+Synthetic fixtures are validator tests only, never runtime evidence. Full-suite
+green is not claimed; previously documented broad-suite failures were not rerun.
+
+## Failed attempts, repair and shutdown
+
+- CPU preflight 01: Windows console encoding error; UTF-8 retry passed. Both logs
+  retained. CPU preflight 03 verified the corrected committed-only packaging.
+- Integration 01 / aeada583: automatic mount included a changing log; rejected
+  client packaging before remote model execution.
+- Integration 02 / c7eda977: image.env after source mounts rejected by Modal;
+  fixed function env, verified CPU-only before retry. No model execution.
+- Integration 03 / fb454416 / L4: pending input, zero containers/running inputs;
+  stopped before attempting documented A10G fallback. Exact capacity cause unknown.
+- Integration 04 / fb454416 / A10G: successful startup/request. Offline HF metadata
+  lookup errors fell back to exact cached pinned weights; shutdown logged one
+  resource-tracker semaphore warning. All task apps stopped, zero containers.
+- Initial offline validator failed because aggregate telemetry was omitted by
+  collection: canonical lane3 path differs from adaptive server artifact path.
+  Downloaded the already-generated telemetry.jsonl from the same run's Modal
+  volume; no GPU rerun, altered records or fabricated replacement. Initial FAIL
+  retained as validation-initial-collection-gap.json; final validator PASS.
+
+Operational Git ownership/network/linked-worktree sandbox checks and unsupported
+`modal token list` are documented in the evidence README. No credential values
+were printed. All failed logs and allocation snapshots are preserved.
+
+## Claim ceiling and remaining gates
+
+Async feedback lineage, startup pairing, startup-attempt ownership and consumed
+generation binding are verified on this tested vLLM 0.30.0 V1 / UniProc /
+single-worker NVIDIA A10 configuration. Exclusive reuse rejection and
+generation-specific revocation retain CPU/source-contract evidence; no additional
+real failed-startup recovery/revocation claim is made.
+
+REAL INVALID-PAIR CHECK NOT RUN: another actual EngineCore/plain-executor
+bootstrap would initialize/load the model before scheduler rejection; no second
+expensive load. CPU/source-contract evidence retained. REAL FAILED-STARTUP
+RECOVERY UNVERIFIED AT RUNTIME: no safe pre-existing production failure injection;
+no destructive failure invented. K=0 NOT RUN: no free per-request reconfiguration.
+
+Other GPUs/models, general distributed/multiprocess ownership, arbitrary versions,
+deployment beyond this ephemeral canonical path, TreeAdaptive, profitability,
+and hardware-derived policy remain unverified. No unsupported performance claim.
+No develop/preservation-ref modification, push, merge, PR or Trello mutation.
+Next action: independent review of the preserved runtime evidence.
