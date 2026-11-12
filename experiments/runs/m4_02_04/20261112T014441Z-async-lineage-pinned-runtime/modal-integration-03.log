@@ -1,0 +1,75 @@
+✓ Initialized. View run at 
+https://modal.com/apps/nguyenduonghb940/main/ap-Zf9l4KDUxWPZUWyCmELjtI
+✓ Created objects.
+├── ✓ Uploaded 
+│   C:\Users\daibu\AppData\Local\Temp\ptit-committed-75xmjm6w\experiments\modal
+│   _lanes.py
+├── ✓ Uploaded C:\Users\daibu\AppData\Local\Temp\ptit-committed-75xmjm6w\src
+├── ✓ Uploaded 
+│   C:\Users\daibu\AppData\Local\Temp\ptit-committed-75xmjm6w\experiments
+├── ✓ Created Function probe.
+└── ✓ Created Function integration.
+Stopping app - user stopped from CLI.
+[modal-client] 2026-11-12T09:00:50+0700 Loop attempt for _run_app.<locals>.heartbeat failed
+Traceback (most recent call last):
+  File "D:\ProgramFiles\Python3_11\Lib\site-packages\modal\_utils\async_utils.py", line 590, in loop_coro
+    await asyncio.wait_for(async_f(), timeout=timeout)
+  File "D:\ProgramFiles\Python3_11\Lib\asyncio\tasks.py", line 479, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "D:\ProgramFiles\Python3_11\Lib\site-packages\modal\runner.py", line 66, in _heartbeat
+    await client._stub.AppHeartbeat(request, retry=Retry(attempt_timeout=HEARTBEAT_TIMEOUT))
+modal.exception.ConflictError: App state is APP_STATE_STOPPED
+[modal-client] 2026-11-12T09:01:06+0700 Loop attempt for _run_app.<locals>.heartbeat failed
+Traceback (most recent call last):
+  File "D:\ProgramFiles\Python3_11\Lib\site-packages\modal\_utils\async_utils.py", line 590, in loop_coro
+    await asyncio.wait_for(async_f(), timeout=timeout)
+  File "D:\ProgramFiles\Python3_11\Lib\asyncio\tasks.py", line 479, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "D:\ProgramFiles\Python3_11\Lib\site-packages\modal\runner.py", line 66, in _heartbeat
+    await client._stub.AppHeartbeat(request, retry=Retry(attempt_timeout=HEARTBEAT_TIMEOUT))
+modal.exception.ConflictError: App state is APP_STATE_STOPPED
+┌───────────────────── Traceback (most recent call last) ─────────────────────┐
+│ D:\Document\Four-year\do_an\do-an-ptit-d22-m4-02-02\experiments\async_linea │
+│ ge_runtime_probe.py:113 in main                                             │
+│                                                                             │
+│   112 │   │   root.mkdir(parents=True, exist_ok=False)                      │
+│ > 113 │   │   for name, content in integration.remote().items():            │
+│   114 │   │   │   (root / name).write_text(content, encoding="utf-8")       │
+│                                                                             │
+│ D:\ProgramFiles\Python3_11\Lib\site-packages\modal\_object.py:49 in wrapped │
+│                                                                             │
+│    48 │   │   await self.hydrate()                                          │
+│ >  49 │   │   return await method(self, *args, **kwargs)                    │
+│    50                                                                       │
+│                                                                             │
+│ D:\ProgramFiles\Python3_11\Lib\site-packages\modal\_functions.py:2081 in    │
+│ remote                                                                      │
+│                                                                             │
+│   2080 │   │                                                                │
+│ > 2081 │   │   return await self._call_function(args, kwargs)               │
+│   2082                                                                      │
+│                                                                             │
+│ D:\ProgramFiles\Python3_11\Lib\site-packages\modal\_functions.py:2018 in    │
+│ _call_function                                                              │
+│                                                                             │
+│   2017 │   │                                                                │
+│ > 2018 │   │   return await invocation.run_function()                       │
+│   2019                                                                      │
+│                                                                             │
+│ D:\ProgramFiles\Python3_11\Lib\site-packages\modal\_functions.py:498 in     │
+│ run_function                                                                │
+│                                                                             │
+│    497 │   │   │   if await_response.output.result.status in TERMINAL_STATU │
+│ >  498 │   │   │   │   return await _process_result(                        │
+│    499 │   │   │   │   │   await_response.output.result, await_response.out │
+│                                                                             │
+│ D:\ProgramFiles\Python3_11\Lib\site-packages\modal\_utils\function_utils.py │
+│ :574 in _process_result                                                     │
+│                                                                             │
+│   573 │   │                                                                 │
+│ > 574 │   │   raise RemoteError(result.exception)                           │
+│   575                                                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+RemoteError

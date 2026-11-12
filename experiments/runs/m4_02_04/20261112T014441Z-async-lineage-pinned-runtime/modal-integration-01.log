@@ -1,0 +1,31 @@
+✓ Initialized. View run at 
+https://modal.com/apps/nguyenduonghb940/main/ap-xeuU56c1RwFCwbHXvVD5Zk
+Building image im-Cm2DO2mfuJU8iiVmbJ4rhB
+
+=> Step 0: FROM base
+
+=> Step 1: ENV HF_HUB_ENABLE_HF_TRANSFER=0
+
+=> Step 2: ENV PTIT_SOURCE_COMMIT=aeada583e6f9688f2efe9ea2fa2dcc72c0ee43bf
+
+=> Step 3: ENV PTIT_RUN_ID=20261112T014441Z-async-lineage-pinned-runtime-aeada583
+
+=> Step 4: ENV PTIT_LANES=adaptive
+
+=> Step 5: ENV PTIT_DTYPE_PROFILE=l4-bf16
+
+=> Step 6: ENV PTIT_KEEP_WARM=0
+
+=> Step 7: ENV PTIT_SCALEDOWN_SECONDS=300
+Saving image...
+Stopping app - uncaught exception raised locally: ExecutionError('D:\\Document\\Four-year\\do_an\\do-an-ptit-d22-m4-02-02\\experiments\\runs\\m4_02_04\\20261112T014441Z-async-lineage-pinned-runtime\\modal-integration-01.log was modified during build process.').
+Image saved, took 4.30s
+
+Built image im-Cm2DO2mfuJU8iiVmbJ4rhB in 6.91s
+
+
+┌─ Error ─────────────────────────────────────────────────────────────────────┐
+│ D:\Document\Four-year\do_an\do-an-ptit-d22-m4-02-02\experiments\runs\m4_02_ │
+│ 04\20261112T014441Z-async-lineage-pinned-runtime\modal-integration-01.log   │
+│ was modified during build process.                                          │
+└─────────────────────────────────────────────────────────────────────────────┘

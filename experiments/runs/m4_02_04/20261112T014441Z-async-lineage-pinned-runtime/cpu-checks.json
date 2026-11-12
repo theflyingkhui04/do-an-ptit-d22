@@ -1,0 +1,16 @@
+{
+  "diagnostics": {
+    "command": "python -B -m pytest -p no:cacheprovider -q tests/test_lineage_startup.py tests/test_adaptive_scheduler_glue.py tests/test_budget_planner.py tests/test_modal_runner_config.py --tb=short",
+    "passed": 180,
+    "failed": 0,
+    "elapsed_seconds": 13.96,
+    "capture": "observed exec output; production diagnostics revision aeada583"
+  },
+  "validator": {
+    "command": "python -B -m pytest -p no:cacheprovider -q tests/test_async_lineage_runtime_validator.py --tb=short",
+    "passed": 16,
+    "failed": 0,
+    "elapsed_seconds": 0.56,
+    "synthetic_only": true
+  }
+}
