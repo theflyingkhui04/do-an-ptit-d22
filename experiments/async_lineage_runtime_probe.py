@@ -6,11 +6,10 @@ import modal
 from experiments.modal_runner import (image, SOURCE_COMMIT, GPU, SERVER_VOLUMES,
                                       lanes, RUN_ID, PROFILE)
 
-app = modal.App("ptit-async-lineage-preflight", include_source=False,
-                image=image.env({"PYTHONPATH": f"{lanes.REMOTE_PROJECT_ROOT}:/root"}))
+app = modal.App("ptit-async-lineage-preflight", include_source=False, image=image)
 
 
-@app.function(timeout=600)
+@app.function(timeout=600, env={"PYTHONPATH": f"{lanes.REMOTE_PROJECT_ROOT}:/root"})
 def probe():
     import importlib.metadata
     import platform
