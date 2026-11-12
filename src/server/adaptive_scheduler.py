@@ -24,6 +24,8 @@ from vllm.logger import init_logger
 from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 
 from src.server.budget_planner import AdaptiveBudgetPlanner, StepPlan, _env_flag
+from src.server.lineage import require_lineage_executor, release_ledger
+from src.server.lineage_diagnostics import observe
 from experiments.protocol_b_boundary_observer import observe as _pb279_observe
 from experiments.protocol_b_boundary_observer import control_producer as _pb177_control
 
@@ -32,12 +34,21 @@ logger = init_logger(__name__)
 
 class AdaptiveAsyncScheduler(AsyncScheduler):
     def __init__(self, *args, **kwargs) -> None:
+        config = kwargs.get("vllm_config", args[0] if args else None)
+        # Fail before base scheduler initialization/readiness or any feedback.
+        # The pinned EngineCore has already initialized its executor here.
+        registration = require_lineage_executor(config)
         super().__init__(*args, **kwargs)
         self._planner = AdaptiveBudgetPlanner.from_env()
         self._planner.max_k = min(self._planner.max_k, self.num_spec_tokens)
         self._read_vram = _env_flag(os.environ.get("ADAPTIVE_ENABLE_VRAM_GUARD", "1"))
         self._plan = StepPlan(batch_k=0, per_request_k={})
         self._schedule_sequence = 0
+        self._lineage_registration = registration
+        self._lineage = registration.ledger
+        self._retiring = None
+        observe("scheduler_initialized", registration=registration,
+                scheduler_class=f"{type(self).__module__}.{type(self).__name__}")
 
         if self.dynamic_sd_lookup is None:
             logger.warning(
@@ -100,7 +111,25 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                     )
         except Exception:
             logger.exception("AdaptiveAsyncScheduler: scheduled-budget telemetry failed")
+        try:
+            self._lineage.register(scheduler_output, self._plan, self._schedule_sequence, self.requests)
+        except Exception:
+            self._lineage.clear()
+            logger.exception("AdaptiveAsyncScheduler: lineage registration failed")
         _pb279_observe("early_schedule", self, scheduler_output)
+
+    def update_from_output(self, scheduler_output, model_runner_output):
+        previous = self._retiring
+        # Upstream may deliver stale statistics after preemption. Preserve them
+        # upstream, but do not adapt from a discarded execution incarnation.
+        stale = {rid for rid in scheduler_output.num_scheduled_tokens
+                 if getattr(self.requests.get(rid), "num_stale_output_tokens", 0) > 0}
+        self._retiring = (self._lineage.get(scheduler_output), model_runner_output, stale)
+        try:
+            return super().update_from_output(scheduler_output, model_runner_output)
+        finally:
+            self._retiring = previous
+            self._lineage.retire(scheduler_output)
 
     def make_spec_decoding_stats(
         self,
@@ -114,7 +143,33 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             drafted = num_draft_tokens
             if num_invalid_spec_tokens:
                 drafted -= num_invalid_spec_tokens.get(request_id, 0)
-            self._planner.record_verification(request_id, drafted, num_accepted_tokens)
+            binding = None
+            reason = "missing-lineage"
+            if self._retiring is not None:
+                entry, result, stale = self._retiring
+                if entry is not None:
+                    binding = entry.consumed.pop(request_id, None)
+                if binding is not None:
+                    origin, expected = binding
+                    current = self._lineage.active.get(request_id)
+                    index = result.req_id_to_index.get(request_id)
+                    valid = (current is not None and self.requests.get(request_id) is current[0]
+                             and current[1] == origin.incarnation
+                             and origin.request_id == request_id
+                             and index is not None and 0 <= index < len(result.req_ids)
+                             and result.req_ids[index] == request_id
+                             and expected == num_draft_tokens
+                             and 0 <= num_accepted_tokens <= drafted <= expected
+                             and request_id not in stale
+                             and not getattr(current[0], "is_finished", lambda: False)())
+                    if not valid:
+                        binding = None
+                        reason = "stale-or-mismatched-lineage"
+            if binding is None:
+                self._planner.record_lineage_failure(request_id, reason)
+            elif drafted > 0:
+                self._planner.record_verification(
+                    request_id, drafted, num_accepted_tokens, source=binding[0])
         except Exception:
             logger.exception("AdaptiveAsyncScheduler: feedback failed for %s", request_id)
         return super().make_spec_decoding_stats(
@@ -131,11 +186,18 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         except Exception:
             logger.exception("AdaptiveAsyncScheduler: telemetry failed for %s", request.request_id)
         finally:
+            self._lineage.finish_request(request)
             # Drop request-owned snapshots even when aggregate I/O fails.
             self._plan.per_request_k.pop(request.request_id, None)
             self._plan.per_request_node_count.pop(request.request_id, None)
             self._plan.per_request_decisions.pop(request.request_id, None)
         return super()._free_request(request, *args, **kwargs)
+
+    def shutdown(self):
+        try:
+            return super().shutdown()
+        finally:
+            release_ledger(self._lineage_registration)
 
     def _free_vram_mb(self) -> Optional[float]:
         if not self._read_vram:

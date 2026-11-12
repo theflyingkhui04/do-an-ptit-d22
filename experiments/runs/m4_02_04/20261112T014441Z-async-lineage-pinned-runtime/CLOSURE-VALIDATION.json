@@ -1,0 +1,86 @@
+{
+  "artifact_kind": "offline closure verification; not new runtime evidence",
+  "validator_source_sha256": "ef7c10c37e9986825f42e5b113c4b5bb7cfd819b6d2c52306530a4cfc85e461f",
+  "sealed_working_and_git_blobs": "37/37 MATCH; before and after unchanged",
+  "independent_recomputation": {
+    "events": 13,
+    "drafted": 49,
+    "accepted": 49,
+    "final_alpha": 0.98900488372224,
+    "max_alpha_difference": 0,
+    "mapping": [
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        5
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7
+      ],
+      [
+        7,
+        8
+      ],
+      [
+        8,
+        9
+      ],
+      [
+        9,
+        10
+      ],
+      [
+        10,
+        11
+      ],
+      [
+        11,
+        12
+      ],
+      [
+        12,
+        13
+      ],
+      [
+        13,
+        14
+      ]
+    ]
+  },
+  "canonical_mirror_validation": {
+    "offline_validator": "PASS",
+    "git_sha": "fb4544166c428e73b164756a2ef0e11ad6b97d6f",
+    "gates": {
+      "PINNED_SOURCE_GATE": "PASS",
+      "GIT_SHA": "PASS",
+      "SEALED_EVIDENCE_INTEGRITY": "PASS",
+      "SERVER_STARTUP": "PASS",
+      "HOOK_BOOTSTRAP": "PASS",
+      "LINEAGE_STARTUP_ATTEMPT": "PASS",
+      "RAW_PLAN_UNIQUENESS": "PASS",
+      "RAW_SCHEDULE_UNIQUENESS": "PASS",
+      "SOURCE_PRODUCER_JOIN": "PASS",
+      "TEMPORAL_PRODUCER": "PASS",
+      "LINEAGE_FAILURE_LOG_SCAN": "PASS",
+      "REAL_SPECULATIVE_FEEDBACK": "PASS",
+      "SCOPE_CEILING": "PASS"
+    },
+    "errors": {}
+  }
+}

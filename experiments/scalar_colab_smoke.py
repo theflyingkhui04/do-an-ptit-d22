@@ -1,7 +1,9 @@
-"""Sequential Colab-only scalar instrumentation smoke; never launches Modal.
+"""Historical Colab-only scalar observer smoke; NOT async-lineage validation.
 
 Run this module from the verified source snapshot with --output on mounted
 Google Drive. Each cell uses a fresh local subprocess; all logs/failures survive.
+The plain UniProc configuration below reproduces the pre-Item-8 observer profile.
+Use its frozen historical checkout, not the current adaptive-lineage branch.
 """
 from __future__ import annotations
 
@@ -28,6 +30,7 @@ from experiments.scalar_pinned_sources import manifest as pinned_manifest, read_
 from experiments.scalar_colab_git import source_gate as git_source_gate, checked_sha
 
 ROOT = Path(__file__).resolve().parents[1]
+HISTORICAL_CODE_SHA = "16528241468e2624ccfe07a69a67fcc123bfe4a3"
 TESTS = ["tests/test_scalar_context.py", "tests/test_scalar_cost_capture.py",
          "tests/test_scalar_cost_evidence.py", "tests/test_m4_cost_profiler.py",
          "tests/test_m4_cost_runner.py", "tests/test_modal_profiler.py"]
@@ -61,6 +64,18 @@ def gate_require(value, reason):
 def source_gate():
     return git_source_gate(ROOT, checked_sha(os.environ.get("PTIT_SCALAR_CODE_SHA")),
                            os.environ.get("PTIT_SCALAR_RUNTIME_REL"))
+
+
+def require_historical_smoke_source():
+    """Keep this observer-only profile from masquerading as current lineage QA.
+
+    Historical source/evidence bytes and CONFIG remain unchanged. Offline
+    validation of old artifacts remains available from the current checkout.
+    """
+    require(source_gate()["git_sha"] == HISTORICAL_CODE_SHA,
+            "Historical scalar observer smoke requires frozen checkout " + HISTORICAL_CODE_SHA
+            + "; its plain UniProcExecutor is not current async-lineage validation. "
+            "Current adaptive serving requires LineageUniProcExecutor; no diagnostic bypass is provided.")
 
 
 def hardware_gate():
@@ -422,6 +437,8 @@ def main():
     parser.add_argument("--k", type=int, choices=(0, 2))
     parser.add_argument("--preflight-dir", type=Path)
     args = parser.parse_args()
+    if args.stage != "validate":
+        require_historical_smoke_source()  # before hardware checks or any GPU work
     os.environ.update(VLLM_USE_V2_MODEL_RUNNER="0", VLLM_ENABLE_V1_MULTIPROCESSING="0")
     if args.stage == "cell":
         require(args.k in (0, 2), "only K=0 or K=2")

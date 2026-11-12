@@ -1,5 +1,15 @@
 # Git-based Colab L4 scalar observer handoff
 
+Historical profile: reproduce the original observer smoke from immutable source
+`16528241468e2624ccfe07a69a67fcc123bfe4a3`. Its plain `UniProcExecutor` configuration
+predates Item 8 and is **not current async-lineage validation**. The current
+adaptive scheduler requires a registered `LineageUniProcExecutor` at startup;
+this historical runner provides no bypass. Its current CLI refuses live stages
+from other source SHAs before hardware checks; offline `validate` remains usable.
+Existing L4 raw evidence is unchanged and does not establish current lineage or
+pairing runtime correctness. The preparation status below records the original
+handoff, not a new GPU run.
+
 Status: PREPARED / LIVE OBSERVER NOT YET VERIFIED. No model, GPU smoke, Modal
 execution, profitability benchmark or full grid is run by this preparation.
 Production serving source and fixed thresholds remain unchanged.

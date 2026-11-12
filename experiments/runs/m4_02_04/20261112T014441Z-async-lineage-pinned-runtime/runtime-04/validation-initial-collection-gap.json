@@ -1,0 +1,16 @@
+{
+  "offline_validator": "FAIL",
+  "git_sha": "fb4544166c428e73b164756a2ef0e11ad6b97d6f",
+  "gates": {
+    "PINNED_SOURCE_GATE": "PASS",
+    "GIT_SHA": "PASS",
+    "SERVER_STARTUP": "PASS",
+    "HOOK_BOOTSTRAP": "PASS",
+    "LINEAGE_STARTUP_ATTEMPT": "PASS",
+    "REAL_SPECULATIVE_FEEDBACK": "PASS",
+    "SCOPE_CEILING": "FAIL"
+  },
+  "errors": {
+    "SCOPE_CEILING": "[Errno 2] No such file or directory: 'experiments\\\\runs\\\\m4_02_04\\\\20261112T014441Z-async-lineage-pinned-runtime\\\\runtime-04\\\\telemetry.jsonl'"
+  }
+}

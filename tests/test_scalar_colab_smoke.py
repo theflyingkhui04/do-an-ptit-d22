@@ -15,6 +15,33 @@ from experiments.scalar_smoke_evidence import validate, PINNED_SOURCES
 from experiments.scalar_pinned_sources import manifest as pinned_manifest
 
 
+def test_historical_smoke_keeps_plain_executor_and_rejects_current_live_source(monkeypatch, tmp_path):
+    import sys
+    assert smoke.CONFIG["distributed_executor_backend"] == "uni"
+    monkeypatch.setattr(smoke, "source_gate", lambda: {"git_sha": "9f80960b8f86ad0fc425db2ff9e8d720fef926de"})
+    def unexpected(*args, **kwargs):
+        pytest.fail("Historical source rejection must precede hardware or runtime work")
+    monkeypatch.setattr(smoke, "hardware_gate", unexpected)
+    monkeypatch.setattr(smoke, "run", unexpected)
+    monkeypatch.setattr(smoke, "cell", unexpected)
+    for stage in ("gate", "run", "cell"):
+        monkeypatch.setattr(sys, "argv", ["smoke", stage, "--output", str(tmp_path)])
+        with pytest.raises(RuntimeError, match="not current async-lineage validation"):
+            smoke.main()
+    monkeypatch.setattr(smoke, "source_gate", lambda: {"git_sha": smoke.HISTORICAL_CODE_SHA})
+    smoke.require_historical_smoke_source()  # metadata check only; no GPU run
+
+
+def test_historical_offline_validation_does_not_require_live_pairing(monkeypatch, tmp_path):
+    import sys
+    def unexpected():
+        pytest.fail("Offline validation must not require a live executor or historical checkout")
+    monkeypatch.setattr(smoke, "require_historical_smoke_source", unexpected)
+    monkeypatch.setattr(smoke, "validate", lambda path: {"verdict": "LIVE OBSERVER NOT VERIFIED"})
+    monkeypatch.setattr(sys, "argv", ["smoke", "validate", "--output", str(tmp_path)])
+    assert smoke.main() == 0
+
+
 class Model:
     def __call__(self):
         return None
