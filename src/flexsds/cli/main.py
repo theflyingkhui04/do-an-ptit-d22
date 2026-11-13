@@ -278,57 +278,45 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"  \033[1;33m⚠ [Cảnh báo phần cứng] Sử dụng hồ sơ suy diễn dè dặt ({profile_name} / Conservative Fallback).\033[0m"
             )
 
-        target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
-        draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
+        if args.target and args.draft:
+            target_model = args.target
+            draft_model = args.draft
 
-        preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
-                                               args.backend, getattr(args, "gpu", "L4"))
-        print(preflight.report.summary())
-        if not preflight.is_safe:
-            print("Launch blocked: " + "; ".join(preflight.reasons))
-        if args.backend != "local":
-            print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
-        cfg = {"serving": {
-            "target_model": target_model, "draft_model": draft_model,
-            "draft_method": preflight.report.draft_method,
-            "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
-            "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
-            "enable_adaptive": not args.no_adaptive,
-        }}
-        if args.backend == "colab":
-            print("Colab guidance only: no server or endpoint was created; supplied models are not forwarded to the notebook.")
-            print("Open notebooks/flexsds_colab_server.ipynb and configure the exact models on that runtime.")
-            return 0
-        if not args.dry_run and not preflight.is_safe:
-            return 2
-        if args.dry_run:
-            print("Preview only; not a readiness check.")
-            if args.backend == "local":
-                LocalServingRunner().launch(cfg, port=args.port, background=args.background, dry_run=True)
-            else:
-                ModalServingRunner().launch(cfg, deploy=args.deploy, dry_run=True)
-            return 0
-        tasks = TaskRunner()
-        task = tasks.add_task(f"Start {args.backend} serving process")
-        def launch(t):
-            if args.backend == "local":
-                return LocalServingRunner().launch(cfg, port=args.port, background=args.background)
-            return ModalServingRunner().launch(cfg, deploy=args.deploy)
-        proc = tasks.run_task(task, launch)
-        return finish_launch(proc, background=args.backend == "local" and args.background)
-            if args.backend == "local":
-                LocalServingRunner().launch(cfg, port=args.port, background=args.background, dry_run=True)
-            else:
-                ModalServingRunner().launch(cfg, deploy=args.deploy, dry_run=True)
-            return 0
-        tasks = TaskRunner()
-        task = tasks.add_task(f"Start {args.backend} serving process")
-        def launch(t):
-            if args.backend == "local":
-                return LocalServingRunner().launch(cfg, port=args.port, background=args.background)
-            return ModalServingRunner().launch(cfg, deploy=args.deploy)
-        proc = tasks.run_task(task, launch)
-        return finish_launch(proc, background=args.backend == "local" and args.background)
+            preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
+                                                   args.backend, getattr(args, "gpu", "L4"))
+            print(preflight.report.summary())
+            if not preflight.is_safe:
+                print("Launch blocked: " + "; ".join(preflight.reasons))
+            if args.backend != "local":
+                print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
+            cfg = {"serving": {
+                "target_model": target_model, "draft_model": draft_model,
+                "draft_method": preflight.report.draft_method,
+                "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
+                "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
+                "enable_adaptive": not args.no_adaptive,
+            }}
+            if args.backend == "colab":
+                print("Colab guidance only: no server or endpoint was created; supplied models are not forwarded to the notebook.")
+                print("Open notebooks/flexsds_colab_server.ipynb and configure the exact models on that runtime.")
+                return 0
+            if not args.dry_run and not preflight.is_safe:
+                return 2
+            if args.dry_run:
+                print("Preview only; not a readiness check.")
+                if args.backend == "local":
+                    LocalServingRunner().launch(cfg, port=args.port, background=args.background, dry_run=True)
+                else:
+                    ModalServingRunner().launch(cfg, deploy=args.deploy, dry_run=True)
+                return 0
+            tasks = TaskRunner()
+            task = tasks.add_task(f"Start {args.backend} serving process")
+            def launch(t):
+                if args.backend == "local":
+                    return LocalServingRunner().launch(cfg, port=args.port, background=args.background)
+                return ModalServingRunner().launch(cfg, deploy=args.deploy)
+            proc = tasks.run_task(task, launch)
+            return finish_launch(proc, background=args.backend == "local" and args.background)
 
     try:
         result = run_interactive_wizard(hw_info)

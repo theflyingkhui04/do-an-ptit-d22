@@ -391,6 +391,7 @@ def load_profile_for_hardware(
         "sm_89": "profile_sm89_l4.json",
         "sm_75": "profile_sm75_t4.json",
         "sm_80": "profile_sm80_a100.json",
+        "cpu": "profile_sm89_l4.json",
     }
 
     built_in_filename = arch_map.get(sm_arch)

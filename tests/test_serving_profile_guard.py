@@ -54,7 +54,14 @@ def test_serve_proceeds_when_allow_fallback_flag_provided(capsys):
     )
     with patch("flexsds.cli.main.detect_hardware", return_value=unknown_hw):
         # Chạy lệnh serve có truyền cờ --allow-fallback
-        ret = main(["serve", "--backend", "local", "--dry-run", "--allow-fallback"])
+        ret = main([
+            "serve",
+            "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ",
+            "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "--backend", "local",
+            "--dry-run",
+            "--allow-fallback",
+        ])
         assert ret == 0
         captured = capsys.readouterr()
         assert "Conservative Fallback" in captured.out or "conservative_analytical_fallback" in captured.out
