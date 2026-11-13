@@ -7,6 +7,11 @@ import signal
 import subprocess
 from typing import Any, Dict, List, Optional
 
+try:
+    from flexsds.cli.output import print_output as print
+except ModuleNotFoundError:
+    from src.flexsds.cli.output import print_output as print
+
 
 class LocalServingRunner:
     """Khởi chạy và quản lý vòng đời máy chủ vLLM cục bộ với FlexSDS."""

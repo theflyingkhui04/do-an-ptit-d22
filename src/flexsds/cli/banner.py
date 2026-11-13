@@ -4,8 +4,10 @@ from __future__ import annotations
 import sys
 from typing import Optional
 try:
+    from flexsds.cli.output import ascii_text, print_output, supports_truecolor, supports_unicode
     from flexsds.core.hardware import HardwareInfo, detect_hardware
 except ModuleNotFoundError:
+    from src.flexsds.cli.output import ascii_text, print_output, supports_truecolor, supports_unicode
     from src.flexsds.core.hardware import HardwareInfo, detect_hardware
 
 # Pre-compiled ANSI grayscale half-blocks for the official PTIT logo (26 cols x 12 rows)
@@ -58,9 +60,24 @@ def render_banner(hw_info: Optional[HardwareInfo] = None) -> str:
     return "\n".join(output)
 
 
+def render_ascii_banner(hw_info: HardwareInfo) -> str:
+    """Compact branding/status fallback; hardware logic remains in HardwareInfo."""
+    return ascii_text(
+        "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\n"
+        "PTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\n"
+        f"Hardware: {hw_info.summary()}\n"
+        "Engine: TreeAdaptive v0.2\n"
+        "Backends: Modal / Colab / Local vLLM"
+    )
+
+
 def print_banner(hw_info: Optional[HardwareInfo] = None) -> None:
-    """Prints the banner directly to stdout."""
-    print(render_banner(hw_info))
+    """Preserve rich branding on capable terminals; otherwise use plain ASCII."""
+    if hw_info is None:
+        hw_info = detect_hardware()
+    fallback = render_ascii_banner(hw_info)
+    rich = supports_unicode(sys.stdout) and supports_truecolor(sys.stdout)
+    print_output(render_banner(hw_info) if rich else fallback, fallback=fallback)
 
 
 if __name__ == "__main__":

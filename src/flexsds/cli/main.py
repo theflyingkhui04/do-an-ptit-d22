@@ -6,6 +6,7 @@ import sys
 from typing import Optional
 
 try:
+    from flexsds.cli.output import print_output as print
     from flexsds import __version__
     from flexsds.cli.banner import print_banner
     from flexsds.cli.wizard import run_interactive_wizard
@@ -15,6 +16,7 @@ try:
     from flexsds.server.local_runner import LocalServingRunner
     from flexsds.server.modal_runner import ModalServingRunner
 except ModuleNotFoundError:
+    from src.flexsds.cli.output import print_output as print
     from src.flexsds import __version__
     from src.flexsds.cli.banner import print_banner
     from src.flexsds.cli.wizard import run_interactive_wizard

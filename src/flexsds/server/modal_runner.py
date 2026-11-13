@@ -5,6 +5,11 @@ import os
 import subprocess
 from typing import Any, Dict, List, Optional
 
+try:
+    from flexsds.cli.output import print_output as print
+except ModuleNotFoundError:
+    from src.flexsds.cli.output import print_output as print
+
 
 class ModalServingRunner:
     """Quản lý triển khai FlexSDS Serverless trên nền tảng đám mây Modal.com."""
