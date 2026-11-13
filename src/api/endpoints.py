@@ -101,6 +101,9 @@ def probe(url: str, api_key: str | None, client: httpx.Client) -> dict[str, Any]
                                            "flexsds serve còn chạy không.") from exc
     if response.status_code in (401, 403):
         raise EndpointError("auth_failed", f"Endpoint từ chối khoá API (HTTP {response.status_code}).")
+    if response.status_code in (502, 503, 504):
+        raise EndpointError("not_ready", f"Endpoint chưa sẵn sàng (HTTP {response.status_code}): GPU đang khởi động "
+                                         "hoặc đang ngủ, hoặc phiên flexsds serve đã dừng. Chờ vài phút rồi kiểm tra lại.")
     if response.status_code != 200:
         raise EndpointError("bad_response", f"/v1/models trả HTTP {response.status_code}.")
     try:
@@ -110,8 +113,11 @@ def probe(url: str, api_key: str | None, client: httpx.Client) -> dict[str, Any]
     if not models:
         raise EndpointError("no_model", "Endpoint chưa phục vụ model nào.")
     max_len = models[0].get("max_model_len")
+    root = models[0].get("root")
+    # ``root`` (vLLM) is the model behind the served name: lanes served as qwen2.5-7b-vanilla / -adaptive share it.
     return {"model_id": models[0]["id"], "models": [m["id"] for m in models],
-            "max_model_len": max_len if isinstance(max_len, int) else None}
+            "max_model_len": max_len if isinstance(max_len, int) else None,
+            "root": root if isinstance(root, str) and root else None}
 
 
 def parse_serving_config(config: Any) -> dict[str, Any]:
@@ -168,7 +174,7 @@ class EndpointRegistry:
         except EndpointError as exc:
             result.update(code=exc.code, message=exc.message)
             return result
-        result.update(ok=True, model_id=found["model_id"], max_model_len=found["max_model_len"])
+        result.update(ok=True, model_id=found["model_id"], max_model_len=found["max_model_len"], root=found["root"])
         return result
 
     def detect(self, urls: list[str], api_key: str | None = None) -> list[dict[str, Any]]:
@@ -194,10 +200,11 @@ class EndpointRegistry:
                 continue
             fields = {"model_id": result["model_id"], "max_model_len": result["max_model_len"] or meta.get("max_model_len"),
                       "status": "ok", "status_message": None, "checked_at": self._now()}
+            row_meta = {**meta, **({"base_model": result["root"]} if result.get("root") else {})}
             existing = self.store.find_endpoint_by_url(result["url"])
             if existing is not None:
-                if meta:
-                    fields["meta"] = meta
+                if row_meta:
+                    fields["meta"] = {**(existing.get("meta") or {}), **row_meta}
                 if api_key:
                     fields["api_key"] = api_key
                 self.store.update_endpoint(existing["endpoint_id"], fields)
@@ -210,7 +217,7 @@ class EndpointRegistry:
             endpoint_id = self._new_id()
             self.store.insert_endpoint({
                 "endpoint_id": endpoint_id, "name": self._unique_name(result["model_id"], result["platform"]),
-                "base_url": result["url"], "platform": result["platform"], "meta": meta, "api_key": api_key or None,
+                "base_url": result["url"], "platform": result["platform"], "meta": row_meta, "api_key": api_key or None,
                 "is_baseline": False, "created_at": self._now(), **fields})
             saved.append(self.store.get_endpoint(endpoint_id))
         return {"results": results, "saved": saved}
@@ -232,6 +239,8 @@ class EndpointRegistry:
             fields = {"status": "down", "status_message": exc.message, "checked_at": self._now()}
         else:
             fields = {"status": "ok", "status_message": None, "checked_at": self._now(), "model_id": found["model_id"]}
+            if found["root"]:
+                fields["meta"] = {**(row.get("meta") or {}), "base_model": found["root"]}
         self.store.update_endpoint(endpoint_id, fields)
         return self._require(endpoint_id)
 

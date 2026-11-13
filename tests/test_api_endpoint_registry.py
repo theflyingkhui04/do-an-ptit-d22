@@ -15,6 +15,11 @@ MODELS = {
     "canduckhoi--flexsds-serve.modal.run": "Qwen/Qwen2.5-7B-Instruct-AWQ",
     "swift-orchid-ptit.trycloudflare.com": "Qwen/Qwen2.5-7B-Instruct-AWQ",
     "u--ptit-vllm-demo-vanilla.us-east.modal.direct": "qwen2.5-7b-vanilla",
+    "u--ptit-vllm-demo-adaptive.us-east.modal.direct": "qwen2.5-7b-adaptive",
+}
+ROOTS = {  # vLLM ``root``: the model behind the served name; the demo lanes share one
+    "u--ptit-vllm-demo-vanilla.us-east.modal.direct": "/models/qwen2.5-7b-awq",
+    "u--ptit-vllm-demo-adaptive.us-east.modal.direct": "/models/qwen2.5-7b-awq",
 }
 
 
@@ -29,7 +34,10 @@ def make(store=None, down=(), max_endpoints=12):
         seen.append((request.url.host, request.headers.get("authorization")))
         if request.url.host in down:
             raise httpx.ConnectError("refused")
-        return httpx.Response(200, json={"data": [{"id": MODELS[request.url.host], "max_model_len": 4096}]})
+        model = {"id": MODELS[request.url.host], "max_model_len": 4096}
+        if request.url.host in ROOTS:
+            model["root"] = ROOTS[request.url.host]
+        return httpx.Response(200, json={"data": [model]})
 
     ids = iter(f"ep_{i:08x}" for i in range(100))
     registry = EndpointRegistry(store or FakeStore(), httpx.Client(transport=httpx.MockTransport(handler)),
@@ -85,6 +93,21 @@ def test_check_marks_a_stopped_session_and_recovers():
     checked = registry.check(ep["endpoint_id"])
     assert checked["status"] == "down" and "flexsds serve" in checked["status_message"]
     assert make(store)[0].check(ep["endpoint_id"])["status"] == "ok"
+
+
+def test_the_model_behind_the_served_name_is_kept_for_fair_comparisons():
+    store = FakeStore()
+    registry, _ = make(store)
+    a, b = registry.add(["https://u--ptit-vllm-demo-vanilla.us-east.modal.direct/v1",
+                         "https://u--ptit-vllm-demo-adaptive.us-east.modal.direct/v1"], api_key=KEY)["saved"]
+    assert a["model_id"] != b["model_id"]
+    assert a["meta"]["base_model"] == b["meta"]["base_model"] == "/models/qwen2.5-7b-awq"
+    # saved before the base model was read: the next check fills it in and keeps the serving_config fields
+    store.update_endpoint(a["endpoint_id"], {"meta": {"gpu": "NVIDIA A10G"}})
+    assert registry.check(a["endpoint_id"])["meta"] == {"gpu": "NVIDIA A10G", "base_model": "/models/qwen2.5-7b-awq"}
+    # an endpoint without ``root`` gets no base_model
+    other = registry.add(["https://canduckhoi--flexsds-serve.modal.run/v1"])["saved"][0]
+    assert "base_model" not in other["meta"]
 
 
 def test_baseline_is_unique_and_callers_use_the_stored_key_and_model():

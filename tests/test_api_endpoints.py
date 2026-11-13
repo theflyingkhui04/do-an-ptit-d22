@@ -73,13 +73,30 @@ def test_probe_reads_the_served_model_and_sends_the_key():
     result = probe("https://x.modal.run/v1", TOKEN, client(handler))
     assert seen == {"url": "https://x.modal.run/v1/models", "auth": f"Bearer {TOKEN}"}
     assert result == {"model_id": "Qwen/Qwen2.5-7B-Instruct-AWQ", "models": ["Qwen/Qwen2.5-7B-Instruct-AWQ"],
-                      "max_model_len": 4096}
+                      "max_model_len": 4096, "root": None}
 
     def no_key(request: httpx.Request) -> httpx.Response:
         assert "authorization" not in request.headers
         return httpx.Response(200, json={"data": [{"id": "m"}]})
 
     assert probe("https://x.modal.run/v1", None, client(no_key))["max_model_len"] is None
+
+
+def test_probe_reads_the_model_behind_the_served_name():
+    """vLLM serves each lane under its own name (qwen2.5-7b-vanilla, -adaptive); ``root`` is the model they share."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"id": "qwen2.5-7b-adaptive", "root": "/models/qwen2.5-7b-awq",
+                                                   "max_model_len": 8192}]})
+
+    assert probe("https://x.modal.direct/v1", None, client(handler))["root"] == "/models/qwen2.5-7b-awq"
+
+
+def test_a_sleeping_endpoint_is_told_apart_from_a_broken_one():
+    for status in (502, 503, 504):
+        response = httpx.Response(status, json={"error": "no upstreams available"})
+        with pytest.raises(EndpointError) as info:
+            probe("https://x.modal.direct/v1", None, client(lambda r, response=response: response))
+        assert info.value.code == "not_ready" and "khởi động" in info.value.message
 
 
 @pytest.mark.parametrize(("response", "code"), [
