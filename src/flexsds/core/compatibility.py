@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 
 MODEL_CACHE_DIR: Path = Path.home() / ".flexsds" / "cache" / "models"
+EAGLE_ARCHITECTURES: set[str] = {"EagleModel", "EagleForCausalLM", "Eagle3Model"}
 
 
 class ModelMetadataError(Exception):
@@ -278,8 +279,46 @@ def check_compatibility(
     target_lower = target_model.lower()
     draft_lower = draft_model.lower()
 
-    # 1. Determine Draft Method
-    is_eagle = "eagle" in draft_lower or "speculator" in draft_lower
+    # 0. Nạp metadata của mô hình từ cache hoặc Hugging Face Hub (dự phòng ngoại lệ khi mất mạng)
+    target_cfg: Optional[Dict[str, Any]] = None
+    draft_cfg: Optional[Dict[str, Any]] = None
+
+    try:
+        target_cfg = get_model_config(target_model)
+    except Exception:
+        target_cfg = None
+
+    try:
+        draft_cfg = get_model_config(draft_model)
+    except Exception:
+        draft_cfg = None
+
+    # 1. Xác định phương pháp đầu nháp và kiểm tra kiến trúc EAGLE (CR02)
+    is_eagle = False
+    is_compatible = True
+
+    if draft_cfg is not None:
+        draft_archs = draft_cfg.get("architectures", [])
+        draft_mtype = str(draft_cfg.get("model_type", "")).lower()
+        if (
+            any(a in EAGLE_ARCHITECTURES for a in draft_archs)
+            or any("eagle" in str(a).lower() for a in draft_archs)
+            or "eagle" in draft_mtype
+        ):
+            is_eagle = True
+        elif not draft_archs and not draft_mtype and ("eagle" in draft_lower or "speculator" in draft_lower):
+            is_eagle = True
+        else:
+            is_eagle = False
+            is_compatible = False
+    else:
+        # Dự phòng khi mất mạng hoặc không tìm thấy metadata: nhận diện theo tên mô hình
+        if "eagle" in draft_lower or "speculator" in draft_lower:
+            is_eagle = True
+        else:
+            is_eagle = False
+            is_compatible = False
+
     draft_method = "eagle3" if is_eagle else "draft_model"
 
     # 2. Estimate VRAM Consumption
@@ -303,26 +342,36 @@ def check_compatibility(
             "Use an AWQ/GPTQ 4-bit quantized target model or reduce --max-num-seqs to free KV cache."
         )
 
-    # 4. Vocabulary Alignment
-    # Check if target and draft are from different model families
-    target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
-    draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
-    
-    use_hetero_vocab = False
-    if target_family != draft_family or is_eagle or "0.5b" in draft_lower:
-        # vLLM requires heterogeneous vocab flag when tokenizers differ in vocabulary sizes
-        use_hetero_vocab = True
+    # 4. Vocabulary Alignment (CR03)
+    # So sánh vocab_size giữa target và draft khi có cấu hình; nếu khác nhau hoặc là EAGLE thì bật dị thể
+    target_vocab = target_cfg.get("vocab_size", 0) if target_cfg else 0
+    draft_vocab = draft_cfg.get("vocab_size", 0) if draft_cfg else 0
+
+    if target_vocab > 0 and draft_vocab > 0:
+        use_hetero_vocab = (target_vocab != draft_vocab) or is_eagle
+    else:
+        target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
+        draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
+        use_hetero_vocab = (target_family != draft_family) or is_eagle or ("0.5b" in draft_lower)
+
+    if use_hetero_vocab:
         recommendations.append(
             "Heterogeneous vocabulary flag enabled (--use-heterogeneous-vocab) for safe draft alignment."
         )
 
     # 5. Architecture Family compatibility
-    is_compatible = True
-    if target_family != "other" and draft_family != "other" and target_family != draft_family:
-        is_compatible = False
+    if not is_compatible:
         warnings.append(
-            f"Cross-family pairing ({target_family} target with {draft_family} draft) may exhibit low acceptance rate."
+            f"Phiên bản FlexSDS hiện tại chỉ hỗ trợ kiến trúc đầu nháp EAGLE. Mô hình nháp '{draft_model}' không được hỗ trợ."
         )
+    else:
+        target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
+        draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
+        if target_family != "other" and draft_family != "other" and target_family != draft_family:
+            is_compatible = False
+            warnings.append(
+                f"Cross-family pairing ({target_family} target with {draft_family} draft) may exhibit low acceptance rate."
+            )
 
     return CompatibilityReport(
         target_model=target_model,
