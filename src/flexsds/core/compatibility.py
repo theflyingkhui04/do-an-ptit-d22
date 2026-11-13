@@ -116,7 +116,7 @@ def pre_download_guard(
             bytes_per_param = 2.0  # FP16 / BF16
 
     target_weights_mb = (num_params * bytes_per_param) / (1024.0 * 1024.0)
-    draft_weights_mb = 600.0  # EAGLE-3.1 speculator head
+    draft_weights_mb = estimate_model_vram_mb(draft_model, default_quant="fp16")
     kv_cache_mb = 1200.0  # KV-cache tối thiểu cho serving cơ bản
     total_needed_mb = round(target_weights_mb + draft_weights_mb + kv_cache_mb, 1)
 
@@ -175,7 +175,7 @@ def check_compatibility(
     target_model: str,
     draft_model: str,
     free_vram_mb: float = 23000.0,
-    target_quant: str = "awq_marlin",
+    target_quant: str = "fp16",
     max_num_seqs: int = 32,
     max_model_len: int = 4096,
 ) -> CompatibilityReport:
@@ -227,6 +227,7 @@ def check_compatibility(
     # 5. Architecture Family compatibility
     is_compatible = True
     if target_family != "other" and draft_family != "other" and target_family != draft_family:
+        is_compatible = False
         warnings.append(
             f"Cross-family pairing ({target_family} target with {draft_family} draft) may exhibit low acceptance rate."
         )
@@ -246,3 +247,45 @@ def check_compatibility(
         warnings=warnings,
         recommendations=recommendations,
     )
+
+
+class ServingBlockedError(RuntimeError):
+    """A preflight decision prevented any serving action."""
+
+
+@dataclass
+class ServingPreflight:
+    report: CompatibilityReport
+    download: PreDownloadCheckResult
+    reasons: List[str]
+
+    @property
+    def is_safe(self) -> bool:
+        return not self.reasons
+
+    def require_safe(self) -> None:
+        if not self.is_safe:
+            raise ServingBlockedError("Launch blocked: " + "; ".join(self.reasons))
+
+
+def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
+                               backend: str = "local", target_gpu: str = "L4") -> ServingPreflight:
+    """One preflight policy shared by flag mode and wizard; no network/weights.
+
+    Remote GPU budgets are conservative estimates, never local free VRAM or a
+    measurement of the eventual container. Runtime memory fit remains unproven.
+    """
+    budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0}
+    available = hw_info.free_vram_mb if backend == "local" else budgets.get(target_gpu, 0.0)
+    report = check_compatibility(target_model, draft_model, free_vram_mb=available)
+    download = pre_download_guard(target_model, draft_model, available, mock_metadata={})
+    reasons = []
+    if report.oom_risk:
+        reasons.append("estimated VRAM exceeds 95% of the available memory budget")
+    if not report.is_compatible:
+        reasons.append("incompatible target/draft configuration")
+    if not download.is_safe:
+        reasons.append(download.warning or "pre-download check is unsafe")
+    if backend == "local" and not hw_info.is_cuda_available:
+        reasons.append("CUDA GPU unavailable; system RAM is not serving VRAM")
+    return ServingPreflight(report, download, reasons)

@@ -495,3 +495,8 @@ class TreeAdaptiveController(BudgetController):
                 expected_tokens=1.0,
                 depth=0,
             )
+
+
+# Alias HardwareAdaptiveController to reflect hardware-centric adaptive serving
+HardwareAdaptiveController = TreeAdaptiveController
+HardwareAdaptiveDecision = TreeAdaptiveDecision

@@ -1,0 +1,14 @@
+[
+  {
+    "case": "with_ansi",
+    "exception": "UnicodeEncodeError",
+    "unencodable": "0x2584",
+    "detail": "'charmap' codec can't encode character '\\u2584' in position 32: character maps to <undefined>"
+  },
+  {
+    "case": "without_ansi",
+    "exception": "UnicodeEncodeError",
+    "unencodable": "0x2584",
+    "detail": "'charmap' codec can't encode characters in position 13-23: character maps to <undefined>"
+  }
+]

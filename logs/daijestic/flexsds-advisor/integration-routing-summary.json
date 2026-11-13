@@ -1,0 +1,45 @@
+[
+  {
+    "case": "explicit",
+    "session_id": "01a1d32e-4caf-7b72-8e01-04d2ec00b2d8",
+    "execution_sha": "ecb8bd42fb251d78256d1353e62b765dd5768216",
+    "metadata_visible": true,
+    "skill_loaded": true,
+    "skill_content_session_lines": [
+      20
+    ],
+    "cli_called": true,
+    "serving_or_download_side_effect": false,
+    "result": "PASS",
+    "session_log": "C:\\Users\\daibu\\.codex\\sessions\\2026\\11\\13\\rollout-2026-11-13T11-33-09-01a1d32e-4caf-7b72-8e01-04d2ec00b2d8.jsonl",
+    "command_count": 7
+  },
+  {
+    "case": "implicit",
+    "session_id": "01a1d32e-4ca4-7e83-86b5-6999383eb2d4",
+    "execution_sha": "ecb8bd42fb251d78256d1353e62b765dd5768216",
+    "metadata_visible": true,
+    "skill_loaded": true,
+    "skill_content_session_lines": [
+      20
+    ],
+    "cli_called": true,
+    "serving_or_download_side_effect": false,
+    "result": "PASS",
+    "session_log": "C:\\Users\\daibu\\.codex\\sessions\\2026\\11\\13\\rollout-2026-11-13T11-33-09-01a1d32e-4ca4-7e83-86b5-6999383eb2d4.jsonl",
+    "command_count": 8
+  },
+  {
+    "case": "negative",
+    "session_id": "01a1d32e-4caa-7692-a2e0-149df1d4044a",
+    "execution_sha": "ecb8bd42fb251d78256d1353e62b765dd5768216",
+    "metadata_visible": true,
+    "skill_loaded": false,
+    "skill_content_session_lines": [],
+    "cli_called": false,
+    "serving_or_download_side_effect": false,
+    "result": "PASS",
+    "session_log": "C:\\Users\\daibu\\.codex\\sessions\\2026\\11\\13\\rollout-2026-11-13T11-33-09-01a1d32e-4caa-7692-a2e0-149df1d4044a.jsonl",
+    "command_count": 0
+  }
+]
