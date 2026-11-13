@@ -2303,3 +2303,32 @@ Failures: frozen W1 workload hash drift; missing Modal proxy credentials in a cl
 `quick_validate.py .agents/skills/flexsds-advisor`: PASS. Syntax parsed for FlexSDS modules (Colab-export .py with notebook magics excluded). Current tracked-file raw PAT-pattern scan checked 1717 files with zero matches; history and the preserved ZIP were not claimed clean. Original ZIP hash unchanged.
 
 `git diff --check` identified six pre-existing Markdown hard-break spaces in the preserved user worklog prefix. `git diff --check -- . :!logs/daijestic/flexsds-advisor/worklog.md` passed. Original user prose/formatting was preserved rather than silently normalized.
+
+## Post-commit runtime evidence
+
+Merge commit: `ecb8bd42fb251d78256d1353e62b765dd5768216`, parents `1f26f26414aaa466f903601e36738d0bae27e7fe` and `76957514f9a52e11d9a0a2322469d1a45cba9273`. Backend ancestry is verified.
+
+Fresh command: `codex exec --json --sandbox read-only --skip-git-repo-check -C <current worktree> <exact requested prompt>`. Each case used a fresh session; no model override. Commands and outputs are preserved in integration-routing-{explicit,implicit,negative}.jsonl, with a structured summary and CLI stderr files.
+
+| Case | Session ID | Execution SHA | Metadata | Skill loaded | CLI preview | Serving/download effect | Result |
+|---|---|---|---|---|---|---|---|
+| explicit | 01a1d32e-4caf-7b72-8e01-04d2ec00b2d8 | ecb8bd42fb251d78256d1353e62b765dd5768216 | yes | True | True | none observed | PASS |
+| implicit | 01a1d32e-4ca4-7e83-86b5-6999383eb2d4 | ecb8bd42fb251d78256d1353e62b765dd5768216 | yes | True | True | none observed | PASS |
+| negative | 01a1d32e-4caa-7692-a2e0-149df1d4044a | ecb8bd42fb251d78256d1353e62b765dd5768216 | yes | False | False | none observed | PASS |
+
+Both positive sessions have successful SKILL.md content-return evidence at session line 20, then CLI version/help/detect/profile and exact target/draft local previews. They selected --no-adaptive for static speculation while retaining the requested models. Preview returns 0, prints Launch blocked, and is not treated as readiness. Negative session has metadata visible but no Skill load and no tool/CLI execution in all 20 session lines. Routing is verified for these three prompts; not universal accuracy or backend serving correctness.
+
+Read-only sandbox limitation: PyTorch could not find a writable temporary directory and FlexSDS fell back to CPU/RAM. The agents distinguished this from the physical RTX 3050 Ti 4GB GPU shown by nvidia-smi, and disclosed missing vLLM. One implicit-eval capture wrapper initially failed to encode child UTF-8 output on its cp1252 parent stream; the agent corrected its own capture encoding and repeated the safe inspections successfully. This was not a FlexSDS console regression.
+
+The follow-up evidence commit changes only this worklog and routing evidence; source/Skill/tests remain the exact evaluated merge tree. No push, PR, develop merge or Trello changes. Owner credential rotation and broad CPU-suite failures remain explicit risks.
+
+## Final completion audit
+
+- Live remote develop/backend refs reverified after runtime evals: unchanged at 48ae3a166ad9e42fdb81d3d401e496efef3b71bd / 76957514f9a52e11d9a0a2322469d1a45cba9273.
+- Entire baseline diff read (748909 bytes, 78 files before routing evidence commit), Git ancestry/log/status/stat reviewed. No unrelated algorithm/source changes, tracked ZIP, lock artifact, model weights or temporary launch files introduced. Historical design Excel/CSV and source-helper notebooks are preserved as such; machine paths in evidence are provenance, not runtime configuration.
+- Original user worklog prefix hash verified after append; original untracked ZIP hash unchanged.
+- Source, tests and Skill have zero diff from evaluated merge SHA. Current git diff --check passes; prior pre-existing Markdown hard-break whitespace is retained in history.
+- New routing evidence parsed as JSON/JSONL and scanned for PAT patterns with no matches. Codex stderr only reports unrelated plugin icon-path and unsupported PowerShell shell-snapshot warnings, not evaluation failures.
+- Fresh explicit/implicit/negative sessions all exit 0 and prove the requested routing boundary from tool traces, separately from CPU correctness tests and unverified real serving.
+- Full scoped implementation completed; READY WITH RISKS. Risks: owner credential rotation, disclosed broad-suite failures, and unverified live GPU/cloud serving. No claim that the entire repository is green or that an accepted preview guarantees runtime readiness.
+- Exact next action: owner revokes/rotates the exposed GitHub PAT.
