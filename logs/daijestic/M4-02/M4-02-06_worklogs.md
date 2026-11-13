@@ -187,3 +187,59 @@ The branch remains local for review/publication by the user. No push, merge,
 PR, release tag or Trello mutation was performed. Khôi owns final monitoring,
 review and freeze/tag. The user first publishes the reviewed task branch, then
 manually creates the notebook and follows the handoff.
+
+## Final local freeze and authorized publication — 2026-11-13
+
+The replacement final-freeze request explicitly authorizes a normal push of the
+reviewed task branch. The earlier "branch remains local" paragraph records the
+completed initial phase, not the publication status of this later step.
+
+Refreshed starting HEAD is `ef224d2d2021f287c2599f68da68019e8b7fd40c`,
+origin/develop remains `e7db7ccf17e48814489b067a0307c8fe2dae441e`, ahead/behind
+2/0. Tracked files were clean; the same three unrelated untracked directories
+remain untouched. The remote task ref was absent before publication.
+
+SOURCE_COMMIT decision: **CASE A**, retain
+`187cfff5f8c2a72b9bfb227d97e6221458ddc283`. Actual diff inspection and ancestry
+verification show that `ef224d2...` is its descendant and changes only:
+
+- `docs/runbooks/m4-02-06-local-methodology.md`: count-semantics clarification;
+- `experiments/runs/m4_02_06/m4-02-06-local-readiness-20261113/changed-files.json`:
+  historical changed-file inventory;
+- the same evidence directory's `local-completion-audit.json`: local checklist;
+- the same evidence directory's `source-freeze.json`: source hashes;
+- this worklog and `M4-02-06_colab_handoff.md`: non-executing documentation.
+
+None of those files is read by the runtime. The source tree at `187cfff...`
+contains every handoff-invoked experiment module, all 22 validation test files,
+dependencies, model identities, source manifest, profiler, diagnostic/readiness,
+lossless capture, resume/persistence/aggregation paths and frozen workload files.
+The user copies notebook cells from the published branch's handoff; that Markdown
+file is intentionally not required inside detached RUN_REPO.
+
+The final correction adds explicit SOURCE_BRANCH and explains why published
+branch HEAD is newer than SOURCE_COMMIT. No SHA was replaced: existing future
+execution references were already correct. Historical source-freeze/readiness
+records retain their original meaning. A tracked-repository `rg` search covered
+1,759 files; other SOURCE_COMMIT matches belong to historical Modal paths and
+remain unchanged. Runtime manifests retain the explicit source argument;
+EVIDENCE_REPO HEAD is used only as diagnostic_evidence_commit/EVIDENCE_COMMIT,
+never to overwrite scientific source_commit. No runtime code/config/test changed
+in this final step, so the previous 488/88 results remain historical verification
+of the unchanged code, not new test counts for this publication step.
+
+Freeze verification command:
+`python -B -m pytest -p no:cacheprovider -q tests/test_m4_treatments.py tests/test_m4_campaign.py tests/test_m4_pinned_contract.py`
+returned **39 passed, 0 failed, 0 skipped** (9.16 s). All eight handoff cells
+parse; handoff-invoked modules and 22 validation test files exist at SOURCE_COMMIT;
+28 frozen source hashes remain identical; the explicit-source 54-cell manifest
+validates. Source-gate unit checks accept an exact clean identity and reject
+moved/dirty identities. `git diff --check` passes. The authored tracked changes are scanned for
+credentials without printing matches. The normal push is followed by a fresh
+fetch, task-ref/HEAD comparison, remote source-ancestry checks, unchanged develop
+and unchanged tag verification. No force push, PR, merge, tag, Trello operation
+or cloud execution is part of this step.
+
+Scientific status remains: profile_sm80.json NOT MEASURED; ADAPTIVE_RUNTIME NOT
+VERIFIED ON A100; FULL_SWEEP NOT RUN. The matrix, model pins, runtime pin and
+previous M5-02 provenance findings are unchanged. Khôi retains final freeze/tag.

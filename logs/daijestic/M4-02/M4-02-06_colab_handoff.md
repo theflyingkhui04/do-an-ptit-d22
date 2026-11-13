@@ -1,11 +1,22 @@
 # M4-02-06 user-run Colab handoff
 
-LOCAL-ONLY preparation. Codex has not executed these cells. Review and publish
-the local task branch before starting; the source commit below must be reachable
-from origin. Keep the branch name and frozen source unchanged during a campaign.
+LOCAL-ONLY preparation. Codex has not executed these cells. Use the task branch
+published by the final freeze/publish step; the source commit below must be
+reachable from origin. Keep the branch name and frozen source unchanged during a campaign.
 Khôi retains final freeze/tag responsibility. No Modal SDK/account is required.
 
+`SOURCE_BRANCH = feat/m4-02-06-lossless-sweep-freeze`
+
 `SOURCE_COMMIT = 187cfff5f8c2a72b9bfb227d97e6221458ddc283`
+
+SOURCE_COMMIT is the complete, locally tested executable snapshot. Branch HEAD
+is intentionally newer: `ef224d2d2021f287c2599f68da68019e8b7fd40c` added only
+this handoff, worklog, local audit metadata and methodology clarification; the
+subsequent freeze clarification is documentation-only too. Those commits add no
+runtime dependency. Read/copy this handoff from the published branch before
+detaching RUN_REPO; the handoff itself is intentionally absent at SOURCE_COMMIT
+and is not loaded by any runtime module. Do not substitute branch HEAD for the
+frozen source. Future EVIDENCE_COMMIT values identify evidence publication only.
 
 Create the notebook yourself and select an A100 runtime. Add a minimally scoped
 `GITHUB_TOKEN` Colab Secret with read/write Contents access to this repository
@@ -22,7 +33,8 @@ import json, os, subprocess, sys, tempfile
 from google.colab import userdata
 
 REPO_URL = "https://github.com/theflyingkhui04/do-an-ptit-d22.git"
-BRANCH = "feat/m4-02-06-lossless-sweep-freeze"
+SOURCE_BRANCH = "feat/m4-02-06-lossless-sweep-freeze"
+BRANCH = SOURCE_BRANCH  # Checkout/ref alias; never the scientific source identity.
 SOURCE_COMMIT = "187cfff5f8c2a72b9bfb227d97e6221458ddc283"
 RUN_REPO = Path("/content/do-an-ptit-d22-run")
 EVIDENCE_REPO = Path("/content/do-an-ptit-d22-evidence")
