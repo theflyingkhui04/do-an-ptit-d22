@@ -23,6 +23,7 @@ from experiments.m4_protocol import (ROOT, WORKLOADS, build_manifest, git, sha25
                                       validate_manifest, validate_working_workloads, write_new)
 from experiments.m4_readiness import evaluate, read_lines
 from experiments.m4_runtime import serving, http_json
+from experiments.m4_security import profile_path
 from experiments.m4_treatments import (TREATMENTS, TARGET, TARGET_REVISION, SPECULATOR,
                                        SPECULATOR_REVISION, definition)
 
@@ -43,6 +44,7 @@ def environment(source_commit):
 
 
 def profile_gate(path: Path, source_commit, env=None):
+    path = profile_path(path)
     profile = validate_profile_file(path, source_commit)
     if env is not None:
         for field in ("gpu", "gpu_compute_capability", "gpu_memory_total_mb", "driver_version",
@@ -336,7 +338,7 @@ def main():
     parser.add_argument("action", choices=("source-gate", "freeze", "models", "diagnostic", "campaign", "resume", "aggregate"))
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--out", type=Path)
-    parser.add_argument("--profile", type=Path)
+    parser.add_argument("--profile", type=profile_path)
     parser.add_argument("--diagnostic", type=Path)
     parser.add_argument("--evidence-repo", type=Path)
     parser.add_argument("--full-lossless", action="store_true")

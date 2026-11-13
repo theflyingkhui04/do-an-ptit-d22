@@ -19,7 +19,8 @@ def jsonl(path, rows):
 
 
 @pytest.fixture
-def diagnostic_fixture(tmp_path):
+def diagnostic_fixture(tmp_path, monkeypatch):
+    monkeypatch.setenv("M4_ARTIFACT_ROOT", str(tmp_path))
     profile_dir = tmp_path / "profile_inputs"; profile_dir.mkdir()
     env = dict(synthetic_profile()["metadata"], canonical_hardware=True, expected_gpu="A100",
                run_id="SYNTHETIC", run_type="component_benchmark", working_tree_clean=True,
