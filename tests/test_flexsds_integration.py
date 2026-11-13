@@ -18,7 +18,7 @@ from flexsds.server.local_runner import LocalServingRunner
 from flexsds.server.modal_runner import ModalServingRunner
 
 PAIR = ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ",
-        "--draft", "Qwen/Qwen2.5-0.5B-Instruct"]
+        "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator"]
 ROOT = Path(__file__).resolve().parents[1]
 
 

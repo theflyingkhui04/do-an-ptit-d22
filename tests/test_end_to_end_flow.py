@@ -20,6 +20,7 @@ def test_e2e_cli_local_dry_run(capsys):
         "--backend", "local",
         "--port", "8000",
         "--dry-run",
+        "--allow-fallback",
     ]
     ret = main(test_args)
     assert ret == 0
@@ -36,6 +37,7 @@ def test_e2e_cli_modal_dry_run(capsys):
         "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator",
         "--backend", "modal",
         "--dry-run",
+        "--allow-fallback",
     ]
     ret = main(test_args)
     assert ret == 0
@@ -52,6 +54,7 @@ def test_e2e_cli_modal_deploy_dry_run(capsys):
         "--backend", "modal",
         "--deploy",
         "--dry-run",
+        "--allow-fallback",
     ]
     ret = main(test_args)
     assert ret == 0
@@ -67,6 +70,7 @@ def test_e2e_cli_colab_dry_run(capsys):
         "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator",
         "--backend", "colab",
         "--dry-run",
+        "--allow-fallback",
     ]
     ret = main(test_args)
     assert ret == 0

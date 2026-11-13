@@ -187,36 +187,63 @@ class HardwareInfo:
     device_count: int = 0     # Số lượng GPU phát hiện được trên máy
 ```
 
-#### 3.2.2. Bảng ánh xạ hồ sơ độ trễ phần cứng
-Hệ thống sử dụng bảng ánh xạ sau để nạp file cấu hình chi phí tính toán:
+#### 3.2.2. Chiến lược giải quyết và xử lý thiếu hồ sơ độ trễ phần cứng 3 tầng (3-Tier Profile Resolution Strategy)
+Hệ thống sử dụng cơ chế tra cứu thứ bậc để nạp cấu hình chi phí tính toán GPU:
 
-| Vi kiến trúc GPU | Dòng GPU tiêu biểu | Tệp hồ sơ độ trễ | Đặc tính lượng tử hóa AWQ |
-| :---: | :---: | :---: | :---: |
-| `sm_89` | NVIDIA L4 (Ada Lovelace, 24GB) | `profile_sm89_l4.json` | Native BF16, AWQ Marlin kernel |
-| `sm_75` | NVIDIA T4 (Turing, 16GB) | `profile_sm75_t4.json` | FP16 fallback, standard AWQ |
-| `sm_80` / `sm_90` | NVIDIA A100 / H100 | `profile_sm89_l4.json` (fallback) | FP16/BF16 tensor cores |
-| Khác / `cpu` | Intel / AMD / Mac M-Series | `profile_sm89_l4.json` (an toàn) | CPU memory emulation |
+```mermaid
+flowchart TD
+    A["Phát hiện phần cứng: detect_hardware()"] --> B{"Có cờ --cost-profile không?"}
+    B -- Có --> C["Nạp hồ sơ chỉ định: FlexCostModel.from_json(path)"]
+    B -- Không --> D{"Hồ sơ tồn tại trong ~/.flexsds/profiles/?"}
+    D -- Có --> E["Nạp hồ sơ người dùng đã hiệu chuẩn"]
+    D -- Không --> F{"Thuộc kho chuẩn (sm_89, sm_75)?"}
+    F -- Có --> G["Nạp hồ sơ chuẩn tích hợp sẵn"]
+    F -- Không --> H{"Khởi chạy phục vụ (serve) có cờ --allow-fallback?"}
+    H -- Có --> I["Kích hoạt hồ sơ phân tích an toàn dự phòng (Conservative Fallback, k_max=3)"]
+    H -- Không --> J["Chặn sớm (Fail-Fast Guard): Yêu cầu chạy flexsds profile --benchmark để hiệu chuẩn"]
+```
+
+| Tầng giải quyết | Phạm vi tìm kiếm / Xử lý | Tệp hồ sơ áp dụng | Hành vi và ngưỡng an toàn |
+| :---: | :--- | :--- | :--- |
+| **Tầng 1** | Chỉ định trực tiếp qua CLI `--cost-profile <đường_dẫn>` | Tệp JSON do người dùng cung cấp | Ưu tiên cao nhất, ghi đè toàn bộ cấu hình mặc định. |
+| **Tầng 2** | Kho hồ sơ cá nhân `~/.flexsds/profiles/` | `profile_<sm>_<slug>.json` | Tự động tái sử dụng kết quả đo đạc từ các lần chạy trước trên máy. |
+| **Tầng 3** | Kho hồ sơ chuẩn tích hợp `src/flexsds/profiles/` | `profile_sm89_l4.json` (L4), `profile_sm75_t4.json` (T4) | Hồ sơ đo đạc chuẩn mực với độ chính xác cao trên môi trường kiểm chuẩn. |
+| **Tự động đo** | Lệnh `flexsds profile --benchmark` | Tự động sinh `profile_<sm>_<slug>.json` | Đo đạc độ trễ thực tế qua nhiều batch size bằng `run_hardware_micro_benchmark()`. |
+| **Chặn sớm** | Chế độ phục vụ `flexsds serve` không có cờ `--allow-fallback` | Không nạp hồ sơ fallback | Dừng tiến trình ngay lập tức (exit code 1) để tránh suy giảm hiệu năng ngoài ý muốn. |
+| **Dự phòng** | Conservative Analytical Fallback (khi có cờ `--allow-fallback`) | Mô hình toán học phân tích nội tại | Khống chế trần an toàn $k_{\max} = 3$, ngưỡng $\alpha^* \ge 0.65$; cam kết $\text{Speedup} \ge 1.0$. |
 
 ---
 
 ### 3.3. Phân hệ gác cổng tương thích mô hình (Model Compatibility Guard Subsystem)
 
-#### 3.3.1. Thuật toán phân tích từ vựng dị thể (Heterogeneous Vocab Detection)
-Trong mô hình giải mã đầu cơ chuẩn, mô hình mục tiêu và mô hình nháp thường có cùng không gian từ vựng. Tuy nhiên, đầu nháp chuyên dụng EAGLE-3.1 (`duckhoi/qwen2.5-7b-eagle3.1-speculator`) được tinh chỉnh rút gọn kích thước từ vựng xuống 16,000 tokens (so với 152,064 tokens của Qwen2.5-7B) nhằm thu nhỏ kích thước ma trận `lm_head` từ 1.09 GB xuống còn 114 MB (giảm 89.5% bộ nhớ VRAM).
+#### 3.3.1. Thuật toán kiểm tra kiến trúc EAGLE và so sánh động từ vựng dị thể
+Trong mô hình giải mã đầu cơ chuẩn, mô hình mục tiêu và mô hình nháp thường có cùng không gian từ vựng. Tuy nhiên, FlexSDS v0.2 phục vụ chuyên biệt giải mã đầu cơ EAGLE (EAGLE / EAGLE-2 / EAGLE-3). Đầu nháp chuyên dụng EAGLE-3.1 (`duckhoi/qwen2.5-7b-eagle3.1-speculator`) được tinh chỉnh rút gọn kích thước từ vựng xuống 16,384 tokens (so với 152,064 tokens của Qwen2.5-7B) nhằm thu nhỏ kích thước ma trận `lm_head` từ 1.09 GB xuống còn 114 MB (giảm 89.5% bộ nhớ VRAM).
+
+Hệ thống lưu đệm metadata `config.json` vào `~/.flexsds/cache/models/<slug>/` để hỗ trợ kiểm tra ngoại tuyến, thực hiện kiểm tra nghiêm ngặt ép buộc kiến trúc EAGLE (từ chối các mô hình nhân quả tiêu chuẩn như `LlamaForCausalLM`), đồng thời so sánh động giá trị `vocab_size` thực tế giữa hai mô hình:
 
 ```mermaid
 sequenceDiagram
     participant User as Người dùng CLI
     participant Guard as check_compatibility()
-    participant Target as Mô hình mục tiêu (152k)
-    participant Draft as Đầu nháp EAGLE-3.1 (16k)
+    participant Cache as ~/.flexsds/cache/models/
+    participant HF as Hugging Face API / Cục bộ
 
     User->>Guard: Gửi cặp mô hình (Target, Draft)
-    Guard->>Draft: Kiểm tra chuỗi định danh mô hình
-    Note over Guard: Phát hiện chuỗi chứa "eagle3.1"
-    Guard->>Guard: Đặt draft_method = "eagle3"
-    Guard->>Guard: Phát hiện vocab mục tiêu (152,064) != vocab nháp (16,000)
-    Guard->>Guard: Gán use_heterogeneous_vocab = True
+    Guard->>Cache: Kiểm tra config.json trong bộ nhớ đệm
+    alt Chưa có trong cache
+        Guard->>HF: Tải config.json từ Hugging Face
+        HF-->>Guard: Trả về metadata cấu hình
+        Guard->>Cache: Lưu đệm <slug>/config.json
+    else Đã có trong cache
+        Cache-->>Guard: Đọc trực tiếp không cần mạng
+    end
+    Guard->>Guard: Kiểm tra kiến trúc: bắt buộc kiến trúc EAGLE (từ chối nếu không phải)
+    Guard->>Guard: Đọc target_vocab_size và draft_vocab_size từ config
+    alt draft_vocab_size != target_vocab_size (ví dụ 16,384 != 152,064)
+        Guard->>Guard: Gán use_heterogeneous_vocab = True
+    else Cùng không gian từ vựng
+        Guard->>Guard: Gán use_heterogeneous_vocab = False
+    end
     Guard->>Guard: Tính toán VRAM cần thiết (7.6 GB) so với free_vram_mb
     Guard-->>User: Trả về CompatibilityReport (Phương pháp, Dị thể, Cảnh báo VRAM)
 ```
@@ -389,6 +416,9 @@ Mỗi dòng là một đối tượng JSON ghi nhận chi tiết từng bước 
 | **Người dùng nhấn Ctrl+C khi stream** | `InteractiveChatSession` | Bắt `KeyboardInterrupt`; in thông báo hủy lượt trả lời; duy trì phiên chat cho câu tiếp theo. | Giữ nguyên phiên |
 | **Tệp trace telemetry chưa có** | `TelemetryMonitor` | Kiểm tra `os.path.exists()`; in thông báo đang chờ máy chủ tạo tệp, không ném lỗi. | Chờ đợi êm dịu |
 | **Dòng JSON bị ghi dở** | `TelemetryMonitor` | Khối `try ... except json.JSONDecodeError` tự động bỏ qua dòng lỗi, đọc dòng tiếp theo. | Không ngắt luồng |
+| **GPU chưa có hồ sơ chuẩn** | `get_serving_cost_profile()` | Chặn sớm tiến trình phục vụ khi chưa có hồ sơ hiệu chuẩn, trừ khi có `--allow-fallback`. | `SystemExit(1)` kèm cảnh báo |
+| **Mô hình nháp không phải EAGLE** | `inspect_remote_model_metadata()` | Kiểm tra kiến trúc trong `config.json`; từ chối nếu không phải kiến trúc đầu nháp EAGLE. | `is_compatible = False` |
+| **Lỗi mạng khi tải metadata cấu hình** | `get_model_config()` | Bắt `URLError`/`ConnectionError` khi ngoại tuyến và chưa có cache; thông báo rõ ràng. | Báo lỗi mạng tường minh |
 
 ---
 

@@ -128,3 +128,72 @@ def test_flexsds_core_tree_adaptive_controller_vendored():
     assert hasattr(decision, "speedup")
     assert decision.status in ("ok", "memory_guard", "concurrency_throttled", "fallback_gate", "probing", "zero_crash_fallback")
 
+
+def test_cost_profile_resolution_missing_hardware_fallback():
+    """Verifies unknown/unprofiled hardware falls back safely to conservative analytical model."""
+    unknown_hw = HardwareInfo(
+        device_name="NVIDIA RTX 4090 Custom",
+        sm_architecture="sm_99",
+        total_vram_mb=24576.0,
+        free_vram_mb=20000.0,
+        cuda_version="12.6",
+        is_cuda_available=True,
+    )
+    model, filename = load_profile_for_hardware(unknown_hw)
+    assert filename == "conservative_analytical_fallback"
+    assert model.provenance == "conservative_analytical_fallback"
+    assert model.metadata.get("fallback_mode") is True
+    assert model.metadata.get("k_max_safe") == 3
+
+
+def test_cost_profile_resolution_custom_path_override(tmp_path):
+    """Verifies explicit custom profile path takes highest precedence."""
+    import json
+    custom_file = tmp_path / "custom_rtx4090.json"
+    custom_data = {
+        "forward_target": {"1": 15.0, "2": 16.0},
+        "forward_draft": {"1": 2.5, "2": 2.7},
+    }
+    custom_file.write_text(json.dumps(custom_data), encoding="utf-8")
+
+    model, filename = load_profile_for_hardware(custom_profile_path=custom_file)
+    assert filename == "custom_rtx4090.json"
+    assert model.forward_target[1] == 15.0
+    assert model.forward_draft[1] == 2.5
+
+
+def test_save_hardware_profile_and_user_dir_resolution(tmp_path, monkeypatch):
+    """Verifies newly calibrated profile is saved and picked up from user profile store."""
+    from flexsds.core.cost_model import save_hardware_profile, USER_PROFILES_DIR
+    import flexsds.core.cost_model as cm
+
+    # Mock user profiles dir to temporary path
+    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path)
+
+    profile_payload = {
+        "forward_target": {"1": 12.0},
+        "forward_draft": {"1": 2.0},
+        "metadata": {"calibrated": True},
+    }
+    saved_path = save_hardware_profile(
+        profile_data=profile_payload,
+        sm_architecture="sm_90",
+        device_name="NVIDIA H100",
+        target_dir=tmp_path,
+    )
+    assert saved_path.exists()
+    assert "sm_90" in saved_path.name
+
+    h100_hw = HardwareInfo(
+        device_name="NVIDIA H100",
+        sm_architecture="sm_90",
+        total_vram_mb=80000.0,
+        free_vram_mb=75000.0,
+        cuda_version="12.4",
+        is_cuda_available=True,
+    )
+    model, filename = load_profile_for_hardware(h100_hw)
+    assert "sm_90" in filename
+    assert model.forward_target[1] == 12.0
+
+
