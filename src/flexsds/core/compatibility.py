@@ -6,7 +6,22 @@ import os
 import re
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+MODEL_CACHE_DIR: Path = Path.home() / ".flexsds" / "cache" / "models"
+EAGLE_ARCHITECTURES: set[str] = {"EagleModel", "EagleForCausalLM", "Eagle3Model"}
+
+
+class ModelMetadataError(Exception):
+    """Ngoại lệ cơ sở cho các lỗi đọc hoặc xử lý metadata của mô hình."""
+    pass
+
+
+class NetworkOfflineError(ModelMetadataError):
+    """Ngoại lệ khi không thể kết nối mạng và không tìm thấy cấu hình trong cache."""
+    pass
 
 
 @dataclass
@@ -44,6 +59,84 @@ class CompatibilityReport:
             f"VRAM Needed: {self.total_vram_needed_mb / 1024:.1f}GB / Free: {self.free_vram_mb / 1024:.1f}GB | "
             f"Hetero Vocab: {self.use_heterogeneous_vocab}"
         )
+
+
+def get_model_config(
+    model_id_or_path: str,
+    cache_dir: Optional[Path] = None,
+    timeout_sec: float = 5.0,
+) -> Dict[str, Any]:
+    """Đọc tệp config.json của mô hình từ đường dẫn cục bộ, cache hoặc Hugging Face Hub.
+
+    Args:
+        model_id_or_path: Đường dẫn thư mục/tệp cục bộ hoặc Hugging Face model ID.
+        cache_dir: Thư mục lưu cache cục bộ (mặc định ~/.flexsds/cache/models).
+        timeout_sec: Thời gian chờ tối đa khi tải qua HTTP (giây).
+
+    Returns:
+        Dict chứa nội dung tệp config.json.
+
+    Raises:
+        NetworkOfflineError: Khi không thể kết nối mạng và chưa có dữ liệu trong cache.
+        ModelMetadataError: Khi tệp config.json không tồn tại cục bộ hoặc không hợp lệ.
+    """
+    # 1. Kiểm tra nếu là đường dẫn cục bộ
+    expanded_path = Path(os.path.expanduser(model_id_or_path))
+    if expanded_path.exists():
+        if expanded_path.is_file() and expanded_path.suffix == ".json":
+            config_file = expanded_path
+        else:
+            config_file = expanded_path / "config.json"
+
+        if config_file.exists() and config_file.is_file():
+            try:
+                with open(config_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as exc:
+                raise ModelMetadataError(f"Không thể đọc tệp config cục bộ '{config_file}': {exc}") from exc
+        else:
+            raise ModelMetadataError(f"Không tìm thấy tệp config.json trong đường dẫn cục bộ '{model_id_or_path}'")
+
+    # 2. Chuẩn hóa định danh mô hình từ xa và xác định thư mục cache
+    clean_id = model_id_or_path.strip().replace("https://huggingface.co/", "").strip("/")
+    effective_cache_dir = Path(cache_dir) if cache_dir is not None else MODEL_CACHE_DIR
+    model_dir_name = clean_id.replace("/", "--")
+    cached_file = effective_cache_dir / model_dir_name / "config.json"
+
+    # 3. Đọc từ cache cục bộ nếu đã tồn tại
+    if cached_file.exists() and cached_file.is_file():
+        try:
+            with open(cached_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            # Nếu cache bị hỏng, tiếp tục thử tải từ mạng
+            pass
+
+    # 4. Tải từ Hugging Face qua HTTP
+    url = f"https://huggingface.co/{clean_id}/raw/main/config.json"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            raw_bytes = resp.read()
+            content = raw_bytes.decode("utf-8") if isinstance(raw_bytes, (bytes, bytearray)) else str(raw_bytes)
+            data = json.loads(content)
+    except Exception as exc:
+        raise NetworkOfflineError(
+            f"Không thể tải metadata cho mô hình '{clean_id}' từ Hugging Face Hub: {exc}"
+        ) from exc
+
+    # 5. Lưu vào cache cục bộ cho các lần kiểm tra sau
+    try:
+        cached_file.parent.mkdir(parents=True, exist_ok=True)
+        cached_file.write_text(content, encoding="utf-8")
+    except Exception:
+        # Lỗi lưu cache không cản trở việc trả về dữ liệu đã tải thành công
+        pass
+
+    return data
 
 
 def inspect_remote_model_metadata(model_id_or_path: str, timeout_sec: float = 5.0) -> Dict[str, Any]:
@@ -186,8 +279,46 @@ def check_compatibility(
     target_lower = target_model.lower()
     draft_lower = draft_model.lower()
 
-    # 1. Determine Draft Method
-    is_eagle = "eagle" in draft_lower or "speculator" in draft_lower
+    # 0. Nạp metadata của mô hình từ cache hoặc Hugging Face Hub (dự phòng ngoại lệ khi mất mạng)
+    target_cfg: Optional[Dict[str, Any]] = None
+    draft_cfg: Optional[Dict[str, Any]] = None
+
+    try:
+        target_cfg = get_model_config(target_model)
+    except Exception:
+        target_cfg = None
+
+    try:
+        draft_cfg = get_model_config(draft_model)
+    except Exception:
+        draft_cfg = None
+
+    # 1. Xác định phương pháp đầu nháp và kiểm tra kiến trúc EAGLE (CR02)
+    is_eagle = False
+    is_compatible = True
+
+    if draft_cfg is not None:
+        draft_archs = draft_cfg.get("architectures", [])
+        draft_mtype = str(draft_cfg.get("model_type", "")).lower()
+        if (
+            any(a in EAGLE_ARCHITECTURES for a in draft_archs)
+            or any("eagle" in str(a).lower() for a in draft_archs)
+            or "eagle" in draft_mtype
+        ):
+            is_eagle = True
+        elif not draft_archs and not draft_mtype and ("eagle" in draft_lower or "speculator" in draft_lower):
+            is_eagle = True
+        else:
+            is_eagle = False
+            is_compatible = False
+    else:
+        # Dự phòng khi mất mạng hoặc không tìm thấy metadata: nhận diện theo tên mô hình
+        if "eagle" in draft_lower or "speculator" in draft_lower:
+            is_eagle = True
+        else:
+            is_eagle = False
+            is_compatible = False
+
     draft_method = "eagle3" if is_eagle else "draft_model"
 
     # 2. Estimate VRAM Consumption
@@ -211,25 +342,45 @@ def check_compatibility(
             "Use an AWQ/GPTQ 4-bit quantized target model or reduce --max-num-seqs to free KV cache."
         )
 
-    # 4. Vocabulary Alignment
-    # Check if target and draft are from different model families
-    target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
-    draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
-    
-    use_hetero_vocab = False
-    if target_family != draft_family or is_eagle or "0.5b" in draft_lower:
-        # vLLM requires heterogeneous vocab flag when tokenizers differ in vocabulary sizes
-        use_hetero_vocab = True
+    # 4. Vocabulary Alignment (CR03)
+    # So sánh vocab_size giữa target và draft khi có cấu hình; nếu khác nhau thì bật cờ dị thể
+    target_vocab = target_cfg.get("vocab_size", 0) if target_cfg else 0
+    draft_vocab = draft_cfg.get("vocab_size", 0) if draft_cfg else 0
+
+    if target_vocab > 0 and draft_vocab > 0:
+        use_hetero_vocab = (target_vocab != draft_vocab)
+    else:
+        target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
+        draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
+        use_hetero_vocab = (target_family != draft_family) or is_eagle or ("0.5b" in draft_lower)
+
+    if use_hetero_vocab:
         recommendations.append(
             "Heterogeneous vocabulary flag enabled (--use-heterogeneous-vocab) for safe draft alignment."
         )
 
     # 5. Architecture Family compatibility
-    is_compatible = True
-    if target_family != "other" and draft_family != "other" and target_family != draft_family:
-        is_compatible = False
+    if not is_compatible:
         warnings.append(
-            f"Cross-family pairing ({target_family} target with {draft_family} draft) may exhibit low acceptance rate."
+            f"Phiên bản FlexSDS hiện tại chỉ hỗ trợ kiến trúc đầu nháp EAGLE. Mô hình nháp '{draft_model}' không được hỗ trợ."
+        )
+    else:
+        target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
+        draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
+        if target_family != "other" and draft_family != "other" and target_family != draft_family:
+            is_compatible = False
+            warnings.append(
+                f"Cross-family pairing ({target_family} target with {draft_family} draft) may exhibit low acceptance rate."
+            )
+
+    # 6. Cảnh báo dự phòng ngoại tuyến nếu không nạp được metadata từ mạng hay cache
+    if target_cfg is None:
+        warnings.append(
+            f"Không thể tải metadata cấu hình cho mô hình mục tiêu '{target_model}' (mất mạng hoặc chưa có cache). Sử dụng dự phòng theo tên."
+        )
+    if draft_cfg is None:
+        warnings.append(
+            f"Không thể tải metadata cấu hình cho mô hình nháp '{draft_model}' (mất mạng hoặc chưa có cache). Sử dụng dự phòng theo tên."
         )
 
     return CompatibilityReport(

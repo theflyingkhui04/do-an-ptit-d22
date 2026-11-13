@@ -6,14 +6,14 @@
 > **Đơn vị:** Nhóm đồ án D22 - Học viện Công nghệ Bưu chính Viễn thông (PTIT)
 > **Tác giả:** Cấn Đức Khôi & Bùi Đức Đại
 
-Tài liệu này bao phủ **100% tất cả các trường hợp (88 test cases)** của hệ thống FlexSDS CLI & Serving Backend.
+Tài liệu này bao phủ **100% tất cả các trường hợp (99 test cases)** của hệ thống FlexSDS CLI & Serving Backend.
 
 ## Danh sách các phân hệ và số lượng trường hợp kiểm thử
 
 | STT | Phân hệ chức năng | Mã định danh | Số ca kiểm thử | Trạng thái |
 | :---: | :--- | :---: | :---: | :---: |
-| 1 | Nhận diện phần cứng & Hồ sơ độ trễ | `TC-HW` | 8 ca | PASS 100% |
-| 2 | Bộ gác cổng tương thích & Dị thể từ vựng | `TC-CMP` | 8 ca | PASS 100% |
+| 1 | Nhận diện phần cứng & Hồ sơ độ trễ | `TC-HW` | 15 ca | PASS 100% |
+| 2 | Bộ gác cổng tương thích & Dị thể từ vựng | `TC-CMP` | 12 ca | PASS 100% |
 | 3 | Bảo mật thông tin xác thực & Quản lý auth | `TC-SEC` | 8 ca | PASS 100% |
 | 4 | Bộ thực thi phục vụ cục bộ (Local vLLM) | `TC-LOC` | 8 ca | PASS 100% |
 | 5 | Bộ thực thi đám mây Modal Serverless | `TC-MOD` | 8 ca | PASS 100% |
@@ -23,7 +23,7 @@ Tài liệu này bao phủ **100% tất cả các trường hợp (88 test cases
 | 9 | Khách hàng trò chuyện tương tác (CLI Chat) | `TC-CHT` | 8 ca | PASS 100% |
 | 10 | Bộ theo dõi thích ứng thời gian thực (Telemetry) | `TC-MON` | 8 ca | PASS 100% |
 | 11 | Yêu cầu phi chức năng, Trường hợp biên & Bảo mật | `TC-NFR` | 8 ca | PASS 100% |
-| **Tổng cộng** | **Toàn bộ hệ thống FlexSDS CLI** | **11 Phân hệ** | **88 ca kiểm thử** | **ĐẠT 100%** |
+| **Tổng cộng** | **Toàn bộ hệ thống FlexSDS CLI** | **11 Phân hệ** | **99 ca kiểm thử** | **ĐẠT 100%** |
 
 ---
 
@@ -37,16 +37,27 @@ Tài liệu này bao phủ **100% tất cả các trường hợp (88 test cases
 | `TC-HW-04` | Phần cứng | Tính toán chính xác dung lượng VRAM GB | Boundary | `HardwareInfo(..., free_vram_mb` | Quy đổi chuẩn xác sang GB với 2 chữ số t... |
 | `TC-HW-05` | Phần cứng | Áp dụng hồ sơ độ trễ phần cứng SM89 (NVIDIA L4) | Positive | `hw.sm_architecture = 'sm_89'` | Khớp chính xác tệp profile_sm89_l4.json.... |
 | `TC-HW-06` | Phần cứng | Áp dụng hồ sơ độ trễ phần cứng SM75 (NVIDIA T4) | Positive | `hw.sm_architecture = 'sm_75'` | Khớp chính xác tệp profile_sm75_t4.json.... |
-| `TC-HW-07` | Phần cứng | Fallback hồ sơ mặc định khi gặp phần cứng chưa biết | Boundary | `hw.sm_architecture = 'unknown_` | Hệ thống không crash, tự động fallback v... |
-| `TC-HW-08` | Phần cứng | Lệnh CLI profile in thông tin liên kết | Positive | `flexsds profile` | In banner và dòng chữ màu xanh '✔ Linked... |
-| `TC-CMP-01` | Tương thích | Nhận diện phương pháp đầu cơ EAGLE-3.1 | Positive | `draft = 'duckhoi/qwen2.5-7b-ea` | Phương pháp được nhận diện là 'eagle3'.... |
-| `TC-CMP-02` | Tương thích | Tự động kích hoạt cờ từ vựng dị thể cho EAGLE-3.1 | Positive | `target='Qwen/Qwen2.5-7B-Instru` | Cờ use_heterogeneous_vocab được gán giá ... |
-| `TC-CMP-03` | Tương thích | Cặp mô hình cùng từ vựng tắt cờ dị thể | Positive | `draft = 'Qwen/Qwen2.5-0.5B-Ins` | Cờ use_heterogeneous_vocab được gán giá ... |
-| `TC-CMP-04` | Tương thích | Cảnh báo nguy cơ OOM khi VRAM trống không đủ | Negative | `free_vram_mb = 3100.0` | Trạng thái tương thích chuyển thành WARN... |
-| `TC-CMP-05` | Tương thích | Xác nhận tương thích thành công khi đủ VRAM | Positive | `free_vram_mb = 20000.0` | Trạng thái tương thích là PASSED, không ... |
-| `TC-CMP-06` | Tương thích | Chặn trước tải xuống khi thiếu đĩa hoặc VRAM | Boundary | `free_disk_gb = 2.0` | Hàm trả về False, in thông báo từ chối t... |
-| `TC-CMP-07` | Tương thích | In bảng Compatibility Report chuẩn viền | UX | `report có 2 cảnh báo VRAM` | Bảng render_box hiển thị viền vuông vắn,... |
-| `TC-CMP-08` | Tương thích | Tóm tắt tương thích dạng chuỗi ngắn gọn | Positive | `report hợp lệ` | Chuỗi tóm tắt chứa đầy đủ: Compatibility... |
+| `TC-HW-07` | Phần cứng | Kích hoạt hồ sơ phân tích an toàn dự phòng khi thiếu hồ sơ phần cứng | Boundary | `hw.sm_architecture = 'unknown_` | Hệ thống không crash, tự động chuyển san... |
+| `TC-HW-08` | Phần cứng | Ưu tiên nạp hồ sơ tùy chỉnh từ đường dẫn chỉ định (--cost-profile) | Positive | `load_profile_for_hardware(cust` | Nạp đúng tệp tùy chỉnh, có độ ưu tiên ca... |
+| `TC-HW-09` | Phần cứng | Tự động nạp hồ sơ từ kho cấu hình người dùng ~/.flexsds/profiles/ | Positive | `hw.sm_architecture = 'sm_90'` | Khớp đúng tệp hồ sơ cá nhân trong ~/.fle... |
+| `TC-HW-10` | Phần cứng | Hiệu chuẩn và lưu hồ sơ phần cứng mới bằng save_hardware_profile() | Positive | `save_hardware_profile(data, 's` | Tệp JSON được tạo thành công trên đĩa, đ... |
+| `TC-HW-11` | Phần cứng | Lệnh CLI profile in thông tin liên kết | Positive | `flexsds profile` | In banner và dòng chữ màu xanh '✔ Linked... |
+| `TC-HW-12` | Phần cứng | Đo đạc vi benchmark phần cứng độc lập bằng run_hardware_micro_benchmark() | Positive | `run_hardware_micro_benchmark(.` | Trả về từ điển profile có forward_target... |
+| `TC-HW-13` | Phần cứng | Lệnh CLI profile với cờ --benchmark tự sinh hồ sơ phần cứng | Positive | `flexsds profile --benchmark --` | In các bước đo đạc benchmark và lưu tệp ... |
+| `TC-HW-14` | Phần cứng | Chặn sớm khi khởi chạy phục vụ trên phần cứng chưa có hồ sơ chuẩn (Fail-fast serving guard) | Negative | `flexsds serve --target <target` | Tiến trình lập tức bị chặn với exit code... |
+| `TC-HW-15` | Phần cứng | Tiếp tục khởi chạy phục vụ khi chỉ định rõ cờ --allow-fallback | Positive | `flexsds serve --allow-fallback` | Hệ thống chấp nhận dùng hồ sơ fallback p... |
+| `TC-CMP-01` | Tương thích | Tải và lưu bộ nhớ đệm metadata cấu hình mô hình (Model metadata config cache) | Positive | `get_model_config('Qwen/Qwen2.5` | Tải tệp config.json và lưu vào ~/.flexsd... |
+| `TC-CMP-02` | Tương thích | Đọc cấu hình mô hình từ bộ nhớ đệm nội bộ khi ngoại tuyến không cần mạng | Positive | `get_model_config(cached_model_` | Đọc cấu hình trực tiếp từ tệp đệm trên đ... |
+| `TC-CMP-03` | Tương thích | Báo lỗi kết nối mạng tường minh khi ngoại tuyến và chưa có bộ nhớ đệm | Negative | `get_model_config('unknown/offl` | Ném lỗi mạng với thông điệp rõ ràng hướn... |
+| `TC-CMP-04` | Tương thích | Đọc cấu hình mô hình từ thư mục cục bộ hoặc tệp JSON trực tiếp | Positive | `get_model_config('/path/to/loc` | Đọc trực tiếp tệp config.json từ đường d... |
+| `TC-CMP-05` | Tương thích | Từ chối mô hình nháp không thuộc kiến trúc EAGLE (EAGLE draft architecture enforcement) | Negative | `draft = 'Qwen/Qwen2.5-0.5B-Ins` | Hệ thống kiểm tra kiến trúc và từ chối v... |
+| `TC-CMP-06` | Tương thích | Chấp nhận mô hình nháp kiến trúc EAGLE và phát hiện từ vựng dị thể qua so sánh động vocab_size | Positive | `target: vocab 152k, draft: EAG` | Mô hình được chấp nhận (is_compatible = ... |
+| `TC-CMP-07` | Tương thích | Tắt cờ từ vựng dị thể khi mô hình mục tiêu và đầu nháp có cùng vocab_size | Positive | `target: vocab 128k, draft: EAG` | Cờ use_heterogeneous_vocab được gán Fals... |
+| `TC-CMP-08` | Tương thích | Chế độ tương thích ngoại tuyến dự phòng (Offline fallback) từ chối mô hình không phải EAGLE | Boundary | `draft = 'facebook/opt-125m'` | Hệ thống từ chối mô hình không phải EAGL... |
+| `TC-CMP-09` | Tương thích | Cảnh báo nguy cơ tràn bộ nhớ VRAM khi dung lượng trống không đủ | Negative | `free_vram_mb = 3100.0` | Trạng thái tương thích chuyển thành WARN... |
+| `TC-CMP-10` | Tương thích | Xác nhận tương thích thành công khi đủ VRAM và đúng kiến trúc | Positive | `free_vram_mb = 20000.0` | Trạng thái tương thích là PASSED, is_com... |
+| `TC-CMP-11` | Tương thích | Chặn trước tải xuống khi thiếu đĩa hoặc VRAM | Boundary | `free_disk_gb = 2.0` | Hàm trả về False, in thông báo từ chối t... |
+| `TC-CMP-12` | Tương thích | In bảng Compatibility Report chuẩn viền và tóm tắt ngắn gọn | UX | `report.summary(), render_box()` | Hiển thị bảng viền căn lề hoàn hảo không... |
 | `TC-SEC-01` | Bảo mật | Lưu token bảo mật với phân quyền tệp 0600 | Security | `set_credential('modal', 'MODAL` | Tệp credentials được tạo với quyền stat.... |
 | `TC-SEC-02` | Bảo mật | Nạp token vào biến môi trường trong bộ nhớ | Security | `inject_into_environ()` | Biến MODAL_TOKEN_ID xuất hiện trong os.e... |
 | `TC-SEC-03` | Bảo mật | Che giấu chuỗi bí mật dài hơn 8 ký tự | Security | `mask_secret('ak-123456789')` | Chuỗi được ẩn, chỉ hiển thị 'ak-****...6... |
