@@ -18,6 +18,7 @@ import {
   SqlBlock,
   Stat,
   Tabs,
+  baseModel,
   cx,
   endpointColors,
 } from "@/components/ui";
@@ -30,8 +31,9 @@ const PRESETS = {
   quick: { label: "Nhanh", requests: 8, loads: [1, 8], repeats: 1, about: "8 request đầu của gói, 1 và 8 người dùng, 1 lần" },
   full: { label: "Đầy đủ", requests: 32, loads: [1, 2, 4, 8, 16, 32], repeats: 3, about: "32 request, 1 đến 32 người dùng, 3 lần" },
 };
-// Rough seconds per request at low load on one GPU (W1 JSON about 1,400 output tokens, W2 SQL short, W3 prose).
-const SECONDS_PER_REQUEST: Record<Workload, number> = { W1: 40, W2: 4, W3: 15 };
+// Rough seconds per request at low load on one GPU. W1 from the live run of 13/11 on A10G (latency p50 11.8-16.5 s,
+// the "Nhanh" run took 2 min 46 s); W2 (short SQL) and W3 (prose) from the Node 2 / Node 3 pages (about 2 s and 6-8 s).
+const SECONDS_PER_REQUEST: Record<Workload, number> = { W1: 18, W2: 3, W3: 8 };
 const FINAL = ["done", "failed", "interrupted"];
 
 function estimateMinutes(workload: Workload, preset: keyof typeof PRESETS): number {
@@ -75,15 +77,15 @@ function SpeedView({ result, colors }: { result: SpeedResult; colors: Record<str
     <div className="grid gap-5">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat
-          label={`Nhanh nhất ở ${low} người dùng`}
+          label={`Tốt nhất ở ${low} người dùng`}
           value={bestLow ? formatSpeedup(bestLow.v) : "—"}
-          sub={bestLow ? names[bestLow.id] : "cần endpoint mốc"}
+          sub={bestLow ? `${names[bestLow.id]}${bestLow.v < 1 ? ", chậm hơn mốc" : ""}` : "cần endpoint mốc"}
           tone={bestLow ? (bestLow.v >= 1 ? "good" : "bad") : undefined}
         />
         <Stat
-          label={`Nhanh nhất ở ${high} người dùng`}
+          label={`Tốt nhất ở ${high} người dùng`}
           value={bestHigh ? formatSpeedup(bestHigh.v) : "—"}
-          sub={bestHigh ? names[bestHigh.id] : "cần endpoint mốc"}
+          sub={bestHigh ? `${names[bestHigh.id]}${bestHigh.v < 1 ? ", chậm hơn mốc" : ""}` : "cần endpoint mốc"}
           tone={bestHigh ? (bestHigh.v >= 1 ? "good" : "bad") : undefined}
         />
         <Stat label="Request lỗi" value={`${errors}/${total}`} sub={errors ? "không tính vào trung vị" : "không có request lỗi"} tone={errors ? "bad" : undefined} />
@@ -227,8 +229,12 @@ function ChainView({ result, colors }: { result: ChainResult; colors: Record<str
   const same = (row: ChainRow) => {
     if (!row.same_as_baseline) return row.endpoint_id === result.baseline ? <span className="text-[12px] font-normal text-ink-3">mốc</span> : null;
     const s = row.same_as_baseline;
-    const n = [s.node1, s.node2, s.node3].filter(Boolean).length;
-    return <Pill tone={n === 3 ? "good" : "warn"}>giống mốc {n}/3 node</Pill>;
+    const differ = (["node1", "node2", "node3"] as const).filter((k) => !s[k]).map((k) => `Node ${k.slice(-1)}`);
+    return (
+      <Pill tone={differ.length === 0 ? "good" : "warn"}>
+        {`giống mốc ${3 - differ.length}/3 node${differ.length ? `, khác ở ${differ.join(", ")}` : ""}`}
+      </Pill>
+    );
   };
   return (
     <div className="grid gap-4">
@@ -304,7 +310,7 @@ export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; e
   const running = current !== null && !FINAL.includes(current.status);
   const baseline = endpoints.find((e) => e.is_baseline);
   const chosen = endpoints.filter((e) => selected.includes(e.endpoint_id));
-  const models = new Set(chosen.map((e) => e.model_id));
+  const models = new Set(chosen.map(baseModel));
 
   async function start() {
     setError(null);

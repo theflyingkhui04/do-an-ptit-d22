@@ -15,7 +15,7 @@ export function SpeedChart({ loads, series, baselineLabel = "endpoint mốc" }: 
   series: Series[];
   baselineLabel?: string;
 }) {
-  const W = 720, H = 330, L = 56, R = 160, T = 18, B = 52;
+  const W = 720, H = 330, L = 56, R = 220, T = 18, B = 52;
   const all = series.flatMap((s) => s.values.filter((v): v is number => v !== null));
   const lo = Math.min(0.6, Math.floor((Math.min(1, ...all) - 0.05) * 10) / 10);
   const hi = Math.max(1.6, Math.ceil((Math.max(1, ...all) + 0.05) * 10) / 10);
@@ -64,7 +64,7 @@ export function SpeedChart({ loads, series, baselineLabel = "endpoint mốc" }: 
       })}
       {ends.map((e, i) => (
         <text key={e.s.name} x={W - R + 14} y={labelY[i]} fontSize={14} fill="var(--ink)">
-          <tspan fontWeight={600}>{e.s.name.length > 16 ? `${e.s.name.slice(0, 15)}…` : e.s.name}</tspan>
+          <tspan fontWeight={600}>{e.s.name.length > 22 ? `${e.s.name.slice(0, 21)}…` : e.s.name}</tspan>
           <tspan fill="var(--ink-2)"> {formatSpeedup(e.last)}</tspan>
         </text>
       ))}
@@ -84,14 +84,15 @@ export function BarChart({ rows, horizontal, color = "var(--lane-1)", unit = "đ
   const max = Math.max(1, ...rows.map((r) => r[1]));
   const fmt = (v: number) => `${formatNumber(v)}${unit ? ` ${unit}` : ""}`;
   if (horizontal) {
-    const W = 520, L = 190, R = 110, rowH = 34, H = rows.length * rowH + 10;
+    // Label column wide enough for "2020-08-16, MINIMART ANAN" (date + store) at 13px.
+    const W = 560, L = 240, R = 110, rowH = 34, H = rows.length * rowH + 10;
     return (
       <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label={label}>
         {rows.map(([k, v], i) => {
           const w = ((W - L - R) * v) / max, yy = 6 + i * rowH;
           return (
             <g key={`${k}-${i}`}>
-              <text x={L - 10} y={yy + 18} textAnchor="end" fontSize={13} fill="var(--ink-2)">{k.length > 24 ? `${k.slice(0, 23)}…` : k}</text>
+              <text x={L - 10} y={yy + 18} textAnchor="end" fontSize={13} fill="var(--ink-2)">{k.length > 28 ? `${k.slice(0, 27)}…` : k}</text>
               <rect x={L} y={yy + 5} width={Math.max(w, 2)} height={18} rx={4} fill={color}><title>{`${k}: ${fmt(v)}`}</title></rect>
               <text x={L + w + 8} y={yy + 18} fontSize={13} fill="var(--ink)">{fmt(v)}</text>
             </g>

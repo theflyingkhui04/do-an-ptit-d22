@@ -142,7 +142,8 @@ export function Trace({ steps, extra }: { steps: TraceStep[]; extra?: ReactNode 
             className={cx("flex min-w-[42px] items-center overflow-hidden whitespace-nowrap px-2.5 text-[12.5px] font-semibold text-white", i > 0 && "border-l-2 border-surface")}
             style={{ flex: Math.max(s.ms, total * 0.03), background: STEP_COLOR[s.kind] }}
           >
-            {s.label}
+            {/* very short steps stay unlabeled here; the legend below names every step */}
+            {s.ms >= total * 0.08 && s.label}
             {s.ms >= total * 0.12 && <span className="ml-1.5 font-normal">{formatMs(s.ms)}</span>}
           </div>
         ))}
@@ -156,6 +157,12 @@ export function Trace({ steps, extra }: { steps: TraceStep[]; extra?: ReactNode 
       </div>
     </div>
   );
+}
+
+// The model behind an endpoint: serving_config's target model, else vLLM's ``root``, else the served name.
+// Lanes served as qwen2.5-7b-vanilla / -adaptive share one base model, so comparing them is fair.
+export function baseModel(e: Endpoint): string {
+  return e.meta?.target_model || e.meta?.base_model || e.model_id;
 }
 
 // ---------------------------------------------------------------- endpoint colours and chips

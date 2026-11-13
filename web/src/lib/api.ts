@@ -14,6 +14,7 @@ export interface EndpointMeta {
   sm?: string;
   backend?: string;
   target_model?: string;
+  base_model?: string; // vLLM ``root`` read from /v1/models
   draft_model?: string | null;
   draft_method?: string | null;
   adaptive?: boolean;

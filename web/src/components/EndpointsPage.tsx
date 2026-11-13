@@ -4,7 +4,7 @@ import { Check, Pencil, Plus, RefreshCw, Server, Terminal, Trash2 } from "lucide
 import { useState } from "react";
 
 import { PLATFORM_LABELS } from "@/components/AddEndpointDialog";
-import { Button, Dot, EmptyState, Notice, PageHead, Panel, Pill, endpointColors } from "@/components/ui";
+import { Button, Dot, EmptyState, Notice, PageHead, Panel, Pill, baseModel, endpointColors } from "@/components/ui";
 import type { Api, Endpoint } from "@/lib/api";
 
 function metaLine(e: Endpoint): string {
@@ -92,7 +92,7 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd }: {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const colors = endpointColors(endpoints);
-  const models = new Set(endpoints.map((e) => e.model_id));
+  const models = new Set(endpoints.map(baseModel));
 
   async function act(id: string, action: () => Promise<unknown>) {
     setBusy(id);

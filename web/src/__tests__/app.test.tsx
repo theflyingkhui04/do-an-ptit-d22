@@ -100,6 +100,17 @@ describe("endpoints", () => {
     expect(api.deleteEndpoint).toHaveBeenCalledWith(FAST);
   });
 
+  it("does not warn when the served names differ but the model behind them is the same", async () => {
+    const same = { base_model: "/models/qwen2.5-7b-awq" };
+    const endpoints = vi.fn(async () => ({ endpoints: [
+      endpoint(BASE, "vanilla", { is_baseline: true, model_id: "qwen2.5-7b-vanilla", meta: same }),
+      endpoint(FAST, "adaptive", { model_id: "qwen2.5-7b-adaptive", meta: same }),
+    ] }));
+    open("endpoints", fakeApi({ endpoints }));
+    await screen.findByText("qwen2.5-7b-adaptive");
+    expect(screen.queryByText(/model khác nhau/)).not.toBeInTheDocument();
+  });
+
   it("warns when the endpoints serve different models", async () => {
     const endpoints = vi.fn(async () => ({ endpoints: [...ENDPOINTS, endpoint("ep_0000000c", "llama", { model_id: "meta/llama" })] }));
     open("endpoints", fakeApi({ endpoints }));
@@ -126,6 +137,16 @@ describe("node 1", () => {
     await user.click(screen.getByRole("tab", { name: "Văn bản OCR" }));
     expect(screen.getByLabelText("Văn bản OCR")).toHaveTextContent("MINIMART ANAN");
     expect(api.invoices).toHaveBeenCalledTimes(2);
+  });
+
+  it("explains a source copy error and suggests running again", async () => {
+    const failed: Job = { ...doneJob(), status: "failed", invoice_id: null,
+      error: "node1: adaptive: SOURCE_BINDING_ERROR at SOURCE_BINDING: Source binding mismatch: value mismatch: image_path" };
+    open("node1", fakeApi({ job: vi.fn(async () => failed) }));
+    const user = userEvent.setup();
+    await user.upload(await screen.findByLabelText("Ảnh hoá đơn"), jpegFile());
+    await user.click(screen.getByRole("button", { name: "Chạy Node 1" }));
+    expect(await screen.findByText(/Model chép sai thông tin nguồn/)).toHaveTextContent("Chạy Node 1 lần nữa");
   });
 
   it("rejects a file that is not a JPEG or PNG before uploading", async () => {
@@ -239,6 +260,9 @@ describe("measure and compare", () => {
     expect(api.startBench).toHaveBeenCalledWith({ kind: "speed", endpoint_ids: [BASE, FAST], workload: "W1", loads: [1, 8], requests: 8, repeats: 1 });
     expect(screen.getByText("đo trực tiếp, có nhiễu")).toBeInTheDocument();
     expect(screen.getByText("0,88×", { selector: "td" })).toBeInTheDocument();
+    // at 8 users the best endpoint is still slower than the baseline: the tile must say so
+    expect(screen.getByText("Tốt nhất ở 8 người dùng").parentElement).toHaveTextContent("adaptive, chậm hơn mốc");
+    expect(screen.getByText(/khoảng 3 phút/)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Nhanh gấp mấy lần/ })).toBeInTheDocument();
   });
 
@@ -274,7 +298,7 @@ describe("measure and compare", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "Chạy cả chuỗi 1 → 2 → 3" }));
     await user.click(screen.getByRole("button", { name: "Chạy cả chuỗi" }));
-    expect(await screen.findByText("giống mốc 2/3 node")).toBeInTheDocument();
+    expect(await screen.findByText("giống mốc 2/3 node, khác ở Node 3")).toBeInTheDocument();
     expect(api.startBench).toHaveBeenCalledWith({ kind: "chain", endpoint_ids: [BASE, FAST], sample_id: "m0_04_001" });
     expect(screen.getByRole("img", { name: /adaptive: Node 1 6 s, Node 2 7 s, Node 3 4,5 s/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Xem adaptive" }));

@@ -337,7 +337,17 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
               })}
             </ol>
           )}
-          {job?.status === "failed" && <Notice tone="bad">Lỗi ở bước {job.error}</Notice>}
+          {job?.status === "failed" && (
+            <Notice tone="bad">
+              Lỗi ở bước {job.error}
+              {job.error?.includes("SOURCE_BINDING") && (
+                <p className="mt-1.5 text-ink-2">
+                  Model chép sai thông tin nguồn của ảnh (mã hoặc đường dẫn) mà luồng Node 1 bắt phải chép y nguyên. Lỗi này
+                  thỉnh thoảng xảy ra với model 7B; bấm Chạy Node 1 lần nữa.
+                </p>
+              )}
+            </Notice>
+          )}
           {job?.status === "interrupted" && <Notice tone="warn">Máy chủ khởi động lại giữa chừng; chạy lại lần nữa.</Notice>}
 
           {result?.timings_ms && (result.timings_ms.ocr || result.timings_ms.node1) && (
