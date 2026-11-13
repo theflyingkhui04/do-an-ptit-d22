@@ -1,0 +1,4 @@
+Fetching 12 files:   0%|          | 0/12 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 12 files:   8%|▊         | 1/12 [00:00<00:02,  3.79it/s]Fetching 12 files:  58%|█████▊    | 7/12 [00:00<00:00, 15.30it/s]Fetching 12 files:  92%|█████████▏| 11/12 [00:18<00:02,  2.08s/it]Fetching 12 files: 100%|██████████| 12/12 [00:18<00:00,  1.53s/it]
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files:  25%|██▌       | 1/4 [00:00<00:00,  3.79it/s]Fetching 4 files: 100%|██████████| 4/4 [00:09<00:00,  2.42s/it]Fetching 4 files: 100%|██████████| 4/4 [00:09<00:00,  2.26s/it]
+[{"model": "Qwen/Qwen2.5-7B-Instruct-AWQ", "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"}, {"model": "duckhoi/qwen2.5-7b-eagle3.1-speculator", "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"}]

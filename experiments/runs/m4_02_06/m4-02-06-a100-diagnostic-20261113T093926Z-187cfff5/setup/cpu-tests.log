@@ -1,0 +1,814 @@
+...................................ssssssssssssssssss.ssssssssssssssssss [ 14%]
+sssss.sssssssss.ssssssss..sss........................................... [ 29%]
+.......................FFFFFFFFFFFFFFFFF......FF.......F...FFFFF.F.sssss [ 43%]
+ssssssssssssssssssssss.................................................. [ 58%]
+........................................................................ [ 73%]
+....................................................sss................. [ 87%]
+...s.......................................................              [100%]
+=================================== FAILURES ===================================
+____ test_collect_recovers_and_writes_canonical_evidence_with_original_sha _____
+
+job = <module 'bench_jobs_under_test'>
+
+    def test_collect_recovers_and_writes_canonical_evidence_with_original_sha(job):
+        prepare_collect(job)
+        job._git_commit.return_value = "b" * 40
+>       out = job.bench_collect(CALL_ID)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_modal_bench_jobs.py:171: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_recovers_and_writ0/experiments/runs/m3_01/pilot-cell/submission.json
+__________________ test_collect_allows_unavailable_vram_join ___________________
+
+job = <module 'bench_jobs_under_test'>
+
+    def test_collect_allows_unavailable_vram_join(job):
+        prepare_collect(job)
+        remote = result()
+        remote.update(joined=None, join_error="No samples available")
+        job.modal.FunctionCall.from_id.return_value.get.return_value = remote
+>       out = job.bench_collect(CALL_ID)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_modal_bench_jobs.py:195: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_allows_unavailabl0/experiments/runs/m3_01/pilot-cell/submission.json
+______________ test_collect_surfaces_function_call_lookup_failure ______________
+
+job = <module 'bench_jobs_under_test'>
+
+    def test_collect_surfaces_function_call_lookup_failure(job):
+        prepare_collect(job)
+        job.modal.FunctionCall.from_id.side_effect = LookupError("unknown FunctionCall")
+        with pytest.raises(LookupError, match="unknown FunctionCall"):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:204: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_surfaces_function0/experiments/runs/m3_01/pilot-cell/submission.json
+___ test_collect_failure_or_disconnect_never_cancels_and_can_retry[failure0] ___
+
+job = <module 'bench_jobs_under_test'>, failure = RuntimeError('remote failed')
+
+    @pytest.mark.parametrize("failure", [RuntimeError("remote failed"), ConnectionError("laptop offline"),
+                                         KeyboardInterrupt()])
+    def test_collect_failure_or_disconnect_never_cancels_and_can_retry(job, failure):
+        prepare_collect(job)
+        handle = job.modal.FunctionCall.from_id.return_value
+        handle.get.side_effect = failure
+        with pytest.raises(type(failure)):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_failure_or_discon0/experiments/runs/m3_01/pilot-cell/submission.json
+___ test_collect_failure_or_disconnect_never_cancels_and_can_retry[failure1] ___
+
+job = <module 'bench_jobs_under_test'>
+failure = ConnectionError('laptop offline')
+
+    @pytest.mark.parametrize("failure", [RuntimeError("remote failed"), ConnectionError("laptop offline"),
+                                         KeyboardInterrupt()])
+    def test_collect_failure_or_disconnect_never_cancels_and_can_retry(job, failure):
+        prepare_collect(job)
+        handle = job.modal.FunctionCall.from_id.return_value
+        handle.get.side_effect = failure
+        with pytest.raises(type(failure)):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_failure_or_discon1/experiments/runs/m3_01/pilot-cell/submission.json
+___ test_collect_failure_or_disconnect_never_cancels_and_can_retry[failure2] ___
+
+job = <module 'bench_jobs_under_test'>, failure = KeyboardInterrupt()
+
+    @pytest.mark.parametrize("failure", [RuntimeError("remote failed"), ConnectionError("laptop offline"),
+                                         KeyboardInterrupt()])
+    def test_collect_failure_or_disconnect_never_cancels_and_can_retry(job, failure):
+        prepare_collect(job)
+        handle = job.modal.FunctionCall.from_id.return_value
+        handle.get.side_effect = failure
+        with pytest.raises(type(failure)):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_failure_or_discon2/experiments/runs/m3_01/pilot-cell/submission.json
+____________ test_collect_rejects_mismatched_metadata[lane-static] _____________
+
+job = <module 'bench_jobs_under_test'>, key = 'lane', value = 'static'
+
+    @pytest.mark.parametrize("key,value", [
+        ("lane", "static"), ("server_run_id", "other-server"), ("bench_run_id", "other-cell"),
+        ("commit", "b" * 40), ("cell", {**CELL, "repeats": 1}),
+        ("server_env", {"lane": "eagle", "run_id": "other-server"}),
+    ])
+    def test_collect_rejects_mismatched_metadata(job, key, value):
+        prepare_collect(job)
+        remote = {**result(), key: value}
+        job.modal.FunctionCall.from_id.return_value.get.return_value = remote
+        with pytest.raises(ValueError, match="mismatch"):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:233: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_mismatche0/experiments/runs/m3_01/pilot-cell/submission.json
+_____ test_collect_rejects_mismatched_metadata[server_run_id-other-server] _____
+
+job = <module 'bench_jobs_under_test'>, key = 'server_run_id'
+value = 'other-server'
+
+    @pytest.mark.parametrize("key,value", [
+        ("lane", "static"), ("server_run_id", "other-server"), ("bench_run_id", "other-cell"),
+        ("commit", "b" * 40), ("cell", {**CELL, "repeats": 1}),
+        ("server_env", {"lane": "eagle", "run_id": "other-server"}),
+    ])
+    def test_collect_rejects_mismatched_metadata(job, key, value):
+        prepare_collect(job)
+        remote = {**result(), key: value}
+        job.modal.FunctionCall.from_id.return_value.get.return_value = remote
+        with pytest.raises(ValueError, match="mismatch"):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:233: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_mismatche1/experiments/runs/m3_01/pilot-cell/submission.json
+______ test_collect_rejects_mismatched_metadata[bench_run_id-other-cell] _______
+
+job = <module 'bench_jobs_under_test'>, key = 'bench_run_id'
+value = 'other-cell'
+
+    @pytest.mark.parametrize("key,value", [
+        ("lane", "static"), ("server_run_id", "other-server"), ("bench_run_id", "other-cell"),
+        ("commit", "b" * 40), ("cell", {**CELL, "repeats": 1}),
+        ("server_env", {"lane": "eagle", "run_id": "other-server"}),
+    ])
+    def test_collect_rejects_mismatched_metadata(job, key, value):
+        prepare_collect(job)
+        remote = {**result(), key: value}
+        job.modal.FunctionCall.from_id.return_value.get.return_value = remote
+        with pytest.raises(ValueError, match="mismatch"):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:233: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_mismatche2/experiments/runs/m3_01/pilot-cell/submission.json
+_ test_collect_rejects_mismatched_metadata[commit-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb] _
+
+job = <module 'bench_jobs_under_test'>, key = 'commit'
+value = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+    @pytest.mark.parametrize("key,value", [
+        ("lane", "static"), ("server_run_id", "other-server"), ("bench_run_id", "other-cell"),
+        ("commit", "b" * 40), ("cell", {**CELL, "repeats": 1}),
+        ("server_env", {"lane": "eagle", "run_id": "other-server"}),
+    ])
+    def test_collect_rejects_mismatched_metadata(job, key, value):
+        prepare_collect(job)
+        remote = {**result(), key: value}
+        job.modal.FunctionCall.from_id.return_value.get.return_value = remote
+        with pytest.raises(ValueError, match="mismatch"):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:233: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_mismatche3/experiments/runs/m3_01/pilot-cell/submission.json
+____________ test_collect_rejects_mismatched_metadata[cell-value4] _____________
+
+job = <module 'bench_jobs_under_test'>, key = 'cell'
+value = {'workload': 'W1', 'concurrency': 1, 'repeats': 1, 'num_requests': 32}
+
+    @pytest.mark.parametrize("key,value", [
+        ("lane", "static"), ("server_run_id", "other-server"), ("bench_run_id", "other-cell"),
+        ("commit", "b" * 40), ("cell", {**CELL, "repeats": 1}),
+        ("server_env", {"lane": "eagle", "run_id": "other-server"}),
+    ])
+    def test_collect_rejects_mismatched_metadata(job, key, value):
+        prepare_collect(job)
+        remote = {**result(), key: value}
+        job.modal.FunctionCall.from_id.return_value.get.return_value = remote
+        with pytest.raises(ValueError, match="mismatch"):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:233: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_mismatche4/experiments/runs/m3_01/pilot-cell/submission.json
+_________ test_collect_rejects_mismatched_metadata[server_env-value5] __________
+
+job = <module 'bench_jobs_under_test'>, key = 'server_env'
+value = {'lane': 'eagle', 'run_id': 'other-server'}
+
+    @pytest.mark.parametrize("key,value", [
+        ("lane", "static"), ("server_run_id", "other-server"), ("bench_run_id", "other-cell"),
+        ("commit", "b" * 40), ("cell", {**CELL, "repeats": 1}),
+        ("server_env", {"lane": "eagle", "run_id": "other-server"}),
+    ])
+    def test_collect_rejects_mismatched_metadata(job, key, value):
+        prepare_collect(job)
+        remote = {**result(), key: value}
+        job.modal.FunctionCall.from_id.return_value.get.return_value = remote
+        with pytest.raises(ValueError, match="mismatch"):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:233: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_mismatche5/experiments/runs/m3_01/pilot-cell/submission.json
+_____ test_collect_rejects_failed_harness_or_missing_invalid_raw[raw-None] _____
+
+job = <module 'bench_jobs_under_test'>, key = 'raw', value = None
+
+    @pytest.mark.parametrize("key,value", [("raw", None), ("raw", ""), ("raw", "not json"),
+                                           ("raw", json.dumps({"commit": "b" * 40})), ("returncode", 4)])
+    def test_collect_rejects_failed_harness_or_missing_invalid_raw(job, key, value):
+        prepare_collect(job)
+        job.modal.FunctionCall.from_id.return_value.get.return_value = {**result(), key: value}
+        with pytest.raises((ValueError, RuntimeError)):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_failed_ha0/experiments/runs/m3_01/pilot-cell/submission.json
+_______ test_collect_rejects_failed_harness_or_missing_invalid_raw[raw-] _______
+
+job = <module 'bench_jobs_under_test'>, key = 'raw', value = ''
+
+    @pytest.mark.parametrize("key,value", [("raw", None), ("raw", ""), ("raw", "not json"),
+                                           ("raw", json.dumps({"commit": "b" * 40})), ("returncode", 4)])
+    def test_collect_rejects_failed_harness_or_missing_invalid_raw(job, key, value):
+        prepare_collect(job)
+        job.modal.FunctionCall.from_id.return_value.get.return_value = {**result(), key: value}
+        with pytest.raises((ValueError, RuntimeError)):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_failed_ha1/experiments/runs/m3_01/pilot-cell/submission.json
+___ test_collect_rejects_failed_harness_or_missing_invalid_raw[raw-not json] ___
+
+job = <module 'bench_jobs_under_test'>, key = 'raw', value = 'not json'
+
+    @pytest.mark.parametrize("key,value", [("raw", None), ("raw", ""), ("raw", "not json"),
+                                           ("raw", json.dumps({"commit": "b" * 40})), ("returncode", 4)])
+    def test_collect_rejects_failed_harness_or_missing_invalid_raw(job, key, value):
+        prepare_collect(job)
+        job.modal.FunctionCall.from_id.return_value.get.return_value = {**result(), key: value}
+        with pytest.raises((ValueError, RuntimeError)):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_failed_ha2/experiments/runs/m3_01/pilot-cell/submission.json
+_ test_collect_rejects_failed_harness_or_missing_invalid_raw[raw-{"commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}] _
+
+job = <module 'bench_jobs_under_test'>, key = 'raw'
+value = '{"commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'
+
+    @pytest.mark.parametrize("key,value", [("raw", None), ("raw", ""), ("raw", "not json"),
+                                           ("raw", json.dumps({"commit": "b" * 40})), ("returncode", 4)])
+    def test_collect_rejects_failed_harness_or_missing_invalid_raw(job, key, value):
+        prepare_collect(job)
+        job.modal.FunctionCall.from_id.return_value.get.return_value = {**result(), key: value}
+        with pytest.raises((ValueError, RuntimeError)):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_failed_ha3/experiments/runs/m3_01/pilot-cell/submission.json
+___ test_collect_rejects_failed_harness_or_missing_invalid_raw[returncode-4] ___
+
+job = <module 'bench_jobs_under_test'>, key = 'returncode', value = 4
+
+    @pytest.mark.parametrize("key,value", [("raw", None), ("raw", ""), ("raw", "not json"),
+                                           ("raw", json.dumps({"commit": "b" * 40})), ("returncode", 4)])
+    def test_collect_rejects_failed_harness_or_missing_invalid_raw(job, key, value):
+        prepare_collect(job)
+        job.modal.FunctionCall.from_id.return_value.get.return_value = {**result(), key: value}
+        with pytest.raises((ValueError, RuntimeError)):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:243: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_rejects_failed_ha4/experiments/runs/m3_01/pilot-cell/submission.json
+__________ test_collect_reuses_identical_evidence_without_overwriting __________
+
+job = <module 'bench_jobs_under_test'>
+
+    def test_collect_reuses_identical_evidence_without_overwriting(job):
+        prepare_collect(job)
+>       out = job.bench_collect(CALL_ID)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_modal_bench_jobs.py:266: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_reuses_identical_0/experiments/runs/m3_01/pilot-cell/submission.json
+_____ test_collect_refuses_conflicting_evidence_before_writing_other_files _____
+
+job = <module 'bench_jobs_under_test'>
+
+    def test_collect_refuses_conflicting_evidence_before_writing_other_files(job):
+        prepare_collect(job)
+        path = receipt(job).parent / "raw.jsonl"
+        path.write_text("existing evidence")
+        with pytest.raises(FileExistsError, match="Conflicting"):
+>           job.bench_collect(CALL_ID)
+
+tests/test_modal_bench_jobs.py:277: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+modal_runner.py:704: in bench_collect
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+call_id = 'fc-test001'
+submission = {'lane': 'eagle', 'server_run_id': 'server-smoke', 'bench_run_id': 'pilot-cell', 'cell': {'workload': 'W1', 'concurrency': 1, 'repeats': 5, 'num_requests': 32}, ...}
+timeout = None
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:651: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_refuses_conflicti0/experiments/runs/m3_01/pilot-cell/submission.json
+____________________ test_collect_in_a_fresh_python_process ____________________
+
+job = <module 'bench_jobs_under_test'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-0/test_collect_in_a_fresh_python0')
+
+    def test_collect_in_a_fresh_python_process(job, tmp_path):
+        prepare_collect(job)
+        bundle = tmp_path / "returned-result.json"
+        bundle.write_text(json.dumps(result()), encoding="utf-8")
+        # A separate interpreter loads the production functions and only the receipt + ID.
+        script = tmp_path / "fresh_collect.py"
+        script.write_text('''from __future__ import annotations
+    import ast,json,os,re,sys
+    from pathlib import Path
+    from datetime import datetime,timezone
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    root, production, bundle = map(Path, sys.argv[1:])
+    tree=ast.parse(production.read_text(encoding="utf-8"))
+    functions=[n for n in tree.body if isinstance(n,ast.FunctionDef)]
+    for node in functions: node.decorator_list=[]
+    handle=SimpleNamespace(get=lambda: json.loads(bundle.read_text(encoding="utf-8")))
+    modal=SimpleNamespace(FunctionCall=SimpleNamespace(from_id=lambda call_id: handle))
+    lanes=SimpleNamespace(LANES={"eagle":None},BENCH_WORKLOADS={"W1":None})
+    ns=dict(json=json,os=os,re=re,sys=sys,Path=Path,datetime=datetime,timezone=timezone,
+            REPO_ROOT=root,SERVER_ENV_FILE="server_env.json",RAW_FILE="raw.jsonl",modal=modal,lanes=lanes)
+    exec(compile(ast.Module(body=functions,type_ignores=[]),"modal_runner.py","exec"),ns)
+    ns["bench_collect"]("fc-test001")
+    ''', encoding="utf-8")
+>       subprocess.run([sys.executable, str(script), str(job.REPO_ROOT),
+                        str(ROOT / "experiments/modal_runner.py"), str(bundle)], check=True)
+
+tests/test_modal_bench_jobs.py:368: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = False, timeout = None, check = True
+popenargs = (['/content/m4-02-06-venv/bin/python', '/tmp/pytest-of-root/pytest-0/test_collect_in_a_fresh_python0/fresh_collect.py'...un/experiments/modal_runner.py', '/tmp/pytest-of-root/pytest-0/test_collect_in_a_fresh_python0/returned-result.json'],)
+kwargs = {}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout (seconds) is given and the process takes too long,
+         a TimeoutExpired exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/content/m4-02-06-venv/bin/python', '/tmp/pytest-of-root/pytest-0/test_collect_in_a_fresh_python0/fresh_collect.py', '/tmp/pytest-of-root/pytest-0/test_collect_in_a_fresh_python0', '/content/do-an-ptit-d22-run/experiments/modal_runner.py', '/tmp/pytest-of-root/pytest-0/test_collect_in_a_fresh_python0/returned-result.json']' returned non-zero exit status 1.
+
+/usr/lib/python3.13/subprocess.py:578: CalledProcessError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_collect_in_a_fresh_python0/experiments/runs/m3_01/pilot-cell/submission.json
+----------------------------- Captured stderr call -----------------------------
+Traceback (most recent call last):
+  File "/tmp/pytest-of-root/pytest-0/test_collect_in_a_fresh_python0/fresh_collect.py", line 17, in <module>
+    ns["bench_collect"]("fc-test001")
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "modal_runner.py", line 704, in bench_collect
+  File "modal_runner.py", line 651, in _bench_result
+ModuleNotFoundError: No module named 'modal'
+_ test_status_polls_existing_call_without_resubmission[TimeoutError--SUBMITTED] _
+
+job = <module 'bench_jobs_under_test'>, task_id = '', expected = 'SUBMITTED'
+timeout_type = <class 'TimeoutError'>
+
+    @pytest.mark.parametrize("task_id,expected", [("", "SUBMITTED"), ("ta-test", "RUNNING")])
+    @pytest.mark.parametrize("timeout_type", [TimeoutError, "modal"])
+    def test_status_polls_existing_call_without_resubmission(job, task_id, expected, timeout_type):
+>       from modal.exception import TimeoutError as ModalTimeoutError
+E       ModuleNotFoundError: No module named 'modal'
+
+tests/test_modal_bench_jobs.py:403: ModuleNotFoundError
+_ test_status_polls_existing_call_without_resubmission[TimeoutError-ta-test-RUNNING] _
+
+job = <module 'bench_jobs_under_test'>, task_id = 'ta-test'
+expected = 'RUNNING', timeout_type = <class 'TimeoutError'>
+
+    @pytest.mark.parametrize("task_id,expected", [("", "SUBMITTED"), ("ta-test", "RUNNING")])
+    @pytest.mark.parametrize("timeout_type", [TimeoutError, "modal"])
+    def test_status_polls_existing_call_without_resubmission(job, task_id, expected, timeout_type):
+>       from modal.exception import TimeoutError as ModalTimeoutError
+E       ModuleNotFoundError: No module named 'modal'
+
+tests/test_modal_bench_jobs.py:403: ModuleNotFoundError
+____ test_status_polls_existing_call_without_resubmission[modal--SUBMITTED] ____
+
+job = <module 'bench_jobs_under_test'>, task_id = '', expected = 'SUBMITTED'
+timeout_type = 'modal'
+
+    @pytest.mark.parametrize("task_id,expected", [("", "SUBMITTED"), ("ta-test", "RUNNING")])
+    @pytest.mark.parametrize("timeout_type", [TimeoutError, "modal"])
+    def test_status_polls_existing_call_without_resubmission(job, task_id, expected, timeout_type):
+>       from modal.exception import TimeoutError as ModalTimeoutError
+E       ModuleNotFoundError: No module named 'modal'
+
+tests/test_modal_bench_jobs.py:403: ModuleNotFoundError
+_ test_status_polls_existing_call_without_resubmission[modal-ta-test-RUNNING] __
+
+job = <module 'bench_jobs_under_test'>, task_id = 'ta-test'
+expected = 'RUNNING', timeout_type = 'modal'
+
+    @pytest.mark.parametrize("task_id,expected", [("", "SUBMITTED"), ("ta-test", "RUNNING")])
+    @pytest.mark.parametrize("timeout_type", [TimeoutError, "modal"])
+    def test_status_polls_existing_call_without_resubmission(job, task_id, expected, timeout_type):
+>       from modal.exception import TimeoutError as ModalTimeoutError
+E       ModuleNotFoundError: No module named 'modal'
+
+tests/test_modal_bench_jobs.py:403: ModuleNotFoundError
+________________ test_status_network_error_is_not_a_failed_job _________________
+
+job = <module 'bench_jobs_under_test'>
+
+    def test_status_network_error_is_not_a_failed_job(job):
+        prepare_collect(job)
+        handle = job.modal.FunctionCall.from_id.return_value
+        handle.get.side_effect = ConnectionError("offline")
+        handle.get_call_graph.return_value = []
+        with pytest.raises(ConnectionError):
+>           job.bench_status("pilot-cell")
+
+tests/test_modal_bench_jobs.py:418: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+bench_run_id = 'pilot-cell'
+
+>   ???
+E   ModuleNotFoundError: No module named 'modal'
+
+modal_runner.py:631: ModuleNotFoundError
+----------------------------- Captured stdout call -----------------------------
+FunctionCall: fc-test001
+Receipt: /tmp/pytest-of-root/pytest-0/test_status_network_error_is_n0/experiments/runs/m3_01/pilot-cell/submission.json
+________ test_expired_output_can_be_collected_from_bound_volume_archive ________
+
+job = <module 'bench_jobs_under_test'>
+
+    def test_expired_output_can_be_collected_from_bound_volume_archive(job):
+>       from modal.exception import OutputExpiredError
+E       ModuleNotFoundError: No module named 'modal'
+
+tests/test_modal_bench_jobs.py:431: ModuleNotFoundError
+=========================== short test summary info ============================
+FAILED tests/test_modal_bench_jobs.py::test_collect_recovers_and_writes_canonical_evidence_with_original_sha
+FAILED tests/test_modal_bench_jobs.py::test_collect_allows_unavailable_vram_join
+FAILED tests/test_modal_bench_jobs.py::test_collect_surfaces_function_call_lookup_failure
+FAILED tests/test_modal_bench_jobs.py::test_collect_failure_or_disconnect_never_cancels_and_can_retry[failure0]
+FAILED tests/test_modal_bench_jobs.py::test_collect_failure_or_disconnect_never_cancels_and_can_retry[failure1]
+FAILED tests/test_modal_bench_jobs.py::test_collect_failure_or_disconnect_never_cancels_and_can_retry[failure2]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_mismatched_metadata[lane-static]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_mismatched_metadata[server_run_id-other-server]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_mismatched_metadata[bench_run_id-other-cell]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_mismatched_metadata[commit-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_mismatched_metadata[cell-value4]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_mismatched_metadata[server_env-value5]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_failed_harness_or_missing_invalid_raw[raw-None]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_failed_harness_or_missing_invalid_raw[raw-]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_failed_harness_or_missing_invalid_raw[raw-not json]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_failed_harness_or_missing_invalid_raw[raw-{"commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]
+FAILED tests/test_modal_bench_jobs.py::test_collect_rejects_failed_harness_or_missing_invalid_raw[returncode-4]
+FAILED tests/test_modal_bench_jobs.py::test_collect_reuses_identical_evidence_without_overwriting
+FAILED tests/test_modal_bench_jobs.py::test_collect_refuses_conflicting_evidence_before_writing_other_files
+FAILED tests/test_modal_bench_jobs.py::test_collect_in_a_fresh_python_process
+FAILED tests/test_modal_bench_jobs.py::test_status_polls_existing_call_without_resubmission[TimeoutError--SUBMITTED]
+FAILED tests/test_modal_bench_jobs.py::test_status_polls_existing_call_without_resubmission[TimeoutError-ta-test-RUNNING]
+FAILED tests/test_modal_bench_jobs.py::test_status_polls_existing_call_without_resubmission[modal--SUBMITTED]
+FAILED tests/test_modal_bench_jobs.py::test_status_polls_existing_call_without_resubmission[modal-ta-test-RUNNING]
+FAILED tests/test_modal_bench_jobs.py::test_status_network_error_is_not_a_failed_job
+FAILED tests/test_modal_bench_jobs.py::test_expired_output_can_be_collected_from_bound_volume_archive
+26 failed, 373 passed, 92 skipped in 13.04s

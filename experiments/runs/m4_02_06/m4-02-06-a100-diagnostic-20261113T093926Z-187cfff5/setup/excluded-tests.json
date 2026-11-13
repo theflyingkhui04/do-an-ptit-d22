@@ -1,0 +1,6 @@
+{
+  "excluded": [
+    "tests/test_modal_bench_jobs.py"
+  ],
+  "reason": "Historical Modal collector/status tests require the modal SDK; M4-02-06 canonical runtime is Google Colab and does not execute Modal."
+}
