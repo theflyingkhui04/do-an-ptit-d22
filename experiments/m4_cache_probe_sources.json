@@ -1,0 +1,202 @@
+{
+  "vllm": "0.30.0",
+  "files": [
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "sha256": "c1db45f3bbad3a875dd8638331b8870c4380ac1ab4734265ba5c863833a82884",
+      "bytes": 152786,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/sched/scheduler.py"
+    },
+    {
+      "path": "vllm/v1/core/sched/async_scheduler.py",
+      "sha256": "e586a0ef3c6778be56a93e7f9bb712d4de9de6e7d7fe7e3e1d51dae83ecfc508",
+      "bytes": 3283,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/sched/async_scheduler.py"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "sha256": "58800535eda854580d84e1025bf32fe01b2a43ce0bba501b4f3d125e4f2c8afa",
+      "bytes": 41398,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/kv_cache_manager.py"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_utils.py",
+      "sha256": "2666c9f113584e52e7521058efd2c0d9598544559dc942d3a3da87001a3fedf2",
+      "bytes": 114648,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/kv_cache_utils.py"
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "sha256": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
+      "bytes": 340999,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/worker/gpu_model_runner.py"
+    },
+    {
+      "path": "vllm/v1/worker/worker_base.py",
+      "sha256": "4a1a5266b912fe97991d8dc89d92b923990da9f6cb4b817d00d52e9c0d26dd7c",
+      "bytes": 14284,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/worker/worker_base.py"
+    },
+    {
+      "path": "vllm/v1/engine/llm_engine.py",
+      "sha256": "d4d5fba309db4d3f271ac7479e3ddaa623045499e4c6cfac41c0c7710012413c",
+      "bytes": 18677,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/engine/llm_engine.py"
+    },
+    {
+      "path": "vllm/v1/request.py",
+      "sha256": "da610d5203e72d2d524adc5fb39df11502a23520f2f31d9a44cf13d343f9c25d",
+      "bytes": 15829,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/request.py"
+    },
+    {
+      "path": "vllm/entrypoints/llm.py",
+      "sha256": "52de4ac99489e004ef6c61d0bedc84aa96020dd58b8bd1ae500814b548b2b83e",
+      "bytes": 41687,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/entrypoints/llm.py"
+    },
+    {
+      "path": "vllm/sampling_params.py",
+      "sha256": "f21efc98bf8ce8aab88eb67adb4207285e509a167d976e14d3e2e8282e024bea",
+      "bytes": 56186,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/sampling_params.py"
+    },
+    {
+      "path": "vllm/model_executor/models/qwen2.py",
+      "sha256": "eb2f0eeb13c57a28bbc06bc64afff18cd8865f89fbe9ff2a3cf3a896f037cfe9",
+      "bytes": 18709,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/model_executor/models/qwen2.py"
+    },
+    {
+      "path": "vllm/model_executor/layers/logits_processor.py",
+      "sha256": "6b0603d67b0c756253c2fdc882a3896d2e873a16e9aa2ef877aabca8d36bdb5f",
+      "bytes": 11953,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/model_executor/layers/logits_processor.py"
+    },
+    {
+      "path": "vllm/v1/sample/sampler.py",
+      "sha256": "f95805b2c6d06218c724826aa5f881a606e8d0a534a566aee7c85948520dd216",
+      "bytes": 18037,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/sample/sampler.py"
+    },
+    {
+      "path": "vllm/v1/structured_output/__init__.py",
+      "sha256": "e33ed1786e5e60a2ef01313f52a67ba4b368477520ae43d453e8e960ac395b48",
+      "bytes": 19963,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/structured_output/__init__.py"
+    },
+    {
+      "path": "vllm/v1/worker/gpu_worker.py",
+      "sha256": "6994436e4547c0996ab555b3e814e8ccea26b650dfc1b378b97d640745309347",
+      "bytes": 65620,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/worker/gpu_worker.py"
+    },
+    {
+      "path": "vllm/engine/arg_utils.py",
+      "sha256": "ead004ca266419cd25f54a7aefc0e20e1eb046f363b7f5cc977e14f52ee44bb1",
+      "bytes": 130770,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/engine/arg_utils.py"
+    },
+    {
+      "path": "vllm/v1/engine/core_client.py",
+      "sha256": "fd6ca0cb7499b3086eef2fc57674b7ace56ef1c648f09e92e144b255b79018f8",
+      "bytes": 81200,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/engine/core_client.py"
+    },
+    {
+      "path": "vllm/v1/engine/core.py",
+      "sha256": "268bf40534a853812867ae8e80040f190983cb364b41182b55969aace20c93f5",
+      "bytes": 106584,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/engine/core.py"
+    },
+    {
+      "path": "vllm/v1/executor/uniproc_executor.py",
+      "sha256": "3cb039b80fe9b03dc1122f93c1f8a4098ef1355104b317ff6df25358f4349494",
+      "bytes": 7800,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/executor/uniproc_executor.py"
+    }
+  ],
+  "hooks": [
+    {
+      "module": "vllm/v1/core/kv_cache_manager.py",
+      "function": "KVCacheManager.get_computed_blocks",
+      "lines": "265-321",
+      "semantics": "actual block-aligned local prefix hit; final token recomputed",
+      "behavior_change": "none; original return object retained"
+    },
+    {
+      "module": "vllm/v1/core/sched/async_scheduler.py",
+      "function": "AsyncScheduler._update_after_schedule",
+      "lines": "20-49",
+      "semantics": "after base schedule before grammar bitmask; diagnostic restores grammar from preserved generated prefix",
+      "behavior_change": "forced replay state only; no budget/scheduling decision changes"
+    },
+    {
+      "module": "vllm/v1/worker/gpu_model_runner.py",
+      "function": "GPUModelRunner.execute_model / model.compute_logits",
+      "lines": "4497-4498,4529-4542",
+      "semantics": "head projection return before grammar or sampling",
+      "behavior_change": "one read-only GPU tensor clone at boundary"
+    },
+    {
+      "module": "vllm/v1/worker/gpu_model_runner.py",
+      "function": "GPUModelRunner.sample_tokens / _sample",
+      "lines": "4595-4605",
+      "semantics": "optional grammar-masked snapshot at _sample entry",
+      "behavior_change": "one read-only GPU clone; original tensor and method returned"
+    },
+    {
+      "module": "vllm/v1/worker/worker_base.py",
+      "function": "WorkerWrapperBase.init_worker",
+      "lines": "285-308",
+      "semantics": "explicit worker extension via collective_rpc",
+      "behavior_change": "diagnostic engine only"
+    },
+    {
+      "module": "vllm/v1/engine/llm_engine.py",
+      "function": "LLMEngine.add_request / abort_request / step",
+      "lines": "217-304",
+      "semantics": "token prompt; preserve sampling params; abort once first output observed",
+      "behavior_change": "diagnostic request lifecycle only"
+    },
+    {
+      "module": "vllm/entrypoints/llm.py",
+      "function": "LLM.reset_prefix_cache",
+      "lines": "796-802",
+      "semantics": "clear logical cache between conditions; require True",
+      "behavior_change": "explicit conditioning operation only"
+    },
+    {
+      "module": "vllm/engine/arg_utils.py",
+      "function": "EngineArgs.get_batch_defaults",
+      "lines": "2704-2792",
+      "semantics": "A100 API server default 2048 versus LLM_CLASS 8192; diagnostic explicitly preserves server budget",
+      "behavior_change": "none versus historical server resolved configuration"
+    },
+    {
+      "module": "vllm/v1/executor/uniproc_executor.py",
+      "function": "UniProcExecutor._init_executor / collective_rpc / shutdown",
+      "lines": "51-74,90-112,152-154",
+      "semantics": "worker RPC executes in EngineCore process with shared vllm_config identity; worker shutdown delegates",
+      "behavior_change": "instance-local diagnostic wrappers restored before shutdown; no class patch"
+    },
+    {
+      "module": "vllm/v1/engine/core.py",
+      "function": "EngineCore.__init__ / shutdown",
+      "lines": "162-170,756-772",
+      "semantics": "scheduler shares engine config; shutdown calls executor before scheduler without finally",
+      "behavior_change": "explicit diagnostic cache observer restoration before core shutdown covers executor failure"
+    },
+    {
+      "module": "vllm/v1/engine/core_client.py",
+      "function": "InprocClient.shutdown / MPClient.shutdown",
+      "lines": "377-378,740-751",
+      "semantics": "CoreClient shutdown owns engine/process release",
+      "behavior_change": "diagnostic finally invokes shutdown even after capture or cleanup failure"
+    }
+  ],
+  "reviewed_tests": [
+    "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/core/test_prefix_caching.py#L3128",
+    "https://github.com/vllm-project/vllm/blob/v0.30.0/tests/v1/core/test_reset_prefix_cache_e2e.py#L15"
+  ]
+}
