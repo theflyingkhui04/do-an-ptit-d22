@@ -1,5 +1,5 @@
-import DemoApp from "@/components/DemoApp";
+import Console from "@/components/Console";
 
 export default function Home() {
-  return <DemoApp />;
+  return <Console />;
 }

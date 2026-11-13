@@ -1,5 +1,6 @@
 "use client";
 
+import { KeyRound } from "lucide-react";
 import { useState } from "react";
 
 import { ApiError } from "@/lib/api";
@@ -30,32 +31,35 @@ export default function KeyGate({ verify, onAccepted }: Props) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="text-lg font-semibold text-slate-900">Demo hoá đơn · Speculative Decoding</h1>
-        <p className="mt-1 text-sm text-slate-600">Nhập mật khẩu demo để dùng hệ thống.</p>
-        <label htmlFor="demo-key" className="mt-4 block text-sm font-medium text-slate-700">
-          Mật khẩu demo
-        </label>
-        <input
-          id="demo-key"
-          type="password"
-          autoComplete="off"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-        />
-        {error && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
-            {error}
-          </p>
-        )}
+    <main className="grid min-h-screen place-items-center bg-rail px-4 text-[14.5px]">
+      <form onSubmit={submit} className="grid w-full max-w-sm gap-4 rounded-2xl bg-surface p-7">
+        <div className="flex items-center gap-2.5">
+          <div className="grid size-9 place-items-center rounded-lg bg-brand font-bold text-white" aria-hidden>F</div>
+          <div className="leading-tight">
+            <h1 className="text-lg font-bold">FlexSDS Console</h1>
+            <p className="text-[13px] text-ink-3">Đồ án tốt nghiệp D22, PTIT</p>
+          </div>
+        </div>
+        <p className="text-ink-2">Nhập mật khẩu demo để dùng hệ thống.</p>
+        <div className="grid gap-1.5">
+          <label htmlFor="demo-key" className="text-[13.5px] font-semibold">Mật khẩu demo</label>
+          <input
+            id="demo-key"
+            type="password"
+            autoComplete="off"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-3 py-2"
+          />
+        </div>
+        {error && <p role="alert" className="text-[13.5px] text-bad">{error}</p>}
         <button
           type="submit"
           disabled={busy || !key.trim()}
-          className="mt-4 w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-3.5 py-2.5 font-semibold text-surface disabled:opacity-50"
         >
-          {busy ? "Đang kiểm tra…" : "Vào demo"}
+          <KeyRound aria-hidden className="size-4" />
+          {busy ? "Đang kiểm tra…" : "Vào console"}
         </button>
       </form>
     </main>

@@ -1,17 +1,51 @@
-// Client of the FastAPI backend (src/api). The browser only knows the backend URL and the
-// demo key the user typed; Modal and Supabase credentials never reach the frontend.
+// Client of the FastAPI backend (src/api). The browser only knows the backend URL and the demo key the user
+// typed. Endpoint API keys are sent once when an endpoint is added and are never returned by the backend.
 
-export type ServiceStateName = "cold" | "starting" | "ready" | "error";
-export interface ServiceState {
-  state: ServiceStateName;
-  message: string | null;
-}
 export interface Status {
   backend: string;
   database: string;
-  services: Record<string, ServiceState>;
-  gpu: string;
-  lane_map: Record<string, string>;
+  endpoints: { total: number; ok: number; down: number };
+}
+
+export type Platform = "modal" | "tunnel" | "other" | "local";
+
+export interface EndpointMeta {
+  gpu?: string;
+  sm?: string;
+  backend?: string;
+  target_model?: string;
+  draft_model?: string | null;
+  draft_method?: string | null;
+  adaptive?: boolean;
+  max_model_len?: number;
+  flexsds_version?: string;
+}
+
+export interface Endpoint {
+  endpoint_id: string;
+  name: string;
+  base_url: string;
+  platform: Platform;
+  model_id: string;
+  max_model_len: number | null;
+  meta: EndpointMeta;
+  is_baseline: boolean;
+  status: "ok" | "down";
+  status_message: string | null;
+  checked_at: string;
+  created_at: string;
+  has_key: boolean;
+}
+
+export interface DetectResult {
+  input: string;
+  url: string | null;
+  ok: boolean;
+  code: string | null;
+  message: string | null;
+  platform: Platform | null;
+  model_id: string | null;
+  max_model_len: number | null;
 }
 
 export interface Money {
@@ -28,12 +62,6 @@ export interface InvoiceItem {
   line_total: Money;
   vat_rate: number | null;
 }
-export interface InvoiceTax {
-  tax_name: string | null;
-  tax_rate: number | null;
-  taxable_amount: Money;
-  tax_amount: Money;
-}
 export interface InvoicePayload {
   document_type: string;
   seller: Record<string, string | null>;
@@ -41,33 +69,36 @@ export interface InvoicePayload {
   invoice: Record<string, string | null>;
   totals: Record<string, Money>;
   items: InvoiceItem[];
-  taxes: InvoiceTax[];
+  taxes: { tax_name: string | null; tax_rate: number | null; taxable_amount: Money; tax_amount: Money }[];
   extraction: { status: string; confidence: number | null; missing_fields: string[]; warnings: string[] };
 }
 
-export interface LaneReport {
-  lane: string;
+export interface RunReport {
+  endpoint_id: string;
+  name: string;
   model: string;
   valid: boolean;
+  is_baseline?: boolean;
   latency_ms?: number | null;
   ttft_ms?: number | null;
   tpot_ms?: number | null;
   output_tokens_per_s?: number | null;
   completion_tokens?: number | null;
   error: string | null;
-  speedup_tpot_vs_vanilla: number | null;
-  speedup_latency_vs_vanilla: number | null;
+  speedup_tpot_vs_baseline: number | null;
+  speedup_latency_vs_baseline: number | null;
   equal_fields: number | null;
   total_fields: number | null;
   differing_fields: string[];
 }
 
 export interface JobResult {
-  gpu?: string;
-  // Library OCR (canonical flow): text without Vietnamese marks.
+  endpoints?: { endpoint_id: string; name: string; model_id: string }[];
+  primary?: string;
+  baseline?: string | null;
   ocr?: { text: string; kind?: string; engine?: string; marks_stripped?: boolean; latency_ms?: number };
-  lanes?: Record<string, LaneReport>;
-  stored_lane?: string;
+  runs?: Record<string, RunReport>;
+  stored_endpoint?: string;
   stored_from_fallback?: boolean;
   invoice?: InvoicePayload;
   grounding?: { checked_fields: number; grounded_fields: number; ungrounded_fields: string[] };
@@ -86,8 +117,19 @@ export interface Job {
   invoice_id: string | null;
 }
 
+export interface CallInfo {
+  step: string;
+  endpoint: string;
+  wall_ms?: number;
+  latency_ms?: number;
+  ttft_ms?: number | null;
+  tpot_ms?: number | null;
+  completion_tokens?: number | null;
+}
+
 export interface QuestionResult {
   question: string;
+  question_id?: string;
   status: "ok" | "no_data" | "error";
   sql: string | null;
   columns: string[];
@@ -97,7 +139,39 @@ export interface QuestionResult {
   warning: string | null;
   error: string | null;
   repairs: number;
-  calls: { step: string; lane: string; latency_ms?: number; tpot_ms?: number | null }[];
+  first_error: string | null;
+  calls: CallInfo[];
+  endpoint?: { endpoint_id: string; name: string };
+}
+
+export interface Node3Report {
+  status: string;
+  text: string;
+  error?: string | null;
+  latency_ms?: number | null;
+  completion_tokens?: number | null;
+  metrics?: { ttft_ms?: number | null; tpot_ms?: number | null; output_tokens_per_s?: number | null };
+}
+
+export interface ReportResult {
+  questions: (QuestionResult & { question_id: string })[];
+  invoice_count: number;
+  report: Node3Report;
+  number_check: { numbers: number; ungrounded: string[] };
+  timings_ms: { node2: number; node3: number };
+  endpoint: { endpoint_id: string; name: string };
+}
+
+export interface InvoiceDetail {
+  invoice_id: string;
+  payload: InvoicePayload;
+  source: "devset" | "upload";
+  created_at: string;
+  latency_ms: number | null;
+  lane: string | null;
+  model_name: string | null;
+  prompt_version: string | null;
+  image_url: string | null;
 }
 
 export interface InvoiceRow {
@@ -112,22 +186,97 @@ export interface InvoiceRow {
   lane: string | null;
 }
 
-export interface InvoiceDetail {
-  invoice_id: string;
-  payload: InvoicePayload;
-  source: "devset" | "upload";
-  image_url: string | null;
-  lane: string | null;
+export interface BenchCell {
+  endpoint_id: string;
+  name: string;
+  load: number;
+  n: number;
+  n_ok: number;
+  ttft_ms_p50: number | null;
+  tpot_ms_p50: number | null;
+  latency_ms_p50: number | null;
+  throughput_tps: number | null;
+  errors: string[];
+  speedup_vs_baseline: number | null;
+}
+
+export interface SpeedResult {
+  kind: "speed";
+  live: boolean;
+  workload: string;
+  loads: number[];
+  requests: number;
+  repeats: number;
+  baseline: string | null;
+  cells: BenchCell[];
+}
+
+export interface ChainRow {
+  endpoint_id: string;
+  name: string;
+  timings_ms: { node1: number; node2: number; node3: number };
+  total_ms: number;
+  node1: RunReport;
+  invoice: InvoicePayload | null;
+  questions: (QuestionResult & { question_id: string })[];
+  report: Node3Report;
+  number_check: { numbers: number; ungrounded: string[] };
+  same_as_baseline: { node1: boolean; node2: boolean; node3: boolean } | null;
+}
+
+export interface ChainResult {
+  kind: "chain";
+  live: boolean;
+  sample_id: string;
+  ocr_ms: number | null;
+  baseline: string | null;
+  endpoints: ChainRow[];
+}
+
+export type BenchStatus = "queued" | "running" | "done" | "failed" | "interrupted";
+
+export interface BenchConfig {
+  kind: "speed" | "chain";
+  endpoint_ids: string[];
+  workload?: "W1" | "W2" | "W3";
+  loads?: number[];
+  requests?: number;
+  repeats?: number;
+  sample_id?: string;
+}
+
+export interface BenchRun {
+  run_id: string;
+  kind: "speed" | "chain";
+  status: BenchStatus;
+  config: BenchConfig;
+  progress: { done?: number; total?: number };
+  result: SpeedResult | ChainResult | Record<string, never>;
+  error: string | null;
+  created_at: string;
 }
 
 export interface Api {
   status(): Promise<Status>;
-  warmup(): Promise<{ services: Record<string, ServiceState> }>;
-  upload(file: File, compareAll: boolean): Promise<{ job_id: string }>;
+  endpoints(): Promise<{ endpoints: Endpoint[] }>;
+  detectEndpoints(urls: string[], apiKey?: string): Promise<{ results: DetectResult[] }>;
+  addEndpoints(
+    urls: string[],
+    apiKey?: string,
+    servingConfig?: unknown,
+  ): Promise<{ results: DetectResult[]; saved: Endpoint[] }>;
+  updateEndpoint(endpointId: string, change: { name?: string; is_baseline?: boolean }): Promise<Endpoint>;
+  deleteEndpoint(endpointId: string): Promise<{ deleted: string }>;
+  checkEndpoint(endpointId: string): Promise<Endpoint>;
+  upload(file: File, endpointIds: string[]): Promise<{ job_id: string; endpoint_ids: string[] }>;
   job(jobId: string): Promise<Job>;
   invoices(): Promise<{ invoices: InvoiceRow[] }>;
   invoice(invoiceId: string): Promise<InvoiceDetail>;
-  ask(question: string): Promise<QuestionResult>;
+  ask(question: string, endpointId: string): Promise<QuestionResult>;
+  report(endpointId: string): Promise<ReportResult>;
+  startBench(config: BenchConfig): Promise<{ run_id: string }>;
+  bench(runId: string): Promise<BenchRun>;
+  benches(): Promise<{ runs: BenchRun[] }>;
 }
 
 export class ApiError extends Error {
@@ -184,24 +333,36 @@ export function createApi(baseUrl: string, getKey: () => string | null): Api {
     return (await response.json()) as T;
   }
 
+  const json = (method: string, body: unknown): RequestInit => ({
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const id = encodeURIComponent;
+
   return {
     status: () => call<Status>("/api/status", {}, false),
-    warmup: () => call("/api/warmup", { method: "POST" }),
-    upload: (file, compareAll) => {
+    endpoints: () => call("/api/endpoints"),
+    detectEndpoints: (urls, apiKey) => call("/api/endpoints/detect", json("POST", { urls, api_key: apiKey || null })),
+    addEndpoints: (urls, apiKey, servingConfig) =>
+      call("/api/endpoints", json("POST", { urls, api_key: apiKey || null, serving_config: servingConfig ?? null })),
+    updateEndpoint: (endpointId, change) => call(`/api/endpoints/${id(endpointId)}`, json("PATCH", change)),
+    deleteEndpoint: (endpointId) => call(`/api/endpoints/${id(endpointId)}`, { method: "DELETE" }),
+    checkEndpoint: (endpointId) => call(`/api/endpoints/${id(endpointId)}/check`, { method: "POST" }),
+    upload: (file, endpointIds) => {
       const form = new FormData();
       form.append("file", file);
-      form.append("compare", compareAll ? "all" : "vanilla");
+      form.append("endpoint_ids", endpointIds.join(","));
       return call("/api/invoices", { method: "POST", body: form });
     },
-    job: (jobId) => call<Job>(`/api/jobs/${encodeURIComponent(jobId)}`),
+    job: (jobId) => call<Job>(`/api/jobs/${id(jobId)}`),
     invoices: () => call("/api/invoices"),
-    invoice: (invoiceId) => call<InvoiceDetail>(`/api/invoices/${encodeURIComponent(invoiceId)}`),
-    ask: (question) =>
-      call<QuestionResult>("/api/questions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
-      }),
+    invoice: (invoiceId) => call<InvoiceDetail>(`/api/invoices/${id(invoiceId)}`),
+    ask: (question, endpointId) => call("/api/questions", json("POST", { question, endpoint_id: endpointId })),
+    report: (endpointId) => call("/api/reports", json("POST", { endpoint_id: endpointId })),
+    startBench: (config) => call("/api/bench", json("POST", config)),
+    bench: (runId) => call<BenchRun>(`/api/bench/${id(runId)}`),
+    benches: () => call("/api/bench"),
   };
 }
 
