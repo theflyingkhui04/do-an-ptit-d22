@@ -17,7 +17,8 @@ from statistics import median
 from datetime import datetime, timezone
 
 from experiments import m4_cost_profiler as prof
-from experiments.m4_protocol import ROOT, sha256, source_gate, write_new
+from experiments.m4_protocol import ROOT, sha256, write_new
+from experiments.m4_security import artifact_path, profile_path, validated_source_commit
 from experiments.m4_treatments import TARGET, TARGET_REVISION, SPECULATOR, SPECULATOR_REVISION
 
 BATCHES = (1, 2, 4, 8, 16, 32)
@@ -108,10 +109,12 @@ def build_profile(env: dict, records: list[dict], raw_hash: str) -> dict:
 
 def validate_profile_file(path: Path, source_commit: str):
     """A 'measured' label alone is insufficient: reproduce from paired raw data."""
+    path = profile_path(path)
     profile = json.loads(path.read_text())
     validate_profile(profile, source_commit)
-    raw = path.parent / "raw.jsonl"
-    env = json.loads((path.parent / "env.json").read_text())
+    raw = artifact_path(path.parent / "raw.jsonl", kind="file")
+    env_path = artifact_path(path.parent / "env.json", kind="file")
+    env = json.loads(env_path.read_text())
     records = [json.loads(line) for line in raw.read_text().splitlines()]
     if profile != build_profile(env, records, sha256(raw.read_bytes())):
         raise ValueError("Profile cannot be reproduced from preserved raw measurements")
@@ -129,8 +132,11 @@ def main():
     if args.action == "validate":
         validate_profile_file(args.out, args.source_commit)
         return
-    source_gate(args.source_commit)
+    source_commit = validated_source_commit(args.source_commit)
+    args.source_commit = source_commit
+    args.out = artifact_path(args.out, kind="directory" if args.worker_k is not None else "new_directory")
     if args.worker_k is not None:
+        artifact_path(args.out / "env.json", kind="file")
         from experiments.m4_cost_runner import run_worker
         args.worker_context = 1024
         raise SystemExit(run_worker(args, args.out))
@@ -160,7 +166,7 @@ def main():
                 if before["processes"]:
                     raise RuntimeError("Profile requires a clean GPU before each worker")
                 command = [sys.executable, "-m", "experiments.m4_a100_profile", "measure",
-                           "--source-commit", args.source_commit, "--out", str(args.out),
+                           "--source-commit", source_commit, "--out", str(args.out),
                            "--worker-k", str(k), "--worker-batch", str(b)]
                 with (args.out / f"k{k}-b{b}.log").open("x", encoding="utf-8") as log:
                     child = subprocess.run(command, cwd=ROOT,
