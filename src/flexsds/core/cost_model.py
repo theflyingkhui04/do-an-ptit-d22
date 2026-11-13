@@ -358,13 +358,14 @@ def save_hardware_profile(
 def load_profile_for_hardware(
     hw_info: Optional[HardwareInfo] = None,
     custom_profile_path: Optional[Union[str, Path]] = None,
-) -> Tuple[FlexCostModel, str]:
+    strict: bool = False,
+) -> Tuple[Optional[FlexCostModel], str]:
     """Loads hardware cost profile using a 3-tier hierarchical resolution strategy.
     
     Tier 1: Explicit custom profile path (CLI flag or configuration).
     Tier 2: User profile repository (~/.flexsds/profiles/profile_<sm>.json).
     Tier 3: Built-in vendor profiles (flexsds/profiles/profile_sm89_l4.json, etc.).
-    Fallback: Conservative Analytical Fallback model with safety bounds (k_max=3).
+    Fallback: Conservative Analytical Fallback model with safety bounds (k_max=3) if strict=False, else (None, "").
     """
     # Tier 1: Explicit custom profile path
     if custom_profile_path:
@@ -397,6 +398,10 @@ def load_profile_for_hardware(
         built_in_path = PROFILES_DIR / built_in_filename
         if built_in_path.exists():
             return FlexCostModel.from_json(built_in_path), built_in_filename
+
+    # If strict=True and no profile is found, fail-fast
+    if strict:
+        return None, ""
 
     # Fallback: Conservative Analytical Fallback model
     # Conservative profile: EAGLE head ~ 18% cost of 7B target forward
