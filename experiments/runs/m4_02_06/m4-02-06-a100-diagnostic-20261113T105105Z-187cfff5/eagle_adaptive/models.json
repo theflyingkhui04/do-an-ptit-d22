@@ -1,0 +1,30 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "m4-eagle_adaptive",
+      "object": "model",
+      "created": 1794568141,
+      "owned_by": "vllm",
+      "root": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "parent": null,
+      "max_model_len": 4096,
+      "permission": [
+        {
+          "id": "modelperm-bd40afe6f6012b84",
+          "object": "model_permission",
+          "created": 1794568141,
+          "allow_create_engine": false,
+          "allow_sampling": true,
+          "allow_logprobs": true,
+          "allow_search_indices": false,
+          "allow_view": true,
+          "allow_fine_tuning": false,
+          "organization": "*",
+          "group": null,
+          "is_blocking": false
+        }
+      ]
+    }
+  ]
+}

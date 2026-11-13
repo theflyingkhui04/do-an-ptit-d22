@@ -1,0 +1,19 @@
+{
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "gpu_compute_capability": [
+    8,
+    0
+  ],
+  "gpu_memory_total_mb": 40441.375,
+  "driver_version": "580.82.07",
+  "cuda_version": "13.0",
+  "torch_version": "2.13.0+cu130",
+  "vllm_version": "0.30.0",
+  "nvidia_smi_output": "Fri Nov 13 09:53:43 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 580.82.07              Driver Version: 580.82.07      CUDA Version: 13.0     |\n+-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA A100-SXM4-40GB          Off |   00000000:00:04.0 Off |                    0 |\n| N/A   34C    P0             48W /  400W |       0MiB /  40960MiB |      0%      Default |\n|                                         |                        |             Disabled |\n+-----------------------------------------+------------------------+----------------------+\n\n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|  No running processes found                                                             |\n+-----------------------------------------------------------------------------------------+\n",
+  "nvidia_smi_stderr": "",
+  "nvidia_smi_returncode": 0,
+  "cuda_available": true,
+  "python_version": "3.13.16",
+  "source_commit": "187cfff5f8c2a72b9bfb227d97e6221458ddc283",
+  "timestamp_utc": "2026-11-13T09:53:45.993679+00:00"
+}

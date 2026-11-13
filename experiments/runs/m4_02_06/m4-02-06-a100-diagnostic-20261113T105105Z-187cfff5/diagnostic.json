@@ -1,0 +1,439 @@
+{
+  "source_commit": "187cfff5f8c2a72b9bfb227d97e6221458ddc283",
+  "profile_sha256": "0450f08230aaa7e27d39f9231fe33084b4fcbcaa11d517b5d61655cd371d8fcd",
+  "expected_prompts": [
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_001",
+      "prompt_hash": "24333a1948c0b252f9d68e4c13ffc4b5c4126c91ca9b016a7cb15c4f2d1bb5c9",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_002",
+      "prompt_hash": "edb1f22ad4dafe3693537a57338834053efc0cd8f23f85bba9f2fe127c9c4363",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_003",
+      "prompt_hash": "8b797d6c160295d75a859de0850959663c9e33e539b07af6c9056ca43704a1d2",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_004",
+      "prompt_hash": "bcb9c80d0e0d6dc9472e7cb91e6b08a6c765a7ebcb719a8fa2e374ceb1329bef",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_005",
+      "prompt_hash": "8c1dc61a9c6f927ca674c721dd52cbe25c27a2a73d8759bb781fa714c3a9d873",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_006",
+      "prompt_hash": "497af9e2d156b86e50565c0d506052bf31ebc17fe5d23278ea1264390eaf2a8b",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_007",
+      "prompt_hash": "8ac2e535ea70e85e33deac7f48dbc99435f7dd6df15536b3af0c7b41938c1239",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_008",
+      "prompt_hash": "a7cef97db043d0c7a307a1043c4815c3ec765155c407a6e82dfe32aab768d3b6",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_009",
+      "prompt_hash": "961b0c290d2c3fe3689d01ca3629289bb4873a1c9e34e5f77bf8432d298f265f",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_010",
+      "prompt_hash": "e3467477516f6e7b2b0383eff2be206db38e6b69835356452788737b2cefefdb",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_011",
+      "prompt_hash": "61fa606a923c2a1a69c3668c0eadd66db602ba44231a94d559bcb94ac9c29ba6",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_012",
+      "prompt_hash": "eafd8518788574633547aa1c62881e0a5e71e89105f5dcd7b7a844e172e80b64",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_013",
+      "prompt_hash": "63ff0f2efad363045f95765dff6f41bf717ba50506b2ee96d9ebaabea927fdd9",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_014",
+      "prompt_hash": "a73ad8aa4eb99bbe4d80d25152226f4b749461c0aa4f01a4aff86506283f71ce",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_015",
+      "prompt_hash": "07c5e0b25cc044a8c0167db3a5b409b872cbd19d7e728824bb52fff285785ec6",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_016",
+      "prompt_hash": "c0b09d1adab07551161600c6c31294ed5e2bde3ab0117e431015548cfc2e9e52",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_017",
+      "prompt_hash": "010e412cd9e5b87663b49d26d0d5ae2db84c24ca5e50b161d224cceb6a7197d3",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_018",
+      "prompt_hash": "84591cbca1f01041f7ebd465c41c39c1538c7f8675be8c2c54c11ff4117d9411",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_019",
+      "prompt_hash": "b37b9e2c353a882d0f260dd7d9b1ffdec0f2d060c02af3a54d9e86b44453e9e2",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_020",
+      "prompt_hash": "cce6a3b2bdc60a01077969e235df16d0d5b37fe2d876129d3599a10ebdd79949",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_021",
+      "prompt_hash": "d987f6e12d0649c55114d18aea2f4f6ff4f6afb3bb77ab99ad81edb61be492aa",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_022",
+      "prompt_hash": "f548086b50c1d0443b54021bc89a5b851687a5157c669801128dd274e1584312",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_023",
+      "prompt_hash": "498c1025b7b488b98d2fbf20f43807c29efa0b0c8857c22173f2238c24fe8061",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_024",
+      "prompt_hash": "68d87016ea9c0277f1652503ab4a9b4ea0b4c317ae6415b3c7739a86b53c42ce",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_025",
+      "prompt_hash": "ebd6c1a6735c465735897cbbf1058acfe67907c640e3e76dcdec6493efcb5b84",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_026",
+      "prompt_hash": "de00e1c78ee8e4cb95a4edd06626042406142483dd3c4aec4793546784da4d3b",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_027",
+      "prompt_hash": "414ed866ba248befda9a47eb8242f09e819fe82f09f1777a96db53581bb14814",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_028",
+      "prompt_hash": "773c849ce422c7fffe8d1e60d90e7bfe557e02b903910b2b4d940ed4e9e96289",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_029",
+      "prompt_hash": "c981a97ca97bb18c368ccfdf8b789df8753efd28cf3b1f2c38849cca041b8416",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W1",
+      "prompt_id": "m0_04_030",
+      "prompt_hash": "033ade9464c63a46559fc2fd63c40d08411dd566f2b1bd1b9cafec1761794cb9",
+      "max_tokens": 1024,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_001",
+      "prompt_hash": "97c1f1d96a723cc261524b3241c034151dcc0caf79ea45dedebbea2673171c94",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_002",
+      "prompt_hash": "82c6d333995025ac7ce470f17400bdf3eaea6c661457e634af11c7ab480a527f",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_003",
+      "prompt_hash": "10d515cd27a56ee9fb6e97dcc058ad673fea985ca9a1ad4df8b2121ac9b50475",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_004",
+      "prompt_hash": "995b1ce419f3b090fb6b2ba26a6dc71dc70371d1557c99d548842cbdfd539786",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_005",
+      "prompt_hash": "db79abecd1d28f61314b71640fc59a6a9da1ca9c0fcbddf267121862a5267343",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_006",
+      "prompt_hash": "99394466ffd1a6768e8b3ae9e8cd8d53c58827359fef07fbc647658ff57f8f97",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_007",
+      "prompt_hash": "a2fbbcb94a785cc793e92719917dc19fdfd81e95a0bd5ba2e922d95f3e94dae6",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_008",
+      "prompt_hash": "87558c47a841913602b28d6323faa7a68e43684a397e7e8821f8f505c923e46a",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_009",
+      "prompt_hash": "847b936ea8e4b0c17a97cca8bd5fef0248e2f2436b521ee3251d470cf65c866c",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_010",
+      "prompt_hash": "090c18a90798156af1837adf26162b82818291e39580b2605475fac768049f8f",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_011",
+      "prompt_hash": "29bdafbf8c8a655f718a2f8f810680baf99251b45838ef42572e692ce79d4824",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W2",
+      "prompt_id": "w2_sql_v2_012",
+      "prompt_hash": "aaafe98288d1e174d946c1902e4f74244af923bdece4ad72399edb35e6a5c6b2",
+      "max_tokens": 96,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_001",
+      "prompt_hash": "b415889a0e7e5e49dea5215312760863cf6aebfcbe9abba170709a6e4c28c8ac",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_002",
+      "prompt_hash": "ef4111ea109a8616a0f1bfb3998199ce4fe4cbfab851fc6ae8c2eddfb75f4c7b",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_003",
+      "prompt_hash": "679b600b7ad8bbca38c75ff7b775a7e58ee6eacf5f0b49287bbba3b403708287",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_004",
+      "prompt_hash": "97123e1d9d559a99cc77ad0fa7b5083a0b491c9f6d7c306613c87210b5f84e2e",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_005",
+      "prompt_hash": "3b58e398a0651211b3ec97d518b378da0519d804dffd7a916cb75c9d758fb91b",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_006",
+      "prompt_hash": "0dd89acd5ba43900251603021360d5eb94f855d8fbc7e0866db3211c2354a563",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_007",
+      "prompt_hash": "1c1ca4cdff02994d445ee55aeecfe26d0c663d3677f07126ea4d525a474edf7b",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_008",
+      "prompt_hash": "c19d614a5d548f787f2f9126cd5a48b2444c8e2220126ba500af139c3abd1186",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_009",
+      "prompt_hash": "4957cc4bcaa6937e5748b99ecedfb8298029303558092a1062d287148b523a19",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_010",
+      "prompt_hash": "bd8142aa85dbfec64964a4c6273352f9f23d7ce27d7166c710ef910376de26a3",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_011",
+      "prompt_hash": "f786ac0f39164499325b4e9c43c69bf1f9fce36df148d51bf30dc7e977e8664b",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    },
+    {
+      "workload": "W3",
+      "prompt_id": "w3_business_v2_012",
+      "prompt_hash": "4df548e95f840e0dd441fc592c7a841f3b786f271f5df5f040bca9741bcd7e0d",
+      "max_tokens": 768,
+      "stopping": "vllm generation_config=vllm; default EOS; original response_format",
+      "tokenizer_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+    }
+  ],
+  "full_lossless": true
+}

@@ -1,0 +1,44 @@
+{
+  "command": [
+    "vllm",
+    "serve",
+    "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "--revision",
+    "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8000",
+    "--served-model-name",
+    "m4-vanilla",
+    "--dtype",
+    "bfloat16",
+    "--quantization",
+    "awq_marlin",
+    "--generation-config",
+    "vllm",
+    "--max-model-len",
+    "4096",
+    "--max-num-seqs",
+    "32",
+    "--gpu-memory-utilization",
+    "0.85",
+    "--async-scheduling"
+  ],
+  "env": {
+    "VLLM_USE_V2_MODEL_RUNNER": "0"
+  },
+  "definition": {
+    "treatment": "vanilla",
+    "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "speculative_config": null,
+    "policy": "off",
+    "served_model_name": "m4-vanilla"
+  },
+  "source_commit": "187cfff5f8c2a72b9bfb227d97e6221458ddc283",
+  "gpu_before": {
+    "memory": "0, 40960",
+    "processes": ""
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "gpu_before": {
+    "memory": "0, 40960",
+    "processes": ""
+  },
+  "gpu_after": {
+    "memory": "0, 40960",
+    "processes": ""
+  },
+  "returncode": 0,
+  "timestamp_utc": "2026-11-13T10:26:43.780034+00:00"
+}

@@ -1,0 +1,74 @@
+{
+  "command": [
+    "vllm",
+    "serve",
+    "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "--revision",
+    "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8000",
+    "--served-model-name",
+    "m4-eagle_adaptive",
+    "--dtype",
+    "bfloat16",
+    "--quantization",
+    "awq_marlin",
+    "--generation-config",
+    "vllm",
+    "--max-model-len",
+    "4096",
+    "--max-num-seqs",
+    "32",
+    "--gpu-memory-utilization",
+    "0.85",
+    "--async-scheduling",
+    "--speculative-config",
+    "{\"draft_sample_method\": \"greedy\", \"method\": \"eagle3\", \"model\": \"duckhoi/qwen2.5-7b-eagle3.1-speculator\", \"num_speculative_tokens\": 4, \"num_speculative_tokens_per_batch_size\": [[1, 32, 4]], \"revision\": \"c3adca7e211b471d97a519a625df7ffd37b8b461\"}",
+    "--per-request-spec-decode-metrics",
+    "summary",
+    "--scheduler-cls",
+    "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
+    "--distributed-executor-backend",
+    "src.server.lineage_executor.LineageUniProcExecutor"
+  ],
+  "env": {
+    "VLLM_USE_V2_MODEL_RUNNER": "0",
+    "ADAPTIVE_MAX_K": "4",
+    "ADAPTIVE_MIN_BATCH_K": "0",
+    "ADAPTIVE_PER_REQUEST": "1",
+    "ADAPTIVE_ENABLE_VRAM_GUARD": "1",
+    "ADAPTIVE_STRICT": "1",
+    "ADAPTIVE_CONTROLLER_KWARGS": "{\"history_limit\":4096}",
+    "ADAPTIVE_TELEMETRY_PATH": "/content/m4-evidence-work/m4-02-06-a100-diagnostic-20261113T105105Z-187cfff5/eagle_adaptive/requests.jsonl",
+    "ADAPTIVE_STEP_TELEMETRY_PATH": "/content/m4-evidence-work/m4-02-06-a100-diagnostic-20261113T105105Z-187cfff5/eagle_adaptive/steps.jsonl",
+    "ADAPTIVE_STARTUP_TELEMETRY_PATH": "/content/m4-evidence-work/m4-02-06-a100-diagnostic-20261113T105105Z-187cfff5/eagle_adaptive/lineage.jsonl"
+  },
+  "definition": {
+    "treatment": "eagle_adaptive",
+    "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "speculative_config": {
+      "method": "eagle3",
+      "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+      "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461",
+      "num_speculative_tokens": 4,
+      "draft_sample_method": "greedy",
+      "num_speculative_tokens_per_batch_size": [
+        [
+          1,
+          32,
+          4
+        ]
+      ]
+    },
+    "policy": "project_adaptive",
+    "served_model_name": "m4-eagle_adaptive"
+  },
+  "source_commit": "187cfff5f8c2a72b9bfb227d97e6221458ddc283",
+  "gpu_before": {
+    "memory": "0, 40960",
+    "processes": ""
+  }
+}

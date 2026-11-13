@@ -1,0 +1,12 @@
+{
+  "returncode": 0,
+  "gpu_before": {
+    "memory": "0, 40960",
+    "processes": ""
+  },
+  "gpu_after": {
+    "memory": "0, 40960",
+    "processes": ""
+  },
+  "finished_at": 1794567538.3246763
+}
