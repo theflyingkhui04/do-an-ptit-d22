@@ -10,6 +10,9 @@ try:
         FlexCostModel,
         SolverResult,
         load_profile_for_hardware,
+        save_hardware_profile,
+        run_hardware_micro_benchmark,
+        USER_PROFILES_DIR,
     )
 except ModuleNotFoundError:
     from src.flexsds.core.tree_topology import (
@@ -22,6 +25,9 @@ except ModuleNotFoundError:
         FlexCostModel,
         SolverResult,
         load_profile_for_hardware,
+        save_hardware_profile,
+        run_hardware_micro_benchmark,
+        USER_PROFILES_DIR,
     )
 
 __all__ = [
@@ -32,4 +38,7 @@ __all__ = [
     "FlexCostModel",
     "SolverResult",
     "load_profile_for_hardware",
+    "save_hardware_profile",
+    "run_hardware_micro_benchmark",
+    "USER_PROFILES_DIR",
 ]

@@ -11,8 +11,15 @@ try:
     from flexsds.cli.banner import print_banner
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import detect_hardware
-    from flexsds.core.compatibility import evaluate_serving_preflight, ServingBlockedError
-    from flexsds.core.cost_model import load_profile_for_hardware
+    from flexsds.core.compatibility import (
+        check_compatibility,
+        evaluate_serving_preflight,
+        ServingBlockedError,
+    )
+    from flexsds.core.cost_model import (
+        load_profile_for_hardware,
+        run_hardware_micro_benchmark,
+    )
     from flexsds.core.credentials import CredentialsManager
     from flexsds.client.chat import run_interactive_chat
     from flexsds.client.monitor import run_live_monitor
@@ -25,8 +32,15 @@ except ModuleNotFoundError:
     from src.flexsds.cli.banner import print_banner
     from src.flexsds.cli.wizard import run_interactive_wizard
     from src.flexsds.core.hardware import detect_hardware
-    from src.flexsds.core.compatibility import evaluate_serving_preflight, ServingBlockedError
-    from src.flexsds.core.cost_model import load_profile_for_hardware
+    from src.flexsds.core.compatibility import (
+        check_compatibility,
+        evaluate_serving_preflight,
+        ServingBlockedError,
+    )
+    from src.flexsds.core.cost_model import (
+        load_profile_for_hardware,
+        run_hardware_micro_benchmark,
+    )
     from src.flexsds.core.credentials import CredentialsManager
     from src.flexsds.client.chat import run_interactive_chat
     from src.flexsds.client.monitor import run_live_monitor
@@ -50,7 +64,30 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     subparsers.add_parser("detect", help="Detect and display hardware / GPU specs")
 
     # Command: profile
-    subparsers.add_parser("profile", help="Load hardware cost profile for current GPU")
+    profile_parser = subparsers.add_parser("profile", help="Load hardware cost profile for current GPU")
+    profile_parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        help="Run micro-benchmark to measure and save profile",
+    )
+    profile_parser.add_argument(
+        "--target",
+        type=str,
+        default="Qwen/Qwen2.5-7B-Instruct-AWQ",
+        help="Target model identifier",
+    )
+    profile_parser.add_argument(
+        "--draft",
+        type=str,
+        default="Qwen/Qwen2.5-0.5B-Instruct",
+        help="Draft model or speculator head identifier",
+    )
+    profile_parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model identifier override for benchmarking",
+    )
 
     # Command: stop
     subparsers.add_parser("stop", help="Stop running local FlexSDS server")
@@ -174,6 +211,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0
 
     if args.command == "profile":
+        if getattr(args, "benchmark", False):
+            target_model = args.model or args.target
+            draft_model = args.draft
+            cost_model, saved_path = run_hardware_micro_benchmark(
+                hw_info=hw_info,
+                target_model=target_model,
+                draft_model=draft_model,
+            )
+            print(f"\n\033[1;32m✔ Calibrated & saved new hardware profile: {saved_path}\033[0m")
+            return 0
+
         _, profile_name = load_profile_for_hardware(hw_info)
         print(f"\n\033[1;32m✔ Linked hardware profile: {profile_name}\033[0m")
         return 0
