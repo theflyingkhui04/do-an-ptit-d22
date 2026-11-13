@@ -84,6 +84,13 @@ zero drafting in fixed EAGLE invalidates the cell. NVML samples include the
 whole GPU. Client concurrency is not effective batch size; Adaptive step
 telemetry separately records runtime planning batch size.
 
+`draft_produced.batch_k` is the observed real proposal tensor width per batch
+row. The planner's legacy feedback field `executed_draft_token_count` is the
+valid drafted-slot count reaching verification; it can be lower than physical
+proposal width because of request trimming, invalid slots or output limits.
+Read both observations together. Accepted drafts are a subset of verified
+drafts; neither count is the emitted completion-token count.
+
 ## A100 profile and claim boundary
 
 Canonical architecture mapping is `sm_80 -> src/flexsds/profiles/profile_sm80.json`.

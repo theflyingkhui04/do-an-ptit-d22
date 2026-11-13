@@ -1,0 +1,146 @@
+{
+  "source_commit": "187cfff5f8c2a72b9bfb227d97e6221458ddc283",
+  "source_files": {
+    "experiments/aggregate_results.py": {
+      "tested_working_sha256": "a7b874e38962e29ee8d9ed15478071fa6ecbf5d03cb3e50203026338a5980b74",
+      "committed_sha256": "a7b874e38962e29ee8d9ed15478071fa6ecbf5d03cb3e50203026338a5980b74",
+      "newline_only_difference": false
+    },
+    "experiments/benchmark_harness.py": {
+      "tested_working_sha256": "7c69276f8417d774f6fdeada18998d3e789d4891a9a9405944a64716b62d355f",
+      "committed_sha256": "7c69276f8417d774f6fdeada18998d3e789d4891a9a9405944a64716b62d355f",
+      "newline_only_difference": false
+    },
+    "experiments/configs/m4_02_06_protocol.json": {
+      "tested_working_sha256": "c1ef17abfdfa2268b382c36da6bb4e18e783d1046ba1118ab7ede0fb59c4be0d",
+      "committed_sha256": "449bdbdc76a49a03b42ca6697c7549bd2e52fe78232fa518ce1a946a18a4dc0e",
+      "newline_only_difference": true
+    },
+    "experiments/m4_a100_profile.py": {
+      "tested_working_sha256": "1d5f6ec4d50519e5a6113f2a2411b2e387c3c4f95c8c329f5fef9bd9e2d273dd",
+      "committed_sha256": "1d5f6ec4d50519e5a6113f2a2411b2e387c3c4f95c8c329f5fef9bd9e2d273dd",
+      "newline_only_difference": false
+    },
+    "experiments/m4_cost_profiler.py": {
+      "tested_working_sha256": "b5b7b68565186df2803a83b7e75d2b1c6c8596948f9ca683af4bd468d7717250",
+      "committed_sha256": "b5b7b68565186df2803a83b7e75d2b1c6c8596948f9ca683af4bd468d7717250",
+      "newline_only_difference": false
+    },
+    "experiments/m4_eagle_source_manifest.json": {
+      "tested_working_sha256": "d9d1dd72e94ce0eb449dd8a8f87cab858144f9325e86d5a37f40f1cb95941036",
+      "committed_sha256": "bf22392557fc8861e098961fa0a227f4b1de41d4e22484d33d38a73c2c621a20",
+      "newline_only_difference": true
+    },
+    "experiments/m4_git_evidence.py": {
+      "tested_working_sha256": "086a342dd376b39ffa6b46472eb4016a9e6cac7c2a52767d9b74c8fd5e9913a4",
+      "committed_sha256": "086a342dd376b39ffa6b46472eb4016a9e6cac7c2a52767d9b74c8fd5e9913a4",
+      "newline_only_difference": false
+    },
+    "experiments/m4_lossless.py": {
+      "tested_working_sha256": "9314278169c32d22146565578078532e39062ca9577370f5663341e1e328d8d6",
+      "committed_sha256": "9314278169c32d22146565578078532e39062ca9577370f5663341e1e328d8d6",
+      "newline_only_difference": false
+    },
+    "experiments/m4_pinned_contract.py": {
+      "tested_working_sha256": "6cf2273b821e8567280d1462cbb93252b8e409fa437f4ab16c7359003c00c71f",
+      "committed_sha256": "6cf2273b821e8567280d1462cbb93252b8e409fa437f4ab16c7359003c00c71f",
+      "newline_only_difference": false
+    },
+    "experiments/m4_protocol.py": {
+      "tested_working_sha256": "ea7076a2a791bc5b13a0e0561e28f3c4644ff84f079b7c702a785ea105d590bb",
+      "committed_sha256": "ea7076a2a791bc5b13a0e0561e28f3c4644ff84f079b7c702a785ea105d590bb",
+      "newline_only_difference": false
+    },
+    "experiments/m4_readiness.py": {
+      "tested_working_sha256": "0f316846e4f7839e02487b825914aae23377bf9827820230a4bb272b5be2e6a7",
+      "committed_sha256": "0f316846e4f7839e02487b825914aae23377bf9827820230a4bb272b5be2e6a7",
+      "newline_only_difference": false
+    },
+    "experiments/m4_runtime.py": {
+      "tested_working_sha256": "3d12c9b4eb102da223f192454695d064a21bfeec273a129d9588f7766909a6f9",
+      "committed_sha256": "3d12c9b4eb102da223f192454695d064a21bfeec273a129d9588f7766909a6f9",
+      "newline_only_difference": false
+    },
+    "experiments/m4_treatments.py": {
+      "tested_working_sha256": "d519191f2dc0cbe236911eccba1adeb638a253856b9fabb2d0585c6e28c83e19",
+      "committed_sha256": "d519191f2dc0cbe236911eccba1adeb638a253856b9fabb2d0585c6e28c83e19",
+      "newline_only_difference": false
+    },
+    "experiments/run_m4_colab_campaign.py": {
+      "tested_working_sha256": "29c37ffb86affb161abf5ad57eae2cb2a0da571e36a0b747a272e4ae57fe2525",
+      "committed_sha256": "29c37ffb86affb161abf5ad57eae2cb2a0da571e36a0b747a272e4ae57fe2525",
+      "newline_only_difference": false
+    },
+    "src/flexsds/core/cost_model.py": {
+      "tested_working_sha256": "7fc5414070404f5d6216c62708c9d302b90b18dd62d6655678414e5c9de98727",
+      "committed_sha256": "7fc5414070404f5d6216c62708c9d302b90b18dd62d6655678414e5c9de98727",
+      "newline_only_difference": false
+    },
+    "src/proposer/adapter.py": {
+      "tested_working_sha256": "3887dcba299663c36bcaf4c39073e4ce5cb5005f82aad75fcdda78d0ef335632",
+      "committed_sha256": "3887dcba299663c36bcaf4c39073e4ce5cb5005f82aad75fcdda78d0ef335632",
+      "newline_only_difference": false
+    },
+    "src/proposer/controller.py": {
+      "tested_working_sha256": "203cbe704864943e14c71dd7f7f4105f6f2dae9ff3b381f15178a61b36ad8693",
+      "committed_sha256": "203cbe704864943e14c71dd7f7f4105f6f2dae9ff3b381f15178a61b36ad8693",
+      "newline_only_difference": false
+    },
+    "src/server/adaptive_scheduler.py": {
+      "tested_working_sha256": "1baca496f9dc9d9e94919d701648b61f29806270c37e2e99a50d7591ff055ba4",
+      "committed_sha256": "1baca496f9dc9d9e94919d701648b61f29806270c37e2e99a50d7591ff055ba4",
+      "newline_only_difference": false
+    },
+    "src/server/budget_planner.py": {
+      "tested_working_sha256": "b2d4bad0e07c75d92c9b1bcfb9f28cc44b52b82012eee262c8662fffc4ab690a",
+      "committed_sha256": "b2d4bad0e07c75d92c9b1bcfb9f28cc44b52b82012eee262c8662fffc4ab690a",
+      "newline_only_difference": false
+    },
+    "src/server/lineage.py": {
+      "tested_working_sha256": "7f41b1a437c9fc927f53dc8c9d979c38b29a26f0b485795c063bc4f65547e00f",
+      "committed_sha256": "7f41b1a437c9fc927f53dc8c9d979c38b29a26f0b485795c063bc4f65547e00f",
+      "newline_only_difference": false
+    },
+    "src/server/lineage_executor.py": {
+      "tested_working_sha256": "087a0bec62d79955c0a5e0497587eb14566ed2012a6afa5ae08dcfb7ad537cd4",
+      "committed_sha256": "087a0bec62d79955c0a5e0497587eb14566ed2012a6afa5ae08dcfb7ad537cd4",
+      "newline_only_difference": false
+    },
+    "tests/test_m4_a100_profile.py": {
+      "tested_working_sha256": "dcc3fe2491aaa3b9d70e26a399949fa5847f0e7ac1396728b7d443788dc0d3ee",
+      "committed_sha256": "dcc3fe2491aaa3b9d70e26a399949fa5847f0e7ac1396728b7d443788dc0d3ee",
+      "newline_only_difference": false
+    },
+    "tests/test_m4_campaign.py": {
+      "tested_working_sha256": "c5b7f8602d7be22a39f4a3106544f9d95c9f3642cd50f3f22f471e576b69a880",
+      "committed_sha256": "c5b7f8602d7be22a39f4a3106544f9d95c9f3642cd50f3f22f471e576b69a880",
+      "newline_only_difference": false
+    },
+    "tests/test_m4_lifecycle.py": {
+      "tested_working_sha256": "bc58b35cad96f7b33725cce38d6d8d3a66334c5d9134c5baf0cfb9e7f4b56654",
+      "committed_sha256": "bc58b35cad96f7b33725cce38d6d8d3a66334c5d9134c5baf0cfb9e7f4b56654",
+      "newline_only_difference": false
+    },
+    "tests/test_m4_lossless.py": {
+      "tested_working_sha256": "d718bc4c95f14cd1399c43dcdff971c5730650c56ecaeb1919180a88d5e6c028",
+      "committed_sha256": "d718bc4c95f14cd1399c43dcdff971c5730650c56ecaeb1919180a88d5e6c028",
+      "newline_only_difference": false
+    },
+    "tests/test_m4_pinned_contract.py": {
+      "tested_working_sha256": "d39701f185295c4ea110497f0afdbfffd6c9b1e0bf847e62df94f00d2b8e09b2",
+      "committed_sha256": "d39701f185295c4ea110497f0afdbfffd6c9b1e0bf847e62df94f00d2b8e09b2",
+      "newline_only_difference": false
+    },
+    "tests/test_m4_readiness.py": {
+      "tested_working_sha256": "15e1cf407b784b2c9ee745e534aee4ae8f41bd1578e5ba48e511fe03e0cc218b",
+      "committed_sha256": "15e1cf407b784b2c9ee745e534aee4ae8f41bd1578e5ba48e511fe03e0cc218b",
+      "newline_only_difference": false
+    },
+    "tests/test_m4_treatments.py": {
+      "tested_working_sha256": "492201995d286dccb998096a2f2c6396f8314cc7fc27eadebe2f74b7e83ae913",
+      "committed_sha256": "492201995d286dccb998096a2f2c6396f8314cc7fc27eadebe2f74b7e83ae913",
+      "newline_only_difference": false
+    }
+  },
+  "claim": "Committed executable source matches locally tested content, allowing only Git CRLF/LF checkout conversion. Workload identities use committed blobs and require exact LF runtime bytes."
+}
