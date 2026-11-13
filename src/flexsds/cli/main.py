@@ -10,13 +10,14 @@ try:
     from flexsds import __version__
     from flexsds.cli.banner import print_banner
     from flexsds.cli.wizard import run_interactive_wizard
-    from flexsds.core.hardware import detect_hardware
+    from flexsds.core.hardware import detect_hardware, HardwareInfo
     from flexsds.core.compatibility import (
         check_compatibility,
         evaluate_serving_preflight,
         ServingBlockedError,
     )
     from flexsds.core.cost_model import (
+        FlexCostModel,
         load_profile_for_hardware,
         run_hardware_micro_benchmark,
     )
@@ -31,13 +32,14 @@ except ModuleNotFoundError:
     from src.flexsds import __version__
     from src.flexsds.cli.banner import print_banner
     from src.flexsds.cli.wizard import run_interactive_wizard
-    from src.flexsds.core.hardware import detect_hardware
+    from src.flexsds.core.hardware import detect_hardware, HardwareInfo
     from src.flexsds.core.compatibility import (
         check_compatibility,
         evaluate_serving_preflight,
         ServingBlockedError,
     )
     from src.flexsds.core.cost_model import (
+        FlexCostModel,
         load_profile_for_hardware,
         run_hardware_micro_benchmark,
     )
@@ -79,7 +81,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     profile_parser.add_argument(
         "--draft",
         type=str,
-        default="Qwen/Qwen2.5-0.5B-Instruct",
+        default="duckhoi/qwen2.5-7b-eagle3.1-speculator",
         help="Draft model or speculator head identifier",
     )
     profile_parser.add_argument(
@@ -148,6 +150,24 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     monitor_parser.add_argument("--refresh-rate", type=float, default=1.0, help="Telemetry poll interval in seconds")
 
     return parser.parse_args(argv)
+
+
+def get_serving_cost_profile(
+    hw_info: HardwareInfo,
+    allow_fallback: bool = False,
+    custom_profile_path: Optional[str] = None,
+) -> tuple[Optional[FlexCostModel], str]:
+    """Tải hồ sơ chi phí phần cứng phục vụ cho lệnh serve với cơ chế chặn sớm (fail-fast).
+
+    Nếu allow_fallback=False và không tìm thấy hồ sơ chính xác cho GPU hiện tại,
+    trả về (None, "") để kích hoạt xử lý chặn sớm an toàn.
+    Nếu allow_fallback=True, cho phép nạp hồ sơ suy diễn dè dặt phân tích an toàn.
+    """
+    return load_profile_for_hardware(
+        hw_info,
+        custom_profile_path=custom_profile_path,
+        strict=not allow_fallback,
+    )
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -243,8 +263,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
 
     if args.command == "serve":
-        cost_model, profile_name = load_profile_for_hardware(
-            hw_info, strict=not getattr(args, "allow_fallback", False)
+        cost_model, profile_name = get_serving_cost_profile(
+            hw_info, allow_fallback=getattr(args, "allow_fallback", False)
         )
         if cost_model is None:
             print(

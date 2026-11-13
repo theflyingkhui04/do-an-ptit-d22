@@ -426,7 +426,7 @@ def load_profile_for_hardware(
 def run_hardware_micro_benchmark(
     hw_info: HardwareInfo,
     target_model: str = "Qwen/Qwen2.5-7B-Instruct-AWQ",
-    draft_model: str = "Qwen/Qwen2.5-0.5B-Instruct",
+    draft_model: str = "duckhoi/qwen2.5-7b-eagle3.1-speculator",
     batch_sizes: Optional[List[int]] = None,
     target_dir: Optional[Path] = None,
 ) -> Tuple[FlexCostModel, Path]:
@@ -463,6 +463,8 @@ def run_hardware_micro_benchmark(
                 for _ in range(3):
                     _ = torch.matmul(x, w)
                 torch.cuda.synchronize()
+                del x, w
+                torch.cuda.empty_cache()
         except Exception:
             pass
 

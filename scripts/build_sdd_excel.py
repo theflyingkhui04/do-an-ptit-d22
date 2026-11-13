@@ -233,7 +233,7 @@ def generate_sdd_data():
             "forward_target (dict), forward_draft (dict), cost_matrix_ms (dict), metadata (dict: gpu_name, sm, calibrated_at).",
         ],
         [
-            "FILE-10", "<slug>_config.json", "JSON", "~/.flexsds/cache/configs/", "0644 (Đọc/Ghi)",
+            "FILE-10", "config.json", "JSON", "~/.flexsds/cache/models/<slug>/", "0644 (Đọc/Ghi)",
             "Bộ nhớ đệm metadata cấu hình mô hình (config.json) tải từ Hugging Face để phục vụ kiểm tra tương thích ngoại tuyến không cần mạng.",
             "architectures (list[str]), model_type (str), vocab_size (int), hidden_size (int), num_hidden_layers (int), torch_dtype (str).",
         ],
@@ -414,7 +414,7 @@ def generate_sdd_data():
         ],
         [
             "ERR-11", "Lỗi kết nối mạng khi tải metadata cấu hình mô hình ngoại tuyến (Model Config Network Error)", "CompatibilityGuard / get_model_config()",
-            "Hệ thống chạy trong môi trường ngắt mạng (offline) và tệp config.json của mô hình chưa từng được lưu trong bộ nhớ đệm ~/.flexsds/cache/configs/.",
+            "Hệ thống chạy trong môi trường ngắt mạng (offline) và tệp config.json của mô hình chưa từng được lưu trong bộ nhớ đệm ~/.flexsds/cache/models/<slug>/config.json.",
             "Bắt ngoại lệ URLError / socket error; ném lỗi mạng có thông điệp hướng dẫn kết nối internet để tải cấu hình lần đầu hoặc chỉ định đường dẫn tệp cục bộ.",
             "Không làm sập tiến trình với traceback khó hiểu, cung cấp chỉ dẫn khắc phục rõ ràng.",
             "✔ 'Không thể tải cấu hình mô hình do lỗi mạng và chưa có dữ liệu đệm. Vui lòng kết nối mạng hoặc sử dụng đường dẫn cục bộ.'",

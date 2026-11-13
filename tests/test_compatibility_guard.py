@@ -89,8 +89,8 @@ def test_shared_vocab_detection_when_same_vocab_size():
         )
         assert report.is_compatible is True
         assert report.draft_method == "eagle3"
-        # EAGLE head luôn bật dị thể do tính chất đầu chiếu
-        assert report.use_heterogeneous_vocab is True
+        # Khi cùng vocab_size, không gian từ vựng dùng chung nên cờ dị thể được tắt (TC-CMP-07)
+        assert report.use_heterogeneous_vocab is False
 
 
 def test_check_compatibility_offline_fallback():

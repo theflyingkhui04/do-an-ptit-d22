@@ -219,13 +219,13 @@ flowchart TD
 #### 3.3.1. Thuật toán kiểm tra kiến trúc EAGLE và so sánh động từ vựng dị thể
 Trong mô hình giải mã đầu cơ chuẩn, mô hình mục tiêu và mô hình nháp thường có cùng không gian từ vựng. Tuy nhiên, FlexSDS v0.2 phục vụ chuyên biệt giải mã đầu cơ EAGLE (EAGLE / EAGLE-2 / EAGLE-3). Đầu nháp chuyên dụng EAGLE-3.1 (`duckhoi/qwen2.5-7b-eagle3.1-speculator`) được tinh chỉnh rút gọn kích thước từ vựng xuống 16,384 tokens (so với 152,064 tokens của Qwen2.5-7B) nhằm thu nhỏ kích thước ma trận `lm_head` từ 1.09 GB xuống còn 114 MB (giảm 89.5% bộ nhớ VRAM).
 
-Hệ thống lưu đệm metadata `config.json` vào `~/.flexsds/cache/configs/` để hỗ trợ kiểm tra ngoại tuyến, thực hiện kiểm tra nghiêm ngặt ép buộc kiến trúc EAGLE (từ chối các mô hình nhân quả tiêu chuẩn như `LlamaForCausalLM`), đồng thời so sánh động giá trị `vocab_size` thực tế giữa hai mô hình:
+Hệ thống lưu đệm metadata `config.json` vào `~/.flexsds/cache/models/<slug>/` để hỗ trợ kiểm tra ngoại tuyến, thực hiện kiểm tra nghiêm ngặt ép buộc kiến trúc EAGLE (từ chối các mô hình nhân quả tiêu chuẩn như `LlamaForCausalLM`), đồng thời so sánh động giá trị `vocab_size` thực tế giữa hai mô hình:
 
 ```mermaid
 sequenceDiagram
     participant User as Người dùng CLI
     participant Guard as check_compatibility()
-    participant Cache as ~/.flexsds/cache/configs/
+    participant Cache as ~/.flexsds/cache/models/
     participant HF as Hugging Face API / Cục bộ
 
     User->>Guard: Gửi cặp mô hình (Target, Draft)
@@ -233,7 +233,7 @@ sequenceDiagram
     alt Chưa có trong cache
         Guard->>HF: Tải config.json từ Hugging Face
         HF-->>Guard: Trả về metadata cấu hình
-        Guard->>Cache: Lưu đệm <slug>_config.json
+        Guard->>Cache: Lưu đệm <slug>/config.json
     else Đã có trong cache
         Cache-->>Guard: Đọc trực tiếp không cần mạng
     end

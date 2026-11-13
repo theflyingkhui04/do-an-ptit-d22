@@ -87,9 +87,9 @@ def generate_srs_data():
         # Module 2: Model Compatibility Guard
         [
             "REQ-CMP-01", "Tương thích", "Kiểm tra tương thích cặp mô hình đầu cơ và ép buộc kiến trúc EAGLE (Metadata config cache & EAGLE reject)",
-            "Hệ thống nạp và lưu đệm cấu hình metadata (config.json) của mô hình vào thư mục ~/.flexsds/cache/configs/ để hỗ trợ kiểm tra tương thích ngoại tuyến. Do FlexSDS v0.2 phục vụ chuyên biệt giải mã đầu cơ EAGLE, hệ thống nghiêm ngặt từ chối (reject) các mô hình nháp không thuộc kiến trúc EAGLE (ví dụ mô hình nhân quả thông thường LlamaForCausalLM không có đầu nháp EAGLE) để ngăn ngừa lỗi không tương thích trong quá trình suy luận.",
-            "Tên định danh mô hình mục tiêu và mô hình nháp (Hugging Face ID hoặc đường dẫn cục bộ), thư mục bộ nhớ đệm ~/.flexsds/cache/configs/.",
-            "1. Gọi hàm get_model_config(model_id): kiểm tra đường dẫn thư mục cục bộ hoặc tệp cache ~/.flexsds/cache/configs/<slug>_config.json; nếu chưa có thì tải config.json từ Hugging Face và lưu vào cache; nếu mất kết nối mạng và chưa có cache thì ném lỗi URLError/ConnectionError có hướng dẫn rõ ràng.\n2. Gọi inspect_remote_model_metadata(): đọc trường architectures từ tệp cấu hình.\n3. Nếu kiến trúc hoặc tên không chứa định danh EAGLE/Eagle (như EagleDraftModel, EAGLEModel), đánh dấu is_compatible = False và thêm thông báo từ chối vào danh sách cảnh báo.\n4. Nếu hợp lệ, gán draft_method = 'eagle3'.",
+            "Hệ thống nạp và lưu đệm cấu hình metadata (config.json) của mô hình vào thư mục ~/.flexsds/cache/models/<slug>/ để hỗ trợ kiểm tra tương thích ngoại tuyến. Do FlexSDS v0.2 phục vụ chuyên biệt giải mã đầu cơ EAGLE, hệ thống nghiêm ngặt từ chối (reject) các mô hình nháp không thuộc kiến trúc EAGLE (ví dụ mô hình nhân quả thông thường LlamaForCausalLM không có đầu nháp EAGLE) để ngăn ngừa lỗi không tương thích trong quá trình suy luận.",
+            "Tên định danh mô hình mục tiêu và mô hình nháp (Hugging Face ID hoặc đường dẫn cục bộ), thư mục bộ nhớ đệm ~/.flexsds/cache/models/.",
+            "1. Gọi hàm get_model_config(model_id): kiểm tra đường dẫn thư mục cục bộ hoặc tệp cache ~/.flexsds/cache/models/<slug>/config.json; nếu chưa có thì tải config.json từ Hugging Face và lưu vào cache; nếu mất kết nối mạng và chưa có cache thì ném lỗi URLError/NetworkOfflineError có hướng dẫn rõ ràng.\n2. Gọi inspect_remote_model_metadata(): đọc trường architectures từ tệp cấu hình.\n3. Nếu kiến trúc hoặc tên không chứa định danh EAGLE/Eagle (như EagleDraftModel, EAGLEModel), đánh dấu is_compatible = False và thêm thông báo từ chối vào danh sách cảnh báo.\n4. Nếu hợp lệ, gán draft_method = 'eagle3'.",
             "Báo cáo tương thích CompatibilityReport từ chối chuẩn xác các mô hình nháp không phải EAGLE với is_compatible = False; cấu hình config.json được lưu cache và tái sử dụng khi không có mạng; thông báo lỗi kết nối mạng tường minh khi offline mà chưa có cache.",
             "P0",
         ],
@@ -466,7 +466,7 @@ def generate_srs_data():
             "Đường dẫn mô hình hợp lệ trên Hugging Face và có kết nối mạng.",
             "1. Gọi get_model_config('Qwen/Qwen2.5-7B-Instruct-AWQ').",
             "get_model_config('Qwen/Qwen2.5-7B-Instruct-AWQ')",
-            "Tải tệp config.json và lưu vào ~/.flexsds/cache/configs/<slug>_config.json.",
+            "Tải tệp config.json và lưu vào ~/.flexsds/cache/models/<slug>/config.json.",
             "Tệp cấu hình đệm tồn tại trên đĩa, trả về từ điển cấu hình đúng cấu trúc.",
             "Không phát sinh ngoại lệ.", "PASS (100%)",
         ],

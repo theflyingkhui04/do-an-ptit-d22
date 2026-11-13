@@ -343,12 +343,12 @@ def check_compatibility(
         )
 
     # 4. Vocabulary Alignment (CR03)
-    # So sánh vocab_size giữa target và draft khi có cấu hình; nếu khác nhau hoặc là EAGLE thì bật dị thể
+    # So sánh vocab_size giữa target và draft khi có cấu hình; nếu khác nhau thì bật cờ dị thể
     target_vocab = target_cfg.get("vocab_size", 0) if target_cfg else 0
     draft_vocab = draft_cfg.get("vocab_size", 0) if draft_cfg else 0
 
     if target_vocab > 0 and draft_vocab > 0:
-        use_hetero_vocab = (target_vocab != draft_vocab) or is_eagle
+        use_hetero_vocab = (target_vocab != draft_vocab)
     else:
         target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
         draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
@@ -372,6 +372,16 @@ def check_compatibility(
             warnings.append(
                 f"Cross-family pairing ({target_family} target with {draft_family} draft) may exhibit low acceptance rate."
             )
+
+    # 6. Cảnh báo dự phòng ngoại tuyến nếu không nạp được metadata từ mạng hay cache
+    if target_cfg is None:
+        warnings.append(
+            f"Không thể tải metadata cấu hình cho mô hình mục tiêu '{target_model}' (mất mạng hoặc chưa có cache). Sử dụng dự phòng theo tên."
+        )
+    if draft_cfg is None:
+        warnings.append(
+            f"Không thể tải metadata cấu hình cho mô hình nháp '{draft_model}' (mất mạng hoặc chưa có cache). Sử dụng dự phòng theo tên."
+        )
 
     return CompatibilityReport(
         target_model=target_model,
