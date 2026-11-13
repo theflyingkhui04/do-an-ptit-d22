@@ -38,6 +38,13 @@ except ModuleNotFoundError:
     from src.flexsds.server.modal_runner import ModalServingRunner
 
 
+PLATFORM_CHOICES = [
+    "Modal.com (Serverless GPU đám mây)",
+    "Google Colab (GPU miễn phí T4/L4)",
+    "Tự dùng GPU nội bộ (Local vLLM)",
+]
+
+
 def strip_ansi(s: str) -> str:
     """Removes ANSI escape codes to calculate visible string length."""
     import re
@@ -271,7 +278,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     # Step 4: Platform Selection
     platform_choice = prompt_choice(
         "Serving platform:",
-        ["Modal (Serverless GPU)", "Google Colab", "Local GPU"],
+        PLATFORM_CHOICES,
         default_idx=0,
     )
 
@@ -328,9 +335,9 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         else:
             print(f"\n\033[32m✔ Local GPU: {hw_info.device_name} ({hw_info.free_vram_gb} GB free)\033[0m")
 
-    # Step 5: TreeAdaptive Optimization Engine
+    # Step 5: HardwareAdaptive Optimization Engine
     enable_adaptive = prompt_bool(
-        "Enable TreeAdaptive engine?",
+        "Enable HardwareAdaptive engine?",
         default_val=True,
     )
 
@@ -371,10 +378,20 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             local_runner = LocalServingRunner()
             run_in_bg = prompt_bool("Run server in background?", default_val=False)
             local_runner.launch(config, background=run_in_bg)
+            if run_in_bg:
+                print("\n\033[1;32m✔ Máy chủ FlexSDS đang khởi động ngầm tại http://localhost:8000/v1\033[0m")
+                print("  \033[1;37mGợi ý:\033[0m Mở terminal mới và chạy: \033[36mflexsds chat\033[0m để bắt đầu trò chuyện!")
+                print("  \033[1;37mTheo dõi:\033[0m Chạy \033[36mflexsds monitor\033[0m để xem thích ứng theo thời gian thực.\n")
         elif backend == "modal":
             modal_runner = ModalServingRunner()
             modal_runner.launch(config, deploy=modal_deploy)
+            print("  \033[1;37mGợi ý:\033[0m Dùng \033[36mflexsds chat --endpoint <URL_MODAL>\033[0m khi máy chủ hoàn tất triển khai.\n")
         elif backend == "colab":
-            print("\n\033[32m✔ Colab endpoint configured. Ready for inference requests.\033[0m")
+            endpoint = colab_tunnel_url or "http://localhost:8000/v1"
+            print("\n\033[1;32m✔ Điểm cuối Colab đã được cấu hình.\033[0m")
+            print(f"  \033[1;37mGợi ý:\033[0m Chạy lệnh: \033[36mflexsds chat --endpoint {endpoint}\033[0m để bắt đầu trò chuyện!\n")
+    else:
+        print("\n\033[1;32m✔ Cấu hình phục vụ đã sẵn sàng.\033[0m")
+        print("  \033[1;37mGợi ý:\033[0m Chạy \033[36mflexsds chat\033[0m để kết nối máy chủ khi đã bật.\n")
 
     return config

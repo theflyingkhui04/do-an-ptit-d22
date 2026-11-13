@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socket
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
@@ -73,16 +75,31 @@ class LocalServingRunner:
             json.dumps(speculative_config),
             "--scheduler-cls",
             "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
+            "--distributed-executor-backend",
+            "src.server.lineage_executor.LineageUniProcExecutor",
             "--per-request-spec-decode-metrics",
             "summary",
         ])
 
         return cmd
 
+    def check_port_available(self, port: int) -> bool:
+        """Kiểm tra xem cổng port có đang khả dụng không."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("", port))
+                return True
+            except OSError:
+                return False
+
     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
         """Thiết lập các biến môi trường cho FlexSDS Adaptive Scheduler."""
         serving_cfg = config.get("serving", config)
         env = dict(os.environ)
+        project_root = str(Path(__file__).resolve().parents[3])
+        existing_pythonpath = env.get("PYTHONPATH", "")
+        if project_root not in existing_pythonpath:
+            env["PYTHONPATH"] = f"{project_root}:{existing_pythonpath}" if existing_pythonpath else project_root
         env["ADAPTIVE_ENABLE_VRAM_GUARD"] = "1"
         env["ADAPTIVE_TELEMETRY_PATH"] = os.path.abspath(
             serving_cfg.get("telemetry_path", "telemetry/serving_trace.jsonl")
@@ -101,13 +118,19 @@ class LocalServingRunner:
         dry_run: bool = False,
     ) -> Optional[subprocess.Popen]:
         """Khởi chạy tiến trình máy chủ cục bộ."""
-        cmd = self.build_command(config, port=port)
+        effective_port = port if port is not None else config.get("serving", config).get("port", 8000)
+        cmd = self.build_command(config, port=effective_port)
         env = self.setup_environment(config)
 
         if dry_run:
             print("\n[FlexSDS] Dry-run execution command:")
             print(" ".join(cmd))
             print(f"Environment: ADAPTIVE_ENABLE_VRAM_GUARD={env.get('ADAPTIVE_ENABLE_VRAM_GUARD')}")
+            return None
+
+        if not self.check_port_available(effective_port):
+            print(f"\n\033[31m[Lỗi]\033[0m Cổng {effective_port} đang bị chiếm dụng bởi tiến trình khác.")
+            print(f"  Gợi ý: Dùng cờ --port <cổng_khác> hoặc chạy: flexsds stop")
             return None
 
         try:
