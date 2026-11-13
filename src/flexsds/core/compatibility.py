@@ -6,7 +6,21 @@ import os
 import re
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+MODEL_CACHE_DIR: Path = Path.home() / ".flexsds" / "cache" / "models"
+
+
+class ModelMetadataError(Exception):
+    """Ngoại lệ cơ sở cho các lỗi đọc hoặc xử lý metadata của mô hình."""
+    pass
+
+
+class NetworkOfflineError(ModelMetadataError):
+    """Ngoại lệ khi không thể kết nối mạng và không tìm thấy cấu hình trong cache."""
+    pass
 
 
 @dataclass
@@ -44,6 +58,84 @@ class CompatibilityReport:
             f"VRAM Needed: {self.total_vram_needed_mb / 1024:.1f}GB / Free: {self.free_vram_mb / 1024:.1f}GB | "
             f"Hetero Vocab: {self.use_heterogeneous_vocab}"
         )
+
+
+def get_model_config(
+    model_id_or_path: str,
+    cache_dir: Optional[Path] = None,
+    timeout_sec: float = 5.0,
+) -> Dict[str, Any]:
+    """Đọc tệp config.json của mô hình từ đường dẫn cục bộ, cache hoặc Hugging Face Hub.
+
+    Args:
+        model_id_or_path: Đường dẫn thư mục/tệp cục bộ hoặc Hugging Face model ID.
+        cache_dir: Thư mục lưu cache cục bộ (mặc định ~/.flexsds/cache/models).
+        timeout_sec: Thời gian chờ tối đa khi tải qua HTTP (giây).
+
+    Returns:
+        Dict chứa nội dung tệp config.json.
+
+    Raises:
+        NetworkOfflineError: Khi không thể kết nối mạng và chưa có dữ liệu trong cache.
+        ModelMetadataError: Khi tệp config.json không tồn tại cục bộ hoặc không hợp lệ.
+    """
+    # 1. Kiểm tra nếu là đường dẫn cục bộ
+    expanded_path = Path(os.path.expanduser(model_id_or_path))
+    if expanded_path.exists():
+        if expanded_path.is_file() and expanded_path.suffix == ".json":
+            config_file = expanded_path
+        else:
+            config_file = expanded_path / "config.json"
+
+        if config_file.exists() and config_file.is_file():
+            try:
+                with open(config_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as exc:
+                raise ModelMetadataError(f"Không thể đọc tệp config cục bộ '{config_file}': {exc}") from exc
+        else:
+            raise ModelMetadataError(f"Không tìm thấy tệp config.json trong đường dẫn cục bộ '{model_id_or_path}'")
+
+    # 2. Chuẩn hóa định danh mô hình từ xa và xác định thư mục cache
+    clean_id = model_id_or_path.strip().replace("https://huggingface.co/", "").strip("/")
+    effective_cache_dir = Path(cache_dir) if cache_dir is not None else MODEL_CACHE_DIR
+    model_dir_name = clean_id.replace("/", "--")
+    cached_file = effective_cache_dir / model_dir_name / "config.json"
+
+    # 3. Đọc từ cache cục bộ nếu đã tồn tại
+    if cached_file.exists() and cached_file.is_file():
+        try:
+            with open(cached_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            # Nếu cache bị hỏng, tiếp tục thử tải từ mạng
+            pass
+
+    # 4. Tải từ Hugging Face qua HTTP
+    url = f"https://huggingface.co/{clean_id}/raw/main/config.json"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            raw_bytes = resp.read()
+            content = raw_bytes.decode("utf-8") if isinstance(raw_bytes, (bytes, bytearray)) else str(raw_bytes)
+            data = json.loads(content)
+    except Exception as exc:
+        raise NetworkOfflineError(
+            f"Không thể tải metadata cho mô hình '{clean_id}' từ Hugging Face Hub: {exc}"
+        ) from exc
+
+    # 5. Lưu vào cache cục bộ cho các lần kiểm tra sau
+    try:
+        cached_file.parent.mkdir(parents=True, exist_ok=True)
+        cached_file.write_text(content, encoding="utf-8")
+    except Exception:
+        # Lỗi lưu cache không cản trở việc trả về dữ liệu đã tải thành công
+        pass
+
+    return data
 
 
 def inspect_remote_model_metadata(model_id_or_path: str, timeout_sec: float = 5.0) -> Dict[str, Any]:
