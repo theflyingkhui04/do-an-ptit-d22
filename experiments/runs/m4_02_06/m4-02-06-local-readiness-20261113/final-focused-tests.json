@@ -1,0 +1,19 @@
+{
+  "command": [
+    "D:\\ProgramFiles\\Python3_11\\python.exe",
+    "-B",
+    "-m",
+    "pytest",
+    "-p",
+    "no:cacheprovider",
+    "-q",
+    "tests/test_m4_treatments.py",
+    "tests/test_m4_a100_profile.py",
+    "tests/test_m4_campaign.py",
+    "tests/test_m4_readiness.py",
+    "tests/test_m4_pinned_contract.py",
+    "tests/test_cost_model_l4.py",
+    "tests/test_cost_model_solver.py"
+  ],
+  "returncode": 0
+}

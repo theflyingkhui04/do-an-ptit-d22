@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -146,6 +147,9 @@ class FlexCostModel:
             return self.matrix[(topo, batch_size)]
         if resolved.name == "T0" and (0, batch_size) in self.matrix:
             return self.matrix[(0, batch_size)]
+
+        if self.metadata.get("scalar_only"):
+            raise ValueError("Measured scalar profile has no exact cost for this topology/batch")
 
         # 2. Analytical Fallback calculation
         c_t, c_d = self.get_forward_costs(batch_size=batch_size)
@@ -331,6 +335,7 @@ def load_profile_for_hardware(hw_info: Optional[HardwareInfo] = None) -> Tuple[F
     sm_arch = hw_info.sm_architecture if hw_info else "sm_89"
 
     arch_map = {
+        "sm_80": "profile_sm80.json",
         "sm_89": "profile_sm89_l4.json",
         "sm_75": "profile_sm75_t4.json",
     }
@@ -339,7 +344,19 @@ def load_profile_for_hardware(hw_info: Optional[HardwareInfo] = None) -> Tuple[F
     profile_path = PROFILES_DIR / profile_filename
 
     if profile_path.exists():
+        if sm_arch == "sm_80":
+            data = json.loads(profile_path.read_text(encoding="utf-8"))
+            meta = data.get("metadata", {})
+            matrix = data.get("cost_matrix_ms", {})
+            expected = {f"k{k}_b{b}" for k in range(5) for b in (1, 2, 4, 8, 16, 32)}
+            if (meta.get("sm_architecture") != "sm_80" or meta.get("scalar_only") is not True
+                    or meta.get("measurement_status") != "measured" or set(matrix) != expected
+                    or any(type(v) not in (int, float) or not math.isfinite(v) or v <= 0 for v in matrix.values())):
+                raise ValueError("Malformed/unmeasured A100 scalar profile")
         return FlexCostModel.from_json(profile_path), profile_filename
+
+    if sm_arch == "sm_80":
+        raise FileNotFoundError("A100 requires a measured profile_sm80.json; no L4/analytical substitution")
 
     default_target = {1: 20.0, 2: 20.5, 4: 21.0, 8: 22.0, 16: 25.0, 32: 32.0}
     default_draft = {1: 5.0, 2: 5.2, 4: 5.4, 8: 5.8, 16: 6.5, 32: 7.2}
