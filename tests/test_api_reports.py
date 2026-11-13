@@ -127,6 +127,7 @@ def test_request_report_reads_fixed_tables_then_plans_charts_and_writes():
     assert "Node 3" in report_call["messages"][0]["content"]
     user = report_call["messages"][1]["content"]
     assert REQUEST in user and "NHA SACH CAM PHA" in user and "2 hoá đơn có ngày lập gần nhất" in user
+    assert "117000" in user and ".0" not in user
     assert set(out["timings_ms"]) == {"data", "dashboard", "report"}
     assert out["dashboard"]["metrics"]["tpot_ms"] == 20.0 and out["report"]["metrics"]["tpot_ms"] == 20.0
 

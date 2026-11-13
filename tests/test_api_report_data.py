@@ -111,3 +111,11 @@ def test_same_snapshot_on_postgres_as_on_sqlite(pg):  # noqa: F811  (pytest fixt
     _, lite = sqlite_runner()
     for limit in (2, None):
         assert build_snapshot(store.run_readonly, limit) == build_snapshot(lite, limit)
+
+
+def test_whole_numbers_come_back_as_integers():
+    """SQLite and Postgres return 117000.0 for sums of money; the report prompt must read 117000, not 117000.0."""
+    _, run = sqlite_runner()
+    snap = build_snapshot(run, 2)
+    assert [type(v) for v in table(snap, "kpis")["rows"][0]] == [int, int, int, int]
+    assert [type(v) for v in table(snap, "by_store")["rows"][0]] == [str, int, int]

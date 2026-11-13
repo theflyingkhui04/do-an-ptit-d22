@@ -66,6 +66,11 @@ def _scope_cte(limit: int | None) -> str:
             f"ORDER BY issued_date DESC NULLS LAST, invoice_id{tail}) ")
 
 
+def _whole(value: Any) -> Any:
+    """117000.0 -> 117000, so the report prompt and the charts show whole amounts without a trailing .0."""
+    return int(value) if isinstance(value, float) and value.is_integer() else value
+
+
 def build_snapshot(run: Runner, limit: int | None) -> dict[str, Any]:
     """Tables of the scope (``limit`` latest invoices by issue date, or all), in ``TABLE_KEYS`` order."""
     limit = check_limit(limit)
@@ -73,6 +78,7 @@ def build_snapshot(run: Runner, limit: int | None) -> dict[str, Any]:
     tables = []
     for key, (title, sql) in TABLES.items():
         columns, rows = run(cte + sql)
+        rows = [[_whole(v) for v in row] for row in rows]
         tables.append({"key": key, "title": title, "columns": columns, "rows": rows})
     kpis = tables[0]["rows"]
     count = int(kpis[0][0]) if kpis and kpis[0][0] is not None else 0
