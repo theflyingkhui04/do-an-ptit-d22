@@ -32,7 +32,7 @@ def generate_sdd_data():
         [""],
         ["3. CÁC NGUYÊN TẮC THIẾT KẾ CỐT LÕI (DESIGN PRINCIPLES)"],
         ["Nguyên tắc", "Tên tiếng Anh", "Ý nghĩa và cách áp dụng trong FlexSDS"],
-        ["Thích ứng phần cứng", "Hardware-Centric Adaptation", "Tối ưu hóa số token nháp k dựa trên hồ sơ độ trễ phần cứng GPU cụ thể (sm_89, sm_75)."],
+        ["Thích ứng phần cứng", "Hardware-Centric Adaptation", "Tối ưu hóa số token nháp k dựa trên hồ sơ độ trễ phần cứng GPU cụ thể (sm_89, sm_75); tự động đo đạc qua micro-benchmark độc lập và áp dụng fail-fast guard khi chưa hiệu chuẩn."],
         ["Bảo mật không rò rỉ", "Zero-Leak Security", "Lưu token bảo mật tại ~/.flexsds/credentials (0600), không bao giờ ghi vào repo hay file chia sẻ."],
         ["Khách hàng độc lập", "Zero Heavy Dependency", "Client CLI chỉ dùng thư viện chuẩn Python (urllib), khởi động tức thì < 0.2s, không cần requests/openai."],
         ["Phân tách trách nhiệm", "Separation of Concerns", "Tách bạch tuyệt đối giữa logic giao diện dòng lệnh, bộ kiểm tra an toàn và tiến trình server thực thi."],
@@ -57,11 +57,11 @@ def generate_sdd_data():
 
     sheet2_data = [
         [
-            "MOD-01", "src/flexsds/cli/main.py", "main(), parse_args()", "Presentation",
-            "Điểm vào phân phối toàn bộ lệnh CLI (detect, profile, auth, serve, chat, monitor, stop).",
+            "MOD-01", "src/flexsds/cli/main.py", "main(), parse_args(), get_serving_cost_profile()", "Presentation",
+            "Điểm vào phân phối toàn bộ lệnh CLI (detect, profile, auth, serve, chat, monitor, stop); kiểm soát chặn sớm fail-fast guard khi serve thiếu hồ sơ chuẩn.",
             "parser: ArgumentParser, subparsers",
-            "parse_args(argv), main(argv)",
-            "argparse, wizard, hardware, credentials, local_runner, modal_runner",
+            "parse_args(argv), main(argv), get_serving_cost_profile()",
+            "argparse, wizard, hardware, credentials, local_runner, modal_runner, cost_model",
         ],
         [
             "MOD-02", "src/flexsds/cli/banner.py", "print_banner(), render_banner()", "Presentation",
@@ -92,18 +92,18 @@ def generate_sdd_data():
             "torch (nếu có), os, dataclasses",
         ],
         [
-            "MOD-06", "src/flexsds/core/cost_model.py", "FlexCostModel, load_profile_for_hardware()", "Core Engine",
-            "Mô hình chi phí tính toán GPU và bộ nạp hồ sơ độ trễ phần cứng tự động.",
-            "c_draft_ms, c_target_ms, alpha_decay, profile_path",
-            "predict_latency(), load_profile_for_hardware()",
-            "json, pathlib.Path, hardware.HardwareInfo",
+            "MOD-06", "src/flexsds/core/cost_model.py", "FlexCostModel, load_profile_for_hardware(), save_hardware_profile(), run_hardware_micro_benchmark()", "Core Engine",
+            "Mô hình chi phí tính toán GPU và bộ giải quyết hồ sơ độ trễ phần cứng thích ứng theo thứ bậc 3 tầng; cung cấp hàm run_hardware_micro_benchmark() đo đạc độ trễ thực tế trên đa kích thước batch.",
+            "matrix, forward_target, forward_draft, provenance, metadata, USER_PROFILES_DIR, PROFILES_DIR",
+            "load_profile_for_hardware(), save_hardware_profile(), run_hardware_micro_benchmark(), calculate_alpha_star(), select_optimal_budget(), get_step_cost()",
+            "json, pathlib.Path, hardware.HardwareInfo, tree_topology.TreeTopology",
         ],
         [
-            "MOD-07", "src/flexsds/core/compatibility.py", "CompatibilityReport, check_compatibility()", "Core Engine",
-            "Phân tích tương thích cặp mô hình, nhận diện từ vựng dị thể và cảnh báo tràn bộ nhớ VRAM.",
-            "is_compatible, draft_method, use_heterogeneous_vocab, warnings",
-            "check_compatibility(), pre_download_guard(), summary()",
-            "hardware.HardwareInfo, re",
+            "MOD-07", "src/flexsds/core/compatibility.py", "CompatibilityReport, check_compatibility(), get_model_config(), inspect_remote_model_metadata()", "Core Engine",
+            "Phân tích tương thích cặp mô hình, lưu đệm metadata cấu hình config.json, ép buộc kiến trúc đầu nháp EAGLE và so sánh động vocab_size để kích hoạt từ vựng dị thể.",
+            "is_compatible, draft_method, use_heterogeneous_vocab, warnings, MODEL_CONFIG_CACHE_DIR",
+            "check_compatibility(), get_model_config(), inspect_remote_model_metadata(), pre_download_guard(), summary()",
+            "hardware.HardwareInfo, urllib.request, json, pathlib.Path, re",
         ],
         [
             "MOD-08", "src/flexsds/core/credentials.py", "CredentialsManager, mask_secret()", "Core Engine",
@@ -227,6 +227,16 @@ def generate_sdd_data():
             "Sổ tay Google Colab chuẩn hóa để người dùng khởi chạy máy chủ GPU T4/L4 miễn phí và mở đường hầm.",
             "Cấu trúc cells: Clone repo (không lộ PAT) -> Cài đặt vllm v0.30.0 -> Cài đặt cloudflared -> Khởi chạy vLLM server và Cloudflare Tunnel.",
         ],
+        [
+            "FILE-09", "profile_<sm>_<slug>.json", "JSON", "~/.flexsds/profiles/", "0644 (Đọc/Ghi)",
+            "Kho hồ sơ độ trễ đo đạc và hiệu chuẩn riêng trên từng GPU của người dùng (sinh tự động bởi run_hardware_micro_benchmark hoặc save_hardware_profile).",
+            "forward_target (dict), forward_draft (dict), cost_matrix_ms (dict), metadata (dict: gpu_name, sm, calibrated_at).",
+        ],
+        [
+            "FILE-10", "<slug>_config.json", "JSON", "~/.flexsds/cache/configs/", "0644 (Đọc/Ghi)",
+            "Bộ nhớ đệm metadata cấu hình mô hình (config.json) tải từ Hugging Face để phục vụ kiểm tra tương thích ngoại tuyến không cần mạng.",
+            "architectures (list[str]), model_type (str), vocab_size (int), hidden_size (int), num_hidden_layers (int), torch_dtype (str).",
+        ],
     ]
 
     sheet3_rows = [sheet3_headers] + sheet3_data
@@ -255,8 +265,8 @@ def generate_sdd_data():
         ],
         [
             "API-02", "CLI Profile", "CLI Subcommand", "Người dùng -> MainDispatcher", "Dòng lệnh",
-            "Không tham số: 'flexsds profile'",
-            "Nạp hồ sơ chi phí GPU và in tên file hồ sơ tương ứng (ví dụ profile_sm89_l4.json).",
+            "Tùy chọn: '--benchmark', '--target-model <mô_hình>', '--draft-model <đầu_nháp>', '--batch-sizes <danh_sách>', '--output <đường_dẫn>' (hoặc không tham số: 'flexsds profile')",
+            "Khi không có cờ: Nạp hồ sơ chi phí GPU và in tên file hồ sơ tương ứng. Khi có --benchmark: Thực hiện micro-benchmark đo độ trễ thực tế, sinh hồ sơ JSON và lưu vào ~/.flexsds/profiles/.",
             "Mã thoát exit code 0.",
         ],
         [
@@ -279,9 +289,9 @@ def generate_sdd_data():
         ],
         [
             "API-06", "CLI Serve Flags", "CLI Subcommand", "Người dùng -> TaskRunner / Runner", "Dòng lệnh",
-            "--target <tên>, --draft <tên>, --backend [local|modal|colab], --port, --background, --dry-run",
-            "Điều phối khởi chạy qua TaskRunner; kiểm tra cổng; chạy server.",
-            "Phát hiện cổng trùng, bắt lỗi định danh modal.",
+            "--target <tên>, --draft <tên>, --backend [local|modal|colab], --port, --background, --dry-run, --allow-fallback",
+            "Điều phối khởi chạy qua TaskRunner; kiểm tra cổng; kiểm tra hồ sơ phần cứng (chặn sớm nếu thiếu hồ sơ chuẩn trừ khi có --allow-fallback); chạy server.",
+            "Phát hiện cổng trùng, bắt lỗi định danh Modal, chặn sớm fail-fast khi phần cứng chưa hiệu chuẩn.",
         ],
         [
             "API-07", "CLI Stop", "CLI Subcommand", "Người dùng -> LocalServingRunner", "Dòng lệnh",
@@ -387,6 +397,27 @@ def generate_sdd_data():
             "Bọc json.loads trong khối try...except json.JSONDecodeError; bỏ qua dòng dở.",
             "Bỏ qua dòng lỗi, tiếp tục đọc dòng hoàn chỉnh ở chu kỳ quét tiếp theo.",
             "Không in thông báo rác, giữ màn hình sạch sẽ.",
+        ],
+        [
+            "ERR-09", "Khởi chạy phục vụ trên GPU chưa hiệu chuẩn hồ sơ độ trễ (Uncalibrated Hardware Fail-Fast Guard)", "main.py / get_serving_cost_profile()",
+            "Người dùng chạy lệnh 'flexsds serve' trên GPU mới chưa có hồ sơ chuẩn trong repo hoặc kho cá nhân, và không chỉ định cờ --allow-fallback.",
+            "Chặn sớm tiến trình (fail-fast guard), in cảnh báo màu vàng và thông báo lỗi yêu cầu chạy 'flexsds profile --benchmark' để hiệu chuẩn trước, hoặc thêm cờ '--allow-fallback' để chấp nhận hồ sơ dự phòng.",
+            "Tiến trình dừng an toàn không gây lãng phí tài nguyên hoặc suy giảm hiệu năng ngoài ý muốn.",
+            "✔ '[Lỗi phần cứng] GPU chưa có hồ sơ độ trễ chuẩn. Vui lòng chạy \"flexsds profile --benchmark\" để hiệu chuẩn, hoặc thêm cờ \"--allow-fallback\".'",
+        ],
+        [
+            "ERR-10", "Mô hình nháp không thuộc kiến trúc EAGLE (Draft Architecture Mismatch)", "CompatibilityGuard / inspect_remote_model_metadata()",
+            "Người dùng chỉ định mô hình nháp là mô hình nhân quả tiêu chuẩn (ví dụ LlamaForCausalLM) không chứa cấu trúc đầu nháp EAGLE.",
+            "Kiểm tra trường architectures trong config.json; nếu không khớp kiến trúc EAGLE thì gán is_compatible = False và từ chối khởi chạy.",
+            "Báo cáo tương thích ghi nhận trạng thái từ chối, ngăn ngừa lỗi sập runtime của vLLM engine.",
+            "✔ 'Mô hình nháp không phải kiến trúc EAGLE (phát hiện: <kiến_trúc>). FlexSDS v0.2 chỉ hỗ trợ các mô hình nháp EAGLE.'",
+        ],
+        [
+            "ERR-11", "Lỗi kết nối mạng khi tải metadata cấu hình mô hình ngoại tuyến (Model Config Network Error)", "CompatibilityGuard / get_model_config()",
+            "Hệ thống chạy trong môi trường ngắt mạng (offline) và tệp config.json của mô hình chưa từng được lưu trong bộ nhớ đệm ~/.flexsds/cache/configs/.",
+            "Bắt ngoại lệ URLError / socket error; ném lỗi mạng có thông điệp hướng dẫn kết nối internet để tải cấu hình lần đầu hoặc chỉ định đường dẫn tệp cục bộ.",
+            "Không làm sập tiến trình với traceback khó hiểu, cung cấp chỉ dẫn khắc phục rõ ràng.",
+            "✔ 'Không thể tải cấu hình mô hình do lỗi mạng và chưa có dữ liệu đệm. Vui lòng kết nối mạng hoặc sử dụng đường dẫn cục bộ.'",
         ],
     ]
 
