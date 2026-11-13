@@ -51,6 +51,8 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                 scheduler_class=f"{type(self).__module__}.{type(self).__name__}")
 
         if self.dynamic_sd_lookup is None:
+            if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
+                raise RuntimeError("Strict Adaptive requires dynamic speculative budget plumbing")
             logger.warning(
                 "AdaptiveAsyncScheduler: num_speculative_tokens_per_batch_size is not set, "
                 "batch K stays fixed at %d; only per-request trimming is active.",
@@ -81,6 +83,8 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                 for batch_size in range(1, len(lookup)):
                     lookup[batch_size] = self._plan.batch_k
         except Exception:
+            if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
+                raise
             # Never take the engine down over a planning error: keep the previous K.
             logger.exception("AdaptiveAsyncScheduler: planning failed, keeping previous K")
             self._plan = StepPlan(batch_k=self._plan.batch_k, per_request_k={})
@@ -115,6 +119,8 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             self._lineage.register(scheduler_output, self._plan, self._schedule_sequence, self.requests)
         except Exception:
             self._lineage.clear()
+            if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
+                raise
             logger.exception("AdaptiveAsyncScheduler: lineage registration failed")
         _pb279_observe("early_schedule", self, scheduler_output)
 
@@ -191,6 +197,10 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             self._plan.per_request_k.pop(request.request_id, None)
             self._plan.per_request_node_count.pop(request.request_id, None)
             self._plan.per_request_decisions.pop(request.request_id, None)
+            observe("request_cleanup", registration=self._lineage_registration,
+                    request_id=request.request_id,
+                    active_sessions=self._planner.adapter.active_request_count,
+                    active_lineage=len(self._lineage.active))
         return super()._free_request(request, *args, **kwargs)
 
     def shutdown(self):

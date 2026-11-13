@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections import deque
 from typing import Dict, List, Optional, Callable, Any
 from src.proposer.controller import (
     BudgetController,
@@ -50,7 +51,8 @@ class AdaptiveProposerAdapter:
             kwargs["initial_alpha"] = initial_alpha
         controller = self.controller_cls(**kwargs)
         self._active_sessions[request_id] = controller
-        self._accepted_history[request_id] = []
+        limit = kwargs.get("history_limit")
+        self._accepted_history[request_id] = [] if limit is None else deque(maxlen=limit)
         return controller
 
     def get_controller(self, request_id: str) -> BudgetController:

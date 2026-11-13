@@ -116,6 +116,7 @@ class AdaptiveBudgetPlanner:
             record = _decision_record(decision, nodes[req_id], batch_size, kv_pct, free_vram_mb,
                                       raw_alpha=raw_alpha, effective_alpha=effective_alpha)
             record.update(request_id=req_id, lane="adaptive", record_type="planned_decision",
+                          controller_class=f"{type(self.adapter.get_controller(req_id)).__module__}.{type(self.adapter.get_controller(req_id)).__name__}",
                           plan_sequence=self._plan_sequence, scalar_runtime_budget=per_request_k[req_id],
                           batch_scalar_budget=batch_k, batch_node_count=batch_node_count)
             self._last_decisions[req_id] = record

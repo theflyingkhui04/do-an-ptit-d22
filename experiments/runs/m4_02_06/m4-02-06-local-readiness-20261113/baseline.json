@@ -1,0 +1,12 @@
+{
+  "branch": "feat/m4-02-06-lossless-sweep-freeze",
+  "HEAD": "e7db7ccf17e48814489b067a0307c8fe2dae441e",
+  "origin_develop": "e7db7ccf17e48814489b067a0307c8fe2dae441e",
+  "ahead_behind": "0\t0",
+  "preexisting_untracked": [
+    "experiments/runs/m4_02_04/20261111-checkpoint-preparation/",
+    "experiments/runs/m4_02_04/20261111T115100Z-colab-observer-package/",
+    "experiments/runs/m4_02_04/20261111T120000Z-colab-observer-package/"
+  ],
+  "optional_origin_feature_M5_02_available": false
+}

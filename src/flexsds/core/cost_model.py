@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -154,6 +155,9 @@ class FlexCostModel:
             return self.matrix[(topo, batch_size)]
         if resolved.name == "T0" and (0, batch_size) in self.matrix:
             return self.matrix[(0, batch_size)]
+
+        if self.metadata.get("scalar_only"):
+            raise ValueError("Measured scalar profile has no exact cost for this topology/batch")
 
         # 2. Analytical Fallback calculation
         c_t, c_d = self.get_forward_costs(batch_size=batch_size)
@@ -360,59 +364,121 @@ def load_profile_for_hardware(
     custom_profile_path: Optional[Union[str, Path]] = None,
     strict: bool = False,
 ) -> Tuple[Optional[FlexCostModel], str]:
-    """Loads hardware cost profile using a 3-tier hierarchical resolution strategy.
-    
-    Tier 1: Explicit custom profile path (CLI flag or configuration).
-    Tier 2: User profile repository (~/.flexsds/profiles/profile_<sm>.json).
-    Tier 3: Built-in vendor profiles (flexsds/profiles/profile_sm89_l4.json, etc.).
-    Fallback: Conservative Analytical Fallback model with safety bounds (k_max=3) if strict=False, else (None, "").
+    """Loads hardware cost profile using a hierarchical resolution strategy.
+
+    Resolution order:
+    1. Explicit custom profile path.
+    2. User profile repository (~/.flexsds/profiles/).
+    3. Built-in vendor profiles.
+    4. Conservative analytical fallback for non-A100 hardware when strict=False.
+
+    A100/sm80 is fail-closed: it requires a measured scalar profile_sm80.json
+    with the exact frozen M4 B/K grid and never falls back to L4/analytical data.
     """
-    # Tier 1: Explicit custom profile path
+    sm_arch = hw_info.sm_architecture if hw_info else "sm_89"
+
+    def load_checked(path: Path) -> Tuple[FlexCostModel, str]:
+        if sm_arch == "sm_80":
+            data = json.loads(path.read_text(encoding="utf-8"))
+            meta = data.get("metadata", {})
+            matrix = data.get("cost_matrix_ms", {})
+
+            expected = {
+                f"k{k}_b{b}"
+                for k in range(5)
+                for b in (1, 2, 4, 8, 16, 32)
+            }
+
+            if (
+                meta.get("sm_architecture") != "sm_80"
+                or meta.get("scalar_only") is not True
+                or meta.get("measurement_status") != "measured"
+                or set(matrix) != expected
+                or any(
+                    type(v) not in (int, float)
+                    or not math.isfinite(v)
+                    or v <= 0
+                    for v in matrix.values()
+                )
+            ):
+                raise ValueError("Malformed/unmeasured A100 scalar profile")
+
+        return FlexCostModel.from_json(path), path.name
+
+    # Tier 1: explicit custom profile.
     if custom_profile_path:
         custom_p = Path(custom_profile_path)
         if custom_p.exists():
-            return FlexCostModel.from_json(custom_p), custom_p.name
+            return load_checked(custom_p)
 
-    sm_arch = hw_info.sm_architecture if hw_info else "sm_89"
-
-    # Tier 2: User profile store (~/.flexsds/profiles/)
+    # Tier 2: user profile store.
     if USER_PROFILES_DIR.exists():
         user_direct = USER_PROFILES_DIR / f"profile_{sm_arch}.json"
         if user_direct.exists():
-            return FlexCostModel.from_json(user_direct), user_direct.name
+            return load_checked(user_direct)
 
-        matches = sorted(list(USER_PROFILES_DIR.glob(f"profile_{sm_arch}*.json")))
+        matches = sorted(USER_PROFILES_DIR.glob(f"profile_{sm_arch}*.json"))
         if matches:
-            chosen = matches[0]
-            return FlexCostModel.from_json(chosen), chosen.name
+            return load_checked(matches[0])
 
-    # Tier 3: Built-in vendor profiles
+    # M4 invariant: A100 must use the measured scalar profile.
+    if sm_arch == "sm_80":
+        profile_path = PROFILES_DIR / "profile_sm80.json"
+
+        if profile_path.exists():
+            return load_checked(profile_path)
+
+        raise FileNotFoundError(
+            "A100 requires a measured profile_sm80.json; "
+            "no L4/analytical substitution"
+        )
+
+    # Tier 3: built-in vendor profiles for non-A100 hardware.
     arch_map = {
         "sm_89": "profile_sm89_l4.json",
         "sm_75": "profile_sm75_t4.json",
-        "sm_80": "profile_sm80_a100.json",
         "cpu": "profile_sm89_l4.json",
     }
 
     built_in_filename = arch_map.get(sm_arch)
+
     if built_in_filename:
         built_in_path = PROFILES_DIR / built_in_filename
         if built_in_path.exists():
             return FlexCostModel.from_json(built_in_path), built_in_filename
 
-    # If strict=True and no profile is found, fail-fast
+    # Develop behavior: strict mode fails closed.
     if strict:
         return None, ""
 
-    # Fallback: Conservative Analytical Fallback model
-    # Conservative profile: EAGLE head ~ 18% cost of 7B target forward
-    default_target = {1: 20.0, 2: 20.5, 4: 21.0, 8: 22.0, 16: 25.0, 32: 32.0}
-    default_draft = {1: 3.6, 2: 3.8, 4: 4.0, 8: 4.5, 16: 5.2, 32: 6.0}
+    # Conservative analytical fallback for non-A100 hardware only.
+    default_target = {
+        1: 20.0,
+        2: 20.5,
+        4: 21.0,
+        8: 22.0,
+        16: 25.0,
+        32: 32.0,
+    }
+
+    default_draft = {
+        1: 3.6,
+        2: 3.8,
+        4: 4.0,
+        8: 4.5,
+        16: 5.2,
+        32: 6.0,
+    }
+
     fallback_meta = {
         "fallback_mode": True,
         "k_max_safe": 3,
-        "reason": f"No profile found for '{sm_arch}'. Conservative analytical fallback applied.",
+        "reason": (
+            f"No profile found for '{sm_arch}'. "
+            "Conservative analytical fallback applied."
+        ),
     }
+
     return (
         FlexCostModel(
             forward_target=default_target,

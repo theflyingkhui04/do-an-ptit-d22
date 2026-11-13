@@ -529,7 +529,21 @@ def _aggregate_measured_records(
                 f"has non-positive TPOT p50: {tpot_p50}"
             )
 
-        if lane == "static":
+        if lane in ("eagle_fixed", "eagle_adaptive"):
+            # A genuine adaptive K=0 cell may have no speculation. Preserve
+            # undefined alpha/tau rather than dividing by zero or inventing 0.
+            specs = [_extract_spec_metrics(r) for r in records]
+            for spec in specs:
+                d, a, n = (spec.get(f) for f in ("num_draft_tokens", "num_accepted_draft_tokens", "num_spec_steps"))
+                if not all(type(v) is int for v in (d, a, n)) or not 0 <= a <= d or n < 0:
+                    raise ValueError("Invalid M4 native speculative counters")
+            if sum(s["num_draft_tokens"] for s in specs):
+                alpha, tau = aggregate_static_acceptance(records)
+            else:
+                if lane == "eagle_fixed":
+                    raise ValueError("Fixed EAGLE produced no native drafts; possible silent fallback")
+                alpha = tau = "N/A"
+        elif lane == "static":
             alpha, tau = aggregate_static_acceptance(records)
         else:
             alpha = "N/A"

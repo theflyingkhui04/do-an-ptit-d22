@@ -74,6 +74,11 @@ class LineageLedger:
         # Buffer id is only an immediate witness; each call stamps a NEW birth,
         # even if the allocator/proposer reuses the same tensor object.
         self.generation = (id(buffer), int(shape[1]), rows, origins)
+        observe("draft_produced", batch_k=int(shape[1]),
+                rows=[dict(request_id=rid, plan_sequence=origin.plan_sequence,
+                           schedule_sequence=origin.schedule_sequence,
+                           request_k=origin.request_k, batch_k=origin.batch_k)
+                      for rid, origin in zip(rows, origins) if origin is not None])
 
     def prepared(self, output, runner, generation):
         entry = self.get(output)
