@@ -15,6 +15,7 @@ except ImportError:
     HAS_TERMIOS = False
 
 try:
+    from flexsds.cli.output import print_output as print
     from flexsds.core.hardware import detect_hardware, HardwareInfo
     from flexsds.core.compatibility import (
         check_compatibility,
@@ -26,6 +27,7 @@ try:
     from flexsds.server.colab_runner import ColabServingRunner
     from flexsds.server.modal_runner import ModalServingRunner
 except ModuleNotFoundError:
+    from src.flexsds.cli.output import print_output as print
     from src.flexsds.core.hardware import detect_hardware, HardwareInfo
     from src.flexsds.core.compatibility import (
         check_compatibility,
@@ -92,19 +94,19 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
     current = default_idx
     n = len(choices)
 
-    sys.stdout.write(f"\n\033[1;37m? {question}\033[0m\n")
-    sys.stdout.write("\033[?25l")  # Hide cursor
+    print(f"\n\033[1;37m? {question}\033[0m\n", end="")
+    print("\033[?25l", end="")  # Hide cursor
     sys.stdout.flush()
 
     def render(first: bool = False) -> None:
         if not first:
-            sys.stdout.write(f"\033[{n}A")
+            print(f"\033[{n}A", end="")
         for i, choice in enumerate(choices):
-            sys.stdout.write("\r\033[K")
+            print("\r\033[K", end="")
             if i == current:
-                sys.stdout.write(f"  \033[1;37m> {choice}\033[0m\n")
+                print(f"  \033[1;37m> {choice}\033[0m\n", end="")
             else:
-                sys.stdout.write(f"    \033[90m{choice}\033[0m\n")
+                print(f"    \033[90m{choice}\033[0m\n", end="")
         sys.stdout.flush()
 
     render(first=True)
@@ -140,18 +142,18 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
             elif ch in ("\r", "\n", " "):
                 break
             elif ch == "\x03":  # Ctrl+C
-                sys.stdout.write("\033[?25h\n")
+                print("\033[?25h\n", end="")
                 sys.exit(0)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        sys.stdout.write("\033[?25h")  # Show cursor
+        print("\033[?25h", end="")  # Show cursor
         sys.stdout.flush()
 
     # Collapse into clean single confirmed line
-    sys.stdout.write(f"\033[{n+1}A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[current]}\033[0m\n")
+    print(f"\033[{n+1}A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[current]}\033[0m\n", end="")
     for _ in range(n):
-        sys.stdout.write("\033[K\n")
-    sys.stdout.write(f"\033[{n}A")
+        print("\033[K\n", end="")
+    print(f"\033[{n}A", end="")
     sys.stdout.flush()
 
     return choices[current]
@@ -165,15 +167,15 @@ def prompt_string(question: str, default_val: str = "") -> str:
 
     hint = f" \033[90m[{default_val}]\033[0m" if default_val else ""
     try:
-        sys.stdout.write(f"\n\033[1;37m? {question}\033[0m{hint}: ")
+        print(f"\n\033[1;37m? {question}\033[0m{hint}: ", end="")
         sys.stdout.flush()
         user_input = sys.stdin.readline().strip()
         val = user_input if user_input else default_val
-        sys.stdout.write(f"\033[1A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{val}\033[0m\n")
+        print(f"\033[1A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{val}\033[0m\n", end="")
         sys.stdout.flush()
         return val
     except (EOFError, KeyboardInterrupt):
-        sys.stdout.write("\n")
+        print("\n", end="")
         sys.exit(0)
 
 

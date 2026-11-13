@@ -6,6 +6,7 @@ import pytest
 
 from flexsds.cli import banner
 from flexsds.cli import main as cli
+from flexsds.cli import wizard
 from flexsds.core.hardware import HardwareInfo
 
 
@@ -123,3 +124,35 @@ def test_unrelated_write_errors_propagate(monkeypatch, hardware):
     monkeypatch.setattr(banner.sys, "stdout", BrokenStream())
     with pytest.raises(BrokenPipeError, match="closed pipe"):
         banner.print_banner(hardware)
+
+
+def test_wizard_detection_output_on_cp1252(monkeypatch, hardware):
+    sink = EncodedStream()
+    monkeypatch.setattr(wizard.sys, "stdout", sink)
+    monkeypatch.setattr(wizard, "prompt_choice", lambda *a, **kw: "Detect hardware")
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: pytest.fail("Server launched"))
+    assert wizard.run_interactive_wizard(hardware) == {"action": "detect"}
+    assert "Hardware specs:" in sink.getvalue()
+    assert sink.getvalue().isascii()
+
+
+def test_wizard_text_prompt_on_cp1252(monkeypatch):
+    class Input(io.StringIO):
+        def isatty(self):
+            return True
+
+    sink = EncodedStream()
+    monkeypatch.setattr(wizard.sys, "stdout", sink)
+    monkeypatch.setattr(wizard.sys, "stdin", Input("chosen-model\n"))
+    assert wizard.prompt_string("Target model?", "default") == "chosen-model"
+    assert "chosen-model" in sink.getvalue()
+    assert sink.getvalue().isascii()
+
+
+def test_wizard_choice_confirmation_on_cp1252(monkeypatch):
+    sink = EncodedStream()
+    monkeypatch.setattr(wizard.sys, "stdout", sink)
+    monkeypatch.setattr(wizard.sys, "stdin", io.StringIO())
+    assert wizard.prompt_choice("Platform?", ["Local", "Modal"]) == "Local"
+    assert "[OK]" in sink.getvalue()
+    assert sink.getvalue().isascii()
