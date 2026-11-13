@@ -1,0 +1,16 @@
+{
+  "issubclass": true,
+  "installed_source": "/usr/local/lib/python3.11/site-packages/vllm/v1/core/sched/async_scheduler.py",
+  "signatures": {
+    "AsyncScheduler.__init__": "(self, *args, **kwargs) -> None",
+    "AsyncScheduler.schedule": "(self, throttle_prefills: bool = False) -> vllm.v1.core.sched.output.SchedulerOutput",
+    "AsyncScheduler._update_after_schedule": "(self, scheduler_output: vllm.v1.core.sched.output.SchedulerOutput) -> None",
+    "AsyncScheduler.make_spec_decoding_stats": "(self, spec_decoding_stats: vllm.v1.spec_decode.metrics.SpecDecodingStats | None, num_draft_tokens: int, num_accepted_tokens: int, num_invalid_spec_tokens: dict[str, int] | None, request_id: str) -> vllm.v1.spec_decode.metrics.SpecDecodingStats | None",
+    "AsyncScheduler._free_request": "(self, request: vllm.v1.request.Request, delay_free_blocks: bool = False) -> tuple[dict[str, typing.Any] | None, dict[str, typing.Any] | None]",
+    "Scheduler.__init__": "(self, vllm_config: vllm.config.vllm.VllmConfig, kv_cache_config: vllm.v1.kv_cache_interface.KVCacheConfig, structured_output_manager: vllm.v1.structured_output.StructuredOutputManager, block_size: int, hash_block_size: int | None = None, mm_registry: vllm.multimodal.registry.MultiModalRegistry = <vllm.multimodal.registry.MultiModalRegistry object at 0x2b837bef6c10>, include_finished_set: bool = False, log_stats: bool = False) -> None",
+    "Scheduler.schedule": "(self, throttle_prefills: bool = False) -> vllm.v1.core.sched.output.SchedulerOutput",
+    "Scheduler._update_after_schedule": "(self, scheduler_output: vllm.v1.core.sched.output.SchedulerOutput) -> None",
+    "Scheduler.make_spec_decoding_stats": "(self, spec_decoding_stats: vllm.v1.spec_decode.metrics.SpecDecodingStats | None, num_draft_tokens: int, num_accepted_tokens: int, num_invalid_spec_tokens: dict[str, int] | None, request_id: str) -> vllm.v1.spec_decode.metrics.SpecDecodingStats | None",
+    "Scheduler._free_request": "(self, request: vllm.v1.request.Request, delay_free_blocks: bool = False) -> tuple[dict[str, typing.Any] | None, dict[str, typing.Any] | None]"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "offline_validation": "PASS",
+  "consumer_profile": false,
+  "verdict": "LIVE OBSERVER VERIFIED",
+  "context_matching": "UNMATCHED_REFERENCE",
+  "context_matching_reason": "Exact mapped corrected context trajectories or padding differ",
+  "profitability": "NOT EVALUATED \u2014 INSTRUMENTATION SMOKE ONLY",
+  "full_grid": "NOT RUN \u2014 AWAITING SMOKE REVIEW",
+  "perturbation": "No device read/wait added; CPU metadata overhead retained. Enabled/disabled output equality is a limited structural check, not zero perturbation."
+}

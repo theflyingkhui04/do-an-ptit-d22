@@ -1,0 +1,43 @@
+........................................................................ [ 50%]
+................F.............F........................................  [100%]
+================================== FAILURES ===================================
+____________________ test_local_runner_stop_process_group _____________________
+
+    def test_local_runner_stop_process_group():
+        runner = LocalServingRunner()
+        pid_file = "/tmp/test_flexsds.pid"
+>       with open(pid_file, "w") as f:
+             ^^^^^^^^^^^^^^^^^^^
+E       PermissionError: [Errno 13] Permission denied: '/tmp/test_flexsds.pid'
+
+tests\test_local_runner.py:39: PermissionError
+_______________________ test_decision_latency_benchmark _______________________
+
+    def test_decision_latency_benchmark():
+        """Verifies that select_budget executes well within the 0.05 ms (50 microsecond) SLA."""
+        controller = TreeAdaptiveController(initial_alpha=0.85)
+
+        # Warmup
+        for _ in range(100):
+            controller.select_budget(batch_size=4, free_vram_mb=16000.0, kv_cache_usage_pct=20.0)
+
+        iterations = 10000
+        start = time.perf_counter()
+        for _ in range(iterations):
+            _ = controller.select_budget(batch_size=4, free_vram_mb=16000.0, kv_cache_usage_pct=20.0)
+        elapsed = time.perf_counter() - start
+        avg_latency_ms = (elapsed / iterations) * 1000.0
+
+        print(f"\nAverage decision latency: {avg_latency_ms * 1000:.3f} microseconds ({avg_latency_ms:.6f} ms)")
+>       assert avg_latency_ms < 0.05, f"Decision latency too high: {avg_latency_ms:.6f} ms >= 0.05 ms"
+E       AssertionError: Decision latency too high: 0.061770 ms >= 0.05 ms
+E       assert 0.06176950000080978 < 0.05
+
+tests\test_tree_adaptive_controller.py:272: AssertionError
+---------------------------- Captured stdout call -----------------------------
+
+Average decision latency: 61.770 microseconds (0.061770 ms)
+=========================== short test summary info ===========================
+FAILED tests/test_local_runner.py::test_local_runner_stop_process_group - Per...
+FAILED tests/test_tree_adaptive_controller.py::test_decision_latency_benchmark
+2 failed, 141 passed in 28.49s

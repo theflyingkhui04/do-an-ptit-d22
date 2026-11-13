@@ -1,0 +1,2005 @@
+{
+  "evidence_layer": "LIVE_L4_SMOKE",
+  "consumer_profile": false,
+  "overflow": false,
+  "events": [
+    {
+      "status": "unsupported",
+      "reason": "LIFECYCLE_STATE_UNAVAILABLE",
+      "end_ns": 3109623324050,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136676253646608,
+      "model_output_object_id": 136675291077776,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v1",
+      "planned_k": 0,
+      "planned_per_request": {},
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 9
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          16
+        ],
+        "queries": [
+          9
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "CPU_OPTIMISTIC",
+        "prefill": true,
+        "proposer_rows": 1,
+        "proposer_k": 0
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3109651079479,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136675281292176,
+      "model_output_object_id": 136676550376464,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v2",
+      "planned_k": 0,
+      "planned_per_request": {
+        "1-a2b8ba34": 0
+      },
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          25
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 0,
+        "cpu_contexts_forecast": [
+          25
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v2",
+        "scheduler_output_id": "136675281292176",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 25,
+            "verification_query_length": 1,
+            "query_positions": [
+              25
+            ],
+            "verification_sequence_length": 26,
+            "gpu_context_buffer_after_execution": 25,
+            "corrected_post_execution_context": 26,
+            "next_execution_eligible": true,
+            "committed_output_after": 1,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 0
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v2",
+        "scheduler_output_id": "136675281292176",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 25,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 0
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3109678925178,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136675289852816,
+      "model_output_object_id": 136675281252240,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v3",
+      "planned_k": 0,
+      "planned_per_request": {
+        "1-a2b8ba34": 0
+      },
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          26
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 0,
+        "cpu_contexts_forecast": [
+          26
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v3",
+        "scheduler_output_id": "136675289852816",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 26,
+            "verification_query_length": 1,
+            "query_positions": [
+              26
+            ],
+            "verification_sequence_length": 27,
+            "gpu_context_buffer_after_execution": 26,
+            "corrected_post_execution_context": 27,
+            "next_execution_eligible": true,
+            "committed_output_after": 2,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 0
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v3",
+        "scheduler_output_id": "136675289852816",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 26,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 1
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v2",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3109707050714,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136675281290640,
+      "model_output_object_id": 136675289667472,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v4",
+      "planned_k": 0,
+      "planned_per_request": {
+        "1-a2b8ba34": 0
+      },
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          27
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 0,
+        "cpu_contexts_forecast": [
+          27
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v4",
+        "scheduler_output_id": "136675281290640",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 27,
+            "verification_query_length": 1,
+            "query_positions": [
+              27
+            ],
+            "verification_sequence_length": 28,
+            "gpu_context_buffer_after_execution": 27,
+            "corrected_post_execution_context": 28,
+            "next_execution_eligible": true,
+            "committed_output_after": 3,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 0
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v4",
+        "scheduler_output_id": "136675281290640",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 27,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 2
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v3",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3109734970323,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136676253449168,
+      "model_output_object_id": 136675281333200,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v5",
+      "planned_k": 0,
+      "planned_per_request": {
+        "1-a2b8ba34": 0
+      },
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          28
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 0,
+        "cpu_contexts_forecast": [
+          28
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v5",
+        "scheduler_output_id": "136676253449168",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 28,
+            "verification_query_length": 1,
+            "query_positions": [
+              28
+            ],
+            "verification_sequence_length": 29,
+            "gpu_context_buffer_after_execution": 28,
+            "corrected_post_execution_context": 29,
+            "next_execution_eligible": true,
+            "committed_output_after": 4,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 0
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v5",
+        "scheduler_output_id": "136676253449168",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 28,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 3
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v4",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3109762762612,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136675281241552,
+      "model_output_object_id": 136675292182032,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v6",
+      "planned_k": 0,
+      "planned_per_request": {
+        "1-a2b8ba34": 0
+      },
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          29
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 0,
+        "cpu_contexts_forecast": [
+          29
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v6",
+        "scheduler_output_id": "136675281241552",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 29,
+            "verification_query_length": 1,
+            "query_positions": [
+              29
+            ],
+            "verification_sequence_length": 30,
+            "gpu_context_buffer_after_execution": 29,
+            "corrected_post_execution_context": 30,
+            "next_execution_eligible": true,
+            "committed_output_after": 5,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 0
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v6",
+        "scheduler_output_id": "136675281241552",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 29,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 4
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v5",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3109790648799,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136675281254544,
+      "model_output_object_id": 136675288444112,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v7",
+      "planned_k": 0,
+      "planned_per_request": {
+        "1-a2b8ba34": 0
+      },
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          30
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 0,
+        "cpu_contexts_forecast": [
+          30
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v7",
+        "scheduler_output_id": "136675281254544",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 30,
+            "verification_query_length": 1,
+            "query_positions": [
+              30
+            ],
+            "verification_sequence_length": 31,
+            "gpu_context_buffer_after_execution": 30,
+            "corrected_post_execution_context": 31,
+            "next_execution_eligible": true,
+            "committed_output_after": 6,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 0
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v7",
+        "scheduler_output_id": "136675281254544",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 30,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 5
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v6",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3109818609060,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136675281290640,
+      "model_output_object_id": 136675290184912,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v8",
+      "planned_k": 0,
+      "planned_per_request": {
+        "1-a2b8ba34": 0
+      },
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          31
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 0,
+        "cpu_contexts_forecast": [
+          31
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v8",
+        "scheduler_output_id": "136675281290640",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 31,
+            "verification_query_length": 1,
+            "query_positions": [
+              31
+            ],
+            "verification_sequence_length": 32,
+            "gpu_context_buffer_after_execution": 31,
+            "corrected_post_execution_context": 32,
+            "next_execution_eligible": true,
+            "committed_output_after": 7,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 0
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v8",
+        "scheduler_output_id": "136675281290640",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 31,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 6
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v7",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    },
+    {
+      "status": "eligible",
+      "reason": null,
+      "end_ns": 3109846552841,
+      "emitted": 1,
+      "output_rows": [
+        "1-a2b8ba34"
+      ],
+      "schedule_object_id": 136675281241552,
+      "model_output_object_id": 136675288354320,
+      "raw_sampled_counts_before_update": [
+        [
+          "1-a2b8ba34",
+          1
+        ]
+      ],
+      "tree_execution_verified": false,
+      "verifier_id": "v9",
+      "planned_k": 0,
+      "planned_per_request": {
+        "1-a2b8ba34": 0
+      },
+      "placeholder_counts": {
+        "1-a2b8ba34": 0
+      },
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "scheduled_k": 0,
+      "scheduled": {
+        "1-a2b8ba34": 1
+      },
+      "verification_slots": {},
+      "worker": {
+        "request_ids": [
+          "1-a2b8ba34"
+        ],
+        "contexts": [
+          32
+        ],
+        "queries": [
+          1
+        ],
+        "valid_drafts": [
+          0
+        ],
+        "context_kind": "RECONSTRUCTED",
+        "prefill": false,
+        "proposer_rows": 1,
+        "proposer_k": 0,
+        "cpu_contexts_forecast": [
+          32
+        ],
+        "context_reconstruction_version": "vllm030-scalar-context-v1"
+      },
+      "emitted_by_request": {
+        "1-a2b8ba34": 1
+      },
+      "context_reconstruction": {
+        "execution_id": "v9",
+        "scheduler_output_id": "136675281241552",
+        "context_source": "reconstructed",
+        "context_reconstruction_version": "vllm030-scalar-context-v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "pre_execution_context": 32,
+            "verification_query_length": 1,
+            "query_positions": [
+              32
+            ],
+            "verification_sequence_length": 33,
+            "gpu_context_buffer_after_execution": 32,
+            "corrected_post_execution_context": 33,
+            "next_execution_eligible": true,
+            "committed_output_after": 8,
+            "raw_valid_sampled_count": 1,
+            "useful_emitted_count": 1,
+            "valid_speculative_slots": 0,
+            "invalid_padding_slots": 0,
+            "effective_k": 0
+          }
+        ]
+      },
+      "preparation_context_snapshot": {
+        "execution_id": "v9",
+        "scheduler_output_id": "136675281241552",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 32,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 7
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v8",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      }
+    }
+  ],
+  "windows": [
+    {
+      "start_ns": 3109651079479,
+      "end_ns": 3109734970323,
+      "retirement_ids": [
+        "v3",
+        "v4",
+        "v5"
+      ],
+      "ms_per_batch": 27.96361466666667,
+      "emitted": 3
+    },
+    {
+      "start_ns": 3109734970323,
+      "end_ns": 3109818609060,
+      "retirement_ids": [
+        "v6",
+        "v7",
+        "v8"
+      ],
+      "ms_per_batch": 27.879579000000003,
+      "emitted": 3
+    }
+  ],
+  "failures": [],
+  "observer_cpu_overhead_ns": [
+    [
+      "submission",
+      25456
+    ],
+    [
+      "preparation",
+      65067
+    ],
+    [
+      "padding",
+      7445
+    ],
+    [
+      "execution_future",
+      10768
+    ],
+    [
+      "proposer_before",
+      25369
+    ],
+    [
+      "proposer_after",
+      9193
+    ],
+    [
+      "output_future",
+      9980
+    ],
+    [
+      "submission",
+      22439
+    ],
+    [
+      "preparation",
+      57054
+    ],
+    [
+      "padding",
+      6664
+    ],
+    [
+      "execution_future",
+      8410
+    ],
+    [
+      "proposer_before",
+      25455
+    ],
+    [
+      "proposer_after",
+      8609
+    ],
+    [
+      "output_future",
+      8390
+    ],
+    [
+      "canonical_materialization",
+      2140
+    ],
+    [
+      "before_retirement",
+      45923
+    ],
+    [
+      "post_retirement_record",
+      23026
+    ],
+    [
+      "submission",
+      19670
+    ],
+    [
+      "preparation",
+      53896
+    ],
+    [
+      "padding",
+      6155
+    ],
+    [
+      "execution_future",
+      8674
+    ],
+    [
+      "proposer_before",
+      25242
+    ],
+    [
+      "proposer_after",
+      8374
+    ],
+    [
+      "output_future",
+      8403
+    ],
+    [
+      "canonical_materialization",
+      1994
+    ],
+    [
+      "before_retirement",
+      102862
+    ],
+    [
+      "post_retirement_record",
+      102639
+    ],
+    [
+      "submission",
+      24258
+    ],
+    [
+      "preparation",
+      50957
+    ],
+    [
+      "padding",
+      6279
+    ],
+    [
+      "execution_future",
+      8157
+    ],
+    [
+      "proposer_before",
+      24766
+    ],
+    [
+      "proposer_after",
+      7488
+    ],
+    [
+      "output_future",
+      9851
+    ],
+    [
+      "canonical_materialization",
+      2133
+    ],
+    [
+      "before_retirement",
+      79757
+    ],
+    [
+      "post_retirement_record",
+      127537
+    ],
+    [
+      "submission",
+      19071
+    ],
+    [
+      "preparation",
+      50312
+    ],
+    [
+      "padding",
+      6551
+    ],
+    [
+      "execution_future",
+      7391
+    ],
+    [
+      "proposer_before",
+      34554
+    ],
+    [
+      "proposer_after",
+      7565
+    ],
+    [
+      "output_future",
+      7701
+    ],
+    [
+      "canonical_materialization",
+      2199
+    ],
+    [
+      "before_retirement",
+      84840
+    ],
+    [
+      "post_retirement_record",
+      96700
+    ],
+    [
+      "submission",
+      17449
+    ],
+    [
+      "preparation",
+      47702
+    ],
+    [
+      "padding",
+      6027
+    ],
+    [
+      "execution_future",
+      8025
+    ],
+    [
+      "proposer_before",
+      25568
+    ],
+    [
+      "proposer_after",
+      7561
+    ],
+    [
+      "output_future",
+      7064
+    ],
+    [
+      "canonical_materialization",
+      2470
+    ],
+    [
+      "before_retirement",
+      90846
+    ],
+    [
+      "post_retirement_record",
+      114257
+    ],
+    [
+      "submission",
+      16799
+    ],
+    [
+      "preparation",
+      47845
+    ],
+    [
+      "padding",
+      6144
+    ],
+    [
+      "execution_future",
+      7285
+    ],
+    [
+      "proposer_before",
+      25265
+    ],
+    [
+      "proposer_after",
+      7648
+    ],
+    [
+      "output_future",
+      6713
+    ],
+    [
+      "canonical_materialization",
+      2298
+    ],
+    [
+      "before_retirement",
+      76989
+    ],
+    [
+      "post_retirement_record",
+      89030
+    ],
+    [
+      "submission",
+      19389
+    ],
+    [
+      "preparation",
+      64134
+    ],
+    [
+      "padding",
+      7264
+    ],
+    [
+      "execution_future",
+      7848
+    ],
+    [
+      "proposer_before",
+      24879
+    ],
+    [
+      "proposer_after",
+      8732
+    ],
+    [
+      "output_future",
+      7374
+    ],
+    [
+      "canonical_materialization",
+      2314
+    ],
+    [
+      "before_retirement",
+      67399
+    ],
+    [
+      "post_retirement_record",
+      90754
+    ],
+    [
+      "submission",
+      14901
+    ],
+    [
+      "preparation",
+      44865
+    ],
+    [
+      "padding",
+      5330
+    ],
+    [
+      "execution_future",
+      6699
+    ],
+    [
+      "proposer_before",
+      23587
+    ],
+    [
+      "proposer_after",
+      7439
+    ],
+    [
+      "output_future",
+      6801
+    ],
+    [
+      "canonical_materialization",
+      2744
+    ],
+    [
+      "before_retirement",
+      69401
+    ],
+    [
+      "post_retirement_record",
+      98995
+    ],
+    [
+      "submission",
+      14296
+    ],
+    [
+      "preparation",
+      44701
+    ],
+    [
+      "padding",
+      5306
+    ],
+    [
+      "execution_future",
+      6789
+    ],
+    [
+      "proposer_before",
+      23544
+    ],
+    [
+      "proposer_after",
+      6759
+    ],
+    [
+      "output_future",
+      6967
+    ],
+    [
+      "canonical_materialization",
+      1793
+    ],
+    [
+      "before_retirement",
+      70731
+    ],
+    [
+      "post_retirement_record",
+      94583
+    ],
+    [
+      "canonical_materialization",
+      2364
+    ]
+  ],
+  "overhead_scope": "partial CPU metadata and post-retirement processing; not GPU perturbation",
+  "observation_id_scope": "process-local only",
+  "process_id": 16166,
+  "worker_identity": {
+    "process_id": 16166,
+    "executor": "UniProcExecutor",
+    "device": "cuda:0"
+  },
+  "capture_complete": true,
+  "excluded_drain_pending_ids": [
+    "v10"
+  ],
+  "execution_facts": [
+    {
+      "verifier_id": "v1",
+      "schedule_object_id": 136676253646608,
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a2b8ba34": 25
+      },
+      "committed_output_before": {
+        "1-a2b8ba34": 0
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 136675291084368,
+      "output_future_id": 136675281297936,
+      "materialized_output_id": 136675291077776,
+      "lifecycle_flags": [],
+      "label": "PREFILL",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a2b8ba34"
+      ],
+      "queries": [
+        9
+      ],
+      "host_contexts": [
+        16
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v1",
+        "scheduler_output_id": "136676253646608",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 16,
+            "query_length": 9,
+            "previous_row": -1,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 0
+          }
+        ],
+        "correction_active": false,
+        "counts_source_execution_id": null,
+        "shared_k": 0,
+        "padded_query_tokens": 1,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 1,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    },
+    {
+      "verifier_id": "v2",
+      "schedule_object_id": 136675281292176,
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a2b8ba34": 25
+      },
+      "committed_output_before": {
+        "1-a2b8ba34": 0
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 136676215166096,
+      "output_future_id": 136676253441488,
+      "materialized_output_id": 136676550376464,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a2b8ba34"
+      ],
+      "queries": [
+        1
+      ],
+      "host_contexts": [
+        25
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v2",
+        "scheduler_output_id": "136675281292176",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 25,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 0
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v1",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 0,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    },
+    {
+      "verifier_id": "v3",
+      "schedule_object_id": 136675289852816,
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a2b8ba34": 25
+      },
+      "committed_output_before": {
+        "1-a2b8ba34": 1
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 136676550395536,
+      "output_future_id": 136676278760016,
+      "materialized_output_id": 136675281252240,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a2b8ba34"
+      ],
+      "queries": [
+        1
+      ],
+      "host_contexts": [
+        26
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v3",
+        "scheduler_output_id": "136675289852816",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 26,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 1
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v2",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 0,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    },
+    {
+      "verifier_id": "v8",
+      "schedule_object_id": 136675281290640,
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a2b8ba34": 25
+      },
+      "committed_output_before": {
+        "1-a2b8ba34": 6
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 136675281332624,
+      "output_future_id": 136675281247632,
+      "materialized_output_id": 136675290184912,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a2b8ba34"
+      ],
+      "queries": [
+        1
+      ],
+      "host_contexts": [
+        31
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v8",
+        "scheduler_output_id": "136675281290640",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 31,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 6
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v7",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 0,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    },
+    {
+      "verifier_id": "v5",
+      "schedule_object_id": 136676253449168,
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a2b8ba34": 25
+      },
+      "committed_output_before": {
+        "1-a2b8ba34": 3
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 136676253364944,
+      "output_future_id": 136675289852816,
+      "materialized_output_id": 136675281333200,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a2b8ba34"
+      ],
+      "queries": [
+        1
+      ],
+      "host_contexts": [
+        28
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v5",
+        "scheduler_output_id": "136676253449168",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 28,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 3
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v4",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 0,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    },
+    {
+      "verifier_id": "v9",
+      "schedule_object_id": 136675281241552,
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a2b8ba34": 25
+      },
+      "committed_output_before": {
+        "1-a2b8ba34": 7
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 136675281253008,
+      "output_future_id": 136675281326672,
+      "materialized_output_id": 136675288354320,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a2b8ba34"
+      ],
+      "queries": [
+        1
+      ],
+      "host_contexts": [
+        32
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v9",
+        "scheduler_output_id": "136675281241552",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 32,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 7
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v8",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 0,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    },
+    {
+      "verifier_id": "v7",
+      "schedule_object_id": 136675281254544,
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a2b8ba34": 25
+      },
+      "committed_output_before": {
+        "1-a2b8ba34": 5
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 136675281330576,
+      "output_future_id": 136675281335376,
+      "materialized_output_id": 136675288444112,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a2b8ba34"
+      ],
+      "queries": [
+        1
+      ],
+      "host_contexts": [
+        30
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v7",
+        "scheduler_output_id": "136675281254544",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 30,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 5
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v6",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": 1,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 0,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    },
+    {
+      "verifier_id": "v10",
+      "schedule_object_id": 136678039231056,
+      "incarnations": {
+        "1-a2b8ba34": "1-a2b8ba34:incarnation-1"
+      },
+      "prompt_lengths": {
+        "1-a2b8ba34": 25
+      },
+      "committed_output_before": {
+        "1-a2b8ba34": 8
+      },
+      "proposer_calls": 1,
+      "draft_forward_calls": 1,
+      "target_forward_calls": 1,
+      "execution_future_id": 136675288434832,
+      "output_future_id": 136675290185296,
+      "materialized_output_id": 136675288224912,
+      "lifecycle_flags": [],
+      "label": "DECODE_ELIGIBLE",
+      "worker_rows": 1,
+      "request_ids": [
+        "1-a2b8ba34"
+      ],
+      "queries": [
+        1
+      ],
+      "host_contexts": [
+        33
+      ],
+      "verification_slots": [
+        0
+      ],
+      "invalid_slots": [
+        0
+      ],
+      "preparation": {
+        "execution_id": "v10",
+        "scheduler_output_id": "136678039231056",
+        "rows": [
+          {
+            "request_id": "1-a2b8ba34",
+            "incarnation": "1-a2b8ba34:incarnation-1",
+            "fixture_slot": "fixture-slot-0",
+            "cpu_context": 33,
+            "query_length": 1,
+            "previous_row": 0,
+            "previous_drafts": 0,
+            "scheduled_drafts": 0,
+            "invalid_slots": 0,
+            "effective_k": 0,
+            "committed_output_before": 8
+          }
+        ],
+        "correction_active": true,
+        "counts_source_execution_id": "v9",
+        "shared_k": 0,
+        "padded_query_tokens": 0,
+        "padded_worker_rows": null,
+        "lifecycle_flags": [],
+        "mode": "vllm030-V1-uni-TP1-PP1-draft_model-padded-absolute"
+      },
+      "graph_mode": "PIECEWISE",
+      "padded_worker_rows": 1,
+      "padded_query_tokens": 0,
+      "proposer_k": 0,
+      "proposer_rows": 1,
+      "draft_output_shape": [
+        1,
+        0
+      ],
+      "assigned_proposer_k": 0
+    }
+  ]
+}

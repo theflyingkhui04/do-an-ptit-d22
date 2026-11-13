@@ -1,0 +1,5 @@
+{
+  "artifact_kind": "local attempt accounting; not runtime telemetry",
+  "reason": "Modal image-step ordering rejection; no model execution",
+  "canonical": false
+}

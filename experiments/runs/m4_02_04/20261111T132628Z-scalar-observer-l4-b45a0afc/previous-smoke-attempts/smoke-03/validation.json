@@ -1,0 +1,5 @@
+{
+  "offline_validation": "FAIL",
+  "verdict": "LIVE OBSERVER NOT VERIFIED",
+  "error": "Traceback (most recent call last):\n  File \"/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/experiments/scalar_colab_smoke.py\", line 607, in main\n    report = validate(args.output)\n             ^^^^^^^^^^^^^^^^^^^^^\n  File \"/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/experiments/scalar_smoke_evidence.py\", line 57, in validate\n    require(manifest[\"status\"] == \"COLLECTED\" and not (root / \"failure.json\").exists(), \"Run failure retained\")\n  File \"/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/experiments/scalar_cost_evidence.py\", line 31, in require\n    raise ValueError(message)\nValueError: Run failure retained\n"
+}

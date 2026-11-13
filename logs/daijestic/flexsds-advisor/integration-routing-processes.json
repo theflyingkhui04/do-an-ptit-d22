@@ -1,0 +1,17 @@
+[
+  {
+    "case": "explicit",
+    "execution_sha": "ecb8bd42fb251d78256d1353e62b765dd5768216",
+    "process_exit": 0
+  },
+  {
+    "case": "implicit",
+    "execution_sha": "ecb8bd42fb251d78256d1353e62b765dd5768216",
+    "process_exit": 0
+  },
+  {
+    "case": "negative",
+    "execution_sha": "ecb8bd42fb251d78256d1353e62b765dd5768216",
+    "process_exit": 0
+  }
+]

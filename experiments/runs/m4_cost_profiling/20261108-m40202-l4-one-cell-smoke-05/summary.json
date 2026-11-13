@@ -1,0 +1,32 @@
+[
+  {
+    "measurement_kind": "eagle_propose",
+    "batch_size": 1,
+    "K": 1,
+    "context_len": 1024,
+    "n_success": 2,
+    "n_failed": 0,
+    "n_warmup": 5,
+    "median_ms": 3.196482000006995,
+    "p90_ms": 3.2203380000055404,
+    "min_ms": 3.1726260000084494,
+    "max_ms": 3.2203380000055404,
+    "variance_ratio": 0.014926409720745045,
+    "variance_warning": false
+  },
+  {
+    "measurement_kind": "linear_verify_forward",
+    "batch_size": 1,
+    "K": 1,
+    "context_len": 1024,
+    "n_success": 2,
+    "n_failed": 0,
+    "n_warmup": 5,
+    "median_ms": 16.91656650000084,
+    "p90_ms": 17.009319000010237,
+    "min_ms": 16.823813999991444,
+    "max_ms": 17.009319000010237,
+    "variance_ratio": 0.01096587773995295,
+    "variance_warning": false
+  }
+]

@@ -18,6 +18,8 @@ class ProposalOutput:
     budget_k: int
     skipped_draft: bool
     reason: str
+    topology_name: Optional[str] = None
+
 
 
 class AdaptiveProposerAdapter:
@@ -78,12 +80,15 @@ class AdaptiveProposerAdapter:
             kv_cache_usage_pct=kv_cache_usage_pct,
         )
 
+        topo = getattr(decision, "topology_name", None)
+
         if decision.k == 0:
             return ProposalOutput(
                 draft_tokens=[],
                 budget_k=0,
                 skipped_draft=True,
                 reason=decision.reason,
+                topology_name=topo,
             )
 
         draft_tokens = draft_generator(decision.k)
@@ -92,6 +97,7 @@ class AdaptiveProposerAdapter:
             budget_k=decision.k,
             skipped_draft=False,
             reason=decision.reason,
+            topology_name=topo,
         )
 
     def on_verification_completed(
@@ -131,6 +137,8 @@ class AdaptiveProposerAdapter:
             telemetry["effective_alpha"] = stats["effective_alpha"]
         if "is_warmed_up" in stats:
             telemetry["is_warmed_up"] = stats["is_warmed_up"]
+        if "topologies" in stats:
+            telemetry["topologies"] = stats["topologies"]
         return telemetry
 
     def end_request(self, request_id: str) -> dict:

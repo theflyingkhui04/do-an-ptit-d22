@@ -1,0 +1,21 @@
+{
+  "os": "Windows-10-10.0.26300-SP0",
+  "python": "3.11.0 (main, Oct 24 2022, 18:26:48) [MSC v.1933 64 bit (AMD64)]",
+  "python_executable": "D:\\ProgramFiles\\Python3_11\\python.exe",
+  "torch": "2.6.0+cu124",
+  "torch_cuda": "12.4",
+  "cuda_available": true,
+  "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+  "vllm": "NOT INSTALLED",
+  "initial_git_status_short": "",
+  "initial_branch": "feat/m4-02-04-scheduler-telemetry-v02",
+  "initial_head": "a6cd6ad5cee5374738f890c270ada4ca01f0946b",
+  "git_ownership_workaround": "Per-command -c safe.directory; no global configuration changed",
+  "local_gate": "ENVIRONMENT MISMATCH; no local engine launched",
+  "remote_l4_probe": "FunctionCurrentStats(backlog=1, num_total_runners=0, num_running_inputs=0, input_headroom=0)",
+  "attempts": [
+    "Sandbox Modal app list did not return; elevated read succeeded",
+    "Initial Modal run failed: charmap codec cannot encode U+2713; rerun with PYTHONIOENCODING=utf-8"
+  ],
+  "nvidia_smi": "Tue Nov 10 17:41:44 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 592.27                 Driver Version: 592.27         CUDA Version: 13.1     |\n+-----------------------------------------+------------------------+----------------------+\n| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA GeForce RTX 3050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |\n| N/A   34C    P8              3W /   75W |       0MiB /   4096MiB |      0%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n\n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|    0   N/A  N/A           12832    C+G   ...2p2nqsd0c76g0\\app\\ChatGPT.exe      N/A      |\n+-----------------------------------------------------------------------------------------+\n"
+}

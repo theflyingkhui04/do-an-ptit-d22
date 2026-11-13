@@ -22,6 +22,7 @@ from src.pipeline.validation import (  # noqa: E402
 DEFAULT_SCHEMA_PATH = Path("src/pipeline/sqlite/schema.sql")
 DEFAULT_EXAMPLE_PATH = Path("src/pipeline/examples/node1_extractor_output_m0_04_001.json")
 DEFAULT_RUN_ID = "m0_04_schema_smoke"
+SCHEMA_USER_VERSION = 2
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -45,10 +46,13 @@ def init_schema(conn: sqlite3.Connection, schema_path: Path) -> None:
     if has_pipeline_tables and user_version == 0:
         raise RuntimeError(
             "This database uses the pre-final unversioned schema. "
-            "Create a new database path for canonical SQLite schema v1."
+            f"Create a new database path for canonical SQLite schema v{SCHEMA_USER_VERSION}."
         )
-    if user_version not in (0, 1):
-        raise RuntimeError(f"Unsupported SQLite schema version: {user_version}")
+    if user_version not in (0, SCHEMA_USER_VERSION):
+        raise RuntimeError(
+            f"This database has user_version {user_version}; no automatic migration exists. "
+            f"Use a new database path for canonical SQLite schema v{SCHEMA_USER_VERSION}."
+        )
     conn.executescript(schema_path.read_text(encoding="utf-8"))
     conn.commit()
 
@@ -73,6 +77,7 @@ def insert_extraction(
     run_id: str,
     replace: bool,
     json_schema_path: Path = DEFAULT_JSON_SCHEMA_PATH,
+    latency_ms: float | None = None,
 ) -> str:
     validate_payload(payload, json_schema_path)
     invoice_id = make_invoice_id(run_id, payload)
@@ -125,7 +130,8 @@ def insert_extraction(
             discount_raw, discount_value, discount_currency,
             vat_amount_raw, vat_amount_value, vat_amount_currency,
             total_amount_raw, total_amount_value, total_amount_currency,
-            extraction_status, extraction_confidence, missing_fields_json, warnings_json
+            extraction_status, extraction_confidence, missing_fields_json, warnings_json,
+            latency_ms
         )
         VALUES (
             ?, ?, ?, ?,
@@ -137,7 +143,8 @@ def insert_extraction(
             ?, ?, ?,
             ?, ?, ?,
             ?, ?, ?,
-            ?, ?, ?, ?
+            ?, ?, ?, ?,
+            ?
         )
         """,
         (
@@ -181,6 +188,7 @@ def insert_extraction(
             extraction.get("confidence"),
             json.dumps(extraction.get("missing_fields", []), ensure_ascii=False),
             json.dumps(extraction.get("warnings", []), ensure_ascii=False),
+            latency_ms,
         ),
     )
 

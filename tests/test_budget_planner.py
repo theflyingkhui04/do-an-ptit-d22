@@ -197,3 +197,207 @@ def test_from_env_defaults():
 def test_from_env_rejects_invalid_controller_json():
     with pytest.raises(ValueError):
         AdaptiveBudgetPlanner.from_env({"ADAPTIVE_CONTROLLER_KWARGS": "{not json"})
+
+
+def decision_planner(decisions, **kwargs):
+    """Use real request sessions; override only the decision boundary."""
+    planner = make_planner(**kwargs)
+    for request_id, decision in decisions.items():
+        controller = planner.adapter.get_controller(request_id)
+        controller.select_budget = lambda _decision=decision, **signals: _decision
+    return planner
+
+
+def tree_decision(name, n):
+    from src.proposer.tree_adaptive import TreeAdaptiveDecision
+    return TreeAdaptiveDecision(k=n, num_nodes=n, topology_name=name,
+                                alpha_ema=0.8, expected_tokens=2.0, reason="contract")
+
+
+def test_heterogeneous_planned_nodes_are_separate_from_capped_scalar_k():
+    decisions = {"r1": tree_decision("small", 2), "r2": tree_decision("T8", 8),
+                 "r3": tree_decision("T0", 0)}
+    planner = decision_planner(decisions, max_k=4)
+    plan = planner.plan_step(decisions, batch_size=3, kv_usage=0.1)
+    assert plan.per_request_node_count == {"r1": 2, "r2": 8, "r3": 0}
+    assert plan.batch_node_count == 8
+    assert plan.per_request_k == {"r1": 2, "r2": 4, "r3": 0}
+    assert plan.batch_k == 4
+    assert decisions["r2"].num_nodes == 8
+
+
+def test_equal_node_counts_keep_distinct_topology_identity():
+    decisions = {"a": tree_decision("branching", 4), "b": tree_decision("linear", 4)}
+    planner = decision_planner(decisions)
+    plan = planner.plan_step(decisions, batch_size=2, kv_usage=0.1)
+    assert plan.per_request_decisions["a"].topology_name == "branching"
+    assert plan.per_request_decisions["b"].topology_name == "linear"
+    decisions["a"].topology_name = "mutated"
+    assert plan.per_request_decisions["a"].topology_name == "branching"
+    assert planner.finish_request("a")["selected_topology"]["name"] == "branching"
+
+
+def test_feedback_and_completion_are_request_isolated():
+    planner = make_planner()
+    planner.plan_step(["r1", "r2"], batch_size=2, kv_usage=0.1)
+    r1 = planner.adapter.get_controller("r1")
+    before = (r1.alpha_ema, r1.get_window_samples(), r1.get_stats())
+    planner.record_verification("r2", 3, 0)
+    assert (r1.alpha_ema, r1.get_window_samples(), r1.get_stats()) == before
+    planner.finish_request("r1")
+    assert planner.adapter.active_request_count == 1
+    assert planner.adapter.get_telemetry("r2")["mean_accept_len"] == 0.0
+    assert planner.finish_request("r1") is None
+    planner.finish_request("r2")
+    assert planner._last_decisions == {}
+
+
+def test_step_telemetry_is_separate_from_final_aggregate(tmp_path):
+    steps, final = tmp_path / "steps.jsonl", tmp_path / "final.jsonl"
+    planner = decision_planner({"r": tree_decision("T8", 8)}, max_k=4,
+                               step_telemetry_path=str(steps), telemetry_path=str(final))
+    planner.plan_step(["r"], batch_size=1, kv_usage=0.1)
+    planner.record_verification("r", 3, 2)
+    aggregate = planner.finish_request("r")
+    records = [json.loads(line) for line in steps.read_text().splitlines()]
+    assert [r["record_type"] for r in records] == ["planned_decision", "verification_feedback"]
+    planned, feedback = records
+    assert planned["selected_topology"] == {"name": "T8", "total_nodes_N": 8,
+        "depth_d": None, "parent_indices": None}
+    assert planned["scalar_runtime_budget"] == 4
+    assert planned["executed_draft_token_count"] is None
+    assert planned["tree_execution_verified"] is False
+    assert planned["actual_step_latency_ms"] is None
+    assert feedback["executed_draft_token_count"] == 3
+    assert feedback["accepted_draft_token_count"] == 2
+    assert "selected_topology" not in feedback  # async feedback is not joined to latest plan
+    assert aggregate["record_type"] == "request_aggregate"
+    assert aggregate["executed_runtime_mode"] == "unverified"
+    assert aggregate["tree_budgets"] == []  # legacy controller history is preserved
+    assert len(final.read_text().splitlines()) == 1
+
+
+def test_all_zero_and_empty_plans_have_neutral_node_count():
+    planner = decision_planner({"r": tree_decision("T0", 0)})
+    assert planner.plan_step(["r"], 1, 0.1).batch_k == 0
+    empty = planner.plan_step([], 0, 0.1)
+    assert empty.batch_node_count == empty.batch_k == 0
+
+
+@pytest.mark.parametrize("kwargs", [{"max_k": -1}, {"min_batch_k": -1}])
+def test_negative_configuration_rejected(kwargs):
+    with pytest.raises(ValueError):
+        make_planner(**kwargs)
+
+
+def test_normalization_preserves_legacy_aggregate_after_feedback():
+    planner = make_planner()
+    planner.plan_step(["r"], 1, 0.1)
+    planner.record_verification("r", 3, 1)
+    legacy = planner.adapter.get_telemetry("r")
+    final = planner.finish_request("r")
+    assert all(final[key] == value for key, value in legacy.items())
+    assert final["last_planned_decision"]["acceptance_rate_ema"] == 0.85
+
+
+def test_required_v02_fields_and_catalog_are_detached(tmp_path):
+    from src.proposer.tree_adaptive import get_tree_topology
+    steps = tmp_path / "steps.jsonl"
+    planner = decision_planner({"r": tree_decision("T8", 8)}, step_telemetry_path=str(steps))
+    planner.plan_step(["r"], 1, 0.1, free_vram_mb=None)
+    record = json.loads(steps.read_text())
+    required = {"request_id", "engine_version", "hardware_profile", "concurrency_batch_b",
+                "acceptance_rate_ema", "effective_alpha", "dynamic_alpha_star", "selected_topology",
+                "mean_accepted_tokens_tau", "theoretical_speedup", "actual_step_latency_ms",
+                "memory_status", "decision_reason"}
+    assert required <= record.keys()
+    assert record["memory_status"]["free_vram_mb"] is None
+    final = planner.finish_request("r")
+    assert final["selected_topology"]["parent_indices"] is None
+    final["selected_topology"]["name"] = "changed"
+    assert record["selected_topology"]["name"] == "T8"
+    assert get_tree_topology("T8").parent_indices[1] == 0
+
+
+def test_canonical_serving_does_not_import_future_tree():
+    import subprocess
+    import sys
+    from pathlib import Path
+    code = '''
+import sys
+class BlockTree:
+    def find_spec(self, fullname, path=None, target=None):
+        if "tree_adaptive" in fullname or "tree_topology" in fullname:
+            raise AssertionError("canonical serving imported " + fullname)
+sys.meta_path.insert(0, BlockTree())
+from src.server.budget_planner import AdaptiveBudgetPlanner
+p = AdaptiveBudgetPlanner()
+for rid, alpha in [("two", .7), ("four", .95), ("zero", .4)]:
+    p.adapter.start_request(rid, initial_alpha=alpha)
+plan = p.plan_step(["two", "four", "zero"], 3, .1)
+assert plan.per_request_k == {"two": 2, "four": 4, "zero": 0}
+assert plan.batch_k == 4
+assert all(r["selected_topology"] is None for r in p._last_decisions.values())
+assert all(r["tree_execution_verified"] is False for r in p._last_decisions.values())
+'''
+    result = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_heterogeneous_two_four_zero_contract():
+    decisions = {"r1": tree_decision("two", 2), "r2": tree_decision("T4", 4),
+                 "r3": tree_decision("T0", 0)}
+    plan = decision_planner(decisions).plan_step(decisions, 3, 0.1)
+    assert plan.batch_node_count == plan.batch_k == 4
+    assert plan.per_request_k == {"r1": 2, "r2": 4, "r3": 0}
+
+
+def test_shared_scalar_mode_keeps_individual_planned_nodes():
+    decisions = {"r1": tree_decision("two", 2), "r2": tree_decision("T4", 4)}
+    plan = decision_planner(decisions, per_request=False).plan_step(decisions, 2, 0.1)
+    assert plan.per_request_k == {"r1": 4, "r2": 4}
+    assert plan.per_request_node_count == {"r1": 2, "r2": 4}
+
+
+def test_step_and_aggregate_path_must_be_distinct(tmp_path):
+    path = str(tmp_path / "same.jsonl")
+    with pytest.raises(ValueError):
+        make_planner(step_telemetry_path=path, telemetry_path=path)
+
+
+def test_step_path_from_env(tmp_path):
+    path = str(tmp_path / "steps.jsonl")
+    assert AdaptiveBudgetPlanner.from_env({"ADAPTIVE_STEP_TELEMETRY_PATH": path}).step_telemetry_path == path
+
+
+def test_step_io_failure_does_not_change_budget_or_feedback(tmp_path, caplog):
+    planner = make_planner(step_telemetry_path=str(tmp_path / "missing" / "steps.jsonl"))
+    assert planner.plan_step(["r"], 1, 0.1).batch_k == 3
+    planner.record_verification("r", 3, 2)
+    assert planner.finish_request("r")["mean_accept_len"] == 2.0
+    assert "step telemetry" in caplog.text
+
+
+def test_planned_ema_and_effective_alpha_have_distinct_scalar_sources(tmp_path):
+    path = tmp_path / "steps.jsonl"
+    planner = make_planner(step_telemetry_path=str(path))
+    planner.plan_step(["r"], 1, 0.1)
+    planner.record_verification("r", 3, 0)
+    plan = planner.plan_step(["r"], 1, 0.1)
+    planned = json.loads(path.read_text().splitlines()[-1])
+    # Scalar BudgetDecision.alpha_ema historically carries the bias-corrected
+    # decision signal, NOT the raw EMA stored on the controller.
+    assert plan.per_request_decisions["r"].alpha_ema == pytest.approx(0.0)
+    assert planned["acceptance_rate_ema"] == pytest.approx(0.68)
+    assert planned["effective_alpha"] == pytest.approx(0.0)
+
+
+def test_real_scalar_controller_is_used_after_metadata_transport():
+    from src.proposer.controller import AdaptiveDraftController
+    planner = AdaptiveBudgetPlanner.from_env({})
+    planner.plan_step(["r"], 1, 0.1)
+    controller = planner.adapter.get_controller("r")
+    assert type(controller) is AdaptiveDraftController
+    planner.record_verification("r", 8, 4)
+    assert controller.alpha_ema == pytest.approx(0.74)

@@ -1,0 +1,49 @@
+{
+  "vllm": "0.30.0",
+  "installed_files_hash_verified": 392,
+  "mismatches": [],
+  "runner_field_writes": {
+    "_draft_token_ids": [
+      {
+        "method": "__init__",
+        "line": 923
+      },
+      {
+        "method": "sample_tokens",
+        "line": 4617
+      },
+      {
+        "method": "sample_tokens",
+        "line": 4627
+      },
+      {
+        "method": "sample_tokens",
+        "line": 4722
+      }
+    ],
+    "execute_model_state": [
+      {
+        "method": "__init__",
+        "line": 986
+      },
+      {
+        "method": "execute_model",
+        "line": 4529
+      },
+      {
+        "method": "sample_tokens",
+        "line": 4593
+      }
+    ]
+  },
+  "execute_model_calls_sample_tokens": false,
+  "scope": "Static installed-source inspection, not runtime lineage verification",
+  "source_files": {
+    "vllm/v1/worker/gpu_model_runner.py": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
+    "vllm/v1/worker/gpu_input_batch.py": "18cf455c9d0eea61cc581c7932f2e6cd09786914e82dd35eef1c1430da359a0f",
+    "vllm/v1/executor/uniproc_executor.py": "3cb039b80fe9b03dc1122f93c1f8a4098ef1355104b317ff6df25358f4349494",
+    "vllm/v1/engine/core.py": "268bf40534a853812867ae8e80040f190983cb364b41182b55969aace20c93f5",
+    "vllm/v1/core/sched/scheduler.py": "c1db45f3bbad3a875dd8638331b8870c4380ac1ab4734265ba5c863833a82884",
+    "vllm/v1/outputs.py": "65ab7698bbdea1d53502ef8df3689bec860521ab6e2fab3c7bff63151be039b1"
+  }
+}

@@ -1,0 +1,1967 @@
+{
+  "vllm": "0.30.0",
+  "project_sha": "a6cd6ad5cee5374738f890c270ada4ca01f0946b",
+  "call_id": "fc-01M72HV76JR0RYQ07W6JE6WN1Q",
+  "files": [
+    {
+      "path": "vllm/config/scheduler.py",
+      "bytes": 14778,
+      "sha256": "822179da62be4bca0619c8590082ae09123f5c4415f9cc2037be673748239edb"
+    },
+    {
+      "path": "vllm/config/speculative.py",
+      "bytes": 87011,
+      "sha256": "9c642a87264339c0dbc1d0b57330572149df0f9d5e16c6893b9895e50a619e19"
+    },
+    {
+      "path": "vllm/v1/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/attention/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/attention/backend.py",
+      "bytes": 40281,
+      "sha256": "01ac364372afa75fdb22486aa3a9c7cf9aebb742e3471dfb9e0f9d9d36b734bc"
+    },
+    {
+      "path": "vllm/v1/attention/backends/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/attention/backends/b12x.py",
+      "bytes": 41505,
+      "sha256": "443f0a98738fdfefe5b9ab151d278bfd43a8ac807eb2b0b9b2a13d51922afbf9"
+    },
+    {
+      "path": "vllm/v1/attention/backends/composite.py",
+      "bytes": 19237,
+      "sha256": "4cf3d66dca891562709eed4f50aa14b0ae6c8240d9ea86504a3304b2f356cce0"
+    },
+    {
+      "path": "vllm/v1/attention/backends/cpu_attn.py",
+      "bytes": 18155,
+      "sha256": "76fb02a6bd725125565d84bf04f627cf16da5f7ff8f31f87c01ed6a1439398c7"
+    },
+    {
+      "path": "vllm/v1/attention/backends/fa_utils.py",
+      "bytes": 13585,
+      "sha256": "08fa6e231d3af3a71a6e59162dd12328aa8beb28548165ae58f130a92adb5a83"
+    },
+    {
+      "path": "vllm/v1/attention/backends/flash_attn.py",
+      "bytes": 81870,
+      "sha256": "b170a4789e18104c1bee35bea70df51abe6766693d8f4726a59f2e6f5c4282aa"
+    },
+    {
+      "path": "vllm/v1/attention/backends/flash_attn_diffkv.py",
+      "bytes": 11332,
+      "sha256": "e4627c88c3ba8caee260540e994cc8137fd2ff7cd7813356b36387c6c88ce30a"
+    },
+    {
+      "path": "vllm/v1/attention/backends/flashinfer.py",
+      "bytes": 117007,
+      "sha256": "8ee541fde43ed92a417b3f01ea1e6fc64af8ab2eb54cbfc28308a49aaca4ed7f"
+    },
+    {
+      "path": "vllm/v1/attention/backends/flex_attention.py",
+      "bytes": 59841,
+      "sha256": "ad07f0ad73aeeadc3534b3a05c14f88a62cb3638874239ae9823c49b36276dc3"
+    },
+    {
+      "path": "vllm/v1/attention/backends/gdn_attn.py",
+      "bytes": 22952,
+      "sha256": "3831019404a92200a38b43571c040cffeb6638bbdc71e4cb5e680dbc6c93d054"
+    },
+    {
+      "path": "vllm/v1/attention/backends/hpc_attn.py",
+      "bytes": 21727,
+      "sha256": "af9e2aec1b498f0ee48a2dce3cf5646edf1976466980b2fd927c0e82b875427c"
+    },
+    {
+      "path": "vllm/v1/attention/backends/linear_attn.py",
+      "bytes": 11373,
+      "sha256": "bc42144fcd027434c6a10dc9f4c5f991db8899d387af5f6485402ce097eb0513"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mamba1_attn.py",
+      "bytes": 1810,
+      "sha256": "32159dae11cab3c8c576b9514ad97d5108c8d1b4cac9fcfe345ec6a76223aee7"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mamba2_attn.py",
+      "bytes": 6339,
+      "sha256": "a5bcdecb7b9547137023e1c77a386003358fa940eaf5f319ed142211dcdba139"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mamba_attn.py",
+      "bytes": 38985,
+      "sha256": "5e7b2c4058fc5e6096d001bff6c789b78368b025bbe4600f191aaca2ff59b59f"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/aiter_triton_mla.py",
+      "bytes": 2000,
+      "sha256": "ed0e285cdae06a019150c41cc958b3c0b5ceb0e4f299d5318d1c90e2c2395390"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/amx_mla.py",
+      "bytes": 16651,
+      "sha256": "7f5cddec30b2dfe22ccdbd3b9da673c879719bf6da4074317bd60add55f5d15f"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/compressor_utils.py",
+      "bytes": 5829,
+      "sha256": "3589e94105368ea285c40b82db1a0332682ff5d071fe363627cf4c0d10f3facf"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/cpu_mla.py",
+      "bytes": 8182,
+      "sha256": "ff2110b9f78e92adf6bab294465cbc294ae1ff71cb1780fed158179e134a4ca6"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/cutlass_mla.py",
+      "bytes": 9085,
+      "sha256": "211d298680f9bd793cc468281b316d6633c5f4eb6dcec71d3329b034a23ab9b5"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/flashattn_mla.py",
+      "bytes": 12948,
+      "sha256": "ac89e0ad75a37e92566d264bafe324735a80f9ab4709241a4454d17b3d38bb63"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/flashattn_mla_sparse.py",
+      "bytes": 11602,
+      "sha256": "67dd3ead2e8b9d8cda0825ecc93779cb7d670628bc741c759a7d3cd5d474030f"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/flashinfer_mla.py",
+      "bytes": 14669,
+      "sha256": "0c24ff016fb6b0bb41d9e7484b6f1af42f37bcc384ed613473fc3e01ad25f664"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/flashinfer_mla_sparse.py",
+      "bytes": 28523,
+      "sha256": "2116d965b2067134d8afa5878d4d16c0149b061258f50c4106d993aa13b073cc"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py",
+      "bytes": 8862,
+      "sha256": "102ca08793d567f95598eefeb34c3f6ec50b3b9d704f162d1402b97b12b5777b"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm90.py",
+      "bytes": 20100,
+      "sha256": "df9fe4970aa3f53cf24784b8534b89e0101a2ca20a35a2ebbc9a12a4463d5993"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/flashmla.py",
+      "bytes": 12542,
+      "sha256": "c9d8046a853ecbdeff9ebfc738f5bb34c4f272b278231a09a0fbf73708c7c188"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/flashmla_sparse.py",
+      "bytes": 57051,
+      "sha256": "7a379c717adb9667ce94cbc16c0e3a1fb22a169713db6d7941c141fa84077b3f"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/index_group.py",
+      "bytes": 19971,
+      "sha256": "c24e028c3c160a9bb92e043da5b5b34c805e84745b7c4b8da6fb8702a0ddd641"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/indexer.py",
+      "bytes": 68382,
+      "sha256": "2acbc1c4fa57c3424ad95e6ecbe76eb7141747773c3e867ce704f4adccba892a"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/__init__.py",
+      "bytes": 526,
+      "sha256": "903630eb705dd175bf4ae4558a4bcaa07c110056b6a11eb830fdd2fb21b3c48a"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/aiter_flash_attn.py",
+      "bytes": 4062,
+      "sha256": "571b8a9910c4ea3fefda60659026f3bf0d7b542c34553c8c9a4d43bb82077e61"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/base.py",
+      "bytes": 6172,
+      "sha256": "138bf3ddaf5a94c3cdbc4e08ac676edcae84b32fc76625e546f3b47f7d8b82ec"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/cpu_sdpa.py",
+      "bytes": 4727,
+      "sha256": "1bb686395274a8ec0d9fd7327410a527655fe060cbbc263eab138fea988d96de"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/flash_attn.py",
+      "bytes": 17899,
+      "sha256": "5e648c82c82e5f81fe11458eb82b9f90b50fc06df2ade3bf111ee6b7a2ee8481"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/flashinfer.py",
+      "bytes": 8737,
+      "sha256": "63861219c35b8abc0ebe01e1f51543c5ed40bd46119ca261d927da7c6826b49b"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/registry.py",
+      "bytes": 4805,
+      "sha256": "c8c30b92213d594beaa3cab4d5003da26a85870dbb11d1ab73191962d0645b53"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/selector.py",
+      "bytes": 7120,
+      "sha256": "101d9fca7924b0c5d7891a17fe8942611bd6759e32b03a571dc87b14c1430f2f"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/tokenspeed_mla.py",
+      "bytes": 6722,
+      "sha256": "047cf07bfcc83db3b11a6a54ffe189f6146e6ec9ad33ce2fa7d18860bf4210f0"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/prefill/trtllm_ragged.py",
+      "bytes": 7464,
+      "sha256": "9e13ea6f6a25accedd918c0de64bbb812ccb20ffb95350ab018a6e76d493789b"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/rocm_aiter_mla.py",
+      "bytes": 88757,
+      "sha256": "b489f5830c655bfb6299801a70d69b9821513c69568ecab3689db5a7be867be5"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/rocm_aiter_mla_sparse.py",
+      "bytes": 40991,
+      "sha256": "91b1d9b3d860a9720bc01b8ebe9bbe8649a7d6bca20d4b63939bc100309bca19"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/sparse_swa.py",
+      "bytes": 50279,
+      "sha256": "a47853ad8a3fe40f24704592581ea323a18041b84610df010a5534da634e311e"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/sparse_utils.py",
+      "bytes": 27342,
+      "sha256": "c3cdf060288c05542243a9fe8b5ad3a963ad75e9ce399009b5e45c1235a88ce4"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/tokenspeed_mla.py",
+      "bytes": 12038,
+      "sha256": "b9ba523c606430cecb99a88b28c53d98a99dcf5e76105a80664338110a20f1ad"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/triton_mla.py",
+      "bytes": 13527,
+      "sha256": "21b16b3b34470edcc33d0423e560837c1d37d4bab31c7b3b9cfd7faa47864b51"
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/xpu_mla_sparse.py",
+      "bytes": 9832,
+      "sha256": "559c6240fe466521a6b2df4c94aea02ddf3f5efa5ba6954fa180c5a51c0f12d2"
+    },
+    {
+      "path": "vllm/v1/attention/backends/recoverssm_metadata.py",
+      "bytes": 686,
+      "sha256": "02896a667db0f0308371ceb50048b18e5866c0235d163c0357e9a05dcedb3394"
+    },
+    {
+      "path": "vllm/v1/attention/backends/registry.py",
+      "bytes": 12093,
+      "sha256": "378e8ee78734bd8c8adbe287d4c0a4058dcbb553195a09fbcce00a3cc30adc29"
+    },
+    {
+      "path": "vllm/v1/attention/backends/rocm_aiter_fa.py",
+      "bytes": 74661,
+      "sha256": "d1418af03bf58209c850f466b712d3ea22a14ebb758c42dd43e65738281841fd"
+    },
+    {
+      "path": "vllm/v1/attention/backends/rocm_aiter_unified_attn.py",
+      "bytes": 14936,
+      "sha256": "59d2645eb4c91dc0567754a7163d066f4f2faf48f1957b254fcdd5604e9d8c8c"
+    },
+    {
+      "path": "vllm/v1/attention/backends/rocm_attn.py",
+      "bytes": 21231,
+      "sha256": "4a8f57067073fbceb784af6c3467487c450d00fa3957928fadb99a79f6036292"
+    },
+    {
+      "path": "vllm/v1/attention/backends/short_conv_attn.py",
+      "bytes": 24244,
+      "sha256": "84fc460ef2fbd09743b069bec0c14b39542af6c2254a403e37a048427e151121"
+    },
+    {
+      "path": "vllm/v1/attention/backends/triton_attn.py",
+      "bytes": 32208,
+      "sha256": "1057663d110e1d5229495a799027b27277c1eca325d5b6780fa2259afbf58a1a"
+    },
+    {
+      "path": "vllm/v1/attention/backends/triton_attn_diffkv.py",
+      "bytes": 7881,
+      "sha256": "de0357eae005246642140f1ab8842ba5ed8bff5c84b18a6d3a7bbf409c578301"
+    },
+    {
+      "path": "vllm/v1/attention/backends/triton_flash_attn.py",
+      "bytes": 2000,
+      "sha256": "176e45329aeb28a2008362bb607d1b8c89816eb665859ab908b0385a11acf1c2"
+    },
+    {
+      "path": "vllm/v1/attention/backends/triton_flashinfer.py",
+      "bytes": 774,
+      "sha256": "48d5f967e388d4e8d6bbec8d827b44d855346bc2fada28adf65768bf6623527b"
+    },
+    {
+      "path": "vllm/v1/attention/backends/turboquant_attn.py",
+      "bytes": 52067,
+      "sha256": "616d16d608d9d1fbf6c29548037e7e9cf330f4d36a01aa3ffabf42a731eb6e2b"
+    },
+    {
+      "path": "vllm/v1/attention/backends/utils.py",
+      "bytes": 47150,
+      "sha256": "fbc221360d2d54cb21ef3f625dc8711500de345a355801548b4337bb9b8abee0"
+    },
+    {
+      "path": "vllm/v1/attention/ops/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/attention/ops/chunked_prefill_paged_decode.py",
+      "bytes": 17892,
+      "sha256": "973db848a790b2e8d99e728b2fc4f44b501bbe58c62747244ddff04cfcf11a85"
+    },
+    {
+      "path": "vllm/v1/attention/ops/common.py",
+      "bytes": 12042,
+      "sha256": "b4b67e7fc0cce471e337d742c097fba06da7563816e8799e27719714e31e1d5b"
+    },
+    {
+      "path": "vllm/v1/attention/ops/cp_common.py",
+      "bytes": 5092,
+      "sha256": "2369181862e96db64b14ef20c5c2e249ed2ea5f3dea2467a2aa388372bb86d9d"
+    },
+    {
+      "path": "vllm/v1/attention/ops/dcp.py",
+      "bytes": 54264,
+      "sha256": "a478bdc781460f0582cfaf74d6431f1a826c201f02f39d882d12a96139bc3f28"
+    },
+    {
+      "path": "vllm/v1/attention/ops/flashmla.py",
+      "bytes": 4805,
+      "sha256": "8a40d6e120e3ab25a95fcfeb32b0b5b4c1ea02b984633866628536dcd26ed2e8"
+    },
+    {
+      "path": "vllm/v1/attention/ops/flydsl_kernels/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/attention/ops/flydsl_kernels/tq_decode.py",
+      "bytes": 39511,
+      "sha256": "cc4b7f82897596e0974b3d3a710a1a8bc58c3d22b72cc7f461dd1c4acd2e451b"
+    },
+    {
+      "path": "vllm/v1/attention/ops/flydsl_kernels/tq_decode_gqa6.py",
+      "bytes": 42475,
+      "sha256": "a983f6d375c325900955e11696dab1e2665770e83f84d51f93d3ed5e1d8880e0"
+    },
+    {
+      "path": "vllm/v1/attention/ops/flydsl_turboquant_decode.py",
+      "bytes": 34774,
+      "sha256": "7b1dd0ef7c7fb28a6a8831759e00b939ab844d067657155cc11cf75532a22c63"
+    },
+    {
+      "path": "vllm/v1/attention/ops/int4_per_token_head.py",
+      "bytes": 38103,
+      "sha256": "d91968f280cd8eaed7570ab255f0276b40e833e18a25066d371d9ca8149425f2"
+    },
+    {
+      "path": "vllm/v1/attention/ops/merge_attn_states.py",
+      "bytes": 7144,
+      "sha256": "ad08403d2843fc892f0b0b4b9f5fabb81884556f89f7170dca46ccef498a3539"
+    },
+    {
+      "path": "vllm/v1/attention/ops/metadata.py",
+      "bytes": 2922,
+      "sha256": "ca882b84c5aaefb1f77e4d8ea09a00103fbc53defa8671bba036c961c17fc760"
+    },
+    {
+      "path": "vllm/v1/attention/ops/paged_attn.py",
+      "bytes": 1437,
+      "sha256": "016a95f892ec751c86b37be1e12171bad9f0b4076bbf2219ff336f4e9c503653"
+    },
+    {
+      "path": "vllm/v1/attention/ops/pcp.py",
+      "bytes": 3111,
+      "sha256": "dadeff95fe2df2be8028baabeef01b0d2d628cd67de2176915e737ce096de3dd"
+    },
+    {
+      "path": "vllm/v1/attention/ops/prefix_prefill.py",
+      "bytes": 33353,
+      "sha256": "b08ad92db715fc03c11699de3de463d55e411f42f77548e06b41049a61de692f"
+    },
+    {
+      "path": "vllm/v1/attention/ops/rocm_aiter_mla_merge.py",
+      "bytes": 4203,
+      "sha256": "564c66e4877732e48a6f7d52405c43dc952eec0f0ae4353d34886bca056132b9"
+    },
+    {
+      "path": "vllm/v1/attention/ops/rocm_aiter_mla_sparse.py",
+      "bytes": 126303,
+      "sha256": "feec664be5045fd1ba13b8f6ef83b52c96910ddc78baca0431bcf610c9e8f5cc"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_attention_helpers.py",
+      "bytes": 17772,
+      "sha256": "35aa993d01345f535d2641cf9dcabb8b64c51b20a19707bc5987e616aaa87ddd"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_decode_attention.py",
+      "bytes": 23111,
+      "sha256": "b9823c65eba22d76abf64dad7d7d16a950f67471c86d6cb5b3e983aaf14381ac"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_merge_attn_states.py",
+      "bytes": 7682,
+      "sha256": "f63229162181ab93198550b73a115f1cc1034cfd60e6f58bc8ab3e22a6e8ce60"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_prefill_attention.py",
+      "bytes": 9165,
+      "sha256": "352c1a4ac86146580040579fb217c2e288268830d6602b735713e154f36d74fe"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_reshape_and_cache_flash.py",
+      "bytes": 20737,
+      "sha256": "6cac51475b8c656992a21b2d150acd3a16a95a7ab7d49aab151a3ef13c24b80d"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_turboquant_decode.py",
+      "bytes": 22796,
+      "sha256": "8e52678136449e4bbca2195fbcbb87426c955a2b1b8422e7ab9511e45ee5f5c6"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_turboquant_store.py",
+      "bytes": 16878,
+      "sha256": "6e6e2fe74a307d40f0be786ccbaea76d989e3c7b5985f3144a5218c61bf6d902"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_unified_attention.py",
+      "bytes": 44617,
+      "sha256": "65d0fbcf33d00789df8ca688c0a1c908e710cfaef53471178747ecae11f05829"
+    },
+    {
+      "path": "vllm/v1/attention/ops/triton_unified_attention_diffkv.py",
+      "bytes": 18476,
+      "sha256": "7fa36d7b7441f1c396e0348eac61d691d2e459e5c4c393c4aa262dfb670e68f7"
+    },
+    {
+      "path": "vllm/v1/attention/ops/turboquant_soa/__init__.py",
+      "bytes": 175,
+      "sha256": "6b43b6fcb2a71c44ceff4ed1edd417a839f4901251ba15831b09ad979baa4984"
+    },
+    {
+      "path": "vllm/v1/attention/ops/turboquant_soa/triton_turboquant_decode.py",
+      "bytes": 23855,
+      "sha256": "bf00634191bba14cbf4a23c1d67dc3dcb244c2b8989f08362757b54435830986"
+    },
+    {
+      "path": "vllm/v1/attention/ops/turboquant_soa/triton_turboquant_decode_v2.py",
+      "bytes": 3957,
+      "sha256": "28e7ecc15c450d3591983a50c46a03aa6ca6fa99304c17c333940617d9916485"
+    },
+    {
+      "path": "vllm/v1/attention/ops/turboquant_soa/triton_turboquant_store.py",
+      "bytes": 21697,
+      "sha256": "dccf93b9fdd34f9b9eacd468e9de35b9d93378594487c335cf50642aaec681f2"
+    },
+    {
+      "path": "vllm/v1/attention/ops/turboquant_soa/triton_turboquant_unified_attention.py",
+      "bytes": 53528,
+      "sha256": "b4b2b5f3985b3a6126fd052e6ec1ed91c610da8a525a9ae7470ac829405bd85c"
+    },
+    {
+      "path": "vllm/v1/attention/ops/vit_attn_wrappers.py",
+      "bytes": 12210,
+      "sha256": "a99d57b58269c7521fa5d7d47af06551f3bab2b5c7358ef78165a7f6e20a92a6"
+    },
+    {
+      "path": "vllm/v1/attention/ops/xpu_mla_sparse.py",
+      "bytes": 8415,
+      "sha256": "d98d17110577c2b7b4d05e07bfdae15faf83321b6342a5daaaecce45b9503f38"
+    },
+    {
+      "path": "vllm/v1/attention/selector.py",
+      "bytes": 8575,
+      "sha256": "87f653ded7974875183c920e3e4589c28116bcbc99714d1da7cb51ae77c0b182"
+    },
+    {
+      "path": "vllm/v1/core/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "bytes": 36034,
+      "sha256": "34c2fd67148cecb7763ff49ad694a57073759b0fa67572a4270dc995b4acf8fc"
+    },
+    {
+      "path": "vllm/v1/core/encoder_cache_manager.py",
+      "bytes": 17002,
+      "sha256": "45f167e4f5a8ae3448ef61ba8d13c21dbb13a90fc55ab49098b7aacedd52e0d1"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_coordinator.py",
+      "bytes": 45268,
+      "sha256": "bf342f79f2bc8d6acb69d3becefb334509e84cae888d42bbd421a8dc8ca9eca3"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "bytes": 41398,
+      "sha256": "58800535eda854580d84e1025bf32fe01b2a43ce0bba501b4f3d125e4f2c8afa"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_metrics.py",
+      "bytes": 3138,
+      "sha256": "efedec04feff5f04a6d51c6c464290b52ab8c249d65121a9ab9f1370d6b67f47"
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_utils.py",
+      "bytes": 114648,
+      "sha256": "2666c9f113584e52e7521058efd2c0d9598544559dc942d3a3da87001a3fedf2"
+    },
+    {
+      "path": "vllm/v1/core/sched/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/core/sched/async_scheduler.py",
+      "bytes": 3283,
+      "sha256": "e586a0ef3c6778be56a93e7f9bb712d4de9de6e7d7fe7e3e1d51dae83ecfc508"
+    },
+    {
+      "path": "vllm/v1/core/sched/interface.py",
+      "bytes": 9881,
+      "sha256": "be6c008664096c5660a8879de72b315bbe479bf1d688be9b25891063ec53a367"
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "bytes": 12558,
+      "sha256": "3a66c8efaefe10c572f6f33cf1f8aa4610758c945130cad62eb9f7331005677c"
+    },
+    {
+      "path": "vllm/v1/core/sched/request_queue.py",
+      "bytes": 6989,
+      "sha256": "4b8d938e5fb8152fe61030b8aa991f983fcac9a405c37ed8908045e05e82ae5e"
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "bytes": 152786,
+      "sha256": "c1db45f3bbad3a875dd8638331b8870c4380ac1ab4734265ba5c863833a82884"
+    },
+    {
+      "path": "vllm/v1/core/sched/utils.py",
+      "bytes": 4351,
+      "sha256": "1ed988044eb8028c77ede875bd1a5fd05ff6998b455d61e3997d6a3d7fc1c3a7"
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "bytes": 116729,
+      "sha256": "0233531d85aeced9e57a38c76d83db970519c92902b7e55484390cb2b64985bf"
+    },
+    {
+      "path": "vllm/v1/cudagraph_dispatcher.py",
+      "bytes": 15494,
+      "sha256": "51f632753af729aeee6ce4a802d9d74b64f22eef02a524f36e2a24b07ef0cf63"
+    },
+    {
+      "path": "vllm/v1/engine/__init__.py",
+      "bytes": 10351,
+      "sha256": "4e59828787634123026a6b424f48c21d691913dd338b59dd13f25fa260f2284b"
+    },
+    {
+      "path": "vllm/v1/engine/admission_control.py",
+      "bytes": 1728,
+      "sha256": "f9276089790256180b48745e8f5244f4f6ffbcb1c74561ce24ed6ece0d0360a4"
+    },
+    {
+      "path": "vllm/v1/engine/async_llm.py",
+      "bytes": 51783,
+      "sha256": "52cbf404f1dbc99c6bebf4a50a7eb18ff842a1f53106a45f365523192d816be1"
+    },
+    {
+      "path": "vllm/v1/engine/coordinator.py",
+      "bytes": 21487,
+      "sha256": "b2a9a2f32e84b5ce7b4979b41ab4749deb1fb20f157086a6a9e9185a03ad78d9"
+    },
+    {
+      "path": "vllm/v1/engine/core.py",
+      "bytes": 106584,
+      "sha256": "268bf40534a853812867ae8e80040f190983cb364b41182b55969aace20c93f5"
+    },
+    {
+      "path": "vllm/v1/engine/core_client.py",
+      "bytes": 81200,
+      "sha256": "fd6ca0cb7499b3086eef2fc57674b7ace56ef1c648f09e92e144b255b79018f8"
+    },
+    {
+      "path": "vllm/v1/engine/detokenizer.py",
+      "bytes": 13614,
+      "sha256": "213d71cf6eefcea061b28b656cf8a08af60c9f3513403e724b16876995f3de93"
+    },
+    {
+      "path": "vllm/v1/engine/exceptions.py",
+      "bytes": 790,
+      "sha256": "87b2557fdc63c63d964729b92f2cf01359e956ddf0b37f8185fbf21e389242da"
+    },
+    {
+      "path": "vllm/v1/engine/input_processor.py",
+      "bytes": 23935,
+      "sha256": "c8abd8e4e14d99929d45a7ff3b2a74898269c5e2a7fa30b826623ee85e4ce813"
+    },
+    {
+      "path": "vllm/v1/engine/llm_engine.py",
+      "bytes": 18677,
+      "sha256": "d4d5fba309db4d3f271ac7479e3ddaa623045499e4c6cfac41c0c7710012413c"
+    },
+    {
+      "path": "vllm/v1/engine/logprobs.py",
+      "bytes": 12936,
+      "sha256": "14bbe78d92a2c451d79b3d9dd9d5268bc57e16bad5079e44ce9ed2cd805e873e"
+    },
+    {
+      "path": "vllm/v1/engine/output_processor.py",
+      "bytes": 34979,
+      "sha256": "e47b86cd69ce1c1e3f53dac655eaa75c32a4057d10f4a1db16bb83a397f2a329"
+    },
+    {
+      "path": "vllm/v1/engine/parallel_sampling.py",
+      "bytes": 5481,
+      "sha256": "bf3f0a3c6640aaf706d1b6f7ec3a8e09a970f3dd9e7e96fa6a901779ea84f61d"
+    },
+    {
+      "path": "vllm/v1/engine/tensor_ipc.py",
+      "bytes": 6150,
+      "sha256": "954b0b9d37ada6d9d92ddc9a6744eda13dad14cd9f50142aab73cbd0f2297c43"
+    },
+    {
+      "path": "vllm/v1/engine/utils.py",
+      "bytes": 56169,
+      "sha256": "d09f86b107b3c63b62f40a6590036be5b711778ea997fc5a6af6de94fdd2ccd3"
+    },
+    {
+      "path": "vllm/v1/executor/__init__.py",
+      "bytes": 227,
+      "sha256": "570534a51c0a8ef702717208ffb376148613da8363d5faae2e3bd44beaaa1365"
+    },
+    {
+      "path": "vllm/v1/executor/abstract.py",
+      "bytes": 15468,
+      "sha256": "97791426b549e4447c967f8b8e668c2e376c6a75fa7091fd9df11bc9dafb65f7"
+    },
+    {
+      "path": "vllm/v1/executor/multiproc_executor.py",
+      "bytes": 45225,
+      "sha256": "3ed0149a8a8e1550c4f062af40e645d1b734e70f99981bc5bf15f0360507648a"
+    },
+    {
+      "path": "vllm/v1/executor/ray_env_utils.py",
+      "bytes": 1238,
+      "sha256": "60d16c688f14a513686c1fe09d74f2c2f94c2f48c0e8ab68531145653b19280a"
+    },
+    {
+      "path": "vllm/v1/executor/ray_executor.py",
+      "bytes": 26319,
+      "sha256": "7e5034345545c36fb60f3cd989ef604f3b22e901214f3028068424890ed32413"
+    },
+    {
+      "path": "vllm/v1/executor/ray_executor_v2.py",
+      "bytes": 22155,
+      "sha256": "05ee844c04363f7886e1eec608a93c52d3aa1b161b58a017628224b7dcacb070"
+    },
+    {
+      "path": "vllm/v1/executor/ray_utils.py",
+      "bytes": 26611,
+      "sha256": "8d9841f5db9273e5f4abef63d2fdaddca95f93d1cf6ebdcff8833d2aabe4d283"
+    },
+    {
+      "path": "vllm/v1/executor/uniproc_executor.py",
+      "bytes": 7800,
+      "sha256": "3cb039b80fe9b03dc1122f93c1f8a4098ef1355104b317ff6df25358f4349494"
+    },
+    {
+      "path": "vllm/v1/executor/vllm_net_devices.py",
+      "bytes": 9230,
+      "sha256": "c7069042c20f1311159e80f6441f53394a0ab716f695d4f5652df3e7d4b5a275"
+    },
+    {
+      "path": "vllm/v1/fault_tolerance/__init__.py",
+      "bytes": 255,
+      "sha256": "4089efb6f68cbe0d9e81b625969e386162597f4390f428688c4c0281ce510d51"
+    },
+    {
+      "path": "vllm/v1/fault_tolerance/engine_core_sentinel.py",
+      "bytes": 7626,
+      "sha256": "0a91cea4146883f1d963fd23d9cf1e1e8f7bc63c34b6afd1ac7b6ad497702a30"
+    },
+    {
+      "path": "vllm/v1/fault_tolerance/utils.py",
+      "bytes": 380,
+      "sha256": "1deee3485a08cd951f970c58b0608bc0129285585003718a8b7fa882aad63342"
+    },
+    {
+      "path": "vllm/v1/hisparse/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/hisparse/binding.py",
+      "bytes": 11396,
+      "sha256": "00b43de98f161e035c088786335cb73c0079ebd21d67c689ea4997f7bc0af542"
+    },
+    {
+      "path": "vllm/v1/hisparse/block_pool.py",
+      "bytes": 991,
+      "sha256": "eaa39a8f6f3bd723064228bc56d8bf3bee0264b9363d025ff6ac13c68e37db59"
+    },
+    {
+      "path": "vllm/v1/hisparse/coordinator.py",
+      "bytes": 33241,
+      "sha256": "d46e0c6357a0b22147ce7a98d2bc4fee0f0a19a6143982a910ffae91195a4471"
+    },
+    {
+      "path": "vllm/v1/hisparse/layout.py",
+      "bytes": 12722,
+      "sha256": "7ed13573e57eb9b9dec3a9a8901a080501a6b71dc3d5c25d1be1a73df11a01cd"
+    },
+    {
+      "path": "vllm/v1/hisparse/runtime.py",
+      "bytes": 49108,
+      "sha256": "84a5305c3aa4a047c8ecb2906f6354b0d8bfe3dcd40e34f5a7422ddc15f56344"
+    },
+    {
+      "path": "vllm/v1/hisparse/types.py",
+      "bytes": 771,
+      "sha256": "3d9173b50f3089ecfdb717274575b5d4903d751a7ea7ec5b94f815f29a42c919"
+    },
+    {
+      "path": "vllm/v1/kv_cache_interface.py",
+      "bytes": 59289,
+      "sha256": "1cf202f1a44d5bc5c3832b70b41507687ecceea3784e67a4f003bc0210d6eecb"
+    },
+    {
+      "path": "vllm/v1/kv_cache_layout.py",
+      "bytes": 2021,
+      "sha256": "7a32e95b61238e4e2fd8b0c420830565002af3275ca2eded6d78bc60dcaf7df0"
+    },
+    {
+      "path": "vllm/v1/kv_cache_spec_registry.py",
+      "bytes": 8386,
+      "sha256": "7f8fa47a8e0318a05f50891f77de1dbc8caa963c3a8f4516bfdf20449afcee97"
+    },
+    {
+      "path": "vllm/v1/kv_offload/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/kv_offload/base.py",
+      "bytes": 20759,
+      "sha256": "ea648adaa4c8b960623c75de4c483539c16a2da2d911ab4c666feca3dd52474b"
+    },
+    {
+      "path": "vllm/v1/kv_offload/config.py",
+      "bytes": 3250,
+      "sha256": "a6d7c35a1473778f9afd6067255217a3b45eb89d5d5c692a14d7c37c16be0a38"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/common.py",
+      "bytes": 944,
+      "sha256": "192fdaabd839011af4846db1ada440672cef8d643cc7e610175d23bee8275439"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/gpu_worker.py",
+      "bytes": 33679,
+      "sha256": "c10d4fc17bc46ed0a2f557203f4eb63c0332da0af0c619a2f0b904bae5ea5037"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/manager.py",
+      "bytes": 12646,
+      "sha256": "b8cbe365f0d3e8603fe7b64ad61ff1fce395216a22c3fae72f9c019981a1349a"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/policies/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/policies/arc.py",
+      "bytes": 6696,
+      "sha256": "e4350b3ee0a706c31a30338065506460d83b421416c86155ecbc49f18c06172a"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/policies/base.py",
+      "bytes": 3218,
+      "sha256": "bba63a6ee5e34eba36c231c589956bbd241e3fc540ae746e803e2742022dc410"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/policies/factory.py",
+      "bytes": 3343,
+      "sha256": "3c8d4be50478408b434d65851bb5f67003dcab54748ae7f3eb8fc0439378e8c6"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/policies/lru.py",
+      "bytes": 3039,
+      "sha256": "b037992a080ddba36111e05466066e4ab347ec7e556cbe7e387cea2967703bab"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/shared_offload_region.py",
+      "bytes": 16207,
+      "sha256": "d5006fca1aadc9627c20c53fcac7620f95f3d690a45bc8600bbcd3c5aebe4d6b"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/spec.py",
+      "bytes": 8836,
+      "sha256": "0f3690a6e9038ca7947cd3b063a75e11d5c8a92a3925ac69aa10ed2bac08151b"
+    },
+    {
+      "path": "vllm/v1/kv_offload/cpu/swap_blocks_triton.py",
+      "bytes": 2475,
+      "sha256": "6741f7fc63f4855137164503f38f322c485830ad69996e740b006b30b188d1c8"
+    },
+    {
+      "path": "vllm/v1/kv_offload/factory.py",
+      "bytes": 2603,
+      "sha256": "77ad189b54ab4166fe06485c5a316107184342c793c6b7707fae51263b858c73"
+    },
+    {
+      "path": "vllm/v1/kv_offload/file_mapper.py",
+      "bytes": 5376,
+      "sha256": "20cbda644c82859622ab5b8ec531b459d128aa3e964ec20339d10f21fb93b94d"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/async_lookup.py",
+      "bytes": 11428,
+      "sha256": "f0f2ad8f094750950cb5ed05c18cf260aef48ee24d662ce3df78ae6d9b2a29e1"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/base.py",
+      "bytes": 11869,
+      "sha256": "7d2617ce06e273532c7c440c0bd7db0f6ed18756d7dcd6908950131321f269de"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/example/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/example/manager.py",
+      "bytes": 5178,
+      "sha256": "2f24e6744cda8188009c84fcc9bf8a094f0afef3759175c8b68a6e0eac01ca3e"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/factory.py",
+      "bytes": 4366,
+      "sha256": "c797abfdfe0350e5ba4a4719296b2289e00dc549416b2fa875a8848d233bcc65"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/fs/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/fs/io.py",
+      "bytes": 7398,
+      "sha256": "8389a52cc843556615d7ce3e08d7158ee82685c6681832a293c45d85e07c175e"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/fs/manager.py",
+      "bytes": 13401,
+      "sha256": "8675765a3dae5137a9dbde790b402b343fb93a3a3a12da1458ceb76b76a59477"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/fs/thread_pool.py",
+      "bytes": 6743,
+      "sha256": "8041d2f00806a5d1e0246a1c2c5e79aff0624c854423fd5a175af2ed75d72e5f"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/kvcr/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/kvcr/manager.py",
+      "bytes": 23107,
+      "sha256": "b8e1b0ef4ff3b583a8e2f55a21d607e33b68f64dd92ace42527085a3b20c0fd3"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/manager.py",
+      "bytes": 37205,
+      "sha256": "39c6d967019acbf29fc84e5c95a6ba564549f5e59570b4854c13af5bd05c041c"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/metrics.py",
+      "bytes": 9607,
+      "sha256": "1268c266eb3485f24e0d8d5c3c85223f776e650647bf53a1ed239317364aa08e"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/obj/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/obj/config.py",
+      "bytes": 1771,
+      "sha256": "5f4dafe504d417faee31b53ebbd2ce4adc49e2cbc62cea38b02e727f5f2fa6e4"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/obj/manager.py",
+      "bytes": 18656,
+      "sha256": "8d96e62189fb7537bcb949629c31a4b90986b720eee54fa74786ba60a098ff4e"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/control/__init__.py",
+      "bytes": 413,
+      "sha256": "f2d083e83bc67a26b0d60b9dd249f9abb3d7bc76c6a811475f5262b74f4aa195"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/control/base.py",
+      "bytes": 5921,
+      "sha256": "9a044006751f4671ddb4178a5be1d6826bd492338f4a927c872b6a2566ba04db"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/control/zmq.py",
+      "bytes": 12211,
+      "sha256": "55be43570ef68c69db506a996d68869f8d76006cc85c55115b1f85d7a9431eff"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/data/__init__.py",
+      "bytes": 328,
+      "sha256": "e5d41d7d9b546502f1b822ab55b62e4d686495fe7b4a6c152d14d5741365fa11"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/data/base.py",
+      "bytes": 9795,
+      "sha256": "752d5ad0047adaebc4e83f63146dab2df47eda2392b4f651f4d3da2a23dbfce5"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/data/nixl.py",
+      "bytes": 11522,
+      "sha256": "405a41d2c8dcd901c74140767dddbc3345f952d5e645c1669d45cd6c07d187b1"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/manager.py",
+      "bytes": 40663,
+      "sha256": "8048d7e2bf802ff40e2ca137afef37e750130f057e343f85b4ceee6bcec06f71"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/session/__init__.py",
+      "bytes": 387,
+      "sha256": "2f06c3ba4aa843f96817fe305a84ed893f39ef177fd8af51598919d41d4b8ca6"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/session/client.py",
+      "bytes": 21467,
+      "sha256": "aaf50cc59407b5055ffbb2909a09c108a5ffaf18aea51f4fa07de8dd93c87790"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/session/protocol.py",
+      "bytes": 12234,
+      "sha256": "558e9576aac12c324be17126db2b6ebc90600dd54d35f4dedd64f8d81d8196b1"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/session/server.py",
+      "bytes": 47311,
+      "sha256": "57338dc11452df2b6abd59bd9bff3a08404355b29ddbc318303ae0ff1ca649ac"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/p2p/session/session.py",
+      "bytes": 22451,
+      "sha256": "46ab6994cc3b625b90d4d4a7a24086cc6de2c7b7a7f5a07b07adb75cba59d5dc"
+    },
+    {
+      "path": "vllm/v1/kv_offload/tiering/spec.py",
+      "bytes": 18126,
+      "sha256": "435ae3effedb68e479377d00b49800087b70e2e27ccca041a8396c6aaa985c32"
+    },
+    {
+      "path": "vllm/v1/metrics/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/metrics/buckets.py",
+      "bytes": 5530,
+      "sha256": "94f6e30ca4d27ba3298d09230a72cec69a8f43812d11e0d1094776c1c50fd932"
+    },
+    {
+      "path": "vllm/v1/metrics/loggers.py",
+      "bytes": 52099,
+      "sha256": "c12b4fbebfe886b697127f1114eaa0bb83c54a78675919d178b619c3d8d5d655"
+    },
+    {
+      "path": "vllm/v1/metrics/perf.py",
+      "bytes": 65275,
+      "sha256": "c114a60d42812439d338c8340028945030c7fd14bfab6d1d5441b45d7672d3fc"
+    },
+    {
+      "path": "vllm/v1/metrics/prometheus.py",
+      "bytes": 2787,
+      "sha256": "a835583311820f2e374a9e42ae229de1195081b288abc40ccc08eb368d6dc228"
+    },
+    {
+      "path": "vllm/v1/metrics/ray_wrappers.py",
+      "bytes": 7046,
+      "sha256": "fc5b5eeeb5ca480da86b5600682808cd19a4aa011880b7daae3bbe4f3f2ba19d"
+    },
+    {
+      "path": "vllm/v1/metrics/reader.py",
+      "bytes": 8694,
+      "sha256": "76bc2d10a267e203a768216f95a6048e26e6431edc40722c0e24228b807d524e"
+    },
+    {
+      "path": "vllm/v1/metrics/stats.py",
+      "bytes": 22935,
+      "sha256": "af1983ddc32fa4d3284e72212c6525daf961dd84429023a02d612b68b3112cf3"
+    },
+    {
+      "path": "vllm/v1/metrics/utils.py",
+      "bytes": 570,
+      "sha256": "3146bb1215074a18067fda14df7664e341fffb073aaaaee735cd4f81ed3b1cf2"
+    },
+    {
+      "path": "vllm/v1/outputs.py",
+      "bytes": 18031,
+      "sha256": "65ab7698bbdea1d53502ef8df3689bec860521ab6e2fab3c7bff63151be039b1"
+    },
+    {
+      "path": "vllm/v1/pool/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/pool/late_interaction.py",
+      "bytes": 4659,
+      "sha256": "5e053f3659b38e1b726b248aaa68032ba58ff5c5d5911ba30f26814fbcca9e4d"
+    },
+    {
+      "path": "vllm/v1/pool/late_interaction_runner.py",
+      "bytes": 6559,
+      "sha256": "0d3b3c65c616f529e04ed2888a55fc77c38ae4705567f92fd9eda5d8fedbbaf4"
+    },
+    {
+      "path": "vllm/v1/pool/metadata.py",
+      "bytes": 6503,
+      "sha256": "a6baa8db4f6b431a0ec7215e80f16407ca73f4cb6069cf26e775a4a49ccd8587"
+    },
+    {
+      "path": "vllm/v1/request.py",
+      "bytes": 15829,
+      "sha256": "da610d5203e72d2d524adc5fb39df11502a23520f2f31d9a44cf13d343f9c25d"
+    },
+    {
+      "path": "vllm/v1/sample/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/sample/logits_processor/__init__.py",
+      "bytes": 12570,
+      "sha256": "1f9b02dae8cf6d44484638037123d3a2dec6b7b9a2bcc9afceef1a9bf3eaedec"
+    },
+    {
+      "path": "vllm/v1/sample/logits_processor/builtin.py",
+      "bytes": 15527,
+      "sha256": "6105816ece77e5b1dbee0d07abc90ce039d650bac2ddb85c93280c48b00f2ebe"
+    },
+    {
+      "path": "vllm/v1/sample/logits_processor/interface.py",
+      "bytes": 3406,
+      "sha256": "171dfc6ef9b5b53128e8eaecc4bdf1de413a706d64bf5be686048f583c66eee1"
+    },
+    {
+      "path": "vllm/v1/sample/logits_processor/state.py",
+      "bytes": 5676,
+      "sha256": "a96411f14362c45f839e181dcb3ac01d5b880812bccb3552fc17863b219f44ac"
+    },
+    {
+      "path": "vllm/v1/sample/metadata.py",
+      "bytes": 1771,
+      "sha256": "6582cfe1a240c7ddb975f0ef6dd7dcd28dcf0fc7670394390250013977aa7ffd"
+    },
+    {
+      "path": "vllm/v1/sample/ops/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/sample/ops/bad_words.py",
+      "bytes": 1898,
+      "sha256": "0b1d0a9b13b92ddcae2c83393c07a34c0f107813725700dee794caa7fe7f3b12"
+    },
+    {
+      "path": "vllm/v1/sample/ops/logprobs.py",
+      "bytes": 1010,
+      "sha256": "b286f69012a6758bfe9250038b0697294dbffe0d32c6906f284c39f75ee48be3"
+    },
+    {
+      "path": "vllm/v1/sample/ops/penalties.py",
+      "bytes": 1864,
+      "sha256": "4debfcf247b3887478d2b9ec98f108756bbed2805462777ef6b56f3bdf4ce682"
+    },
+    {
+      "path": "vllm/v1/sample/ops/topk_topp_sampler.py",
+      "bytes": 20132,
+      "sha256": "13ea4359832bc914492330958ec4f5ac140f408b8f410cc05c6eaf7ddcd70be4"
+    },
+    {
+      "path": "vllm/v1/sample/ops/topk_topp_triton.py",
+      "bytes": 71061,
+      "sha256": "0b5fc337058e22bc28a8530ccec904d6ccd89b9548b02955c657ac429b1669d2"
+    },
+    {
+      "path": "vllm/v1/sample/rejection_sampler.py",
+      "bytes": 41582,
+      "sha256": "0bb9d224887ccb1355e16199005cc23a4afc6fa75156eca419851b7247d99750"
+    },
+    {
+      "path": "vllm/v1/sample/sampler.py",
+      "bytes": 18037,
+      "sha256": "f95805b2c6d06218c724826aa5f881a606e8d0a534a566aee7c85948520dd216"
+    },
+    {
+      "path": "vllm/v1/sample/thinking_budget_state.py",
+      "bytes": 24584,
+      "sha256": "962f8f55210eb0a431cb9c78b013e35f7a7dd58d06d6fb2e7fcff1b457356f8e"
+    },
+    {
+      "path": "vllm/v1/serial_utils.py",
+      "bytes": 24093,
+      "sha256": "d75c17a098231b2398cbdb7da6f9983e5b9229c0ba138b2874934d45fafd1f28"
+    },
+    {
+      "path": "vllm/v1/simple_kv_offload/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/simple_kv_offload/copy_backend.py",
+      "bytes": 3948,
+      "sha256": "68a40d32b39079846eb68540122c762c1385619c5913b3f64174404e1ee5ee1f"
+    },
+    {
+      "path": "vllm/v1/simple_kv_offload/cuda_mem_ops.py",
+      "bytes": 9713,
+      "sha256": "0d11651f647f1c34a141f7b352d42ee1097e05bf737ad8cba770015b7c4b0080"
+    },
+    {
+      "path": "vllm/v1/simple_kv_offload/disk_backend.py",
+      "bytes": 12785,
+      "sha256": "647459050f8208c68e68bc8b622bc7c8e4ac7b2aff01b82629ca500f8ecc979b"
+    },
+    {
+      "path": "vllm/v1/simple_kv_offload/manager.py",
+      "bytes": 58865,
+      "sha256": "3cc841ff97e4ec237800d4f81dcb5dfb5191c639f275a32892915e8b1af43eb7"
+    },
+    {
+      "path": "vllm/v1/simple_kv_offload/metadata.py",
+      "bytes": 2331,
+      "sha256": "6fd003219f3746e848bd8f93c5bb570c5d3b1564a5eb18c847c7c50bc1fb8bac"
+    },
+    {
+      "path": "vllm/v1/simple_kv_offload/worker.py",
+      "bytes": 15288,
+      "sha256": "d8a9c7d9d2a34309372b08ea1794d27923cfeb8d9443c9a5bc659149f96a933c"
+    },
+    {
+      "path": "vllm/v1/spec_decode/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/spec_decode/custom_class_proposer.py",
+      "bytes": 2369,
+      "sha256": "86de6921a9108138fda118fa47cf7fde4c03bd2a447cbcf8efba53496b23e237"
+    },
+    {
+      "path": "vllm/v1/spec_decode/dflash.py",
+      "bytes": 12935,
+      "sha256": "076a7cef13a781a6d2cc2d40f3cd6f9043ee4b64a00a63ba2ece7866b86319da"
+    },
+    {
+      "path": "vllm/v1/spec_decode/draft_model.py",
+      "bytes": 4489,
+      "sha256": "6b884f49a75f01d1aa6b2d27159b63fa27f7ba7f0518d2810d1a5b565e14f026"
+    },
+    {
+      "path": "vllm/v1/spec_decode/dynamic/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/spec_decode/dynamic/utils.py",
+      "bytes": 5676,
+      "sha256": "7179869a6d8e97634efe8bd3a9b07608c6393cfc50acdbc4cf11594872c087c1"
+    },
+    {
+      "path": "vllm/v1/spec_decode/eagle.py",
+      "bytes": 554,
+      "sha256": "b2b1f7d15117b43108be368756d9c6e9334d9415a070e46178e18bb7c6476378"
+    },
+    {
+      "path": "vllm/v1/spec_decode/extract_hidden_states.py",
+      "bytes": 17074,
+      "sha256": "a115bde14c46d2c44829242a959f85e70528536eb6fafe37aaf99e7aaf52d45c"
+    },
+    {
+      "path": "vllm/v1/spec_decode/gemma4.py",
+      "bytes": 15433,
+      "sha256": "7de751aca809b5d121d65a4643eeba6c52b01b4ec2776df38292ac6564ec0c88"
+    },
+    {
+      "path": "vllm/v1/spec_decode/llm_base_proposer.py",
+      "bytes": 84767,
+      "sha256": "5bd11c41f0a8cf1272b5880d9878043f876bee6c7e04fb781e613f92930b15ab"
+    },
+    {
+      "path": "vllm/v1/spec_decode/medusa.py",
+      "bytes": 2878,
+      "sha256": "56dfb67044949db376a0bba400b8e88ffe53b134e52bba4f8ff01de8a1e7f71e"
+    },
+    {
+      "path": "vllm/v1/spec_decode/metadata.py",
+      "bytes": 2353,
+      "sha256": "a6696487b3c8823c119f601de81504341bdefefe95bafe673c1f570ab2028da8"
+    },
+    {
+      "path": "vllm/v1/spec_decode/metrics.py",
+      "bytes": 10521,
+      "sha256": "35e0a709042471559937f1a1979a721af9b910476efaa8b6e29865bace985afe"
+    },
+    {
+      "path": "vllm/v1/spec_decode/ngram_proposer.py",
+      "bytes": 11160,
+      "sha256": "5051e1bca645fe4befec0a6340f0dfc169fbcbe070ac1da508b72f8ee9c91736"
+    },
+    {
+      "path": "vllm/v1/spec_decode/ngram_proposer_gpu.py",
+      "bytes": 25334,
+      "sha256": "6b304fb5a2b7a2e4b6ac05c90c49d228975a7b1f7d566dc1445f048992163b72"
+    },
+    {
+      "path": "vllm/v1/spec_decode/step3p5.py",
+      "bytes": 19610,
+      "sha256": "8397f1742d7c6bc69d8c69ab9515667b7f65ef619c86fbd74107a9cbfbe39d6d"
+    },
+    {
+      "path": "vllm/v1/spec_decode/suffix_decoding.py",
+      "bytes": 4548,
+      "sha256": "5ce2f64f9c6bec815a10f51eb328934a112eb432d29fb5a4d93926128977844e"
+    },
+    {
+      "path": "vllm/v1/spec_decode/utils.py",
+      "bytes": 32977,
+      "sha256": "318067397e6827153b484953b4f245e64b0a04308cfe05fa6760418b83a15ed8"
+    },
+    {
+      "path": "vllm/v1/spec_decode/vocab_mapping.py",
+      "bytes": 5838,
+      "sha256": "3c877da8f1e5777a33c95d48b97c0f81600af1f027f9984a3604f16f41cef3f7"
+    },
+    {
+      "path": "vllm/v1/structured_output/__init__.py",
+      "bytes": 19963,
+      "sha256": "e33ed1786e5e60a2ef01313f52a67ba4b368477520ae43d453e8e960ac395b48"
+    },
+    {
+      "path": "vllm/v1/structured_output/backend_guidance.py",
+      "bytes": 10692,
+      "sha256": "44d7797296dc93a2ef4ef6813fa148007326f8075408d0660c14de29bb111dca"
+    },
+    {
+      "path": "vllm/v1/structured_output/backend_lm_format_enforcer.py",
+      "bytes": 6938,
+      "sha256": "efa822a498e782e2d859059fde6ce4d52c70330ad5bd24b4164526c123abf325"
+    },
+    {
+      "path": "vllm/v1/structured_output/backend_outlines.py",
+      "bytes": 12601,
+      "sha256": "957066467c3ba1112114283155c409878100f4a673b747f293b459dcd259c6c1"
+    },
+    {
+      "path": "vllm/v1/structured_output/backend_types.py",
+      "bytes": 4072,
+      "sha256": "a52481f7de1661f508b07c2808368baf2e3fd456a77280c9931322d08f7e3b17"
+    },
+    {
+      "path": "vllm/v1/structured_output/backend_xgrammar.py",
+      "bytes": 15575,
+      "sha256": "a6041ddf35d7aebb8452697ed16274451af533042acfc46760860725d153f5cb"
+    },
+    {
+      "path": "vllm/v1/structured_output/request.py",
+      "bytes": 3512,
+      "sha256": "6a06212f8f130555eb406ba03c92bf9e26fbfa1d747d83b8f68766ebf967490e"
+    },
+    {
+      "path": "vllm/v1/structured_output/utils.py",
+      "bytes": 20866,
+      "sha256": "d5f00e2d68049cfcbaf65e475ed21e6c21a7957716d97adc53357db6a4e2ef72"
+    },
+    {
+      "path": "vllm/v1/utils.py",
+      "bytes": 31874,
+      "sha256": "5b6015d60ea96ab24b0f2e0b7701abaa90d6107bca01b51ac3d4bc361fbdfcff"
+    },
+    {
+      "path": "vllm/v1/watermarking/__init__.py",
+      "bytes": 1057,
+      "sha256": "ea432cbee91b95dfe861d5d2b5bf704057610c9aafb5bd3ae9b5905f90dc221b"
+    },
+    {
+      "path": "vllm/v1/watermarking/detector.py",
+      "bytes": 3274,
+      "sha256": "e1884d21ceca306502d89d9ad41d11c2fac0a9a2d8d1efe27d632cb66bbfe41c"
+    },
+    {
+      "path": "vllm/v1/watermarking/factory.py",
+      "bytes": 778,
+      "sha256": "b33da8b4df22fdcd8a9eed498c4e99a7854102b6c9da7ac371f8cf1ef922c07c"
+    },
+    {
+      "path": "vllm/v1/watermarking/gpu_sampler.py",
+      "bytes": 7383,
+      "sha256": "3df731bce028cf25225a0aeb4653431934c0ae74b4a11e52dcca9822fa735da8"
+    },
+    {
+      "path": "vllm/v1/watermarking/gumbel.py",
+      "bytes": 9354,
+      "sha256": "2e86106ba6e54b90bcf9e273fd19ba5db0f3d2674d2747ca1ef9bcf57e046de5"
+    },
+    {
+      "path": "vllm/v1/watermarking/prfs/__init__.py",
+      "bytes": 522,
+      "sha256": "0224c90a7c62112b0626b1363fb9df8e4aa92ad551da1494030c6546e3d65215"
+    },
+    {
+      "path": "vllm/v1/watermarking/prfs/base.py",
+      "bytes": 542,
+      "sha256": "1228cc2d7245c4df4e0ef13b922655f5c22d659f6839f29c02fc43ed909c2072"
+    },
+    {
+      "path": "vllm/v1/watermarking/prfs/philox.py",
+      "bytes": 5141,
+      "sha256": "9468a4bb045008d4507ae5757da1fdcccd2730b9328ebf8ff909d89109bc8620"
+    },
+    {
+      "path": "vllm/v1/watermarking/spec_decode.py",
+      "bytes": 5155,
+      "sha256": "51a681b8d947ac7248b343da09cae8f541a109c7a655dd1ff3aed0e92f7bde39"
+    },
+    {
+      "path": "vllm/v1/watermarking/watermarker.py",
+      "bytes": 2735,
+      "sha256": "c04e4171cab51ca216dbb2acafb4bce5184e176829e3fc34f65cb2912ad87c6a"
+    },
+    {
+      "path": "vllm/v1/worker/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/block_table.py",
+      "bytes": 20556,
+      "sha256": "a09b8819e1417b7a186cf3472224e2138fc5d41a291c6692bb7df711b0c44259"
+    },
+    {
+      "path": "vllm/v1/worker/cp_utils.py",
+      "bytes": 10814,
+      "sha256": "e32625d83a641b8dd8df82e92d1b6fb20af0cdf2e8fbd2fb131aa3c215415448"
+    },
+    {
+      "path": "vllm/v1/worker/cpu/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/cpu/buffer_utils.py",
+      "bytes": 448,
+      "sha256": "e7313fd8c2c76ebfb98d2fa53008bc9691d0f83a7d7c05e87602b5a29fb79e04"
+    },
+    {
+      "path": "vllm/v1/worker/cpu/model_runner.py",
+      "bytes": 545,
+      "sha256": "24a1c916550051327dd5893243a6d4200f3824b91b3af8aa6f6c793fd7c68c3e"
+    },
+    {
+      "path": "vllm/v1/worker/cpu/shm.py",
+      "bytes": 2854,
+      "sha256": "08491af8ad341399d1375f2d21ad00414d4c89b0a5c03f55de8704914bbfcbd9"
+    },
+    {
+      "path": "vllm/v1/worker/cpu_model_runner.py",
+      "bytes": 9423,
+      "sha256": "92111aba92f00571f1a3c4c6e43cf1da6ccb4d2afac2f4d5abc018a4a6e7e8bd"
+    },
+    {
+      "path": "vllm/v1/worker/cpu_worker.py",
+      "bytes": 12035,
+      "sha256": "a8051b9e510ef0af9cc34004f2cbe5c0f902bd0cebc32c9464e744344dfdf849"
+    },
+    {
+      "path": "vllm/v1/worker/dp_utils.py",
+      "bytes": 10143,
+      "sha256": "8cd19f1bfbc5c4f6ec60df89aea7c8a19b400ebc264f372b103014152e92158c"
+    },
+    {
+      "path": "vllm/v1/worker/ec_connector_model_runner_mixin.py",
+      "bytes": 3135,
+      "sha256": "fe9b11cebb8562f1bfe98b98a5647b2b081a6e424cb60d4ffe2412c91a99215e"
+    },
+    {
+      "path": "vllm/v1/worker/encoder_cudagraph.py",
+      "bytes": 28265,
+      "sha256": "6a08d3779bca1b47dbf9daf6eafe2d3c70dbcb8aeb7d63ba7efacc68241ee3bc"
+    },
+    {
+      "path": "vllm/v1/worker/encoder_cudagraph_defs.py",
+      "bytes": 4540,
+      "sha256": "bb7be050fcaa8868e7816c84caec875da57050d65fe7eaf00f3d41473df25e3a"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/async_utils.py",
+      "bytes": 10554,
+      "sha256": "77e17a4570ead2be30ae9b00888cf077a3b873018c12ca0549b853bfda02c1ba"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/attn_utils.py",
+      "bytes": 21387,
+      "sha256": "b9b81e59dda2720b1f9c434471381f879228832443e52756e469b4ad4905888f"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/block_table.py",
+      "bytes": 14435,
+      "sha256": "61c004315d5af7e7eae4e2a9e6be92ea82c520327690a7f55a73bb9ce95f520a"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/buffer_utils.py",
+      "bytes": 11930,
+      "sha256": "6597f701a30261bf250e9ad5a29737264624a1caa20527aeea0dad630325b093"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/cp_utils.py",
+      "bytes": 2542,
+      "sha256": "456c1bb7e262d99ff555522a4f134e5a9b42aee23290be25455eaef36ee8eaaf"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/cudagraph_utils.py",
+      "bytes": 46574,
+      "sha256": "6e9c042890603535e300a40df8ee159dbed1058a64a83ae50ff0329e332e05ff"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/dp_utils.py",
+      "bytes": 13182,
+      "sha256": "e26867bc89e6bfc933cabc5ed13e5dc7b8d2d3030118ca1ca64c8785dabc0fc1"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/ec_connector.py",
+      "bytes": 3699,
+      "sha256": "2afe6e641f4ae3eb3b8da336c74eaa7479bf617b27cfb39a1fcbe487686f0a08"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/eplb_utils.py",
+      "bytes": 4915,
+      "sha256": "1829fac11464aed4649179b302df198de51b95d0589f4e56bea305a876a63e26"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/input_batch.py",
+      "bytes": 24882,
+      "sha256": "d5dd956eb319bd69dd9e762047833d81ad40b21fce619fcb2133759e73620694"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/kv_connector.py",
+      "bytes": 5393,
+      "sha256": "b89a4333f1e552d86e1815674b59e9f1335f0f49c0a7b46082439076f62c6a81"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/lora_utils.py",
+      "bytes": 4010,
+      "sha256": "1e90eddd9ddb4ca55e574bb28e87ae3a6f6750175a62d373102426543f4ccd66"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/metrics/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/metrics/logits.py",
+      "bytes": 1205,
+      "sha256": "ea058d7510a077a55f8ac7e4c3d596508346244e908cb372865d7159f62edc89"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/mm/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/mm/encoder_cache.py",
+      "bytes": 1411,
+      "sha256": "89c500338fddbeee7c4fca978a3a7c4c566a03e848e399d303fbee3c80631cd2"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/mm/encoder_runner.py",
+      "bytes": 12011,
+      "sha256": "0981e352d70301b7154a217a48665ffe35f215d053ec5740c2515a3e1e11b4e6"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/mm/lora.py",
+      "bytes": 3104,
+      "sha256": "a3eddfad6ad64de276964240c28dc080888df4a56dd5eac18f89428f2cbb7a01"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/mm/rope.py",
+      "bytes": 6324,
+      "sha256": "0924375bcb367267e783b57dd2ad9de1189d97025ce4313baaa54f2911eaaf1e"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_runner.py",
+      "bytes": 103052,
+      "sha256": "174c93db921c23cf0396eee4764be25b2bd2d4b6a06e9fa41ce3598b884ce8ce"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/__init__.py",
+      "bytes": 2220,
+      "sha256": "07815d0b788fc88185772f581bbf892a675259f9288375571f29887622f8d93c"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/default.py",
+      "bytes": 9928,
+      "sha256": "bb614f814780f052e869f9acf31dfbfa68718ee7dc6252eefa901b5730ee8a2a"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/encoder_decoder.py",
+      "bytes": 7986,
+      "sha256": "a5868059d8af672548b41d0e623e884320e6ed61e6aaca2d2828ff5be0356f2f"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/encoder_only.py",
+      "bytes": 9695,
+      "sha256": "84e96b55a2639e2a73fa4a0308acc89c8d053dc715481180b237e0196dcef99f"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/interface.py",
+      "bytes": 8724,
+      "sha256": "5675b6fedc7403a9ab410b1e5565974e78fac23c42ab4253ae1da52d6e09b594"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/mamba_hybrid.py",
+      "bytes": 17994,
+      "sha256": "573e130ac5587d4822fabf97adad1ad0fda02ff83c5e70df879a5bb175ae845c"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/mm_pruning.py",
+      "bytes": 5973,
+      "sha256": "b150940b12ae76048f050a8eeb54d532bbdc530a18ffbf320ddeeb0cfaa90f93"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/prompt_embeds.py",
+      "bytes": 5929,
+      "sha256": "11f9e270925c2df6a505557605ac2b859bb145cf3420b0111e7482a1c544f9b1"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_states/recoverssm.py",
+      "bytes": 3280,
+      "sha256": "b4b660e62eaf33f4fe8271f83ed1fb6de6bc08f800a8073b27803e42fb29a645"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/pcp_manager.py",
+      "bytes": 34910,
+      "sha256": "2d80df0ed5b18a2069f9d0689cb59923ffe324ba200fcafe242da23da3a6ddaa"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/pool/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/pool/pooling_runner.py",
+      "bytes": 8800,
+      "sha256": "f8463f7648cce0f3f29418a4d9fee61634ead760957cf236d06d61cf8cd986e7"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/pp_utils.py",
+      "bytes": 11466,
+      "sha256": "dadeef0bebf61d0ad44a28d06372208ec4e6389224d6017f412683b026bdbb5c"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/bad_words.py",
+      "bytes": 6730,
+      "sha256": "8d3cbd5613398260314d94739d8ee0e1ac0c22abf2f960f541d3c0d4e39d360b"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/batch_shard.py",
+      "bytes": 25592,
+      "sha256": "c30274a3a04e6a03e89be9cd7c62de602b1aba4d412f64540ab6201036de3928"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/gumbel.py",
+      "bytes": 10153,
+      "sha256": "3ec1df510bdad13e8b0a457b5b67c98affdf6e57369e56cb471246cc8f40dd34"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/logit_bias.py",
+      "bytes": 12418,
+      "sha256": "9e80a3fe6f3c7474723408cfff52183f4585fdeedd9c2312843ee98d0b12724c"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/logprob.py",
+      "bytes": 10058,
+      "sha256": "f47479a818192acb6b297c79fa67a3b2f9820e3492a394d5adda777e9b7c832e"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/min_p.py",
+      "bytes": 1774,
+      "sha256": "4cb5e2f45e1ced6f9685283a7a5c8cfd7204d9a249822e866cfff756c7f04f62"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/output.py",
+      "bytes": 5290,
+      "sha256": "d6e298c0f197d487a8faaf7200f500fa83df1d7a4bbf4339cadd6a18008f7f9c"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/penalties.py",
+      "bytes": 10608,
+      "sha256": "46c29434caf5f415129ef4a9bb2b8d4f62d2765596e3e07f73ad2b198c7def1b"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/prompt_logprob.py",
+      "bytes": 9155,
+      "sha256": "4cf22d390e7bf59e44c458cff7180268db63e95d06af2f1e14d720a2d77c9663"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/sampler.py",
+      "bytes": 13754,
+      "sha256": "832c9945d201a1e730ff9b4b52076aa83bd4a5064e1e4cfea952cf84d4a8d1f0"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/states.py",
+      "bytes": 4826,
+      "sha256": "4e3671f93695ba5a48fad7d2d13beb231ac8741034904ed5a15d9f7b9b86662e"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/thinking_budget.py",
+      "bytes": 14998,
+      "sha256": "020513e1d3406f367de6ad995a95055008fd0c28f2873647e8283c9870e22404"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/trace_replay.py",
+      "bytes": 3835,
+      "sha256": "d2a7d3b3b55379efabe4740a4b7f14030126dc11be36f6ea974164ce42316a50"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/sample/watermark.py",
+      "bytes": 17734,
+      "sha256": "a3581458169dab9153eb09fd67218e0ee5585406537a9de80ad528ae62b030c0"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/shutdown.py",
+      "bytes": 656,
+      "sha256": "bb470f14b17c7e52571ef8938b2a9527e7c2846852ae8a3a94b69cd1c30aa4b1"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/__init__.py",
+      "bytes": 2208,
+      "sha256": "1f1f84bfe6f4f5af3a7e21a7a8716ecf7b9013da1d03327668a3ee36afc24c32"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/acceptance_estimator.py",
+      "bytes": 19389,
+      "sha256": "505b843bdd75928b03793b395b47b8be914bd7fe2a3351c8ec04339baeebb1c2"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/adaptive_verification.py",
+      "bytes": 21454,
+      "sha256": "276b2fec56758a94c71b717f6786b8a6f126db2e20cf964350202feee61a0a39"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/autoregressive/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/autoregressive/cudagraph_utils.py",
+      "bytes": 2555,
+      "sha256": "13392ef0a9ed59eb9c2b2bad43d7c61beb212a8805849e46b5130c230275d0a5"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py",
+      "bytes": 37483,
+      "sha256": "5b97f54e20ddf65b98e939832d050745f67ef43cfa145786da300f1a8322e3c6"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dflash/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dflash/cudagraph.py",
+      "bytes": 4374,
+      "sha256": "beab567ae2df6a2ba2cd92fe7ee452c6b959b8a7037a4b5f493993a1824619bb"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dflash/speculator.py",
+      "bytes": 31396,
+      "sha256": "f9c100f42f9326e48eb84e89281897e859ba761943f54d593523555ccd98dc63"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dflash/utils.py",
+      "bytes": 2737,
+      "sha256": "53d2c3ad474d290d2c6df027446bbd80ac7447684e5242ab2c3c5337d2abd383"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dflash2/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dflash2/speculator.py",
+      "bytes": 7835,
+      "sha256": "b70043550938a1df9aecc85d8c8224c38c929ca34f68834572f6e723854d2027"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dspark/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dspark/speculator.py",
+      "bytes": 11859,
+      "sha256": "dcf4abdedbd2bddd0d76be198ccf5b4e467c46f645038c35fcab821491a35b03"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dspark/utils.py",
+      "bytes": 4983,
+      "sha256": "86af2bf30604a184312e8f076097b91ecfec704f409f9d68d634b03d6b318070"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/eagle/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/eagle/eagle3_utils.py",
+      "bytes": 5248,
+      "sha256": "201ee875fcc3d076a8fc1f3876dcbf85736b221a368555243a8987ff26a1674e"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/eagle/speculator.py",
+      "bytes": 557,
+      "sha256": "746e318a4f266d75522ff7f3731ea9b4527b7b4824f71364d1a62184ea1f7b3d"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/eagle/utils.py",
+      "bytes": 6395,
+      "sha256": "94de6f55a1761f24f4aa1388cbc3b3763d4ab3ee53260330056ad31ce0b78236"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/extract_hidden_states.py",
+      "bytes": 5652,
+      "sha256": "93c4233be7b2d2290b33902ea9b3bb5274c11701830851d03967a22144536e2d"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/gemma4/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/gemma4/speculator.py",
+      "bytes": 5971,
+      "sha256": "9991210d7babd2caf2cd10797ca8688543dedeafbc3b86bc7c979c1a6ae9f949"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/mtp/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/mtp/speculator.py",
+      "bytes": 2496,
+      "sha256": "926d6c9ffdb368c971647911a60493820d056ce236fcae9d94a42fa2e006255d"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/multi_module_mtp/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/multi_module_mtp/speculator.py",
+      "bytes": 41106,
+      "sha256": "d9d4735b9b33829332b0e845b6d3073b2f0436045ed693b25c6434f351644127"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/rejection_sampler.py",
+      "bytes": 12345,
+      "sha256": "030db5bfca162cc1f305112f299de5d6d61c59d3ed0807fee46575441ca4086d"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/rejection_sampler_utils.py",
+      "bytes": 43786,
+      "sha256": "214b61fa0abe88573beb779872c035b3954e5651a85bd438d99ee5905d3a62ec"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/speculator.py",
+      "bytes": 21543,
+      "sha256": "3a1ab15bf8b20918852eb835fe9755046e99dcbac6ba6ca3d414949fc8bc695a"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/utils.py",
+      "bytes": 4121,
+      "sha256": "282f2929eddae9ca7312269f799be07472334b6df9fd91878b5e839ec05e418c"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/states.py",
+      "bytes": 5271,
+      "sha256": "99418f5df43ca612ded72609fee011620b065b2cab2f249ccb387096bf4ae71a"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/structured_outputs.py",
+      "bytes": 5740,
+      "sha256": "18a10532db7e66b55e334acacd1fd989ad6361adf31dd0de9a9a65e23db25951"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/ubatch_utils.py",
+      "bytes": 21296,
+      "sha256": "5092e2e58af0561c8dc12e62847cfc6dda9ca20dfbd33e7f0cd77a83fe87f7c5"
+    },
+    {
+      "path": "vllm/v1/worker/gpu/warmup.py",
+      "bytes": 18738,
+      "sha256": "423ac32d58fe008c228cfa223e4fcebfcf87e3463a9dbdf80a083c0578d73723"
+    },
+    {
+      "path": "vllm/v1/worker/gpu_input_batch.py",
+      "bytes": 48714,
+      "sha256": "18cf455c9d0eea61cc581c7932f2e6cd09786914e82dd35eef1c1430da359a0f"
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "bytes": 340999,
+      "sha256": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51"
+    },
+    {
+      "path": "vllm/v1/worker/gpu_ubatch_wrapper.py",
+      "bytes": 17724,
+      "sha256": "4233cfbe8c9884b042c4363890108f616483b694ebe9a6e69578dcf89c6dac5c"
+    },
+    {
+      "path": "vllm/v1/worker/gpu_worker.py",
+      "bytes": 65620,
+      "sha256": "6994436e4547c0996ab555b3e814e8ccea26b650dfc1b378b97d640745309347"
+    },
+    {
+      "path": "vllm/v1/worker/kv_connector_model_runner_mixin.py",
+      "bytes": 4468,
+      "sha256": "e1cc76d065a7e60aacddb190ae795a480b65cd02ba71a1fc699a02a85c1a3de2"
+    },
+    {
+      "path": "vllm/v1/worker/lora_model_runner_mixin.py",
+      "bytes": 11538,
+      "sha256": "fef6092a15d8d37f6fa22495e6106e2e5280180908d61ce43d9ff5bf4eef3f2f"
+    },
+    {
+      "path": "vllm/v1/worker/mamba_utils.py",
+      "bytes": 69566,
+      "sha256": "23fdaa4e8f63ee8f938eaa1a2b39f803cb04fa6ecd69789563254b1a0691413a"
+    },
+    {
+      "path": "vllm/v1/worker/mm_encoder_model_runner.py",
+      "bytes": 5631,
+      "sha256": "780c41be84ad022205c21c1decb6bb8d5afb03bc7be120c1f7df03b710acc3d7"
+    },
+    {
+      "path": "vllm/v1/worker/sentinel/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vllm/v1/worker/sentinel/gpu_worker_sentinel.py",
+      "bytes": 3670,
+      "sha256": "3959b8619d052c5dd247815074e03ec21ec9b43cc424ff2d296abc19b227b852"
+    },
+    {
+      "path": "vllm/v1/worker/startup_plan.py",
+      "bytes": 7332,
+      "sha256": "84bcbb4f7a9fd7c8d10c9c895aadd9673d44c767b9132368d11eb5e017afe86b"
+    },
+    {
+      "path": "vllm/v1/worker/ubatch_utils.py",
+      "bytes": 12917,
+      "sha256": "b34dce551b5195c414e6a3a997c75961cc7a17f24c7c980487fe3d3e2ba7a798"
+    },
+    {
+      "path": "vllm/v1/worker/ubatching.py",
+      "bytes": 8394,
+      "sha256": "40391241c564feb5f16c77898ae6ae152ed6e71a4682e2a406387785d8de02d7"
+    },
+    {
+      "path": "vllm/v1/worker/utils.py",
+      "bytes": 31607,
+      "sha256": "0ca3ec6bf4d20076145b7fe64e564962adebedc8f75a856b517ba0b2f2d77acf"
+    },
+    {
+      "path": "vllm/v1/worker/worker_base.py",
+      "bytes": 14284,
+      "sha256": "4a1a5266b912fe97991d8dc89d92b923990da9f6cb4b817d00d52e9c0d26dd7c"
+    },
+    {
+      "path": "vllm/v1/worker/workspace.py",
+      "bytes": 11181,
+      "sha256": "d21c08167d1d0d1c0cddaa80453a53a0b4dec5d81b5a537c94a21324344976b3"
+    },
+    {
+      "path": "vllm/v1/worker/xpu_model_runner.py",
+      "bytes": 2166,
+      "sha256": "07fa0390d28f2b8c3c3c0019eb9c3b126e2397aea268ba47c889f06b423deb23"
+    },
+    {
+      "path": "vllm/v1/worker/xpu_worker.py",
+      "bytes": 10645,
+      "sha256": "711b56432506b58041cd86e71320c3960413f7bd61061990b66488421d81cfc3"
+    }
+  ]
+}

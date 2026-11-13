@@ -1,0 +1,10 @@
+{
+  "type": "OBSERVER_INSTALL_BOUNDARY_REPAIR",
+  "canonical_git_sha": "16528241468e2624ccfe07a69a67fcc123bfe4a3",
+  "file": "experiments/scalar_live_observer.py",
+  "overlay_only": true,
+  "production_source_changed": false,
+  "before_sha256": "6ae006f3217a6f04a5d5f7d39ac5ecf102df17df0fb111789545534c2dbd0dd2",
+  "after_sha256": "6045b0b8d94f9d415904fa3a20587923fea132cd18d34fbce7f1b457b057cf87",
+  "reason": "Async EngineCore can retire scheduler outputs that were already in batch_queue before LiveObserver installation. Only those pre-existing scheduler_output identities are ignored."
+}

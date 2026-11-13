@@ -1,0 +1,753 @@
+{
+  "schema_version": "m4-component-calibration-v1",
+  "artifact_kind": "component_report",
+  "not_consumer_profile": true,
+  "canonical_profile_generated": false,
+  "runtime_tree_available": false,
+  "gamma_attn_status": "not_calibrated_pending_formula_alignment",
+  "technical_alignment_status": "TEAM TECHNICAL ALIGNMENT REQUIRED: TreeAdaptive N/64 versus FlexCostModel max(0,N-1) verification formulas and derived-cost provenance. Canonical topology profile generation is disabled. Legacy Modal pilot/full submission remains disabled.",
+  "environment": {
+    "gpu": "NVIDIA L4",
+    "gpu_compute_capability": [
+      8,
+      9
+    ],
+    "gpu_memory_total_mb": 22563.125,
+    "driver_version": "580.82.07",
+    "cuda_version": "13.0",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.30.0",
+    "nvidia_smi_output": "Sun Nov  8 04:37:39 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 580.82.07              Driver Version: 580.82.07      CUDA Version: 13.0     |\n+-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA L4                      Off |   00000000:00:03.0 Off |                    0 |\n| N/A   55C    P8             17W /   72W |       3MiB /  23034MiB |      0%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n\n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|  No running processes found                                                             |\n+-----------------------------------------------------------------------------------------+\n",
+    "nvidia_smi_stderr": "",
+    "nvidia_smi_returncode": 0,
+    "cuda_available": true,
+    "expected_gpu": "L4",
+    "observed_gpu": "NVIDIA L4",
+    "observed_gpu_type": "L4",
+    "canonical_hardware": true,
+    "sm_architecture": "sm_89",
+    "run_id": "l4-components-29a10c6-043738",
+    "timestamp_utc": "2026-11-08T04:37:40.892652+00:00",
+    "source_commit": "29a10c6e8aa51983f31e2befebc105afd658dfdb",
+    "working_tree_clean": true,
+    "backend": "local_cuda",
+    "run_type": "component_benchmark",
+    "requested_run_type": "component_benchmark",
+    "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+    "draft_revision": "c3adca7e211b471d97a519a625df7ffd37b8b461",
+    "draft_method": "eagle3",
+    "dtype": "bfloat16",
+    "quantization": "awq_marlin",
+    "contexts": [
+      1024
+    ],
+    "batches": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "k_values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "batch_grid": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "k_grid": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "warmup": 5,
+    "repeats": 50,
+    "timing_method": "worker_cuda_synchronize_perf_counter_wall_ms",
+    "runner_selection": "VLLM_USE_V2_MODEL_RUNNER=0",
+    "target_boundary": "model forward only; excludes logits and sampling",
+    "proposer_boundary": "EAGLE propose call; includes preparation and sampling",
+    "canonical_component_run": false,
+    "status": "failed",
+    "error": "ValueError: Failed component cell"
+  },
+  "status": "incomplete",
+  "error": "ValueError: Failed component cell",
+  "measurement_summary": [
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 1,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 3.7132175002625445,
+      "p90_ms": 3.7619269996866933,
+      "min_ms": 3.6503510000329698,
+      "max_ms": 4.036237999571313,
+      "variance_ratio": 0.10392254143773119,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 1,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 6.142652499875112,
+      "p90_ms": 6.210346999978356,
+      "min_ms": 6.066749000183336,
+      "max_ms": 6.361604000176158,
+      "variance_ratio": 0.04800125027401707,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 1,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 8.662234500206978,
+      "p90_ms": 8.739810999941255,
+      "min_ms": 8.555680999961623,
+      "max_ms": 8.8961070005098,
+      "variance_ratio": 0.039300021321293385,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 1,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 11.151237500143907,
+      "p90_ms": 11.206043000129284,
+      "min_ms": 11.038419999749749,
+      "max_ms": 11.423007000303187,
+      "variance_ratio": 0.0344882799374038,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 1,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 13.663521500347997,
+      "p90_ms": 13.752775999819278,
+      "min_ms": 13.570359000368626,
+      "max_ms": 14.008890000695828,
+      "variance_ratio": 0.032095020329571226,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 2,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 2,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 2,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 2,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 2,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 4,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 4,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 4,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 4,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 4,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 8,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 8,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 8,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 8,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 8,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 16,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 16,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 16,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 16,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 16,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 32,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 32,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 32,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 32,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 32,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 1,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 22.441052499971192,
+      "p90_ms": 22.739495000223542,
+      "min_ms": 21.977145999699133,
+      "max_ms": 27.666607000355725,
+      "variance_ratio": 0.25352915157004763,
+      "variance_warning": true
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 1,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 22.697580999874845,
+      "p90_ms": 23.76423399982741,
+      "min_ms": 22.127591999833385,
+      "max_ms": 27.76428900006067,
+      "variance_ratio": 0.24833910716117139,
+      "variance_warning": true
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 1,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 22.798397000315163,
+      "p90_ms": 23.33667799939576,
+      "min_ms": 22.295064999525493,
+      "max_ms": 25.349371000629617,
+      "variance_ratio": 0.13397020856606282,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 1,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 22.370840999883512,
+      "p90_ms": 22.741818000213243,
+      "min_ms": 21.920021999903838,
+      "max_ms": 27.501685000061116,
+      "variance_ratio": 0.24950617637425174,
+      "variance_warning": true
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 1,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 22.390194500076177,
+      "p90_ms": 22.649682000519533,
+      "min_ms": 22.098215999903914,
+      "max_ms": 27.611573000285716,
+      "variance_ratio": 0.24623979931764525,
+      "variance_warning": true
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 2,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 2,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 2,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 2,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 2,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 4,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 4,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 4,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 4,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 4,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 8,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 8,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 8,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 8,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 8,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 16,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 16,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 16,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 16,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 16,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 32,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 32,
+      "K": 2,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 32,
+      "K": 3,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 32,
+      "K": 4,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 32,
+      "K": 5,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "target_decode_forward",
+      "batch_size": 1,
+      "K": 0,
+      "context_len": 1024,
+      "n_success": 50,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 24.84856550006498,
+      "p90_ms": 25.330783000072188,
+      "min_ms": 24.43504099983329,
+      "max_ms": 28.918086999965453,
+      "variance_ratio": 0.18041468028085725,
+      "variance_warning": true
+    },
+    {
+      "measurement_kind": "target_decode_forward",
+      "batch_size": 2,
+      "K": 0,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "target_decode_forward",
+      "batch_size": 4,
+      "K": 0,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "target_decode_forward",
+      "batch_size": 8,
+      "K": 0,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "target_decode_forward",
+      "batch_size": 16,
+      "K": 0,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    },
+    {
+      "measurement_kind": "target_decode_forward",
+      "batch_size": 32,
+      "K": 0,
+      "context_len": 1024,
+      "n_success": 0,
+      "n_failed": 55,
+      "n_warmup": 5
+    }
+  ],
+  "full_repeat_requirement_met": false
+}

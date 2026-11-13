@@ -1,0 +1,143 @@
+[
+  {
+    "mode": "default",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "flexsds 0.2.0-alpha\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "default",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "detect"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\n[OK] Hardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "default",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "profile"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\n[OK] Linked hardware profile: profile_sm89_l4.json\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "default",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "serve",
+      "--target",
+      "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "--draft",
+      "Qwen/Qwen2.5-0.5B-Instruct",
+      "--backend",
+      "local",
+      "--dry-run"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\nLaunching server: Target=Qwen/Qwen2.5-7B-Instruct-AWQ, Draft=Qwen/Qwen2.5-0.5B-Instruct, Backend=local\r\n  [OK] Compatibility: WARNING/INCOMPATIBLE | Method: draft_model | VRAM Needed: 9.0GB / Free: 3.2GB | Hetero Vocab: True\r\n\r\n[FlexSDS] Dry-run execution command:\r\nvllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --host 0.0.0.0 --port 8000 --served-model-name qwen2.5-7b-adaptive --dtype bfloat16 --generation-config vllm --gpu-memory-utilization 0.85 --max-model-len 4096 --max-num-seqs 32 --quantization awq_marlin --speculative-config {\"method\": \"draft_model\", \"model\": \"Qwen/Qwen2.5-0.5B-Instruct\", \"num_speculative_tokens\": 4, \"num_speculative_tokens_per_batch_size\": [[1, 32, 4]], \"draft_sample_method\": \"greedy\", \"use_heterogeneous_vocab\": true} --scheduler-cls src.server.adaptive_scheduler.AdaptiveAsyncScheduler --per-request-spec-decode-metrics summary\r\nEnvironment: ADAPTIVE_ENABLE_VRAM_GUARD=1\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "utf8",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "flexsds 0.2.0-alpha\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "utf8",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "detect"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\n\u2714 Hardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) \u00b7 VRAM: 3.21/4.0 GB Free\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "utf8",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "profile"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\n\u2714 Linked hardware profile: profile_sm89_l4.json\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "utf8",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "serve",
+      "--target",
+      "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "--draft",
+      "Qwen/Qwen2.5-0.5B-Instruct",
+      "--backend",
+      "local",
+      "--dry-run"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\nLaunching server: Target=Qwen/Qwen2.5-7B-Instruct-AWQ, Draft=Qwen/Qwen2.5-0.5B-Instruct, Backend=local\r\n  \u2714 Compatibility: WARNING/INCOMPATIBLE | Method: draft_model | VRAM Needed: 9.0GB / Free: 3.2GB | Hetero Vocab: True\r\n\r\n[FlexSDS] Dry-run execution command:\r\nvllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --host 0.0.0.0 --port 8000 --served-model-name qwen2.5-7b-adaptive --dtype bfloat16 --generation-config vllm --gpu-memory-utilization 0.85 --max-model-len 4096 --max-num-seqs 32 --quantization awq_marlin --speculative-config {\"method\": \"draft_model\", \"model\": \"Qwen/Qwen2.5-0.5B-Instruct\", \"num_speculative_tokens\": 4, \"num_speculative_tokens_per_batch_size\": [[1, 32, 4]], \"draft_sample_method\": \"greedy\", \"use_heterogeneous_vocab\": true} --scheduler-cls src.server.adaptive_scheduler.AdaptiveAsyncScheduler --per-request-spec-decode-metrics summary\r\nEnvironment: ADAPTIVE_ENABLE_VRAM_GUARD=1\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "cp1252",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "flexsds 0.2.0-alpha\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "cp1252",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "detect"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\n[OK] Hardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "cp1252",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "profile"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\n[OK] Linked hardware profile: profile_sm89_l4.json\r\n",
+    "stderr": ""
+  },
+  {
+    "mode": "cp1252",
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+      "serve",
+      "--target",
+      "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "--draft",
+      "Qwen/Qwen2.5-0.5B-Instruct",
+      "--backend",
+      "local",
+      "--dry-run"
+    ],
+    "exit_code": 0,
+    "stdout": "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\r\nPTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\r\nHardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free\r\nEngine: TreeAdaptive v0.2\r\nBackends: Modal / Colab / Local vLLM\r\n\r\nLaunching server: Target=Qwen/Qwen2.5-7B-Instruct-AWQ, Draft=Qwen/Qwen2.5-0.5B-Instruct, Backend=local\r\n  [OK] Compatibility: WARNING/INCOMPATIBLE | Method: draft_model | VRAM Needed: 9.0GB / Free: 3.2GB | Hetero Vocab: True\r\n\r\n[FlexSDS] Dry-run execution command:\r\nvllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --host 0.0.0.0 --port 8000 --served-model-name qwen2.5-7b-adaptive --dtype bfloat16 --generation-config vllm --gpu-memory-utilization 0.85 --max-model-len 4096 --max-num-seqs 32 --quantization awq_marlin --speculative-config {\"method\": \"draft_model\", \"model\": \"Qwen/Qwen2.5-0.5B-Instruct\", \"num_speculative_tokens\": 4, \"num_speculative_tokens_per_batch_size\": [[1, 32, 4]], \"draft_sample_method\": \"greedy\", \"use_heterogeneous_vocab\": true} --scheduler-cls src.server.adaptive_scheduler.AdaptiveAsyncScheduler --per-request-spec-decode-metrics summary\r\nEnvironment: ADAPTIVE_ENABLE_VRAM_GUARD=1\r\n",
+    "stderr": ""
+  }
+]

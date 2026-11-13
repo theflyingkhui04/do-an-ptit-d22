@@ -1,0 +1,44 @@
+{
+  "python": "3.11.0 (main, Oct 24 2022, 18:26:48) [MSC v.1933 64 bit (AMD64)]",
+  "os": "Windows-10-10.0.26300-SP0",
+  "shell": "PowerShell 7.6.9",
+  "stdout_encoding": "cp1252",
+  "stdout_isatty": false,
+  "env": {
+    "PYTHONUTF8": null,
+    "PYTHONIOENCODING": null,
+    "TERM": "dumb",
+    "COLORTERM": "",
+    "WT_SESSION": null,
+    "NO_COLOR": "1"
+  },
+  "console_executable": "D:\\ProgramFiles\\Python3_11\\Scripts\\flexsds.EXE",
+  "baseline": "48ae3a166ad9e42fdb81d3d401e496efef3b71bd",
+  "starting_head": "375143acef4afc9878f3070db6ebf3e420f4c57d",
+  "blob_attribution": {
+    "src/flexsds/cli/banner.py": {
+      "origin/develop": "5350b991d9ad9c216ac74d01affa9192f43a3ca2",
+      "375143acef4afc9878f3070db6ebf3e420f4c57d": "5350b991d9ad9c216ac74d01affa9192f43a3ca2"
+    },
+    "src/flexsds/cli/main.py": {
+      "origin/develop": "65c933c2623e68fa8b2ac17ed09dc23a8e86a448",
+      "375143acef4afc9878f3070db6ebf3e420f4c57d": "65c933c2623e68fa8b2ac17ed09dc23a8e86a448"
+    },
+    "tests/test_cli_wizard_flow.py": {
+      "origin/develop": "ee9d21dcc1155375f9484f485bf3b8a18ee64bba",
+      "375143acef4afc9878f3070db6ebf3e420f4c57d": "ee9d21dcc1155375f9484f485bf3b8a18ee64bba"
+    },
+    "tests/test_local_runner.py": {
+      "origin/develop": "a6417cc12e2a5e483eac9372dd9c902beb6b9f86",
+      "375143acef4afc9878f3070db6ebf3e420f4c57d": "a6417cc12e2a5e483eac9372dd9c902beb6b9f86"
+    },
+    "tests/test_tree_adaptive_controller.py": {
+      "origin/develop": "8c5d8cee84fc92ad1fa4310421a417b486c1f7fe",
+      "375143acef4afc9878f3070db6ebf3e420f4c57d": "8c5d8cee84fc92ad1fa4310421a417b486c1f7fe"
+    },
+    "src/proposer/tree_adaptive.py": {
+      "origin/develop": "7b4388d02281c04acbba0f306be8c20230299b63",
+      "375143acef4afc9878f3070db6ebf3e420f4c57d": "7b4388d02281c04acbba0f306be8c20230299b63"
+    }
+  }
+}

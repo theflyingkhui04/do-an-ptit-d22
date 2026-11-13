@@ -26,7 +26,8 @@ MC-OCR text
   -> Node 1 Extractor
   -> invoice_extraction.v1 JSON
   -> SQLite schema user_version=1
-  -> Node 2 Text-to-SQL over stable views
+  -> Node 2 Text-to-SQL over stable views (Q1-Q6)
+  -> Node 3 VAT report (one grounded Vietnamese report)
 ```
 
 ## Node 1 Contract
@@ -69,9 +70,17 @@ Frozen rules:
 
 Canonical DDL: `src/pipeline/sqlite/schema.sql`.
 
-- `extraction_runs` stores experimental provenance (`lane`, model, prompt, and
-  schema version).
-- `invoices` stores one Node 1 result per run and retains `raw_json`.
+SQLite schema **v2** (`PRAGMA user_version = 2`, M4-03). Compared with v1 it only
+adds: lane `eagle`, `invoices.latency_ms` and
+`extraction_runs.latency_ms_median`. The three views and the JSON contract are
+unchanged. `init_schema` refuses a v1 database (no automatic migration): use a
+new database path. The committed `invoices_v1.sqlite` files stay as M1–M3
+evidence.
+
+- `extraction_runs` stores experimental provenance (`lane`, model, prompt,
+  schema version, and the median Node 1 request latency of the run).
+- `invoices` stores one Node 1 result per run, retains `raw_json`, and records
+  `latency_ms` of the request that produced it (client side, includes network).
 - `invoice_items`, `invoice_taxes`, and `field_evidence` store repeating data.
 - `run_id` is mandatory. Deleting a run cascades to all data produced by it.
 - `invoice_id` is deterministic: `<run_id>:<sample_id>`.
@@ -111,6 +120,71 @@ questions cover invoice totals, item quantities, seller aggregation, VAT
 presence, date grouping, and tax analysis without exposing `raw_json` to the
 normal business-query path.
 
+## Node 2 / Node 3 runner and E2E command (M3-06)
+
+Code:
+
+- `src/pipeline/node2_questions.py` — Q1–Q6 above, verbatim.
+- `src/pipeline/sql_guard.py` — read-only guard: one `SELECT`/`WITH`
+  statement, only the three views (or CTE names), no base tables,
+  `sqlite_master` or `raw_json`, no DML/DDL/`PRAGMA`/`ATTACH`/`load_extension`.
+  Literals and comments are masked before checking.
+- `src/pipeline/text_to_sql.py` — `Node2Runner`: one LLM request per question,
+  then guard, then execution on a `mode=ro` + `PRAGMA query_only=ON`
+  connection (5 s timeout, at most 200 rows).
+- `src/pipeline/report_writer.py` — `Node3Writer`: one request that receives
+  each question, its SQL, its status and at most 20 rows, and must use only
+  those numbers.
+- `scripts/run_pipeline_e2e.py` — Node 1 (existing CLI, subprocess) → SQLite of
+  this run → Node 2 → Node 3.
+
+Prompts and sampling: Node 2 uses the frozen W2 v2 system prompt
+(`experiments/configs/w2_v2/system_prompt.md`), Node 3 the frozen W3 v2 system
+prompt (`experiments/configs/w3_v2/system_prompt.md`); `temperature=0.0`,
+`seed=42`, `max_tokens` 256 (Node 2) and 768 (Node 3). The Node 3 user message
+template is `src/pipeline/prompts/node3_report_user.md`.
+
+**Contract deviation (recorded):** the catalog above says Node 2 *should*
+return the SQL, the selected view and a short explanation. Because Node 2
+reuses the W2 v2 prompt (SQL text only, so pipeline output matches the
+benchmark workload), `views_used` is derived from the SQL and `explanation` is
+always `null`.
+
+Node 2 status per question: `ok` (rows), `empty` (0 rows, or only NULL values —
+an aggregate over zero matching rows returns one all-NULL row), `transport_error`,
+`guard_rejected`, `sql_error`, `timeout`. A failed question is recorded and the
+pipeline continues; the LLM is never called again to repair SQL, so request
+counts stay equal across serving lanes. Raw network errors (read timeout,
+dropped connection) are recorded as `transport_error` too. Node 3 status:
+`ok`, `transport_error`, `empty_response` (blank content), or
+`skipped_no_data` when no question returned `ok`/`empty`. Before Node 1 runs,
+Node 1 outputs left by an earlier run with the same `run_id`/lane are deleted;
+if Node 1 crashes without a summary, Node 2/3 are skipped.
+
+Run on Modal (lane token is read from `.env`):
+
+```powershell
+python scripts\run_pipeline_e2e.py --lane vanilla --run-id <id>
+```
+
+Local functional check with Ollama (not a performance measurement):
+
+```powershell
+python scripts\run_pipeline_e2e.py --base-url http://localhost:11434/v1 --model qwen2.5:7b-instruct --run-id local-smoke --limit 5
+```
+
+Re-run Node 2/3 on an existing database without calling Node 1 again:
+`--skip-node1 --db <path>`.
+Record the serving GPU in the summary with `--hardware <label>` (e.g.
+`modal-A10G`; Modal GPU is chosen at deploy time with `PTIT_GPU`).
+
+Outputs in `experiments/runs/m3_06/<run_id>-<lane>/`: `node1/`,
+`node1_summary.json`, `invoices.sqlite` (not committed), `node2_results.jsonl`,
+`node3_result.json`, `report.md`, `e2e_summary.json`. Exit code 0 requires
+≥ 1 invoice, ≥ 1 Node 2 question `ok|empty` and Node 3 `ok`; otherwise 2.
+Latency and token counts are client-side only; this command does not emit the
+M1 request telemetry contract.
+
 ## Versioning Boundary
 
 Compatible v1 changes may clarify descriptions, add examples, or add indexes.
@@ -131,14 +205,30 @@ python scripts\check_invoice_contract.py
 ```powershell
 ollama pull qwen2.5:7b-instruct
 python scripts\build_node1_requests.py --model qwen2.5:7b-instruct
-python scripts\run_node1_extractor.py --replace-run
+python scripts\run_node1_extractor.py --base-url http://localhost:11434/v1 --model qwen2.5:7b-instruct --run-id local-ollama --replace-run
 ```
 
-The runner uses `http://localhost:11434/v1` by default, checks that the model
-exists, calls `/v1/chat/completions` in JSON mode, verifies source binding,
-validates `invoice_extraction.v1`, and loads valid outputs into SQLite. Raw
-responses and failures remain under the gitignored `data/processed/` tree; a
-compact reproducibility summary is written to `experiments/results/`.
+The runner checks that the model exists, calls `/v1/chat/completions` in JSON
+mode, verifies source binding, validates `invoice_extraction.v1`, and loads
+valid outputs into SQLite.
+
+## Running Node 1 on a serving lane (M4-03)
+
+```powershell
+python scripts\run_node1_extractor.py --lane eagle --hardware modal-A10G
+python scripts\run_node1_extractor.py --lane static --backend local
+```
+
+`--lane` accepts `vanilla`, `static`, `adaptive`, `eagle`. Without `--base-url`
+or `--model`, the endpoint and served model follow the lane: Modal by default,
+or ports 8001–8004 with `--backend local`. `--base-url` and `--model` (then
+`PIPELINE_LLM_BASE_URL`, `PIPELINE_LLM_MODEL`) take precedence. The API key comes
+from `--api-key`, `PIPELINE_LLM_API_KEY`, or the Modal proxy token.
+
+Defaults: `run_id = m4_03_<lane>`, output in `experiments/runs/m4_03/<run_id>/`
+(summary in `run_summary.json`), database `data/processed/invoices.db` (not
+committed). Rerunning an existing `run_id` needs `--replace-run`. A wrong
+database or an existing run stops before any server call.
 
 Before validation, the runner may apply these deterministic canonicalization
 rules:

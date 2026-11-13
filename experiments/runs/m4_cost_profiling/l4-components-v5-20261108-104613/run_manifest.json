@@ -1,0 +1,1413 @@
+{
+  "run_id": "l4-components-v5-20261108-104613",
+  "source_commit": "de369da6f494c4ee2dd980a82b0936c96c88d6cc",
+  "status": "complete",
+  "started_at_utc": "2026-11-08T10:46:15.162788+00:00",
+  "artifact_kind": "component_measurements",
+  "canonical_profile_generated": false,
+  "workers": [
+    {
+      "cell_id": "k0-b1-c1024",
+      "K": 0,
+      "batch_size": 1,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 55
+    },
+    {
+      "cell_id": "k0-b2-c1024",
+      "K": 0,
+      "batch_size": 2,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 55
+    },
+    {
+      "cell_id": "k0-b4-c1024",
+      "K": 0,
+      "batch_size": 4,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 4,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 55
+    },
+    {
+      "cell_id": "k0-b8-c1024",
+      "K": 0,
+      "batch_size": 8,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 8,
+        "max_num_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 55
+    },
+    {
+      "cell_id": "k0-b16-c1024",
+      "K": 0,
+      "batch_size": 16,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 16384,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 55
+    },
+    {
+      "cell_id": "k0-b32-c1024",
+      "K": 0,
+      "batch_size": 32,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 32,
+        "max_num_batched_tokens": 32768,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 55
+    },
+    {
+      "cell_id": "k1-b1-c1024",
+      "K": 1,
+      "batch_size": 1,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k1-b2-c1024",
+      "K": 1,
+      "batch_size": 2,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k1-b4-c1024",
+      "K": 1,
+      "batch_size": 4,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 4,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k1-b8-c1024",
+      "K": 1,
+      "batch_size": 8,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 8,
+        "max_num_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k1-b16-c1024",
+      "K": 1,
+      "batch_size": 16,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 16384,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k1-b32-c1024",
+      "K": 1,
+      "batch_size": 32,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 32,
+        "max_num_batched_tokens": 32768,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k2-b1-c1024",
+      "K": 2,
+      "batch_size": 1,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 2,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k2-b2-c1024",
+      "K": 2,
+      "batch_size": 2,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 2,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k2-b4-c1024",
+      "K": 2,
+      "batch_size": 4,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 4,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 2,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k2-b8-c1024",
+      "K": 2,
+      "batch_size": 8,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 8,
+        "max_num_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 2,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k2-b16-c1024",
+      "K": 2,
+      "batch_size": 16,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 16384,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 2,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k2-b32-c1024",
+      "K": 2,
+      "batch_size": 32,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 32,
+        "max_num_batched_tokens": 32768,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 2,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k3-b1-c1024",
+      "K": 3,
+      "batch_size": 1,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 3,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k3-b2-c1024",
+      "K": 3,
+      "batch_size": 2,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 3,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k3-b4-c1024",
+      "K": 3,
+      "batch_size": 4,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 4,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 3,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k3-b8-c1024",
+      "K": 3,
+      "batch_size": 8,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 8,
+        "max_num_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 3,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k3-b16-c1024",
+      "K": 3,
+      "batch_size": 16,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 16384,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 3,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k3-b32-c1024",
+      "K": 3,
+      "batch_size": 32,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 32,
+        "max_num_batched_tokens": 32768,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 3,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k4-b1-c1024",
+      "K": 4,
+      "batch_size": 1,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 4,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k4-b2-c1024",
+      "K": 4,
+      "batch_size": 2,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 4,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k4-b4-c1024",
+      "K": 4,
+      "batch_size": 4,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 4,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 4,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k4-b8-c1024",
+      "K": 4,
+      "batch_size": 8,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 8,
+        "max_num_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 4,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k4-b16-c1024",
+      "K": 4,
+      "batch_size": 16,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 16384,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 4,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k4-b32-c1024",
+      "K": 4,
+      "batch_size": 32,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 32,
+        "max_num_batched_tokens": 32768,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 4,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k5-b1-c1024",
+      "K": 5,
+      "batch_size": 1,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 5,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k5-b2-c1024",
+      "K": 5,
+      "batch_size": 2,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 5,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k5-b4-c1024",
+      "K": 5,
+      "batch_size": 4,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 4,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 5,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k5-b8-c1024",
+      "K": 5,
+      "batch_size": 8,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 8,
+        "max_num_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 5,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k5-b16-c1024",
+      "K": 5,
+      "batch_size": 16,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 16384,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 5,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    },
+    {
+      "cell_id": "k5-b32-c1024",
+      "K": 5,
+      "batch_size": 32,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "max_model_len": 4096,
+        "max_num_seqs": 32,
+        "max_num_batched_tokens": 32768,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 5,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 55,
+      "attempted_generations": 55,
+      "n_raw_records": 110
+    }
+  ],
+  "error": null,
+  "finished_at_utc": "2026-11-08T13:11:52.968713+00:00",
+  "run_type": "component_benchmark",
+  "canonical_hardware": true,
+  "n_raw_records": 3630
+}

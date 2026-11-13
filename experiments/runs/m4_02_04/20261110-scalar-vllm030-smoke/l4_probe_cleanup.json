@@ -1,0 +1,25 @@
+{
+  "call_id": "fc-01M72GJCACZFS7W0PEFCMQZARJ",
+  "action": "Cancellation requested twice, including terminate_containers=True; local waiting caller stopped. Remote cancellation not yet confirmed.",
+  "stats_after_cancel": "FunctionCurrentStats(backlog=1, num_total_runners=0, num_running_inputs=0, input_headroom=0)",
+  "call_graph_after_cancel": "[InputInfo(input_id='in-01M72GJCAFEKZD1WCMD97DS22D', function_call_id='fc-01M72GJCACZFS7W0PEFCMQZARJ', task_id='', status=<InputStatus.PENDING: 0>, function_name='modal_runner.versions', module_name='experiments', children=[])]",
+  "final_info": {
+    "info": {
+      "functionCallId": "fc-01M72GJCACZFS7W0PEFCMQZARJ",
+      "createdAt": 1794307076.428847,
+      "pendingInputs": {
+        "total": 1,
+        "latest": [
+          {
+            "inputId": "in-01M72GJCAFEKZD1WCMD97DS22D"
+          }
+        ]
+      },
+      "failedInputs": {},
+      "succeededInputs": {},
+      "timeoutInputs": {},
+      "cancelledInputs": {},
+      "totalInputs": 1
+    }
+  }
+}

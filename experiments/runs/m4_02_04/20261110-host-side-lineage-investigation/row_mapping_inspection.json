@@ -1,0 +1,158 @@
+{
+  "source_sha256": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
+  "method_line_ranges": {
+    "_compute_prev_positions": [
+      1775,
+      1788
+    ],
+    "_prepare_input_ids": [
+      1790,
+      1924
+    ]
+  },
+  "scope": "CPU execution of extracted unmodified input-preparation methods; simulated surrounding state; not L3 and not a lineage implementation",
+  "cases": [
+    {
+      "case": "P10-K2 drafts consumed while P11 selects K4; reordered rows",
+      "current_requests": [
+        "r2",
+        "r1"
+      ],
+      "previous_positions": [
+        1,
+        0
+      ],
+      "next_producer_k": 4,
+      "actual_prepared_values": [
+        92,
+        2001,
+        2002,
+        91,
+        1001,
+        1002
+      ],
+      "expected": [
+        92,
+        2001,
+        2002,
+        91,
+        1001,
+        1002
+      ]
+    },
+    {
+      "case": "compaction moves r2 from previous row 1 to current row 0",
+      "current_requests": [
+        "r2"
+      ],
+      "previous_positions": [
+        1
+      ],
+      "next_producer_k": 3,
+      "actual_prepared_values": [
+        92,
+        2001,
+        2002
+      ],
+      "expected": [
+        92,
+        2001,
+        2002
+      ]
+    },
+    {
+      "case": "P11 selects K0 but still verifies P10-K2",
+      "current_requests": [
+        "r1"
+      ],
+      "previous_positions": [
+        0
+      ],
+      "next_producer_k": 0,
+      "actual_prepared_values": [
+        91,
+        1001,
+        1002
+      ],
+      "expected": [
+        91,
+        1001,
+        1002
+      ]
+    },
+    {
+      "case": "request prefix trimmed to one old draft",
+      "current_requests": [
+        "r1"
+      ],
+      "previous_positions": [
+        0
+      ],
+      "next_producer_k": 4,
+      "actual_prepared_values": [
+        91,
+        1001
+      ],
+      "expected": [
+        91,
+        1001
+      ]
+    },
+    {
+      "case": "zero verification slots copies no old draft",
+      "current_requests": [
+        "r1"
+      ],
+      "previous_positions": [
+        0
+      ],
+      "next_producer_k": 4,
+      "actual_prepared_values": [
+        91
+      ],
+      "expected": [
+        91
+      ]
+    },
+    {
+      "case": "finished old row reused by r3; prior mapping removed",
+      "current_requests": [
+        "r3"
+      ],
+      "previous_positions": [
+        -1
+      ],
+      "next_producer_k": 4,
+      "actual_prepared_values": [
+        7777,
+        7777,
+        7777
+      ],
+      "expected": [
+        7777,
+        7777,
+        7777
+      ]
+    },
+    {
+      "case": "same string ID resubmitted after old mapping removal",
+      "current_requests": [
+        "r1"
+      ],
+      "previous_positions": [
+        -1
+      ],
+      "next_producer_k": 4,
+      "actual_prepared_values": [
+        7777,
+        7777,
+        7777
+      ],
+      "expected": [
+        7777,
+        7777,
+        7777
+      ]
+    }
+  ]
+}

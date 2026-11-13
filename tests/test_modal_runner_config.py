@@ -284,6 +284,22 @@ def test_lane_config_import_does_not_need_modal():
     assert result.returncode == 0, result.stderr
 
 
+def test_adaptive_lineage_backend_and_runtime_packaging():
+    args = as_dict(lanes.build_vllm_args("adaptive"))
+    backend = "src.server.lineage_executor.LineageUniProcExecutor"
+    assert args["--distributed-executor-backend"] == backend
+    assert launcher_flags("adaptive")["--distributed-executor-backend"] == backend
+    assert "--distributed-executor-backend" not in lanes.build_vllm_args("static")
+    source = ast.parse((ROOT / "experiments/modal_runner.py").read_text(encoding="utf-8"))
+    image = next(n.value for n in source.body if isinstance(n, ast.Assign)
+                 and any(isinstance(t, ast.Name) and t.id == "image" for t in n.targets))
+    mounts = [n for n in ast.walk(image) if isinstance(n, ast.Call)
+              and isinstance(n.func, ast.Attribute) and n.func.attr == "add_local_dir"]
+    assert any(ast.unparse(n.args[0]) == "SOURCE_ROOT / 'experiments'" for n in mounts)
+    for name in ("scalar_vllm_source_manifest.json", "protocol_b_boundary_observer.py", "protocol_b.py"):
+        assert (ROOT / "experiments" / name).is_file()
+
+
 # ---------------------------------------------------------------- [M3-01] server env + bench
 def test_bench_workloads_match_m2_campaign():
     from experiments import run_m2_campaign
@@ -513,3 +529,19 @@ def test_download_rejects_missing_eagle_pin(weight_download, tmp_path, monkeypat
     assert not any(call.args[0] == lanes.EAGLE_DRAFT_MODEL for call in download.call_args_list)
     assert not (tmp_path / "ptit_weights_manifest.json").exists()
     volume.commit.assert_not_called()
+
+
+def test_gpu_defaults_to_l4():
+    assert lanes.DEFAULT_GPU == "L4"
+    assert lanes.resolve_gpu({}) == "L4"
+    assert lanes.resolve_gpu({"PTIT_GPU": ""}) == "L4"
+
+
+@pytest.mark.parametrize("gpu", ["L4", "A10G", "T4"])
+def test_gpu_override_from_env(gpu):
+    assert lanes.resolve_gpu({"PTIT_GPU": gpu}) == gpu
+
+
+def test_unknown_gpu_rejected():
+    with pytest.raises(ValueError, match="PTIT_GPU"):
+        lanes.resolve_gpu({"PTIT_GPU": "H100"})

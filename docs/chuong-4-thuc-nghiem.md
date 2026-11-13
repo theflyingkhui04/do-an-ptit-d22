@@ -110,6 +110,67 @@ Hiệu năng của kỹ thuật Giải mã suy đoán (Speculative Decoding) ph�
 - **Bản chất bài toán:** Yêu cầu mô hình viết bài luận phân tích ngắn gọn, đưa ra khuyến nghị kiểm toán và cảnh báo bất thường trong chuỗi thanh toán.
 - **Đặc trưng ngôn ngữ:** Hoàn toàn là ngôn ngữ tự nhiên tự do (Unconstrained Generation). Không gian từ vựng phân bố rộng, phụ thuộc nhiều vào khả năng lập luận sâu của mô hình lớn 7B. Đây là tác vụ được thiết kế có chủ đích nhằm kiểm thử "vùng rủi ro" của mô hình nháp 0.5B. Giới hạn độ dài sinh: `max_tokens = 192`.
 
+### 4.2.4. Workload 4 (W4): Pipeline Đầu-cuối Node 1 → Node 2 → Node 3 (M3-06)
+
+Ba workload W1–W3 đo từng chế độ entropy một cách tách rời. W4 nối chúng thành một quy trình tự động hoá hoàn chỉnh, đúng với hình thức sử dụng LLM trong các nền tảng orchestration: kết quả của bước trước là đầu vào của bước sau, nên độ trễ **cộng dồn** qua từng node (luận điểm ở Chương 1). Đúng như QĐ-08, pipeline này là *dụng cụ đo*: engine phục vụ không chứa logic hoá đơn nào và chỉ nhìn thấy các request `/v1/chat/completions` thông thường.
+
+```
+[raw_text MC-OCR, 30 hoá đơn W1]
+   │  NODE 1 · Extractor    (prompt W1, JSON mode)      → invoice_extraction.v1 → SQLite
+   │  NODE 2 · Text-to-SQL  (prompt W2 v2, 6 câu Q1–Q6) → SQL chỉ đọc → bảng kết quả
+   ▼  NODE 3 · Báo cáo VAT  (prompt W3 v2, 1 request)   → báo cáo tiếng Việt (report.md)
+```
+
+**Thiết kế triển khai.** Lệnh `scripts/run_pipeline_e2e.py` gọi Node 1 qua CLI có sẵn, nạp kết quả hợp lệ vào một cơ sở dữ liệu SQLite riêng cho mỗi lần chạy, rồi chạy Node 2 và Node 3 trên chính cơ sở dữ liệu đó. Node 2 dùng bộ sáu câu hỏi nghiệp vụ cố định Q1–Q6 (tổng chi tiêu tháng 08/2020, mặt hàng mua nhiều nhất, cửa hàng có tổng giá trị cao nhất, số hoá đơn có VAT, tổng tiền theo ngày, thuế theo loại). Mỗi câu SQL do mô hình sinh ra phải qua một lớp kiểm tra chỉ-đọc: chỉ một câu `SELECT`/`WITH`, chỉ truy vấn ba view `v_invoice_facts`, `v_item_facts`, `v_tax_facts`, cấm bảng gốc, `raw_json` và mọi lệnh ghi; sau đó được thực thi trên kết nối `mode=ro` với `PRAGMA query_only=ON`, giới hạn 5 giây và 200 dòng. Một câu lỗi chỉ được ghi nhận trạng thái (`guard_rejected`, `sql_error`, `timeout`…) và pipeline đi tiếp; mô hình **không** được gọi lại để sửa SQL, nhờ đó số request giữa các làn phục vụ luôn bằng nhau. Node 3 nhận câu hỏi, câu SQL, trạng thái và tối đa 20 dòng kết quả của từng câu, và chỉ được dùng các con số có trong bảng. Cả ba node dùng `temperature = 0`, `seed = 42`; Node 2 và Node 3 dùng nguyên văn system prompt đã đóng băng của W2 v2 và W3 v2 để đầu ra của pipeline khớp với workload benchmark.
+
+**Kết quả nghiệm thu chức năng.** Do Modal không cấp được GPU L4 trong suốt ngày 04/11/2026 (hai lần chạy E2E và một lần thử hàm nhỏ nhất đều nằm chờ "waiting to be scheduled on a GPU_L4 worker", trong khi T4, A10G, L40S, A100 và H100 đều cấp được ngay), lần nghiệm thu được chạy trên **GPU A10G 24 GB** qua biến `PTIT_GPU`. Bảng 4.x tóm tắt lần chạy chính `20261104-m306-e2e-a10g-r2` trên làn vanilla.
+
+| Node | Đầu ra | Kết quả | Ngưỡng *đề xuất – cần xác nhận* |
+|---|---|---|---|
+| Node 1 | 30 hoá đơn JSON | 30/30 hợp lệ schema (`schema_valid_rate = 1,0`); độ trễ trung vị ≈ 8 s/hoá đơn | ≥ 0,95 |
+| Node 2 | 6 câu SQL | 4 `ok`, 2 `empty`, 0 lỗi; ≈ 1,1 s/câu | ≥ 4/6 câu `ok`/`empty` |
+| Node 3 | 1 báo cáo | `ok`, kết thúc tự nhiên (`finish_reason = stop`) | `ok`, không có số bịa |
+
+*Bảng 4.x. Nghiệm thu chức năng W4 trên Modal A10G (nguồn: `experiments/runs/m3_06/20261104-m306-e2e-a10g-r2-vanilla/e2e_summary.json`). Độ trễ đo phía client, một lần chạy, gồm thời gian khởi động server; chỉ có giá trị minh hoạ.*
+
+Kiểm tra thủ công cho thấy mọi con số trong báo cáo đều có trong bảng kết quả Q1–Q6: tổng chi tiêu tháng 08/2020 là 5.155.094 đồng, đúng bằng tổng các ngày tháng 08/2020 ở Q5. Ở cả 30 hoá đơn, tên cửa hàng, ngày và tổng tiền do Node 1 trích xuất đều xuất hiện trong văn bản gốc.
+
+**Phân tích các sai lệch.** Pipeline chạy thông, nhưng kết quả nghiệp vụ bộc lộ ba giới hạn cần nói rõ:
+
+1. *Sai ngữ nghĩa của Text-to-SQL.* Với Q3, mô hình viết `WHERE total_amount_value = (SELECT MAX(...))`, tức là tìm **hoá đơn** lớn nhất thay vì cộng tổng theo **cửa hàng**, nên trả lời "CỬA HÀNG NĂM OÁNH" (một hoá đơn 1.161.500 đồng), trong khi đáp án đúng là "MINIMART ANAN" (3.918.594 đồng). Câu SQL hợp lệ về cú pháp và vượt qua lớp kiểm tra, nên lỗi chỉ phát hiện được khi có đáp án chuẩn. Đây là giới hạn chất lượng của mô hình 7B lượng tử hoá, không phải của engine; và do đề tài là lossless, mọi làn tăng tốc kế thừa đúng giới hạn này.
+2. *Dữ liệu nguồn không chứa mặt hàng và thuế.* Văn bản MC-OCR của 30 mẫu W1 chỉ gồm tên cửa hàng, địa chỉ, ngày và tổng tiền; không mẫu nào nhắc tới VAT. Vì vậy Q2 và Q6 rỗng và Q4 bằng 0 — các câu về VAT mới chỉ kiểm được nhánh "không có dữ liệu" của pipeline.
+3. *Báo cáo chưa hoàn toàn bám cấu trúc.* Node 3 đôi khi thêm mục ngoài bốn phần được yêu cầu và bỏ sót một câu hỏi. Lần chạy đầu còn ghi "không có dữ liệu" cho kết quả bằng 0 và tự suy đoán nguyên nhân; hai lỗi này đã được khắc phục bằng chỉ dẫn bổ sung trong template của Node 3 và được kiểm chứng ở lần chạy lại.
+
+**Kiểm tra trên làn có speculative decoding.** Một lần chạy cùng cấu hình trên làn `static` cũng hoàn tất (exit 0) với cùng số câu `ok`/`empty`. Các trường nghiệp vụ của Node 1 (cửa hàng, ngày, tổng tiền) giống làn vanilla ở 30/30 hoá đơn, nhưng toàn văn JSON chỉ giống 14/30 và câu SQL của Q1 khác nhau. Khác biệt cấp ký tự giữa hai lần chạy đã từng được ghi nhận ngay giữa hai lần chạy vanilla trong M2-03 (trên T4; nguyên nhân số học chưa được xác lập), nên lần chạy đơn lẻ này **chưa đủ** để kết luận về tính lossless; phép xác minh đúng giao thức thuộc QĐ-11. Đối chứng vanilla–vanilla trên cùng GPU được trình bày ở §4.2.5.
+
+**Giới hạn hiệu lực.** Số liệu W4 ở mục này là nghiệm thu chức năng: một lần chạy, đo phía client, trên A10G thay vì L4 tham chiếu, và chưa phát telemetry cấp server (α, τ, VRAM). Chúng không được dùng để so tốc độ giữa các làn; phép đo W4 theo đúng giao thức của Chương 4 (warm-up, lặp lại, telemetry) được dự kiến ở mốc M4.
+
+### 4.2.5. Chất lượng Trích xuất Node 1 trên Bốn Làn Phục vụ (M4-03)
+
+Mục này trả lời một câu hỏi ở góc nhìn người dùng pipeline: khi đổi làn phục vụ, thông tin trích xuất từ hoá đơn có còn đúng không?
+
+**Thiết lập.** Node 1 chạy 30 hoá đơn của W1 qua năm lần chạy trên Modal A10G: vanilla hai lần, static, adaptive và eagle (`temperature = 0`, `seed = 42`). Hai lần vanilla dùng để ước lượng mức dao động tự nhiên giữa các lần chạy. Đáp án là nhãn gốc của MC-OCR (`key_text_pairs`), vốn không đưa vào prompt của mô hình. Bốn trường được chấm: tên cửa hàng (SELLER), địa chỉ (ADDRESS), ngày giờ (TIMESTAMPS) và tổng tiền (TOTAL_COST). Hai trường chữ được so sau khi chuẩn hoá chữ thường, dấu câu, khoảng trắng và tiền tố địa chỉ, nhưng giữ nguyên dấu tiếng Việt; ngày giờ và số tiền được tách từ nhãn thô rồi so theo giá trị.
+
+| Lần chạy | JSON hợp lệ | SELLER | ADDRESS | TIMESTAMPS | TOTAL_COST |
+|---|---|---|---|---|---|
+| vanilla (lần 1) | 30/30 | 29/30 | 27/30 | 30/30 | 30/30 |
+| vanilla (lần 2) | 30/30 | 29/30 | 28/30 | 30/30 | 30/30 |
+| static | 30/30 | 29/30 | 27/30 | 30/30 | 30/30 |
+| adaptive | 30/30 | 29/30 | 27/30 | 30/30 | 30/30 |
+| eagle | 30/30 | 29/30 | 27/30 | 30/30 | 30/30 |
+
+*Bảng 4.y. Số trường khớp tuyệt đối với nhãn MC-OCR theo làn (nguồn: `experiments/results/m4_03_entity_match.md`; bằng chứng từng lần chạy ở `experiments/runs/m4_03/`).*
+
+**Kết quả ở cấp thực thể.** Cả năm lần chạy đều đạt 100% JSON hợp lệ. Ba làn suy đoán có số khớp bằng đúng vanilla lần 1 ở cả bốn trường, nên chênh lệch bằng 0 và nằm trong dao động giữa hai lần vanilla (0 điểm ở ba trường, 3,3 điểm ở ADDRESS). Các mẫu lệch cũng trùng nhau giữa các làn và có nguyên nhân rõ, không liên quan tới làn phục vụ:
+
+- Mẫu 027 (SELLER, ADDRESS): nhãn gán cả hai dòng đầu là tên cửa hàng, còn mô hình coi dòng thứ hai là một phần địa chỉ. Đây là khác biệt cách chia dòng.
+- Mẫu 029 (ADDRESS): văn bản có địa chỉ nhưng mô hình để trống, ở mọi làn.
+- Mẫu 021 (ADDRESS): mô hình thêm ", Cẩm Phả" vào cuối địa chỉ. Lỗi này xuất hiện ở bốn lần chạy và biến mất ở vanilla lần 2 — chính là nguồn của mức dao động 3,3 điểm.
+
+**Kết quả ở cấp văn bản.** Đầu ra không giống hệt nhau. Toàn văn JSON giữa hai lần vanilla giống nhau ở 25/30 mẫu, trong khi giữa vanilla và các làn suy đoán chỉ giống 13–15/30 mẫu; giữa static và eagle là 22/30 mẫu. Như vậy mức khác biệt giữa vanilla và làn suy đoán **lớn hơn** mức dao động của chính vanilla. Khác biệt tập trung ở phần siêu dữ liệu (`extraction.field_evidence`, `extraction.missing_fields`), khoảng trắng trong JSON và cách viết giờ (`12:03` so với `12:03:00`, cùng giá trị); ở một mẫu của làn static, trường `totals.subtotal` — không thuộc bốn trường được chấm — cũng khác.
+
+**Kết luận và giới hạn.** Trên 30 mẫu và bốn trường này, không quan sát thấy suy giảm độ chính xác khi bật giải mã suy đoán. Đây **không** phải bằng chứng đầu ra khớp từng ký tự: phép đo cho thấy đầu ra có khác và mức khác vượt dao động vanilla–vanilla. Nguyên nhân số học chưa được xác lập; M2-03 có ghi nhận liên quan trên T4 về việc xác thực nhiều token cùng lúc cho kết quả khác giải mã từng token, nhưng điều này chưa được kiểm chứng trên A10G, và phép xác minh lossless theo QĐ-11 là một bài đo riêng. Ngoài ra, cỡ mẫu nhỏ (một mẫu tương đương 3,3 điểm), dao động chỉ ước lượng từ hai lần chạy, chạy trên A10G thay vì L4 tham chiếu, và dữ liệu W1 không có mặt hàng hay VAT nên các trường đó chưa được kiểm tra.
+
 ---
 
 ## 4.3. Chỉ Số Đánh Giá và Kỷ Luật Đo Lường Thực Nghiệm

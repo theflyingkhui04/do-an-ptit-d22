@@ -1,0 +1,17 @@
+{
+  "status": "ok",
+  "report_text": "### Báo cáo tổng hợp tình hình chi tiêu và thuế VAT cho tập 30 hóa đơn bán lẻ\n\n#### (1) Tổng quan\nTrong tháng 8/2020, tổng chi tiêu của tập 30 hóa đơn bán lẻ là 5,155,094.0 đồng.\n\n#### (2) Mặt hàng và cửa hàng nổi bật\nKHÔNG CÓ DỮ LIỆU về mặt hàng được mua nhiều nhất. Không có thông tin về mặt hàng nào được mua trong tập 30 hóa đơn.\n\n#### (3) Tình hình VAT\nCó 0 hóa đơn có phát sinh VAT trong tập 30 hóa đơn bán lẻ đã được trích xuất.\n\n#### (4) Hạn chế của dữ liệu và đề xuất kiểm tra tiếp\n- **Hạn chế**: \n  - KHÔNG CÓ DỮ LIỆU về mặt hàng được mua nhiều nhất.\n  - KHÔNG CÓ DỮ LIỆU về mức thuế suất và tổng tiền thuế theo từng loại thuế.\n\n- **Đề xuất kiểm tra tiếp**:\n  - Kiểm tra lại dữ liệu về mặt hàng để đảm bảo rằng không có lỗi trong quá trình trích xuất hoặc nhập liệu.\n  - Kiểm tra lại dữ liệu về thuế để đảm bảo rằng không có lỗi trong quá trình trích xuất hoặc nhập liệu.\n\n#### (5) Tổng tiền theo từng ngày lập hóa đơn\n- 21/04/2019: 52,000.0 đồng\n- 23/09/2019: 27,200.0 đồng\n- 09/08/2020: 529,016.0 đồng\n- 10/08/2020: 366,000.0 đồng\n- 11/08/2020: 1,006,500.0 đồng\n- 12/08/2020: 934,764.0 đồng\n- 14/08/2020: 396,016.0 đồng\n- 15/08/2020: 722,750.0 đồng\n- 16/08/2020: 1,200,048.0 đồng\n\n#### (6) Mức thuế suất và tổng tiền thuế theo từng loại thuế\nKHÔNG CÓ DỮ LIỆU về mức thuế suất và tổng tiền thuế theo từng loại thuế. Không có thông tin về thuế suất hoặc tổng tiền thuế trong tập 30 hóa đơn bán lẻ.",
+  "error": null,
+  "latency_ms": 7711.908,
+  "prompt_tokens": 948,
+  "completion_tokens": 596,
+  "finish_reason": "stop",
+  "input_question_ids": [
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "Q5",
+    "Q6"
+  ]
+}

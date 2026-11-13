@@ -1,0 +1,19 @@
+{
+  "run_id": "20261108-m40202-l4-smoke-042847",
+  "source_commit": "29a10c6e8aa51983f31e2befebc105afd658dfdb",
+  "status": "complete",
+  "started_at_utc": "2026-11-08T04:28:49.628166+00:00",
+  "artifact_kind": "component_measurements",
+  "canonical_profile_generated": false,
+  "workers": [
+    {
+      "K": 1,
+      "returncode": 0
+    }
+  ],
+  "error": null,
+  "finished_at_utc": "2026-11-08T04:34:13.515213+00:00",
+  "run_type": "smoke",
+  "canonical_hardware": true,
+  "n_raw_records": 8
+}

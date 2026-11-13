@@ -1,0 +1,446 @@
+.FFFFFFFFFFFFF.                                                          [100%]
+================================== FAILURES ===================================
+________ test_banner_falls_back_without_losing_identity[cp1252-cp1252] ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B91698E810>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+encoding = 'cp1252', actual = 'cp1252'
+
+    @pytest.mark.parametrize("encoding,actual", [
+        ("cp1252", "cp1252"), ("ascii", "ascii"), (None, "ascii"),
+        ("unknown-test-codec", "ascii"), ("utf-8", "ascii"),
+    ])
+    def test_banner_falls_back_without_losing_identity(monkeypatch, hardware, encoding, actual):
+        sink = EncodedStream(encoding, actual, tty=True)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.setenv("TERM", "xterm-direct")
+        monkeypatch.setenv("COLORTERM", "truecolor")
+>       banner.print_banner(hardware)
+
+tests\test_cli_output_encoding.py:62:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+tests\test_cli_output_encoding.py:22: in write
+    text.encode(self.actual)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <encodings.cp1252.Codec object at 0x000001B91302CA90>
+input = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+errors = 'strict'
+
+    def encode(self,input,errors='strict'):
+>       return codecs.charmap_encode(input,errors,encoding_table)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       UnicodeEncodeError: 'charmap' codec can't encode character '\u2584' in position 32: character maps to <undefined>
+
+D:\ProgramFiles\Python3_11\Lib\encodings\cp1252.py:12: UnicodeEncodeError
+_________ test_banner_falls_back_without_losing_identity[ascii-ascii] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B9169FDA90>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+encoding = 'ascii', actual = 'ascii'
+
+    @pytest.mark.parametrize("encoding,actual", [
+        ("cp1252", "cp1252"), ("ascii", "ascii"), (None, "ascii"),
+        ("unknown-test-codec", "ascii"), ("utf-8", "ascii"),
+    ])
+    def test_banner_falls_back_without_losing_identity(monkeypatch, hardware, encoding, actual):
+        sink = EncodedStream(encoding, actual, tty=True)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.setenv("TERM", "xterm-direct")
+        monkeypatch.setenv("COLORTERM", "truecolor")
+>       banner.print_banner(hardware)
+
+tests\test_cli_output_encoding.py:62:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_cli_output_encoding.EncodedStream object at 0x000001B9169FE190>
+text = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+
+    def write(self, text):
+>       text.encode(self.actual)
+E       UnicodeEncodeError: 'ascii' codec can't encode character '\u2584' in position 32: ordinal not in range(128)
+
+tests\test_cli_output_encoding.py:22: UnicodeEncodeError
+_________ test_banner_falls_back_without_losing_identity[None-ascii] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B916A11610>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+encoding = None, actual = 'ascii'
+
+    @pytest.mark.parametrize("encoding,actual", [
+        ("cp1252", "cp1252"), ("ascii", "ascii"), (None, "ascii"),
+        ("unknown-test-codec", "ascii"), ("utf-8", "ascii"),
+    ])
+    def test_banner_falls_back_without_losing_identity(monkeypatch, hardware, encoding, actual):
+        sink = EncodedStream(encoding, actual, tty=True)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.setenv("TERM", "xterm-direct")
+        monkeypatch.setenv("COLORTERM", "truecolor")
+>       banner.print_banner(hardware)
+
+tests\test_cli_output_encoding.py:62:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_cli_output_encoding.EncodedStream object at 0x000001B916A11B90>
+text = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+
+    def write(self, text):
+>       text.encode(self.actual)
+E       UnicodeEncodeError: 'ascii' codec can't encode character '\u2584' in position 32: ordinal not in range(128)
+
+tests\test_cli_output_encoding.py:22: UnicodeEncodeError
+__ test_banner_falls_back_without_losing_identity[unknown-test-codec-ascii] ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B9169FA4D0>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+encoding = 'unknown-test-codec', actual = 'ascii'
+
+    @pytest.mark.parametrize("encoding,actual", [
+        ("cp1252", "cp1252"), ("ascii", "ascii"), (None, "ascii"),
+        ("unknown-test-codec", "ascii"), ("utf-8", "ascii"),
+    ])
+    def test_banner_falls_back_without_losing_identity(monkeypatch, hardware, encoding, actual):
+        sink = EncodedStream(encoding, actual, tty=True)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.setenv("TERM", "xterm-direct")
+        monkeypatch.setenv("COLORTERM", "truecolor")
+>       banner.print_banner(hardware)
+
+tests\test_cli_output_encoding.py:62:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_cli_output_encoding.EncodedStream object at 0x000001B9169FA650>
+text = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+
+    def write(self, text):
+>       text.encode(self.actual)
+E       UnicodeEncodeError: 'ascii' codec can't encode character '\u2584' in position 32: ordinal not in range(128)
+
+tests\test_cli_output_encoding.py:22: UnicodeEncodeError
+_________ test_banner_falls_back_without_losing_identity[utf-8-ascii] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B916A12150>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+encoding = 'utf-8', actual = 'ascii'
+
+    @pytest.mark.parametrize("encoding,actual", [
+        ("cp1252", "cp1252"), ("ascii", "ascii"), (None, "ascii"),
+        ("unknown-test-codec", "ascii"), ("utf-8", "ascii"),
+    ])
+    def test_banner_falls_back_without_losing_identity(monkeypatch, hardware, encoding, actual):
+        sink = EncodedStream(encoding, actual, tty=True)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.setenv("TERM", "xterm-direct")
+        monkeypatch.setenv("COLORTERM", "truecolor")
+>       banner.print_banner(hardware)
+
+tests\test_cli_output_encoding.py:62:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_cli_output_encoding.EncodedStream object at 0x000001B916A13850>
+text = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+
+    def write(self, text):
+>       text.encode(self.actual)
+E       UnicodeEncodeError: 'ascii' codec can't encode character '\u2584' in position 32: ordinal not in range(128)
+
+tests\test_cli_output_encoding.py:22: UnicodeEncodeError
+__________________ test_missing_encoding_and_isatty_are_safe __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B916A13F90>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+
+    def test_missing_encoding_and_isatty_are_safe(monkeypatch, hardware):
+        class UnknownStream:
+            def __init__(self):
+                self.text = ""
+
+            def write(self, text):
+                text.encode("ascii")
+                self.text += text
+
+        sink = UnknownStream()
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+>       banner.print_banner(hardware)
+
+tests\test_cli_output_encoding.py:80:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_cli_output_encoding.test_missing_encoding_and_isatty_are_safe.<locals>.UnknownStream object at 0x000001B916910D50>
+text = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+
+    def write(self, text):
+>       text.encode("ascii")
+E       UnicodeEncodeError: 'ascii' codec can't encode character '\u2584' in position 32: ordinal not in range(128)
+
+tests\test_cli_output_encoding.py:75: UnicodeEncodeError
+________ test_no_truecolor_uses_plain_ascii[False-False-xterm-direct] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B9169F4390>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+tty = False, no_color = False, term = 'xterm-direct'
+
+    @pytest.mark.parametrize("tty,no_color,term", [
+        (False, False, "xterm-direct"), (True, True, "xterm-direct"),
+        (True, False, "dumb"), (True, False, "xterm-256color"),
+    ])
+    def test_no_truecolor_uses_plain_ascii(monkeypatch, hardware, tty, no_color, term):
+        sink = EncodedStream("utf-8", tty=tty)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.setenv("TERM", term)
+        monkeypatch.delenv("COLORTERM", raising=False)
+        monkeypatch.delenv("WT_SESSION", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        if no_color:
+            monkeypatch.setenv("NO_COLOR", "1")
+        banner.print_banner(hardware)
+>       assert sink.getvalue().isascii()
+E       AssertionError: assert False
+E        +  where False = <built-in method isascii of str object at 0x000001B916321330>()
+E        +    where <built-in method isascii of str object at 0x000001B916321330> = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                             \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m\\n'.isascii
+E        +      where '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                             \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m\\n' = getvalue()
+E        +        where getvalue = <test_cli_output_encoding.EncodedStream object at 0x000001B9169F4950>.getvalue
+
+tests\test_cli_output_encoding.py:98: AssertionError
+_________ test_no_truecolor_uses_plain_ascii[True-True-xterm-direct] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B916A155D0>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+tty = True, no_color = True, term = 'xterm-direct'
+
+    @pytest.mark.parametrize("tty,no_color,term", [
+        (False, False, "xterm-direct"), (True, True, "xterm-direct"),
+        (True, False, "dumb"), (True, False, "xterm-256color"),
+    ])
+    def test_no_truecolor_uses_plain_ascii(monkeypatch, hardware, tty, no_color, term):
+        sink = EncodedStream("utf-8", tty=tty)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.setenv("TERM", term)
+        monkeypatch.delenv("COLORTERM", raising=False)
+        monkeypatch.delenv("WT_SESSION", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        if no_color:
+            monkeypatch.setenv("NO_COLOR", "1")
+        banner.print_banner(hardware)
+>       assert sink.getvalue().isascii()
+E       AssertionError: assert False
+E        +  where False = <built-in method isascii of str object at 0x000001B913DF9F00>()
+E        +    where <built-in method isascii of str object at 0x000001B913DF9F00> = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                             \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m\\n'.isascii
+E        +      where '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                             \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m\\n' = getvalue()
+E        +        where getvalue = <test_cli_output_encoding.EncodedStream object at 0x000001B916A15490>.getvalue
+
+tests\test_cli_output_encoding.py:98: AssertionError
+_____________ test_no_truecolor_uses_plain_ascii[True-False-dumb] _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B91692BA90>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+tty = True, no_color = False, term = 'dumb'
+
+    @pytest.mark.parametrize("tty,no_color,term", [
+        (False, False, "xterm-direct"), (True, True, "xterm-direct"),
+        (True, False, "dumb"), (True, False, "xterm-256color"),
+    ])
+    def test_no_truecolor_uses_plain_ascii(monkeypatch, hardware, tty, no_color, term):
+        sink = EncodedStream("utf-8", tty=tty)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.setenv("TERM", term)
+        monkeypatch.delenv("COLORTERM", raising=False)
+        monkeypatch.delenv("WT_SESSION", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        if no_color:
+            monkeypatch.setenv("NO_COLOR", "1")
+        banner.print_banner(hardware)
+>       assert sink.getvalue().isascii()
+E       AssertionError: assert False
+E        +  where False = <built-in method isascii of str object at 0x000001B913E00200>()
+E        +    where <built-in method isascii of str object at 0x000001B913E00200> = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                             \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m\\n'.isascii
+E        +      where '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                             \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m\\n' = getvalue()
+E        +        where getvalue = <test_cli_output_encoding.EncodedStream object at 0x000001B91692B910>.getvalue
+
+tests\test_cli_output_encoding.py:98: AssertionError
+________ test_no_truecolor_uses_plain_ascii[True-False-xterm-256color] ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B916A19290>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+tty = True, no_color = False, term = 'xterm-256color'
+
+    @pytest.mark.parametrize("tty,no_color,term", [
+        (False, False, "xterm-direct"), (True, True, "xterm-direct"),
+        (True, False, "dumb"), (True, False, "xterm-256color"),
+    ])
+    def test_no_truecolor_uses_plain_ascii(monkeypatch, hardware, tty, no_color, term):
+        sink = EncodedStream("utf-8", tty=tty)
+        monkeypatch.setattr(banner.sys, "stdout", sink)
+        monkeypatch.setenv("TERM", term)
+        monkeypatch.delenv("COLORTERM", raising=False)
+        monkeypatch.delenv("WT_SESSION", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        if no_color:
+            monkeypatch.setenv("NO_COLOR", "1")
+        banner.print_banner(hardware)
+>       assert sink.getvalue().isascii()
+E       AssertionError: assert False
+E        +  where False = <built-in method isascii of str object at 0x000001B9162DB010>()
+E        +    where <built-in method isascii of str object at 0x000001B9162DB010> = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                             \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m\\n'.isascii
+E        +      where '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                             \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m\\n' = getvalue()
+E        +        where getvalue = <test_cli_output_encoding.EncodedStream object at 0x000001B916A182D0>.getvalue
+
+tests\test_cli_output_encoding.py:98: AssertionError
+______________ test_command_completes_on_cp1252[args0-Hardware:] ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B9169B1E10>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+args = ['detect'], expected = 'Hardware:'
+
+    @pytest.mark.parametrize("args,expected", [
+        (["detect"], "Hardware:"), (["profile"], "Linked hardware profile:"),
+        (["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft",
+          "Qwen/Qwen2.5-0.5B-Instruct", "--backend", "local", "--dry-run"],
+         "Dry-run execution command:"),
+    ])
+    def test_command_completes_on_cp1252(monkeypatch, hardware, args, expected):
+        sink = EncodedStream()
+        monkeypatch.setattr(cli.sys, "stdout", sink)
+        monkeypatch.setattr(cli, "detect_hardware", lambda: hardware)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: pytest.fail("Server launched"))
+>       assert cli.main(args) == 0
+               ^^^^^^^^^^^^^^
+
+tests\test_cli_output_encoding.py:113:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\main.py:89: in main
+    print_banner(hw_info)
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+tests\test_cli_output_encoding.py:22: in write
+    text.encode(self.actual)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <encodings.cp1252.Codec object at 0x000001B91302CA90>
+input = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+errors = 'strict'
+
+    def encode(self,input,errors='strict'):
+>       return codecs.charmap_encode(input,errors,encoding_table)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       UnicodeEncodeError: 'charmap' codec can't encode character '\u2584' in position 32: character maps to <undefined>
+
+D:\ProgramFiles\Python3_11\Lib\encodings\cp1252.py:12: UnicodeEncodeError
+______ test_command_completes_on_cp1252[args1-Linked hardware profile:] _______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B91608C650>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+args = ['profile'], expected = 'Linked hardware profile:'
+
+    @pytest.mark.parametrize("args,expected", [
+        (["detect"], "Hardware:"), (["profile"], "Linked hardware profile:"),
+        (["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft",
+          "Qwen/Qwen2.5-0.5B-Instruct", "--backend", "local", "--dry-run"],
+         "Dry-run execution command:"),
+    ])
+    def test_command_completes_on_cp1252(monkeypatch, hardware, args, expected):
+        sink = EncodedStream()
+        monkeypatch.setattr(cli.sys, "stdout", sink)
+        monkeypatch.setattr(cli, "detect_hardware", lambda: hardware)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: pytest.fail("Server launched"))
+>       assert cli.main(args) == 0
+               ^^^^^^^^^^^^^^
+
+tests\test_cli_output_encoding.py:113:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\main.py:89: in main
+    print_banner(hw_info)
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+tests\test_cli_output_encoding.py:22: in write
+    text.encode(self.actual)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <encodings.cp1252.Codec object at 0x000001B91302CA90>
+input = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+errors = 'strict'
+
+    def encode(self,input,errors='strict'):
+>       return codecs.charmap_encode(input,errors,encoding_table)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       UnicodeEncodeError: 'charmap' codec can't encode character '\u2584' in position 32: character maps to <undefined>
+
+D:\ProgramFiles\Python3_11\Lib\encodings\cp1252.py:12: UnicodeEncodeError
+_____ test_command_completes_on_cp1252[args2-Dry-run execution command:] ______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B91698E890>
+hardware = HardwareInfo(device_name='NVIDIA L4', sm_architecture='sm_89', total_vram_mb=23000, free_vram_mb=22000, cuda_version='12.4', is_cuda_available=True, device_count=0)
+args = ['serve', '--target', 'Qwen/Qwen2.5-7B-Instruct-AWQ', '--draft', 'Qwen/Qwen2.5-0.5B-Instruct', '--backend', ...]
+expected = 'Dry-run execution command:'
+
+    @pytest.mark.parametrize("args,expected", [
+        (["detect"], "Hardware:"), (["profile"], "Linked hardware profile:"),
+        (["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft",
+          "Qwen/Qwen2.5-0.5B-Instruct", "--backend", "local", "--dry-run"],
+         "Dry-run execution command:"),
+    ])
+    def test_command_completes_on_cp1252(monkeypatch, hardware, args, expected):
+        sink = EncodedStream()
+        monkeypatch.setattr(cli.sys, "stdout", sink)
+        monkeypatch.setattr(cli, "detect_hardware", lambda: hardware)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: pytest.fail("Server launched"))
+>       assert cli.main(args) == 0
+               ^^^^^^^^^^^^^^
+
+tests\test_cli_output_encoding.py:113:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\flexsds\cli\main.py:89: in main
+    print_banner(hw_info)
+src\flexsds\cli\banner.py:63: in print_banner
+    print(render_banner(hw_info))
+tests\test_cli_output_encoding.py:22: in write
+    text.encode(self.actual)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <encodings.cp1252.Codec object at 0x000001B91302CA90>
+input = '             \\x1b[38;2;181;181;181m\u2584\\x1b[0m\\x1b[38;2;112;112;112m\u2584\\x1b[0m\\x1b[38;2;185;185;185;48;2;119;119;119m\u2580\\x1b...                               \\x1b[90m\u2022\\x1b[0m \\x1b[37mBackends\\x1b[0m    : \\x1b[90mModal / Colab / Local vLLM\\x1b[0m'
+errors = 'strict'
+
+    def encode(self,input,errors='strict'):
+>       return codecs.charmap_encode(input,errors,encoding_table)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       UnicodeEncodeError: 'charmap' codec can't encode character '\u2584' in position 32: character maps to <undefined>
+
+D:\ProgramFiles\Python3_11\Lib\encodings\cp1252.py:12: UnicodeEncodeError
+=========================== short test summary info ===========================
+FAILED tests/test_cli_output_encoding.py::test_banner_falls_back_without_losing_identity[cp1252-cp1252]
+FAILED tests/test_cli_output_encoding.py::test_banner_falls_back_without_losing_identity[ascii-ascii]
+FAILED tests/test_cli_output_encoding.py::test_banner_falls_back_without_losing_identity[None-ascii]
+FAILED tests/test_cli_output_encoding.py::test_banner_falls_back_without_losing_identity[unknown-test-codec-ascii]
+FAILED tests/test_cli_output_encoding.py::test_banner_falls_back_without_losing_identity[utf-8-ascii]
+FAILED tests/test_cli_output_encoding.py::test_missing_encoding_and_isatty_are_safe
+FAILED tests/test_cli_output_encoding.py::test_no_truecolor_uses_plain_ascii[False-False-xterm-direct]
+FAILED tests/test_cli_output_encoding.py::test_no_truecolor_uses_plain_ascii[True-True-xterm-direct]
+FAILED tests/test_cli_output_encoding.py::test_no_truecolor_uses_plain_ascii[True-False-dumb]
+FAILED tests/test_cli_output_encoding.py::test_no_truecolor_uses_plain_ascii[True-False-xterm-256color]
+FAILED tests/test_cli_output_encoding.py::test_command_completes_on_cp1252[args0-Hardware:]
+FAILED tests/test_cli_output_encoding.py::test_command_completes_on_cp1252[args1-Linked hardware profile:]
+FAILED tests/test_cli_output_encoding.py::test_command_completes_on_cp1252[args2-Dry-run execution command:]
+13 failed, 2 passed in 0.85s

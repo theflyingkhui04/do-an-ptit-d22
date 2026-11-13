@@ -19,6 +19,7 @@ Deploy-time switches (environment variables on the machine that deploys):
     PTIT_KEEP_WARM=1     keep one container per lane up (benchmarks only; costs credit)
     PTIT_SCALEDOWN_SECONDS  idle seconds before a container stops (default 300)
     PTIT_LANES           comma-separated lanes to deploy (default: all three)
+    PTIT_GPU             L4 (default, reference) | A10G | T4 (T4 needs fp16-fallback)
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from experiments import modal_lanes as lanes
 
 
 APP_NAME = lanes.APP_NAME
-GPU = "L4"
+GPU = lanes.resolve_gpu(os.environ)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if modal.is_local():
     from experiments.bench_source import snapshot
@@ -68,6 +69,10 @@ image = (
           "PTIT_SCALEDOWN_SECONDS": str(SCALEDOWN_SECONDS)})
     .add_local_dir(SOURCE_ROOT / "src", f"{lanes.REMOTE_PROJECT_ROOT}/src", ignore=["**/__pycache__/**"])
     .add_local_file(SOURCE_ROOT / "experiments" / "modal_lanes.py", "/root/experiments/modal_lanes.py")
+    # Scheduler observer imports and the exact-source lineage manifest must be
+    # available in the serving image, not only in the benchmark image.
+    .add_local_dir(SOURCE_ROOT / "experiments", f"{lanes.REMOTE_PROJECT_ROOT}/experiments",
+                   ignore=["runs/**", "results/**", "notebooks/**", "**/__pycache__/**"])
 )
 
 model_volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)

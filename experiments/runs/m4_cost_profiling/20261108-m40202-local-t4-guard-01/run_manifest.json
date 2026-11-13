@@ -1,0 +1,14 @@
+{
+  "run_id": "20261108-m40202-local-t4-guard-01",
+  "source_commit": "2fb089a8c72d979d55fc173f9b8593e1d4305743",
+  "status": "hardware_mismatch",
+  "started_at_utc": "2026-11-08T03:21:04.134699+00:00",
+  "artifact_kind": "component_measurements",
+  "canonical_profile_generated": false,
+  "workers": [],
+  "error": "Requested canonical T4 profiling but observed NVIDIA GeForce RTX 3050 Ti Laptop GPU; run retained as non-canonical smoke. No model loaded.",
+  "finished_at_utc": "2026-11-08T03:21:04.139006+00:00",
+  "run_type": "smoke",
+  "canonical_hardware": false,
+  "n_raw_records": 0
+}

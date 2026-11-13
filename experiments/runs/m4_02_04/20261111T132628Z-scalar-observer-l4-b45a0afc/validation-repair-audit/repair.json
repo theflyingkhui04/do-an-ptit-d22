@@ -1,0 +1,22 @@
+{
+  "type": "POST_COLLECTION_VALIDATOR_RECLASSIFICATION",
+  "canonical_git_sha": "16528241468e2624ccfe07a69a67fcc123bfe4a3",
+  "gpu_rerun": false,
+  "k0_status": "PASS",
+  "k2_status": "PASS",
+  "raw_cell_statuses": [
+    {
+      "cell_id": "k0",
+      "status": "ok"
+    },
+    {
+      "cell_id": "k2",
+      "status": "ok"
+    }
+  ],
+  "old_manifest_status": "FAIL",
+  "new_manifest_status": "COLLECTED",
+  "original_failure_preserved_at": "validation-repair-audit/original-run-failure.json",
+  "reason": "GPU collection completed successfully for K=0 and K=2. The run-level FAIL marker was created afterward by the previous offline validator, whose runtime identity assumption was repaired separately.",
+  "production_source_changed": false
+}

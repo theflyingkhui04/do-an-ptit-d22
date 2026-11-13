@@ -87,6 +87,28 @@ Ghi lại các quyết định lớn và **lý do** — để bảo vệ trướ
   - Bảo đảm an toàn tuyệt đối trước nguy cơ OOM khi tải cao hoặc context dài.
   - Phục hồi động sau vùng ngữ cảnh khó mà không cần can thiệp thủ công từ bên ngoài.
 
+## QĐ-14 *(đề xuất — chờ Khôi duyệt)* — Node 3 bản tối thiểu thuộc DoD của M3-06; web demo vẫn ở tầng COULD
+- **Bối cảnh:** QĐ-08 và [04 §5](04-quy-trinh-va-ke-hoach.md) xếp Node 3 vào tầng COULD (cắt đầu tiên khi trễ), nhưng card Trello [M3-06] yêu cầu "Node 2 Text-to-SQL và Node 3 VAT Report chạy với backend Modal" và "E2E OCR → SQL → VAT Report".
+- **Đề xuất:** đưa **Node 3 bản tối thiểu** vào M3-06 — một request sinh một báo cáo tiếng Việt từ kết quả Q1–Q6, không có giao diện web. Dashboard/web demo vẫn giữ nguyên ở tầng COULD. QĐ-08 không thay đổi.
+- **Lý do:** chi phí thấp (dùng lại prompt W3 v2 và client sẵn có), đổi lại có workload W4 đủ ba chế độ entropy trong một quy trình — đúng mục đích đo độ trễ cộng dồn của QĐ-08.
+- **Bằng chứng:** `src/pipeline/report_writer.py`, `scripts/run_pipeline_e2e.py`, `experiments/runs/m3_06/`.
+
+## QĐ-15 *(đề xuất — chờ Khôi duyệt)* — Node 2/Node 3 dùng nguyên prompt đóng băng của W2 v2/W3 v2
+- **Đề xuất:** system prompt của Node 2 và Node 3 là bản đã đóng băng `experiments/configs/w2_v2/system_prompt.md` và `w3_v2/system_prompt.md`; `temperature = 0`, `seed = 42`; Node 2 `max_tokens = 256` (W2 dùng 96, quá ngắn cho câu có `GROUP BY`), Node 3 `max_tokens = 768`. Không gọi lại mô hình để sửa SQL lỗi.
+- **Lý do:** đầu ra pipeline khớp với workload benchmark và số request bằng nhau giữa các làn, nên so sánh các làn công bằng.
+- **Hệ quả (đã ghi trong `src/pipeline/README.md`):** README catalog nói Node 2 *nên* trả SQL, view và lời giải thích; vì prompt W2 v2 chỉ trả SQL nên `explanation` luôn `null` và `views_used` được suy ra từ SQL.
+
+## QĐ-16 *(đề xuất — chờ Khôi duyệt)* — GPU dự phòng trên Modal qua `PTIT_GPU`
+- **Bối cảnh:** ngày 04/11/2026 Modal không cấp được L4 (ba lần thử), trong khi T4/A10G/L40S/A100/H100 cấp được ngay.
+- **Đề xuất:** biến `PTIT_GPU` chọn GPU lúc deploy — **L4 mặc định và là phần cứng tham chiếu**; `A10G` hoặc `T4` (cần `PTIT_DTYPE_PROFILE=fp16-fallback`) chỉ dùng cho nghiệm thu chức năng khi thiếu L4. Mọi bằng chứng chạy trên GPU khác phải ghi rõ GPU (`--hardware`) và **không** được so độ trễ với số liệu L4.
+- **Bằng chứng:** `experiments/modal_lanes.py` (`resolve_gpu`), `tests/test_modal_runner_config.py`, `experiments/M3_00_MODAL_RUNBOOK.md`.
+
+## QĐ-17 *(đề xuất — chờ Khôi duyệt)* — SQLite schema v2 cho 4 làn và latency ở cấp hoá đơn và lần chạy
+- **Bối cảnh:** card [M4-03] yêu cầu Node 1 chạy trên 4 làn và ghi `latency_ms` vào SQLite. Schema v1 có `CHECK lane IN ('vanilla','static','adaptive')` nên làn `eagle` không ghi được, và không có cột latency. `CHECK` nằm trong DDL của từng file nên DB v1 cũ không nhận `eagle` dù sửa `schema.sql`.
+- **Đề xuất:** nâng lên `user_version = 2`, **chỉ thêm**: lane `eagle`, `invoices.latency_ms` (từng hoá đơn), `extraction_runs.latency_ms_median` (trung vị của lần chạy, đúng yêu cầu card). Không migrate tự động: `init_schema` từ chối DB v1 và yêu cầu đường dẫn mới. Ba view của Node 2 và JSON contract `invoice_extraction.v1` không đổi; các DB v1 đã commit giữ nguyên làm bằng chứng M1–M3.
+- **Lý do:** đúng quy tắc versioning trong `src/pipeline/README.md`; giữ được phân phối latency mà vẫn có số cấp lần chạy.
+- **Bằng chứng:** `src/pipeline/sqlite/schema.sql`, `scripts/init_invoice_sqlite.py`, `tests/test_invoice_sqlite_v2.py`, `data/processed/invoices.db` (không commit), `experiments/runs/m4_03/`.
+
 ---
 
 ## Câu hỏi còn mở (phải đóng, kèm hạn)
