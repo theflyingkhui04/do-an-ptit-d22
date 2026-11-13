@@ -18,26 +18,31 @@ try:
     from flexsds.cli.output import print_output as print
     from flexsds.core.hardware import detect_hardware, HardwareInfo
     from flexsds.core.compatibility import (
-        check_compatibility,
-        pre_download_guard,
-        CompatibilityReport,
+        evaluate_serving_preflight,
+        ServingBlockedError,
     )
     from flexsds.core.cost_model import load_profile_for_hardware
-    from flexsds.server.local_runner import LocalServingRunner
+    from flexsds.server.local_runner import LocalServingRunner, finish_launch
     from flexsds.server.colab_runner import ColabServingRunner
     from flexsds.server.modal_runner import ModalServingRunner
 except ModuleNotFoundError:
     from src.flexsds.cli.output import print_output as print
     from src.flexsds.core.hardware import detect_hardware, HardwareInfo
     from src.flexsds.core.compatibility import (
-        check_compatibility,
-        pre_download_guard,
-        CompatibilityReport,
+        evaluate_serving_preflight,
+        ServingBlockedError,
     )
     from src.flexsds.core.cost_model import load_profile_for_hardware
-    from src.flexsds.server.local_runner import LocalServingRunner
+    from src.flexsds.server.local_runner import LocalServingRunner, finish_launch
     from src.flexsds.server.colab_runner import ColabServingRunner
     from src.flexsds.server.modal_runner import ModalServingRunner
+
+
+PLATFORM_CHOICES = [
+    "Modal.com (Serverless GPU đám mây)",
+    "Google Colab (GPU miễn phí T4/L4)",
+    "Tự dùng GPU nội bộ (Local vLLM)",
+]
 
 
 def strip_ansi(s: str) -> str:
@@ -203,7 +208,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
 
     if action == "Benchmark & profile GPU":
         cost_model, profile_name = load_profile_for_hardware(hw_info)
-        print(f"\n\033[32m✔ Micro-calibration loaded: {profile_name}\033[0m")
+        print(f"\n\033[32m✔ Hardware profile loaded: {profile_name}\033[0m")
         return {"action": "profile"}
 
     # Step 2: Target & Draft Model Configuration
@@ -229,30 +234,17 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             default_val="duckhoi/qwen2.5-7b-eagle3.1-speculator",
         )
 
-    # Step 3: Verification & Compatibility Guard
-    print("\n\033[90mChecking VRAM requirements & vocabulary compatibility...\033[0m")
-    pre_guard = pre_download_guard(
-        target_model=target_model,
-        draft_model=draft_model,
-        free_vram_mb=hw_info.free_vram_mb,
-    )
-
-    report = check_compatibility(
-        target_model=target_model,
-        draft_model=draft_model,
-        free_vram_mb=hw_info.free_vram_mb,
-    )
-
-    if not pre_guard.is_safe and pre_guard.warning:
-        print(f"\n\033[31m⚠ VRAM Warning:\033[0m {pre_guard.warning}")
-        if pre_guard.suggested_model:
-            use_suggested = prompt_bool(
-                f"Switch to recommended quantized model '{pre_guard.suggested_model}'?",
-                default_val=True,
-            )
-            if use_suggested:
-                target_model = pre_guard.suggested_model
-                report = check_compatibility(target_model, draft_model, free_vram_mb=hw_info.free_vram_mb)
+    platform_choice = prompt_choice("Serving platform:", PLATFORM_CHOICES, default_idx=0)
+    backend = "modal" if "Modal" in platform_choice else ("colab" if "Colab" in platform_choice else "local")
+    target_gpu = "L4"
+    if backend == "modal":
+        target_gpu = prompt_choice("Modal GPU:", ["L4", "A10G", "T4"], default_idx=0)
+    elif backend == "colab":
+        target_gpu = "T4"
+    preflight = evaluate_serving_preflight(target_model, draft_model, hw_info, backend, target_gpu)
+    print(preflight.report.summary())
+    preflight.require_safe()
+    report = preflight.report
 
     # Compatibility Report Box (dynamically auto-resizes)
     status_color = "\033[32m" if not report.oom_risk else "\033[31m"
@@ -270,36 +262,13 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
 
     print("\n" + render_box("Compatibility Report", box_items))
 
-    # Step 4: Platform Selection
-    platform_choice = prompt_choice(
-        "Serving platform:",
-        ["Modal (Serverless GPU)", "Google Colab", "Local GPU"],
-        default_idx=0,
-    )
-
-    backend = "modal"
-    target_gpu = "L4"
     colab_tunnel_url = ""
     modal_deploy = False
-
-    if "Modal" in platform_choice:
-        backend = "modal"
-        target_gpu = prompt_choice("Modal GPU:", ["L4", "A10G", "T4"], default_idx=0)
-
-        modal_runner = ModalServingRunner()
-        if not modal_runner.check_credentials():
-            print("\n\033[33m⚠ Modal credentials not detected.\033[0m")
-            token_id = prompt_string("MODAL_TOKEN_ID (Enter to skip):", "")
-            if token_id:
-                token_secret = prompt_string("MODAL_TOKEN_SECRET:", "")
-                os.environ["MODAL_TOKEN_ID"] = token_id
-                os.environ["MODAL_TOKEN_SECRET"] = token_secret
-
-        mode_choice = prompt_choice(
-            "Modal deployment mode:",
-            ["Development (modal run)", "Production (modal deploy)"],
-            default_idx=0,
-        )
+    if backend == "modal":
+        if not ModalServingRunner().check_credentials():
+            print("Modal credentials missing; use flexsds auth login securely before launch.")
+        mode_choice = prompt_choice("Modal deployment mode:",
+                                   ["Development (modal serve)", "Production (modal deploy)"], default_idx=0)
         modal_deploy = "Production" in mode_choice
 
     elif "Google Colab" in platform_choice:
@@ -330,9 +299,9 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         else:
             print(f"\n\033[32m✔ Local GPU: {hw_info.device_name} ({hw_info.free_vram_gb} GB free)\033[0m")
 
-    # Step 5: TreeAdaptive Optimization Engine
+    # Step 5: HardwareAdaptive Optimization Engine
     enable_adaptive = prompt_bool(
-        "Enable TreeAdaptive engine?",
+        "Enable HardwareAdaptive engine?",
         default_val=True,
     )
 
@@ -372,11 +341,20 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         if backend == "local":
             local_runner = LocalServingRunner()
             run_in_bg = prompt_bool("Run server in background?", default_val=False)
-            local_runner.launch(config, background=run_in_bg)
+            proc = local_runner.launch(config, background=run_in_bg)
+            config["exit_code"] = finish_launch(proc, background=run_in_bg)
+            return config
         elif backend == "modal":
             modal_runner = ModalServingRunner()
-            modal_runner.launch(config, deploy=modal_deploy)
+            proc = modal_runner.launch(config, deploy=modal_deploy)
+            config["exit_code"] = finish_launch(proc)
+            return config
         elif backend == "colab":
-            print("\n\033[32m✔ Colab endpoint configured. Ready for inference requests.\033[0m")
+            endpoint = colab_tunnel_url or "http://localhost:8000/v1"
+            print("\n\033[1;32mColab guidance only; no server or endpoint created.\033[0m")
+            print(f"  \033[1;37mGợi ý:\033[0m Chạy lệnh: \033[36mflexsds chat --endpoint {endpoint}\033[0m để bắt đầu trò chuyện!\n")
+    else:
+        print("\n\033[1;32mConfiguration saved; no server launched or readiness established.\033[0m")
+        print("  \033[1;37mGợi ý:\033[0m Chạy \033[36mflexsds chat\033[0m để kết nối máy chủ khi đã bật.\n")
 
     return config

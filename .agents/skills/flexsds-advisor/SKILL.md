@@ -35,7 +35,9 @@ hardware/profile inspection, serving configuration previews and CLI diagnosis.
    `--dry-run`, enters the interactive wizard. Never automate that wizard.
    Capture command, exit code, stdout/stderr with a bounded timeout and closed
    stdin. Inspect warning/error text even on exit 0; do not treat it as readiness.
-   Compatibility is a heuristic, not validated tokenizer/model/hardware support.
+   Unsafe previews print "Launch blocked" and return 0; real unsafe serving
+   returns 2 before dispatch. Compatibility is heuristic, not proof of model fit.
+   Modal uses an estimated remote GPU budget, not local free memory.
 5. Default to inspection/explanation/dry-run. A question such as "can this run?"
    does not authorize a launch. Real `serve`, background start, `stop`, paid GPU
    allocation, deployment and credential changes require explicit user intent.
@@ -43,19 +45,23 @@ hardware/profile inspection, serving configuration previews and CLI diagnosis.
    an authorized action, inspect backend prerequisites and dry-run the exact
    configuration. Stop at missing GPU/runtime, OOM warnings, unsupported hardware
    or an option the runner cannot honor. Report the narrow blocker and next fix;
-   never substitute cloud or broaden the action. Current Modal model forwarding,
-   Colab flag-path launch and `--no-adaptive` behavior have limitations in the
-   reference: do not execute a configuration known to ignore requested settings.
+   never substitute cloud or broaden the action. Read backend limitations in
+   the reference before launch. Colab flag mode provides guidance only.
+   `--no-adaptive` retains static speculation with the default vLLM scheduler.
    Local serving binds 0.0.0.0; verify that exposure matches the user's intent.
    For stop verify CWD, PID ownership and platform support first; do not stop an
    unrelated process or infer that local stop terminates Modal. Never collect
    secrets in chat. Check credential presence only, without printing values.
-6. On unavailable CLI, nonzero exit, timeout, or printed runner error, preserve
+6. For `auth`, `chat` or `monitor`, read the CLI reference first. Login/logout
+   changes credentials; never put secrets in argv or chat. Chat performs network
+   inference; its displayed rates count SSE chunks, not tokens. Monitor tails a
+   local trace until interrupted; bound observation and do not imply endpoint health.
+7. On unavailable CLI, nonzero exit, timeout, or printed runner error, preserve
    the failure and explain a specific repair. Do not retry as a real launch or
    silently drop flags. Use supplied command/error text for diagnosis; reproduce
    only safe inspection/preview commands. Actual parser/runtime wins over docs;
    do not invent `test`, `check-compat`, `--json` or unsupported options.
-7. Return the result, issue/limitation and exact next action. Label evidence as
+8. Return the result, issue/limitation and exact next action. Label evidence as
    FACT (code contract), OBSERVATION (captured output), INFERENCE, RECOMMENDATION
    or UNKNOWN where relevant. A printed command is not a running endpoint.
    Never promise TreeAdaptive runtime, profitability, optimal hardware policy,

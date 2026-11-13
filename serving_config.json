@@ -2,11 +2,11 @@
   "flexsds_version": "0.2.0-alpha",
   "action": "serve",
   "backend": "modal",
-  "target_model": "dhfdj",
-  "draft_model": "djmhgjdmg",
-  "draft_method": "draft_model",
-  "use_heterogeneous_vocab": false,
-  "enable_adaptive": false,
+  "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+  "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+  "draft_method": "eagle3",
+  "use_heterogeneous_vocab": true,
+  "enable_adaptive": true,
   "profile_applied": "profile_sm89_l4.json",
   "target_gpu": "L4",
   "colab_tunnel_url": "",
@@ -14,6 +14,6 @@
   "hardware": {
     "device_name": "CPU",
     "sm_architecture": "cpu",
-    "free_vram_mb": 2297.9
+    "free_vram_mb": 3651.5
   }
 }

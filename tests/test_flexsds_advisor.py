@@ -28,7 +28,7 @@ def invoke(args, cwd):
 
 @pytest.mark.parametrize("args, expected", [
     (["--version"], "0.2.0-alpha"),
-    (["--help"], "{detect,profile,stop,serve}"),
+    (["--help"], "{detect,profile,stop,auth,serve,chat,monitor}"),
     (["detect"], "Hardware:"),
     (["profile"], "Linked hardware profile:"),
     (PAIR + ["--backend", "local", "--dry-run"], "Dry-run execution command:"),
@@ -94,20 +94,29 @@ def test_oom_warning_still_returns_zero(cpu_cli, monkeypatch, capsys):
     assert "WARNING/INCOMPATIBLE" in capsys.readouterr().out
 
 
-def test_missing_runner_binary_returns_zero_with_error(cpu_cli, monkeypatch, capsys):
+def test_missing_runner_binary_returns_nonzero_with_error(cpu_cli, monkeypatch, capsys):
+    cpu_cli.is_cuda_available = True
     # Controlled stand-in only: no actual serving process can be created.
     monkeypatch.setattr(subprocess, "Popen", Mock(side_effect=FileNotFoundError))
-    assert cli.main(PAIR + ["--backend", "local"]) == 0
+    assert cli.main(PAIR + ["--backend", "local"]) == 1
     assert "Server binary not found" in capsys.readouterr().out
 
 
-def test_no_adaptive_does_not_change_local_command():
+def test_no_adaptive_uses_default_scheduler_and_executor():
     runner = LocalServingRunner()
-    assert runner.build_command({"enable_adaptive": False}) == runner.build_command(
-        {"enable_adaptive": True})
+    cmd = runner.build_command({"enable_adaptive": False})
+    assert "--speculative-config" in cmd
+    assert "--scheduler-cls" not in cmd
+    assert "--distributed-executor-backend" not in cmd
+    assert "num_speculative_tokens_per_batch_size" not in " ".join(cmd)
 
 
-def test_modal_does_not_forward_models_or_port():
+def test_modal_forwards_models_port_and_gpu_in_environment():
+    import json
     runner = ModalServingRunner()
-    assert runner.build_modal_command({"target_model": "chosen-target", "port": 9876}) == [
-        "modal", "run", "experiments/modal_lanes.py", "--gpu", "L4"]
+    cfg = {"target_model": "chosen-target", "draft_model": "chosen-draft",
+           "port": 9876, "target_gpu": "T4", "enable_adaptive": False}
+    command = runner.build_modal_command(cfg)
+    assert command[:2] == ["modal", "serve"]
+    assert command[2].endswith("modal_app.py")
+    assert json.loads(runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"]) == cfg

@@ -46,7 +46,7 @@ def render_banner(hw_info: Optional[HardwareInfo] = None) -> str:
         "  \033[90mHọc viện Công nghệ Bưu chính Viễn thông (PTIT)\033[0m",
         "",
         f"  \033[90m•\033[0m \033[37mHardware\033[0m    : \033[90m{gpu_str}\033[0m",
-        "  \033[90m•\033[0m \033[37mEngine\033[0m      : \033[90mTreeAdaptive v0.2\033[0m",
+        "  \033[90m•\033[0m \033[37mEngine\033[0m      : \033[90mHardwareAdaptive v0.2\033[0m",
         "  \033[90m•\033[0m \033[37mBackends\033[0m    : \033[90mModal / Colab / Local vLLM\033[0m",
     ]
 

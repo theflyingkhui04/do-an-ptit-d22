@@ -1,0 +1,443 @@
+.... [ 95%]
+...................................F............................ [ 99%]
+..............                                                       [100%]
+=================================== ERRORS ====================================
+_ ERROR at setup of test_complete_attention_artifact_uses_real_provenance_and_source_gates _
+tests\test_protocol_b_boundary_p177_attention_substitution.py:321: in artifact
+    root,baseline=case.artifact()
+                  ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_ ERROR at setup of test_complete_artifact_rejects_provenance_drift[packages] _
+tests\test_protocol_b_boundary_p177_attention_substitution.py:321: in artifact
+    root,baseline=case.artifact()
+                  ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+__ ERROR at setup of test_complete_artifact_rejects_provenance_drift[source] __
+tests\test_protocol_b_boundary_p177_attention_substitution.py:321: in artifact
+    root,baseline=case.artifact()
+                  ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_ ERROR at setup of test_complete_artifact_rejects_provenance_drift[reference] _
+tests\test_protocol_b_boundary_p177_attention_substitution.py:321: in artifact
+    root,baseline=case.artifact()
+                  ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_ ERROR at setup of test_complete_artifact_rejects_provenance_drift[environment] _
+tests\test_protocol_b_boundary_p177_attention_substitution.py:321: in artifact
+    root,baseline=case.artifact()
+                  ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_ ERROR at setup of test_complete_artifact_rejects_provenance_drift[binding] __
+tests\test_protocol_b_boundary_p177_attention_substitution.py:321: in artifact
+    root,baseline=case.artifact()
+                  ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_ ERROR at setup of test_complete_artifact_rejects_provenance_drift[journal] __
+tests\test_protocol_b_boundary_p177_attention_substitution.py:321: in artifact
+    root,baseline=case.artifact()
+                  ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+__ ERROR at setup of test_complete_artifact_rejects_provenance_drift[query] ___
+tests\test_protocol_b_boundary_p177_attention_substitution.py:321: in artifact
+    root,baseline=case.artifact()
+                  ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+================================== FAILURES ===================================
+_________ test_smoke_samples_are_fixed_and_come_from_frozen_workloads _________
+tests\test_modal_smoke.py:54: in test_smoke_samples_are_fixed_and_come_from_frozen_workloads
+    rows = smoke.load_smoke_rows()
+           ^^^^^^^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:42: in load_smoke_rows
+    verify_workload_integrity(path)
+experiments\workload_adapter.py:234: in verify_workload_integrity
+    raise WorkloadContractError(
+E   experiments.workload_adapter.WorkloadContractError: workload SHA-256 mismatch: artifact_key='node1_chat_requests_jsonl', expected=0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360, actual=19808e79c743443bf9c8b989b797becc23c9f0483282b93e2c967f416b493386, file=D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-advisor\experiments\configs\w1\node1_chat_requests.jsonl
+__________ test_smoke_runs_5_prompts_per_lane_with_canonical_params ___________
+tests\test_modal_smoke.py:64: in test_smoke_runs_5_prompts_per_lane_with_canonical_params
+    records = smoke.run_smoke(["vanilla", "static", "adaptive"], make)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:72: in run_smoke
+    rows = load_smoke_rows()
+           ^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:42: in load_smoke_rows
+    verify_workload_integrity(path)
+experiments\workload_adapter.py:234: in verify_workload_integrity
+    raise WorkloadContractError(
+E   experiments.workload_adapter.WorkloadContractError: workload SHA-256 mismatch: artifact_key='node1_chat_requests_jsonl', expected=0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360, actual=19808e79c743443bf9c8b989b797becc23c9f0483282b93e2c967f416b493386, file=D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-advisor\experiments\configs\w1\node1_chat_requests.jsonl
+_________________________ test_smoke_runs_eagle_lane __________________________
+tests\test_modal_smoke.py:80: in test_smoke_runs_eagle_lane
+    records = smoke.run_smoke(["eagle"], make)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:72: in run_smoke
+    rows = load_smoke_rows()
+           ^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:42: in load_smoke_rows
+    verify_workload_integrity(path)
+experiments\workload_adapter.py:234: in verify_workload_integrity
+    raise WorkloadContractError(
+E   experiments.workload_adapter.WorkloadContractError: workload SHA-256 mismatch: artifact_key='node1_chat_requests_jsonl', expected=0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360, actual=19808e79c743443bf9c8b989b797becc23c9f0483282b93e2c967f416b493386, file=D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-advisor\experiments\configs\w1\node1_chat_requests.jsonl
+_______________ test_smoke_records_failures_instead_of_crashing _______________
+tests\test_modal_smoke.py:88: in test_smoke_records_failures_instead_of_crashing
+    records = smoke.run_smoke(["static"], factory(static={"fail": True}))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:72: in run_smoke
+    rows = load_smoke_rows()
+           ^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:42: in load_smoke_rows
+    verify_workload_integrity(path)
+experiments\workload_adapter.py:234: in verify_workload_integrity
+    raise WorkloadContractError(
+E   experiments.workload_adapter.WorkloadContractError: workload SHA-256 mismatch: artifact_key='node1_chat_requests_jsonl', expected=0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360, actual=19808e79c743443bf9c8b989b797becc23c9f0483282b93e2c967f416b493386, file=D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-advisor\experiments\configs\w1\node1_chat_requests.jsonl
+_________________________ test_json_valid_only_for_w1 _________________________
+tests\test_modal_smoke.py:96: in test_json_valid_only_for_w1
+    records = smoke.run_smoke(["vanilla"], factory())
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:72: in run_smoke
+    rows = load_smoke_rows()
+           ^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:42: in load_smoke_rows
+    verify_workload_integrity(path)
+experiments\workload_adapter.py:234: in verify_workload_integrity
+    raise WorkloadContractError(
+E   experiments.workload_adapter.WorkloadContractError: workload SHA-256 mismatch: artifact_key='node1_chat_requests_jsonl', expected=0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360, actual=19808e79c743443bf9c8b989b797becc23c9f0483282b93e2c967f416b493386, file=D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-advisor\experiments\configs\w1\node1_chat_requests.jsonl
+__________________________ test_main_writes_evidence __________________________
+tests\test_modal_smoke.py:125: in test_main_writes_evidence
+    assert smoke.main(["smoke", "--run-id", "t1", "--lanes", "vanilla"]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:149: in main
+    records = run_smoke(selected, make_client)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:72: in run_smoke
+    rows = load_smoke_rows()
+           ^^^^^^^^^^^^^^^^^
+experiments\modal_smoke.py:42: in load_smoke_rows
+    verify_workload_integrity(path)
+experiments\workload_adapter.py:234: in verify_workload_integrity
+    raise WorkloadContractError(
+E   experiments.workload_adapter.WorkloadContractError: workload SHA-256 mismatch: artifact_key='node1_chat_requests_jsonl', expected=0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360, actual=19808e79c743443bf9c8b989b797becc23c9f0483282b93e2c967f416b493386, file=D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-advisor\experiments\configs\w1\node1_chat_requests.jsonl
+---------------------------- Captured stderr call -----------------------------
+fatal: not a git repository (or any of the parent directories): .git
+____________________ test_node1_cli_exposes_ready_timeout _____________________
+tests\test_openai_compatible_ready_wait.py:97: in test_node1_cli_exposes_ready_timeout
+    assert node1.parse_args().ready_timeout == 1200.0
+           ^^^^^^^^^^^^^^^^^^
+scripts\run_node1_extractor.py:499: in parse_args
+    return resolve_lane_args(parser.parse_args(argv))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\run_node1_extractor.py:367: in resolve_lane_args
+    or (load_token() if modal_lane else "")
+        ^^^^^^^^^^^^
+src\client\modal_client.py:137: in load_token
+    raise ModalClientError(
+E   src.client.modal_client.ModalClientError: Set MODAL_PROXY_TOKEN_ID and MODAL_PROXY_TOKEN_SECRET (environment or .env)
+____ test_fix_launchers_bind_revisions_only_when_requested[False-adaptive] ____
+tests\test_protocol_b.py:544: in test_fix_launchers_bind_revisions_only_when_requested
+    assert result.returncode == 0, result.stderr
+E   AssertionError: b'mkdir: cannot create directory \xe2\x80\x98C:/Users/daibu\xe2\x80\x99: Permission denied
+E     '
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['C:\\Program Files\\Git\\usr\\bin\\bash.exe', '--noprofile', '--norc'], returncode=1, stdout=b'...b\x99ng 0..4)\n', stderr=b'mkdir: cannot create directory \xe2\x80\x98C:/Users/daibu\xe2\x80\x99: Permission denied\n').returncode
+____ test_fix_launchers_bind_revisions_only_when_requested[True-adaptive] _____
+tests\test_protocol_b.py:544: in test_fix_launchers_bind_revisions_only_when_requested
+    assert result.returncode == 0, result.stderr
+E   AssertionError: b'mkdir: cannot create directory \xe2\x80\x98C:/Users/daibu\xe2\x80\x99: Permission denied
+E     '
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['C:\\Program Files\\Git\\usr\\bin\\bash.exe', '--noprofile', '--norc'], returncode=1, stdout=b'...b\x99ng 0..4)\n', stderr=b'mkdir: cannot create directory \xe2\x80\x98C:/Users/daibu\xe2\x80\x99: Permission denied\n').returncode
+_ ObservationAndSourceContracts.test_frozen_scheduler_only_observer_calls_approved _
+tests\test_protocol_b_boundary_early.py:325: in test_frozen_scheduler_only_observer_calls_approved
+    sources.validate_scheduler_observation(raw, patched)
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+______ ProducerTests.test_exact_real_method_passes_zero_to_native_super _______
+actual_scheduler_method:105: in _update_after_schedule
+    ???
+E   AttributeError: 'types.SimpleNamespace' object has no attribute 'record_scheduled_budget'
+
+During handling of the above exception, another exception occurred:
+tests\test_protocol_b_boundary_p177_k0_control.py:145: in test_exact_real_method_passes_zero_to_native_super
+    namespace["_update_after_schedule"](self.scheduler, self.output)
+actual_scheduler_method:113: in _update_after_schedule
+    ???
+E   NameError: name 'logger' is not defined
+_ SourceTests.test_exact_hook_is_before_super_and_all_other_scheduler_ast_is_pristine _
+tests\test_protocol_b_boundary_p177_k0_control.py:386: in test_exact_hook_is_before_super_and_all_other_scheduler_ast_is_pristine
+    sources.validate_scheduler_observation(raw, patched)
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_____ SourceTests.test_planner_controller_and_adapter_unchanged_from_base _____
+tests\test_protocol_b_boundary_p177_k0_control.py:401: in test_planner_controller_and_adapter_unchanged_from_base
+    self.assertEqual(raw, (boundary.ROOT / name).read_bytes())
+E   AssertionError: b'"""[325 chars]port os\nimport time\nfrom dataclasses import [4976 chars]"}\n' != b'"""[325 chars]port logging\nimport math\nimport os\nimport t[14268 chars] }\n'
+_ ControlArtifactTests.test_complete_control_artifact_validates_without_canonical_fingerprint _
+tests\test_protocol_b_boundary_p177_k0_control.py:574: in test_complete_control_artifact_validates_without_canonical_fingerprint
+    root, baseline = self.artifact()
+                     ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_ ControlArtifactTests.test_gpu_resolution_manifest_tampering_invalidates_control _
+tests\test_protocol_b_boundary_p177_k0_control.py:601: in test_gpu_resolution_manifest_tampering_invalidates_control
+    root, baseline = self.artifact()
+                     ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_ ControlArtifactTests.test_ordinal_control_artifact_validates_and_keeps_raw_selector _
+tests\test_protocol_b_boundary_p177_k0_control.py:583: in test_ordinal_control_artifact_validates_and_keeps_raw_selector
+    root, baseline = self.artifact()
+                     ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_______ ControlArtifactTests.test_package_mismatch_invalidates_control ________
+tests\test_protocol_b_boundary_p177_k0_control.py:628: in test_package_mismatch_invalidates_control
+    root, baseline = self.artifact()
+                     ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+__ ControlArtifactTests.test_runtime_provenance_mismatch_invalidates_control __
+tests\test_protocol_b_boundary_p177_k0_control.py:611: in test_runtime_provenance_mismatch_invalidates_control
+    root, baseline = self.artifact()
+                     ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+_ ControlArtifactTests.test_sealed_baseline_binding_mismatch_invalidates_control _
+tests\test_protocol_b_boundary_p177_k0_control.py:621: in test_sealed_baseline_binding_mismatch_invalidates_control
+    root, baseline = self.artifact()
+                     ^^^^^^^^^^^^^^^
+tests\test_protocol_b_boundary_p177_k0_control.py:505: in artifact
+    source_auth = boundary.control_scheduler_auth(baseline)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\protocol_b_boundary.py:1036: in control_scheduler_auth
+    validate_scheduler_observation(raw, path.read_bytes())
+experiments\protocol_b_boundary_sources.py:170: in validate_scheduler_observation
+    require(len(imports) == 1 and ast.dump(imports[0]) == ast.dump(expected_import)
+experiments\protocol_b.py:69: in require
+    raise EvidenceError(message)
+E   experiments.protocol_b.EvidenceError: Unapproved scheduler observation
+__________ ResolveArgsTests.test_default_database_is_ignored_by_git ___________
+tests\test_run_node1_lanes.py:134: in test_default_database_is_ignored_by_git
+    self.assertEqual(result.returncode, 0)
+E   AssertionError: 128 != 0
+---------------------------- Captured stderr call -----------------------------
+fatal: detected dubious ownership in repository at 'D:/Document/Four-year/do_an/do-an-ptit-d22-flexsds-advisor'
+'D:/Document/Four-year/do_an/do-an-ptit-d22-flexsds-advisor/.git' is owned by:
+	daijestic/daibu (S-1-5-21-84232504-2969842031-1597856693-1001)
+but the current user is:
+	daijestic/CodexSandboxOffline (S-1-5-21-84232504-2969842031-1597856693-1019)
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory D:/Document/Four-year/do_an/do-an-ptit-d22-flexsds-advisor
+__ test_installed_source_fallback_is_hash_verified_without_vllm_import[None] __
+experiments\scalar_pinned_sources.py:31: in read_source
+    distribution = importlib.metadata.distribution("vllm")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramFiles\Python3_11\Lib\importlib\metadata\__init__.py:964: in distribution
+    return Distribution.from_name(distribution_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramFiles\Python3_11\Lib\importlib\metadata\__init__.py:561: in from_name
+    raise PackageNotFoundError(name)
+E   importlib.metadata.PackageNotFoundError: No package metadata was found for vllm
+
+The above exception was the direct cause of the following exception:
+tests\test_scalar_colab_git.py:176: in test_installed_source_fallback_is_hash_verified_without_vllm_import
+    content = pinned.read_source(name)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\scalar_pinned_sources.py:33: in read_source
+    raise FileNotFoundError("Pinned source unavailable; install vllm==0.30.0: " + name) from error
+E   FileNotFoundError: Pinned source unavailable; install vllm==0.30.0: vllm/v1/core/sched/utils.py
+_ test_installed_source_fallback_is_hash_verified_without_vllm_import[version] _
+experiments\scalar_pinned_sources.py:31: in read_source
+    distribution = importlib.metadata.distribution("vllm")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramFiles\Python3_11\Lib\importlib\metadata\__init__.py:964: in distribution
+    return Distribution.from_name(distribution_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramFiles\Python3_11\Lib\importlib\metadata\__init__.py:561: in from_name
+    raise PackageNotFoundError(name)
+E   importlib.metadata.PackageNotFoundError: No package metadata was found for vllm
+
+The above exception was the direct cause of the following exception:
+tests\test_scalar_colab_git.py:176: in test_installed_source_fallback_is_hash_verified_without_vllm_import
+    content = pinned.read_source(name)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\scalar_pinned_sources.py:33: in read_source
+    raise FileNotFoundError("Pinned source unavailable; install vllm==0.30.0: " + name) from error
+E   FileNotFoundError: Pinned source unavailable; install vllm==0.30.0: vllm/v1/core/sched/utils.py
+__ test_installed_source_fallback_is_hash_verified_without_vllm_import[hash] __
+experiments\scalar_pinned_sources.py:31: in read_source
+    distribution = importlib.metadata.distribution("vllm")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramFiles\Python3_11\Lib\importlib\metadata\__init__.py:964: in distribution
+    return Distribution.from_name(distribution_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramFiles\Python3_11\Lib\importlib\metadata\__init__.py:561: in from_name
+    raise PackageNotFoundError(name)
+E   importlib.metadata.PackageNotFoundError: No package metadata was found for vllm
+
+The above exception was the direct cause of the following exception:
+tests\test_scalar_colab_git.py:176: in test_installed_source_fallback_is_hash_verified_without_vllm_import
+    content = pinned.read_source(name)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+experiments\scalar_pinned_sources.py:33: in read_source
+    raise FileNotFoundError("Pinned source unavailable; install vllm==0.30.0: " + name) from error
+E   FileNotFoundError: Pinned source unavailable; install vllm==0.30.0: vllm/v1/core/sched/utils.py
+_______________________ test_decision_latency_benchmark _______________________
+tests\test_tree_adaptive_controller.py:272: in test_decision_latency_benchmark
+    assert avg_latency_ms < 0.05, f"Decision latency too high: {avg_latency_ms:.6f} ms >= 0.05 ms"
+E   AssertionError: Decision latency too high: 0.055497 ms >= 0.05 ms
+E   assert 0.05549660999968182 < 0.05
+---------------------------- Captured stdout call -----------------------------
+
+Average decision latency: 55.497 microseconds (0.055497 ms)
+=========================== short test summary info ===========================
+FAILED tests/test_modal_smoke.py::test_smoke_samples_are_fixed_and_come_from_frozen_workloads
+FAILED tests/test_modal_smoke.py::test_smoke_runs_5_prompts_per_lane_with_canonical_params
+FAILED tests/test_modal_smoke.py::test_smoke_runs_eagle_lane - experiments.wo...
+FAILED tests/test_modal_smoke.py::test_smoke_records_failures_instead_of_crashing
+FAILED tests/test_modal_smoke.py::test_json_valid_only_for_w1 - experiments.w...
+FAILED tests/test_modal_smoke.py::test_main_writes_evidence - experiments.wor...
+FAILED tests/test_openai_compatible_ready_wait.py::test_node1_cli_exposes_ready_timeout
+FAILED tests/test_protocol_b.py::test_fix_launchers_bind_revisions_only_when_requested[False-adaptive]
+FAILED tests/test_protocol_b.py::test_fix_launchers_bind_revisions_only_when_requested[True-adaptive]
+FAILED tests/test_protocol_b_boundary_early.py::ObservationAndSourceContracts::test_frozen_scheduler_only_observer_calls_approved
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::ProducerTests::test_exact_real_method_passes_zero_to_native_super
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::SourceTests::test_exact_hook_is_before_super_and_all_other_scheduler_ast_is_pristine
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::SourceTests::test_planner_controller_and_adapter_unchanged_from_base
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::ControlArtifactTests::test_complete_control_artifact_validates_without_canonical_fingerprint
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::ControlArtifactTests::test_gpu_resolution_manifest_tampering_invalidates_control
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::ControlArtifactTests::test_ordinal_control_artifact_validates_and_keeps_raw_selector
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::ControlArtifactTests::test_package_mismatch_invalidates_control
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::ControlArtifactTests::test_runtime_provenance_mismatch_invalidates_control
+FAILED tests/test_protocol_b_boundary_p177_k0_control.py::ControlArtifactTests::test_sealed_baseline_binding_mismatch_invalidates_control
+FAILED tests/test_run_node1_lanes.py::ResolveArgsTests::test_default_database_is_ignored_by_git
+FAILED tests/test_scalar_colab_git.py::test_installed_source_fallback_is_hash_verified_without_vllm_import[None]
+FAILED tests/test_scalar_colab_git.py::test_installed_source_fallback_is_hash_verified_without_vllm_import[version]
+FAILED tests/test_scalar_colab_git.py::test_installed_source_fallback_is_hash_verified_without_vllm_import[hash]
+FAILED tests/test_tree_adaptive_controller.py::test_decision_latency_benchmark
+ERROR tests/test_protocol_b_boundary_p177_attention_substitution.py::test_complete_attention_artifact_uses_real_provenance_and_source_gates
+ERROR tests/test_protocol_b_boundary_p177_attention_substitution.py::test_complete_artifact_rejects_provenance_drift[packages]
+ERROR tests/test_protocol_b_boundary_p177_attention_substitution.py::test_complete_artifact_rejects_provenance_drift[source]
+ERROR tests/test_protocol_b_boundary_p177_attention_substitution.py::test_complete_artifact_rejects_provenance_drift[reference]
+ERROR tests/test_protocol_b_boundary_p177_attention_substitution.py::test_complete_artifact_rejects_provenance_drift[environment]
+ERROR tests/test_protocol_b_boundary_p177_attention_substitution.py::test_complete_artifact_rejects_provenance_drift[binding]
+ERROR tests/test_protocol_b_boundary_p177_attention_substitution.py::test_complete_artifact_rejects_provenance_drift[journal]
+ERROR tests/test_protocol_b_boundary_p177_attention_substitution.py::test_complete_artifact_rejects_provenance_drift[query]
+24 failed, 1594 passed, 132 skipped, 8 errors, 204 subtests passed in 565.01s (0:09:25)
+

@@ -62,3 +62,8 @@ def print_output(text: str = "", *, file=None, end: str = "\n", fallback=None) -
         stream.write(message)
     except UnicodeEncodeError:
         stream.write(ascii_text((fallback if fallback is not None else text) + end))
+
+
+def write_output(text: str) -> None:
+    """Encoding-safe incremental output for streamed chat content."""
+    print_output(text, end="")

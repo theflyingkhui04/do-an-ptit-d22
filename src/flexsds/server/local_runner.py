@@ -4,13 +4,34 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socket
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
     from flexsds.cli.output import print_output as print
 except ModuleNotFoundError:
     from src.flexsds.cli.output import print_output as print
+
+
+def finish_launch(proc, background: bool = False) -> int:
+    """Propagate startup/foreground failure without equating a process with readiness."""
+    if proc is None:
+        print("Launch failed; no serving readiness established.")
+        return 1
+    print("Serving process started; endpoint readiness is not verified.")
+    try:
+        code = proc.poll() if background else proc.wait()
+        return code if isinstance(code, int) else 0
+    except KeyboardInterrupt:
+        proc.terminate()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        return 130
 
 
 class LocalServingRunner:
@@ -73,21 +94,37 @@ class LocalServingRunner:
         if quantization != "none":
             cmd.extend(["--quantization", quantization])
 
-        cmd.extend([
-            "--speculative-config",
-            json.dumps(speculative_config),
-            "--scheduler-cls",
-            "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
-            "--per-request-spec-decode-metrics",
-            "summary",
-        ])
+        if serving_cfg.get("enable_adaptive", True):
+            cmd.extend([
+                "--speculative-config", json.dumps(speculative_config),
+                "--scheduler-cls", "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
+                "--distributed-executor-backend", "src.server.lineage_executor.LineageUniProcExecutor",
+                "--per-request-spec-decode-metrics", "summary",
+            ])
+        else:
+            # Static speculation uses vLLM's default scheduler/executor, not the adaptive pair.
+            speculative_config.pop("num_speculative_tokens_per_batch_size", None)
+            cmd.extend(["--speculative-config", json.dumps(speculative_config)])
 
         return cmd
+
+    def check_port_available(self, port: int) -> bool:
+        """Kiểm tra xem cổng port có đang khả dụng không."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("", port))
+                return True
+            except OSError:
+                return False
 
     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
         """Thiết lập các biến môi trường cho FlexSDS Adaptive Scheduler."""
         serving_cfg = config.get("serving", config)
         env = dict(os.environ)
+        project_root = str(Path(__file__).resolve().parents[3])
+        existing_pythonpath = env.get("PYTHONPATH", "")
+        if project_root not in existing_pythonpath:
+            env["PYTHONPATH"] = f"{project_root}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else project_root
         env["ADAPTIVE_ENABLE_VRAM_GUARD"] = "1"
         env["ADAPTIVE_TELEMETRY_PATH"] = os.path.abspath(
             serving_cfg.get("telemetry_path", "telemetry/serving_trace.jsonl")
@@ -106,13 +143,23 @@ class LocalServingRunner:
         dry_run: bool = False,
     ) -> Optional[subprocess.Popen]:
         """Khởi chạy tiến trình máy chủ cục bộ."""
-        cmd = self.build_command(config, port=port)
+        effective_port = port if port is not None else config.get("serving", config).get("port", 8000)
+        cmd = self.build_command(config, port=effective_port)
         env = self.setup_environment(config)
 
         if dry_run:
             print("\n[FlexSDS] Dry-run execution command:")
             print(" ".join(cmd))
             print(f"Environment: ADAPTIVE_ENABLE_VRAM_GUARD={env.get('ADAPTIVE_ENABLE_VRAM_GUARD')}")
+            return None
+
+        if not self.check_port_available(effective_port):
+            print(f"\n\033[31m[Lỗi]\033[0m Cổng {effective_port} đang bị chiếm dụng bởi tiến trình khác.")
+            print(f"  Gợi ý: Dùng cờ --port <cổng_khác> hoặc chạy: flexsds stop")
+            return None
+
+        if background and os.name == "nt":
+            print("Background process-group serving is unsupported on Windows; use foreground serving.")
             return None
 
         try:
@@ -138,6 +185,9 @@ class LocalServingRunner:
 
     def stop(self, pid_file: str = ".flexsds.pid") -> bool:
         """Dừng nhóm tiến trình máy chủ vLLM và dọn dẹp sạch tiến trình con."""
+        if os.name == "nt":
+            print("Local process-group stop is unsupported on Windows; stop the foreground session.")
+            return False
         if not os.path.exists(pid_file):
             return False
 

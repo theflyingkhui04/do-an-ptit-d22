@@ -1,68 +1,99 @@
-# Actual CLI contract
+# Current CLI contract
 
-Audited at develop 48ae3a166ad9e42fdb81d3d401e496efef3b71bd (2026-11-13).
-Authority: pyproject.toml; src/flexsds/cli/{main,wizard,banner}.py;
-core/{hardware,compatibility,cost_model}.py; server/{local,modal}_runner.py.
-Recheck installed help/code if versions differ. No JSON output contract.
+Reconciled 2026-11-13 against backend 76957514f9a52e11d9a0a2322469d1a45cba9273
+plus the Skill integration changes. Actual parser/source wins over documentation.
+Version remains 0.2.0-alpha: record execution Git SHA too. No JSON output contract.
 
-| Command | Observable behavior | Agent boundary |
+| Command | Arguments / behavior | Effects and exits |
 |---|---|---|
-| `--help`, `--version` | Parser exits before detection; version 0.2.0-alpha | Headless, read-only |
-| `detect` | ANSI/Unicode banner and hardware summary | Headless, GPU optional; Torch exception silently becomes CPU/RAM fallback |
-| `profile` | Filename lookup, not micro-calibration | sm_89 -> L4; sm_75 -> T4; everything else -> L4; missing file -> analytical_fallback |
-| Complete `serve ... --backend local --dry-run` | Heuristic compatibility plus displayed vLLM argv and partial environment | Headless; no server, credentials or weights downloaded; display is not shell-escaped |
-| Complete `serve ... --backend modal --dry-run` | Prints Modal command only, no credential check | Headless, no allocation; backend default is modal, so always specify it |
-| `stop` | Reads CWD .flexsds.pid; sends POSIX process-group SIGTERM; removes PID file | Explicit stop intent plus verified ownership/platform; local only |
-| Bare command or incomplete `serve` | Interactive wizard | Never headless, including with --dry-run; may fetch metadata, set credentials, write serving_config.json, launch |
+| --help, --version | Parser exits before detection | Read-only, 0; parser errors 2 |
+| detect | Torch detection, exceptions fall back to CPU/RAM | Inspection, 0; RAM is not VRAM |
+| profile | sm_89 -> L4; sm_75 -> T4; other -> L4; missing file -> analytical_fallback | Lookup, not calibration or validated hardware support |
+| auth status | Masked stored credentials | Reads ~/.flexsds/credentials; no provider validation or environment-only token report |
+| auth login | --provider {modal,huggingface,cloudflare}, --key; getpass prompt | Writes credentials; never recommend --token with a secret in argv |
+| auth logout | Optional --provider, otherwise all stored providers | Deletes stored keys and matching process environment; explicit intent |
+| Complete serve --dry-run | Shared preflight plus generated command | Preview 0 even when blocked; no process, weights, credential access or port probe |
+| Real local serve | Preflight, port probe, vLLM subprocess | Unsafe 2 before runner; runner None -> 1; foreground waits and propagates status |
+| Real Modal serve | Shared remote budget, credentials, standalone HTTP app | modal serve (ephemeral) or modal deploy; subprocess status propagated; cloud effects |
+| serve --backend colab | Repository notebook guidance | 0 means guidance; no endpoint or model forwarding |
+| chat | --endpoint http://localhost:8000/v1, --model, --temperature 0 | Health HTTP then interactive SSE inference POSTs; initially unreachable 1; normal exit 0 |
+| monitor | --trace-file telemetry/serving_trace.jsonl, --refresh-rate 1 (positive) | Tails file, waits if absent, skips malformed JSON; Ctrl+C 0; not endpoint health |
+| stop | CWD .flexsds.pid, local only | POSIX process-group SIGTERM and PID removal; verify ownership. Windows unsupported |
+| Bare/incomplete serve | Interactive wizard, even incomplete --dry-run | Never automate: config writes/launch possible; unsafe guard -> CLI 2 before writing/launching |
 
-Serve options actually parsed: --target, --draft, --backend {modal,local,colab}
-(default modal), --port (integer, default 8000), --background, --deploy,
---no-adaptive, --dry-run. Both nonempty IDs are required to avoid wizard;
-parser does not validate model existence, port range or hardware capability.
-Use a subprocess argv list; never execute the printed joined command as shell code.
+Serve flags: --target, --draft, --backend {modal,local,colab} (default modal),
+--gpu {L4,T4,A10G} (default L4; remote budget/Modal allocation), --port (1..65535,
+default 8000), --background, --deploy, --no-adaptive, --dry-run.
+Pass both exact nonempty model IDs, explicitly select backend, use argv arrays.
+Printed joined commands are not shell-escaped.
 
-## Important execution limits
+## Guard and readiness
 
-- Flag-mode check_compatibility uses model-name heuristics, defaults to AWQ-like
-  target estimates and uses local free memory even for remote backends. It does
-  not call the metadata-based pre_download_guard used by the wizard. Warning/OOM
-  does not prevent runner invocation; exit 0 is possible despite warnings.
-- CPU fallback fills memory fields from available system RAM (or 16000 MB default).
-  A COMPATIBLE summary on CPU is not a local GPU serving approval. Unknown GPUs
-  and same-SM non-L4 GPUs are not validated by selecting the L4 file.
-- Local command uses vllm serve, binds 0.0.0.0, sets speculative tokens to 4 and
-  AdaptiveAsyncScheduler. `enable_adaptive` from --no-adaptive is ignored by the
-  runner: it does not disable adaptation or produce a vanilla baseline.
-  vLLM/GPU/runtime and repository src.server imports are separate prerequisites;
-  installing this lightweight package does not establish them. Background/stop
-  use os.setsid/os.killpg and are not Windows-compatible. Foreground Popen returns
-  before server readiness and does not propagate child exit status.
-- Modal builder emits `modal run experiments/modal_lanes.py --gpu L4` (or deploy).
-  Selected target/draft/port/adaptive settings are not forwarded. Real use requires
-  Modal CLI, authenticated account and paid-resource intent; the launch path does
-  not check credentials. Do not launch arbitrary requested models through this
-  path until forwarding and underlying script arguments are verified/corrected.
-- Complete Colab flag mode prints only a placeholder on dry-run and does nothing
-  otherwise. Do not claim a notebook URL or endpoint was created.
-- Local launch can create flexsds_server.log/.flexsds.pid; downstream server may
-  download weights/write telemetry. Modal launch can allocate billable cloud GPU.
-  stop is not a readiness/cleanup guarantee; never trust a stale PID blindly.
+Flag mode and wizard consume evaluate_serving_preflight(), which combines
+check_compatibility() and pre_download_guard(). It supplies mock_metadata={} for
+offline name/dtype estimates, so no metadata HTTP or weights are fetched.
+Both results must be safe. OOM, incompatible report, unsafe pre-download result,
+or missing local CUDA blocks real dispatch. Known Qwen/Llama cross-family pairs
+are rejected. This is heuristic validation, not tokenizer/kernel support.
 
-## Failures and documentation discrepancies
+Threshold: estimates must fit 95% of budget. Local budget is detected free VRAM;
+remote budgets are L4 23000 MB, T4 15000 MB, A10G 22000 MB. Those are conservative
+assumptions, not measured container memory. Laptop RAM/VRAM does not decide remote
+GPU compatibility. Unsafe dry-run prints "Launch blocked", shows the preview and
+returns 0. Unsafe real serving returns 2 with no runner call. Launch failure
+returns 1; foreground child exits propagate. Started process/background PID/
+successful deployment is not endpoint readiness or performance evidence.
+ADAPTIVE_ENABLE_VRAM_GUARD controls runtime speculative budgets separately.
 
-Argparse invalid command/option -> exit 2. Imports/runtime may raise nonzero.
-Missing vllm/modal binary is caught and printed by runner, yet dispatcher returns
-0. Inspect text and verify readiness separately after an authorized real launch.
-Windows console-script revalidation (2026-11-13): detect, profile and complete
-local serve --dry-run use automatic ASCII presentation when stdout cannot encode
-Unicode. Rich branding remains on UTF-8/TrueColor terminals; pipes, NO_COLOR and
-unknown terminal capabilities use an ASCII banner. No PYTHONUTF8 or
-PYTHONIOENCODING setup is required. Only presentation changed; interactive wizard
-execution and real serving remain outside this validation. Capture raw stdout/
-stderr using the actual stream encoding; a successful dry-run is not readiness.
+## Backend details
 
-Product docs mention `test --endpoint`, `check-compat`, `detect --json`, --adaptive,
---gpu-memory-utilization and profile calibration: these are absent from the
-current CLI. They are planned/documented-only, not commands to recommend.
-The agent happy-path runbook is product vision and includes invented forecasts
-and broader publication claims; it is not evidence of current capability.
+Local binds 0.0.0.0. Runner/wizard defaults are Qwen/Qwen2.5-7B-Instruct-AWQ and
+duckhoi/qwen2.5-7b-eagle3.1-speculator. Never substitute these for user inputs.
+Qwen/Qwen2.5-0.5B-Instruct selects draft_model, not eagle3. Adaptive commands add
+AdaptiveAsyncScheduler, LineageUniProcExecutor and per-request metrics.
+--no-adaptive keeps static speculation and omits the custom scheduler/executor
+and dynamic batch lookup; it does not make a vanilla baseline.
+Port conflict stops Popen, but probing is not atomic reservation.
+Background/stop are POSIX-only. Never stop an unrelated/stale PID.
+
+Modal forwards exact non-secret model/draft/method/port/GPU/adaptive settings in
+FLEXSDS_SERVING_CONFIG via an allowlist; modal_app declares GPU resources and
+web_server port and reuses the local command builder. Dry-run never accesses
+credentials. Real launch accepts environment/stored Modal ID+secret or existence
+of ~/.modal.toml; presence is not verified authentication. Configure both keys
+securely: default auth login saves only the ID. modal serve exposes a temporary
+public development URL; deploy persists. Live cloud serving is not established
+by mocked tests. Official references:
+https://modal.com/docs/guide/webhooks
+https://modal.com/docs/reference/modal.web_server
+
+Colab flag mode gives guidance only. Wizard can show instructions and probe a
+supplied tunnel URL. The notebook is a fixed EAGLE example with installation and
+tunnel effects; configure exact models on that machine. Its develop URL is not
+available until the notebook is published there. No local command opens a
+notebook, creates a tunnel or launches a Colab server.
+
+vLLM, CUDA, quantization kernels and repository src.server/src.proposer imports
+are separate prerequisites. pyproject installs only psutil; a lightweight
+installation does not establish the full serving runtime.
+
+## Client, credentials and platform limits
+
+Chat uses /models then root /health and POST /chat/completions. Chunk count/rate
+and ms/chunk measure SSE content chunks, not tokenizer tokens, token throughput,
+TPOT or speedup. Streaming has no explicit read timeout.
+Monitor does not repair partial-line loss or file rotation.
+
+Credentials are JSON outside the repo; POSIX 0700/0600 modes are attempted.
+Windows ACL confidentiality is not established by chmod/stat. Never claim
+universal zero-leak security or place tokens in URLs, argv, logs or chat.
+Imported helper artifacts now use public Git URLs; historical removal is not
+revocation: CREDENTIAL ROTATION STILL REQUIRED BY OWNER.
+
+Windows output preserves Unicode when supported with ASCII fallback for cp1252/
+unknown streams, including auth/chat/monitor/TaskRunner/Modal. No global stream
+reconfiguration required.
+
+Unsupported doc examples: test --endpoint, check-compat, detect --json,
+--adaptive, serve --gpu-memory-utilization, profile calibration.
+Plan checkboxes and historical worklogs are not current runtime proof.
