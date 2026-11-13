@@ -137,7 +137,8 @@ const q = (id: string, columns: string[], rows: unknown[][], extra: Partial<Ques
   question_id: id,
 });
 
-export const REPORT: ReportResult = {
+// Q1-Q6 results and report of the chain mode (Node 1 -> 2 -> 3, as in M3-06).
+export const CHAIN = {
   questions: [
     q("Q1", ["tong"], [[3912548]]),
     q("Q2", ["description", "total_quantity"], [["Sữa chua", 12], ["Bánh mì", 6500]]),
@@ -146,10 +147,34 @@ export const REPORT: ReportResult = {
     q("Q5", ["issued_date", "total"], [["2020-08-10", 420000], ["2020-08-11", 980000], ["2020-08-12", 150000]]),
     q("Q6", [], [], { status: "no_data" }),
   ],
-  invoice_count: 25,
   report: { status: "ok", text: "Tháng 08/2020 có tổng chi tiêu 3.912.548 đồng trên 25 hoá đơn.", metrics: { tpot_ms: 16 } },
   number_check: { numbers: 4, ungrounded: [] },
-  timings_ms: { node2: 7000, node3: 4500 },
+};
+
+// Node 3 on its own: request + fixed tables, charts chosen by the model.
+export const REPORT: ReportResult = {
+  request: "Báo cáo chi tiêu và dashboard của các hoá đơn gần nhất",
+  scope: { limit: 10, invoice_count: 10, label: "10 hoá đơn có ngày lập gần nhất" },
+  tables: [
+    { key: "kpis", title: "Số tổng của phạm vi", columns: ["so_hoa_don", "tong_tien", "trung_binh", "hoa_don_co_vat"], rows: [[10, 3912548, 391255, 3]] },
+    { key: "invoices", title: "Danh sách hoá đơn", columns: ["issued_date", "seller_name", "tong_tien", "so_mat_hang"], rows: [["2020-08-16", "MINIMART ANAN", 161500, 8]] },
+    { key: "by_store", title: "Tổng tiền theo cửa hàng", columns: ["seller_name", "so_hoa_don", "tong_tien"], rows: [["MINIMART ANAN", 7, 2500000], ["Nhà sách Cẩm Phả", 1, 75000]] },
+    { key: "by_date", title: "Tổng tiền theo ngày lập", columns: ["issued_date", "so_hoa_don", "tong_tien"], rows: [["2020-08-10", 2, 420000], ["2020-08-11", 3, 980000]] },
+    { key: "top_items", title: "Mặt hàng mua nhiều nhất", columns: ["description", "tong_so_luong", "tong_thanh_tien"], rows: [["Nước suối", 6500, 39000], ["Sữa chua", 12, 78000]] },
+    { key: "taxes", title: "Thuế theo loại và thuế suất", columns: ["tax_name", "tax_rate", "so_hoa_don", "tong_thue"], rows: [] },
+  ],
+  dashboard: {
+    status: "ok",
+    error: null,
+    charts: [
+      { table: "kpis", type: "kpi", value: null, title: "Tổng quan 10 hoá đơn" },
+      { table: "by_date", type: "column", value: "tong_tien", title: "Chi tiêu theo ngày" },
+      { table: "top_items", type: "table", value: null, title: "Mặt hàng nổi bật" },
+    ],
+  },
+  report: { status: "ok", text: "10 hoá đơn gần nhất có tổng chi tiêu 3.912.548 đồng.", metrics: { tpot_ms: 16 } },
+  number_check: { numbers: 2, ungrounded: [] },
+  timings_ms: { data: 120, dashboard: 1500, report: 6000 },
   endpoint: { endpoint_id: FAST, name: "adaptive" },
 };
 

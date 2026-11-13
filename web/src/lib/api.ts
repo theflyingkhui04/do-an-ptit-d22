@@ -144,21 +144,45 @@ export interface QuestionResult {
   endpoint?: { endpoint_id: string; name: string };
 }
 
+export interface CallMetrics {
+  ttft_ms?: number | null;
+  tpot_ms?: number | null;
+  output_tokens_per_s?: number | null;
+  completion_tokens?: number | null;
+}
+
 export interface Node3Report {
   status: string;
   text: string;
   error?: string | null;
   latency_ms?: number | null;
   completion_tokens?: number | null;
-  metrics?: { ttft_ms?: number | null; tpot_ms?: number | null; output_tokens_per_s?: number | null };
+  metrics?: CallMetrics;
+}
+
+// One table of the fixed Node 3 queries (src/api/report_data.py); every number on the dashboard comes from these rows.
+export interface DataTable {
+  key: string;
+  title: string;
+  columns: string[];
+  rows: unknown[][];
+}
+
+export interface ChartSpec {
+  table: string;
+  type: "kpi" | "bar" | "column" | "table";
+  value: string | null;
+  title: string;
 }
 
 export interface ReportResult {
-  questions: (QuestionResult & { question_id: string })[];
-  invoice_count: number;
+  request: string;
+  scope: { limit: number | null; invoice_count: number; label: string };
+  tables: DataTable[];
+  dashboard: { status: "ok" | "fallback" | "skipped"; charts: ChartSpec[]; error: string | null; metrics?: CallMetrics };
   report: Node3Report;
   number_check: { numbers: number; ungrounded: string[] };
-  timings_ms: { node2: number; node3: number };
+  timings_ms: { data: number; dashboard: number; report: number };
   endpoint: { endpoint_id: string; name: string };
 }
 
@@ -273,7 +297,7 @@ export interface Api {
   invoices(): Promise<{ invoices: InvoiceRow[] }>;
   invoice(invoiceId: string): Promise<InvoiceDetail>;
   ask(question: string, endpointId: string): Promise<QuestionResult>;
-  report(endpointId: string): Promise<ReportResult>;
+  report(endpointId: string, request: string, limit: number | null): Promise<ReportResult>;
   startBench(config: BenchConfig): Promise<{ run_id: string }>;
   bench(runId: string): Promise<BenchRun>;
   benches(): Promise<{ runs: BenchRun[] }>;
@@ -359,7 +383,8 @@ export function createApi(baseUrl: string, getKey: () => string | null): Api {
     invoices: () => call("/api/invoices"),
     invoice: (invoiceId) => call<InvoiceDetail>(`/api/invoices/${id(invoiceId)}`),
     ask: (question, endpointId) => call("/api/questions", json("POST", { question, endpoint_id: endpointId })),
-    report: (endpointId) => call("/api/reports", json("POST", { endpoint_id: endpointId })),
+    report: (endpointId, request, limit) =>
+      call("/api/reports", json("POST", { endpoint_id: endpointId, request, limit })),
     startBench: (config) => call("/api/bench", json("POST", config)),
     bench: (runId) => call<BenchRun>(`/api/bench/${id(runId)}`),
     benches: () => call("/api/bench"),

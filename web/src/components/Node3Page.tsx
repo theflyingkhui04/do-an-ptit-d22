@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, LayoutDashboard, Play, ShieldCheck } from "lucide-react";
+import { Database, FileText, LayoutDashboard, Play, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import { BarChart } from "@/components/charts";
@@ -17,99 +17,76 @@ import {
   ResultTable,
   Stat,
   Trace,
+  cx,
   defaultTarget,
 } from "@/components/ui";
-import { ApiError, type Api, type Endpoint, type QuestionResult, type ReportResult } from "@/lib/api";
+import { ApiError, type Api, type ChartSpec, type DataTable, type Endpoint, type ReportResult } from "@/lib/api";
 import { formatMoney, formatMs, formatNumber } from "@/lib/format";
 
-type Q = QuestionResult & { question_id: string };
-
-const MONEY = /amount|total|value|tien|spend|chi_tieu|revenue/i;
-const QUANTITY = /quantity|qty|so_luong/i;
+const EXAMPLES = [
+  "Báo cáo chi tiêu và dashboard của các hoá đơn gần nhất",
+  "Cửa hàng nào chi nhiều nhất? So sánh các cửa hàng",
+  "Tình hình thuế VAT trong các hoá đơn",
+];
+const SCOPES: [number | null, string][] = [[5, "5 gần nhất"], [10, "10 gần nhất"], [25, "25 gần nhất"], [null, "Tất cả"]];
+const LABELS: Record<string, string> = {
+  so_hoa_don: "Số hoá đơn",
+  tong_tien: "Tổng tiền",
+  trung_binh: "Trung bình mỗi hoá đơn",
+  hoa_don_co_vat: "Hoá đơn có VAT",
+};
+const MONEY = /tien|thue|amount|total/i;
+const QUANTITY = /so_luong|quantity|qty/i;
 const OCR_SUSPECT_QUANTITY = 1000; // a single shop receipt line above this is almost always an OCR misread
 
-function single(q: Q | undefined): number | null {
-  if (!q || q.status !== "ok" || q.rows.length !== 1) return null;
-  const nums = q.rows[0].filter((c): c is number => typeof c === "number");
-  return nums.length === 1 ? nums[0] : null;
-}
-
-// [label, value] pairs when the rows have one text-like column and a numeric column; otherwise null.
-function pairs(q: Q | undefined): { rows: [string, number][]; money: boolean } | null {
-  if (!q || q.status !== "ok" || q.rows.length < 2) return null;
-  const sample = q.rows[0];
-  const label = sample.findIndex((c) => typeof c === "string");
-  let value = -1;
-  for (let i = sample.length - 1; i >= 0; i -= 1) if (typeof sample[i] === "number") { value = i; break; }
-  if (label < 0 || value < 0) return null;
-  const rows = q.rows
-    .filter((r) => typeof r[label] === "string" && typeof r[value] === "number")
-    .map((r) => [String(r[label]), r[value] as number] as [string, number]);
-  return rows.length >= 2 ? { rows, money: MONEY.test(q.columns[value] ?? "") } : null;
-}
-
-function quantityFlag(q: Q) {
-  const index = q.columns.findIndex((c) => QUANTITY.test(c));
+function quantityFlag(table: DataTable) {
+  const index = table.columns.findIndex((c) => QUANTITY.test(c));
   if (index < 0) return undefined;
   return (row: unknown[]) => (typeof row[index] === "number" && (row[index] as number) > OCR_SUSPECT_QUANTITY ? "nghi lỗi OCR" : null);
 }
 
-function QuestionTile({ q, title, money }: { q: Q | undefined; title: string; money?: boolean }) {
-  const value = single(q);
-  if (value !== null) return <Stat label={title} value={money ? formatMoney(value) : formatNumber(value)} sub={`${q?.question_id}, từ kết quả SQL`} />;
-  return <Stat label={title} value="—" sub={q ? (q.status === "no_data" ? "Không có dữ liệu" : q.status === "error" ? "Câu SQL bị chặn" : "Kết quả không phải một số") : "Chưa chạy"} />;
-}
-
-function ChartOrTable({ q, title, horizontal }: { q: Q | undefined; title: string; horizontal?: boolean }) {
-  if (!q) return null;
-  const data = pairs(q);
-  const top = q.status === "ok" && q.rows.length === 1 ? q.rows[0] : null;
-  return (
-    <Panel title={title} meta={<span>{q.question_id}</span>}>
-      {data ? (
-        <BarChart
-          rows={horizontal ? [...data.rows].sort((a, b) => b[1] - a[1]).slice(0, 8) : data.rows}
-          horizontal={horizontal}
-          unit={data.money ? "đ" : ""}
-          label={q.question}
-        />
-      ) : top ? (
-        <p className="text-[17px]"><b>{top.map((c) => (typeof c === "number" ? formatNumber(c) : String(c ?? "—"))).join(", ")}</b></p>
-      ) : q.status === "ok" ? (
-        <ResultTable columns={q.columns} rows={q.rows} max={10} />
-      ) : (
-        <p className="text-ink-3">{q.status === "no_data" ? "Không có dữ liệu khớp." : q.error}</p>
-      )}
-    </Panel>
-  );
+function Chart({ spec, table }: { spec: ChartSpec; table: DataTable }) {
+  if (spec.type === "kpi") {
+    const row = table.rows[0] ?? [];
+    return (
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label={spec.title}>
+        {table.columns.map((c, i) =>
+          typeof row[i] === "number" ? (
+            <Stat key={c} label={LABELS[c] ?? c} value={MONEY.test(c) ? formatMoney(row[i] as number) : formatNumber(row[i] as number)} />
+          ) : null,
+        )}
+      </div>
+    );
+  }
+  if (spec.type === "table") return <ResultTable columns={table.columns} rows={table.rows} max={12} flag={quantityFlag(table)} />;
+  const value = table.columns.indexOf(spec.value ?? "");
+  const label = table.columns.findIndex((_, i) => i !== value && table.rows.some((r) => typeof r[i] === "string"));
+  const rows = table.rows
+    .filter((r) => typeof r[value] === "number")
+    .map((r) => [String(r[label] ?? "—"), r[value] as number] as [string, number]);
+  const sorted = spec.type === "bar" ? [...rows].sort((a, b) => b[1] - a[1]).slice(0, 8) : rows;
+  return <BarChart rows={sorted} horizontal={spec.type === "bar"} unit={MONEY.test(spec.value ?? "") ? "đ" : ""} label={spec.title} />;
 }
 
 function Dashboard({ data }: { data: ReportResult }) {
-  const by = (id: string) => data.questions.find((q) => q.question_id === id);
-  const q2 = by("Q2");
-  const q6 = by("Q6");
+  const tables = Object.fromEntries(data.tables.map((t) => [t.key, t]));
+  const charts = data.dashboard.charts.filter((c) => tables[c.table]);
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="Hoá đơn trong dữ liệu" value={formatNumber(data.invoice_count)} sub="đếm trực tiếp trong cơ sở dữ liệu" />
-        <QuestionTile q={by("Q1")} title="Tổng chi tiêu tháng 08/2020" money />
-        <QuestionTile q={by("Q4")} title="Hoá đơn có VAT" />
-      </div>
+      {data.dashboard.status === "fallback" && (
+        <Notice tone="warn">Model không chọn được biểu đồ ({data.dashboard.error}). Đang hiện bộ biểu đồ mặc định.</Notice>
+      )}
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        <ChartOrTable q={by("Q5")} title="Tổng tiền theo ngày lập" />
-        <ChartOrTable q={by("Q3")} title="Cửa hàng có tổng giá trị cao nhất" horizontal />
-      </div>
-      <div className="grid items-start gap-5 lg:grid-cols-2">
-        {q2 && (
-          <Panel title="Mặt hàng mua nhiều nhất" meta={<span>Q2</span>}>
-            {q2.status === "ok" ? <ResultTable columns={q2.columns} rows={q2.rows} max={10} flag={quantityFlag(q2)} /> : <p className="text-ink-3">{q2.status === "no_data" ? "Không có dữ liệu khớp." : q2.error}</p>}
+        {charts.map((c) => (
+          <Panel
+            key={`${c.table}-${c.type}-${c.value}`}
+            title={c.title}
+            meta={<span className="font-mono">{c.table}</span>}
+            className={cx(c.type === "kpi" && "lg:col-span-2")}
+          >
+            <Chart spec={c} table={tables[c.table]} />
           </Panel>
-        )}
-        {q6 && (
-          <Panel title="Thuế theo loại" meta={<span>Q6</span>}>
-            {q6.status === "ok" ? <ResultTable columns={q6.columns} rows={q6.rows} max={10} /> : <p className="text-ink-3">{q6.status === "no_data" ? "Không có dữ liệu khớp." : q6.error}</p>}
-          </Panel>
-        )}
+        ))}
       </div>
     </>
   );
@@ -117,6 +94,8 @@ function Dashboard({ data }: { data: ReportResult }) {
 
 export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints: Endpoint[]; go: (page: PageId) => void }) {
   const [target, setTarget] = useState<string[]>(() => defaultTarget(endpoints));
+  const [request, setRequest] = useState(EXAMPLES[0]);
+  const [limit, setLimit] = useState<number | null>(10);
   const [data, setData] = useState<ReportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,11 +103,11 @@ export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints:
   if (endpoints.length === 0) return <><PageHead title="Báo cáo và dashboard" /><NeedEndpoint what="Node 3" onGo={() => go("endpoints")} /></>;
 
   async function run() {
-    if (target.length === 0) return;
+    if (target.length === 0 || !request.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      setData(await api.report(target[0]));
+      setData(await api.report(target[0], request.trim(), limit));
     } catch (exc) {
       setError(exc instanceof ApiError && exc.status === 429 ? "Đã chạy quá nhiều trong ít phút, thử lại sau." : (exc as Error).message);
     } finally {
@@ -136,40 +115,86 @@ export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints:
     }
   }
 
-  const answered = data ? data.questions.filter((q) => q.status === "ok").length : 0;
-
   return (
     <>
       <PageHead title="Báo cáo và dashboard">
-        Node 2 chạy sáu câu Q1–Q6, rồi Node 3 viết báo cáo tiếng Việt từ kết quả. Biểu đồ vẽ thẳng từ các dòng SQL; model chỉ viết phần nhận xét.
+        Node 3 nhận yêu cầu của bạn cùng số liệu lấy sẵn từ cơ sở dữ liệu bằng truy vấn cố định, không qua Node 2. Model chọn biểu đồ và viết báo cáo;
+        mọi con số trên dashboard lấy từ các bảng số liệu.
       </PageHead>
 
-      <Panel title="Tạo báo cáo" icon={Play}>
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+      <Panel title="Yêu cầu báo cáo" icon={Sparkles}>
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            run();
+          }}
+        >
           <div className="grid gap-2">
-            <span className="text-[13.5px] font-semibold">Chạy trên</span>
-            <EndpointChips single endpoints={endpoints} selected={target} onToggle={(id) => setTarget([id])} />
+            <label htmlFor="report-request" className="text-[13.5px] font-semibold">Yêu cầu</label>
+            <textarea
+              id="report-request"
+              rows={2}
+              maxLength={500}
+              value={request}
+              onChange={(e) => setRequest(e.target.value)}
+              className="rounded-lg border border-line bg-surface px-3 py-2"
+            />
+            <div className="flex flex-wrap gap-2" aria-label="Yêu cầu mẫu">
+              {EXAMPLES.map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  onClick={() => setRequest(text)}
+                  className={cx("rounded-full border px-3 py-1 text-[13px] hover:bg-sunken", request === text ? "border-ink font-semibold" : "border-line")}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
           </div>
-          <Button icon={Play} disabled={busy || target.length === 0} onClick={run}>
-            {busy ? "Đang chạy Q1–Q6 và viết báo cáo…" : "Tạo báo cáo"}
-          </Button>
-        </div>
+          <div className="flex flex-wrap gap-x-8 gap-y-4">
+            <fieldset className="grid gap-2">
+              <legend className="mb-2 text-[13.5px] font-semibold">Phạm vi (theo ngày lập)</legend>
+              <div className="flex flex-wrap gap-2">
+                {SCOPES.map(([value, text]) => (
+                  <label key={text} className={cx("flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px]", limit === value ? "border-ink" : "border-line")}>
+                    <input type="radio" name="scope" checked={limit === value} onChange={() => setLimit(value)} />
+                    {text}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div className="grid content-start gap-2">
+              <span className="text-[13.5px] font-semibold">Chạy trên</span>
+              <EndpointChips single endpoints={endpoints} selected={target} onToggle={(id) => setTarget([id])} />
+            </div>
+          </div>
+          <div>
+            <Button type="submit" icon={Play} disabled={busy || target.length === 0 || !request.trim()}>
+              {busy ? "Đang chọn biểu đồ và viết báo cáo…" : "Tạo báo cáo"}
+            </Button>
+          </div>
+        </form>
         {error && <Notice tone="bad">{error}</Notice>}
-        {data && (
+        {data && data.scope.invoice_count > 0 && (
           <Trace
             steps={[
-              { label: "Node 2", title: "Node 2, sáu câu Q1–Q6", ms: data.timings_ms.node2, kind: "n2" },
-              { label: "Node 3", title: "Node 3, viết báo cáo", ms: data.timings_ms.node3, kind: "n3" },
+              { label: "Lấy số liệu", title: "Lấy số liệu (truy vấn cố định)", ms: data.timings_ms.data, kind: "io" },
+              { label: "Chọn biểu đồ", title: "Node 3 chọn biểu đồ", ms: data.timings_ms.dashboard, kind: "n3" },
+              { label: "Viết báo cáo", title: "Node 3 viết báo cáo", ms: data.timings_ms.report, kind: "n3" },
             ]}
-            extra={<span>trên <b className="text-ink">{data.endpoint.name}</b>, {answered}/6 câu có dữ liệu</span>}
+            extra={<span>trên <b className="text-ink">{data.endpoint.name}</b>, {data.scope.label} ({data.scope.invoice_count} hoá đơn)</span>}
           />
         )}
       </Panel>
 
       {!data ? (
         <EmptyState icon={LayoutDashboard} title="Chưa có báo cáo">
-          <p>Bấm “Tạo báo cáo”. Dashboard chỉ hiện số có trong kết quả SQL của lần chạy này, không có số dựng sẵn.</p>
+          <p>Gõ yêu cầu, chọn phạm vi rồi bấm “Tạo báo cáo”. Dashboard chỉ hiện số có trong cơ sở dữ liệu của lần chạy này.</p>
         </EmptyState>
+      ) : data.scope.invoice_count === 0 ? (
+        <Notice tone="info">Phạm vi này chưa có hoá đơn nào. Trích xuất hoá đơn ở trang Node 1 trước.</Notice>
       ) : (
         <>
           <Dashboard data={data} />
@@ -183,13 +208,26 @@ export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints:
             ) : (
               <Notice tone="bad">Node 3 không viết được báo cáo: {data.report.error ?? data.report.status}</Notice>
             )}
-            <div className="flex flex-wrap gap-2">
-              {data.number_check.ungrounded.length === 0 ? (
-                <Pill tone="good" icon={ShieldCheck}>{data.number_check.numbers} số trong báo cáo đều có trong kết quả SQL</Pill>
-              ) : (
-                <Pill tone="warn">Số không có trong kết quả SQL: {data.number_check.ungrounded.join(", ")}</Pill>
-              )}
-            </div>
+            {data.report.status === "ok" && (
+              <div className="flex flex-wrap gap-2">
+                {data.number_check.ungrounded.length === 0 ? (
+                  <Pill tone="good" icon={ShieldCheck}>{data.number_check.numbers} số trong báo cáo đều có trong bảng số liệu</Pill>
+                ) : (
+                  <Pill tone="warn">Số không có trong bảng số liệu: {data.number_check.ungrounded.join(", ")}</Pill>
+                )}
+              </div>
+            )}
+          </Panel>
+          <Panel title="Số liệu đầu vào của Node 3" icon={Database} meta={<span>{data.tables.length} bảng, truy vấn cố định</span>}>
+            {data.tables.map((t) => (
+              <details key={t.key} className="rounded-lg border border-line px-3 py-2">
+                <summary className="cursor-pointer">
+                  <b className="font-semibold">{t.title}</b>
+                  <span className="ml-2 font-mono text-[12.5px] text-ink-3">{t.key}, {t.rows.length} dòng</span>
+                </summary>
+                <div className="mt-2"><ResultTable columns={t.columns} rows={t.rows} max={20} /></div>
+              </details>
+            ))}
           </Panel>
         </>
       )}

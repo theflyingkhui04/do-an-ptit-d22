@@ -29,7 +29,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.api.endpoints import EndpointError
 from src.api.security import RateLimiter, client_ip, key_matches, redact
@@ -76,6 +76,15 @@ class QuestionIn(BaseModel):
 
 class ReportIn(BaseModel):
     endpoint_id: str = Field(pattern=ENDPOINT_ID)
+    request: str = Field(max_length=MAX_QUESTION_CHARS)
+    limit: int | None = Field(default=10, ge=1, le=50)  # latest invoices by issue date; None = all
+
+    @field_validator("request")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Yêu cầu báo cáo không được để trống")
+        return value.strip()
 
 
 class BenchIn(BaseModel):
@@ -268,7 +277,7 @@ def create_app(settings: Settings, deps: Deps) -> FastAPI:
         if deps.reports is None:
             raise HTTPException(503, "Chức năng báo cáo chưa sẵn sàng")
         endpoint = endpoint_or_404(body.endpoint_id)
-        result = deps.reports.run(deps.endpoints.caller(body.endpoint_id))
+        result = deps.reports.run_request(body.request, body.limit, deps.endpoints.caller(body.endpoint_id))
         return {**result, "endpoint": {"endpoint_id": endpoint["endpoint_id"], "name": endpoint["name"]}}
 
     # ---------------------------------------------------------------- measurements

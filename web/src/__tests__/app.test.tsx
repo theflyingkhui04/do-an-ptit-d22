@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import Console from "@/components/Console";
 import { ApiError, type Api, type BenchRun, type Job } from "@/lib/api";
 
-import { BASE, ENDPOINTS, FAST, REPORT, doneJob, endpoint, fakeApi, jpegFile, question, speedRun } from "./fakes";
+import { BASE, CHAIN, ENDPOINTS, FAST, REPORT, doneJob, endpoint, fakeApi, jpegFile, question, speedRun } from "./fakes";
 
 function open(page: string, api: Api) {
   window.sessionStorage.setItem("ptit-demo-key", "good-key-123");
@@ -166,18 +166,41 @@ describe("node 2", () => {
 });
 
 describe("node 3", () => {
-  it("draws the dashboard from the SQL rows and checks the report numbers", async () => {
+  it("sends the request and scope, draws the charts the model chose from the tables and checks the numbers", async () => {
     const api = fakeApi();
     open("node3", api);
     expect(await screen.findByRole("heading", { name: "Chưa có báo cáo" })).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Tạo báo cáo" }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Cửa hàng nào chi nhiều nhất? So sánh các cửa hàng" }));
+    await user.click(screen.getByRole("radio", { name: "25 gần nhất" }));
+    await user.click(screen.getByRole("button", { name: "Tạo báo cáo" }));
     expect(await screen.findByText("3.912.548 đ")).toBeInTheDocument();
-    expect(api.report).toHaveBeenCalledWith(FAST);
-    expect(screen.getByText("25")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: REPORT.questions[4].question })).toBeInTheDocument();
+    expect(api.report).toHaveBeenCalledWith(FAST, "Cửa hàng nào chi nhiều nhất? So sánh các cửa hàng", 25);
+    expect(screen.getByLabelText("Tổng quan 10 hoá đơn")).toHaveTextContent("Hoá đơn có VAT");
+    expect(screen.getByRole("img", { name: "Chi tiêu theo ngày" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /theo cửa hàng/ })).not.toBeInTheDocument();
     expect(screen.getByText("nghi lỗi OCR")).toBeInTheDocument();
-    expect(screen.getByText(/4 số trong báo cáo đều có trong kết quả SQL/)).toBeInTheDocument();
-    expect(screen.getByText(/3.912.548 đồng trên 25 hoá đơn/)).toBeInTheDocument();
+    expect(screen.getByText(/2 số trong báo cáo đều có trong bảng số liệu/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Lấy số liệu .*Chọn biểu đồ 1,5 s, Viết báo cáo 6 s/ })).toBeInTheDocument();
+    expect(screen.getByText("Số liệu đầu vào của Node 3")).toBeInTheDocument();
+  });
+
+  it("says when the model chose no usable chart and the default set is shown", async () => {
+    const report = vi.fn(async () => ({
+      ...REPORT,
+      dashboard: { status: "fallback" as const, error: "Model không trả JSON hợp lệ cho dashboard.", charts: [{ table: "by_store", type: "bar" as const, value: "tong_tien", title: "Tổng tiền theo cửa hàng" }] },
+    }));
+    open("node3", fakeApi({ report }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    expect(await screen.findByText(/Đang hiện bộ biểu đồ mặc định/)).toHaveTextContent("Model không trả JSON hợp lệ");
+    expect(screen.getByRole("img", { name: "Tổng tiền theo cửa hàng" })).toBeInTheDocument();
+  });
+
+  it("explains an empty scope instead of drawing anything", async () => {
+    const report = vi.fn(async () => ({ ...REPORT, scope: { limit: 10, invoice_count: 0, label: "x" }, dashboard: { ...REPORT.dashboard, charts: [] } }));
+    open("node3", fakeApi({ report }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    expect(await screen.findByText(/Phạm vi này chưa có hoá đơn nào/)).toBeInTheDocument();
   });
 });
 
@@ -215,8 +238,8 @@ describe("measure and compare", () => {
         endpoints: [BASE, FAST].map((id) => ({
           endpoint_id: id, name: id === BASE ? "vanilla" : "adaptive",
           timings_ms: { node1: id === BASE ? 8000 : 6000, node2: 7000, node3: 4500 }, total_ms: 0,
-          node1: doneJob().result.runs![id], invoice: doneJob().result.invoice!, questions: REPORT.questions,
-          report: REPORT.report, number_check: REPORT.number_check,
+          node1: doneJob().result.runs![id], invoice: doneJob().result.invoice!, questions: CHAIN.questions,
+          report: CHAIN.report, number_check: CHAIN.number_check,
           same_as_baseline: id === BASE ? null : { node1: true, node2: true, node3: false },
         })),
       },

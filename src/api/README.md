@@ -1,6 +1,6 @@
 # Backend web demo [M5-01] — FastAPI trên Render
 
-Luồng: ảnh hoá đơn → OCR thư viện (Modal `ptit-ocr-lib`, CPU: PaddleOCR tách dòng + VietOCR, chữ đã bỏ dấu) → Node 1 → Postgres Supabase (schema `demo`); câu hỏi tiếng Việt → Node 2 SQL (đã kiểm tra); Q1–Q6 → Node 3 báo cáo. Mọi node chạy trên **endpoint người dùng dán vào** (đầu ra của `flexsds serve`: Modal, Colab hoặc máy cá nhân qua đường hầm cloudflared); backend không dựng sẵn endpoint nào và không bật/tắt GPU.
+Luồng: ảnh hoá đơn → OCR thư viện (Modal `ptit-ocr-lib`, CPU: PaddleOCR tách dòng + VietOCR, chữ đã bỏ dấu) → Node 1 → Postgres Supabase (schema `demo`); câu hỏi tiếng Việt → Node 2 SQL (đã kiểm tra); yêu cầu báo cáo → Node 3 (báo cáo + dashboard từ số liệu lấy bằng truy vấn cố định). Mọi node chạy trên **endpoint người dùng dán vào** (đầu ra của `flexsds serve`: Modal, Colab hoặc máy cá nhân qua đường hầm cloudflared); backend không dựng sẵn endpoint nào và không bật/tắt GPU.
 Thiết kế: `openspec/changes/m5-01-web-console/design.md` (bản local). Frontend: `web/README.md`.
 
 | Module | Việc |
@@ -10,7 +10,8 @@ Thiết kế: `openspec/changes/m5-01-web-console/design.md` (bản local). Fron
 | `endpoints.py` | Sổ endpoint: chuẩn hoá địa chỉ, nhận nền tảng, chặn địa chỉ nội bộ (kiểm tra sau DNS), hỏi `/v1/models` lấy id model, đọc `serving_config.json`; khoá API chỉ lưu ở DB |
 | `jobs.py` | Job tải ảnh: OCR thư viện (`library_ocr_client.py`) → bỏ dấu → Node 1 (prompt `node1_extractor.v2`, `max_tokens` 3072) song song trên các endpoint đã chọn → so với endpoint mốc → lưu DB |
 | `questions.py` | Prompt Node 2 có giá trị thật của DB, kiểm tra SQL bằng `sqlglot`, sửa 1 lần, kiểm tra số trong câu trả lời |
-| `reports.py` | Node 3: chạy Q1–Q6 rồi viết báo cáo (system prompt W3 v2), liệt kê số trong báo cáo không có trong kết quả SQL |
+| `report_data.py` | Số liệu đầu vào của Node 3: truy vấn cố định (không qua Node 2) theo phạm vi N hoá đơn có ngày lập gần nhất hoặc tất cả |
+| `reports.py` | Node 3 độc lập: model chọn 2–4 biểu đồ từ các bảng (JSON, prompt `node3_dashboard_demo.v1`, số luôn lấy từ bảng) rồi viết báo cáo (system prompt W3 v2); kiểm tra số trong báo cáo. Chế độ chuỗi dùng Q1–Q6 qua Node 2 như M3-06 |
 | `bench.py` | Đo trực tiếp: (A) request của gói đóng băng W1 `w1_v3` / W2 `w2_v2` / W3 `w3_v2` trên nhiều endpoint cùng lúc, tăng tốc = TPOT p50 mốc / TPOT p50 endpoint; (B) chuỗi Node 1 → 2 → 3 trên từng endpoint. Một lần đo tại một thời điểm |
 | `llm.py` | Gọi model qua streaming, đo TTFT/TPOT/token/s |
 | `grounding.py` | Liệt kê trường chữ/chuỗi tiền không có trong văn bản OCR |

@@ -70,7 +70,7 @@ def build_app(environ: Mapping[str, str] | None = None) -> FastAPI:
     pipeline = InvoicePipeline(store, ocr_reader=ocr_reader, caller_for=registry.caller, storage=storage,
                                redact=scrub)
     questions = QuestionService(store, redact=scrub)
-    reports = ReportService(store, questions)
+    reports = ReportService(store, questions, redact=scrub)
     bench = BenchService(store, registry, pipeline=pipeline, reports=reports, redact=scrub)
     return create_app(settings, Deps(store=store, endpoints=registry, pipeline=pipeline, storage=storage,
                                      questions=questions, reports=reports, bench=bench))
