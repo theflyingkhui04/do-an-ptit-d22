@@ -209,30 +209,29 @@ def _table_text(columns: list[str], rows: list[list[Any]]) -> str:
     return "\n".join(lines)
 
 
+def ungrounded_numbers(text: str, rows: list[list[Any]], question: str) -> list[str]:
+    """Numbers of ``text`` that match no value of ``rows``, the row count or ``question`` (same rule as the answer check)."""
+    allowed = _allowed_numbers(rows, question)
+    return [token for token in _NUMBER.findall(text)
+            if not any(abs(c - a) <= 0.5 for c in _candidates(token) for a in allowed)]
+
+
 class QuestionService:
-    def __init__(self, store: Store, *, lane_caller: Callable[[str], Any], lane_map: dict[str, str],
-                 on_service: Callable[[str, bool, str | None], None] | None = None,
-                 redact: Callable[[str], str] = lambda s: s, today: Callable[[], str] = vietnam_today) -> None:
+    """Node 2 (question -> checked SQL -> rows) and the short answer, on the endpoint chosen for each call."""
+
+    def __init__(self, store: Store, *, redact: Callable[[str], str] = lambda s: s,
+                 today: Callable[[], str] = vietnam_today) -> None:
         self.store = store
         self._today = today
-        self.lane_caller = lane_caller
-        self.lane_map = lane_map
-        self._on_service = on_service or (lambda name, ok, message: None)
         self._redact = redact
 
-    def _call(self, step: str, messages: list[dict], max_tokens: int, calls: list[dict]) -> str:
-        lane = self.lane_map["node2" if step == "node2" else "answer"]
-        caller = self.lane_caller(lane)
+    def _call(self, caller: Any, step: str, messages: list[dict], max_tokens: int, calls: list[dict]) -> str:
         started = time.perf_counter()
-        try:
-            response = caller.chat_completions({"messages": messages, "temperature": 0.0, "seed": 42,
-                                                "max_tokens": max_tokens})
-        except Exception as exc:
-            self._on_service(lane, False, str(exc))
-            raise
-        self._on_service(lane, True, None)
+        response = caller.chat_completions({"messages": messages, "temperature": 0.0, "seed": 42,
+                                            "max_tokens": max_tokens})
         metrics = caller.last_metrics.as_dict() if getattr(caller, "last_metrics", None) else {}
-        calls.append({"step": step, "lane": lane, "wall_ms": (time.perf_counter() - started) * 1000, **metrics})
+        calls.append({"step": step, "endpoint": caller.lane, "wall_ms": (time.perf_counter() - started) * 1000,
+                      **metrics})
         return (response["choices"][0]["message"]["content"] or "").strip()
 
     def _execute(self, raw_sql: str) -> tuple[str, list[str], list[list[Any]]]:
@@ -240,18 +239,18 @@ class QuestionService:
         columns, rows = self.store.run_readonly(sql)
         return sql, columns, rows
 
-    def answer(self, question: str) -> dict[str, Any]:
+    def query(self, question: str, caller: Any) -> dict[str, Any]:
+        """Node 2 only: one checked read-only SQL (one repair allowed) and its rows."""
         result: dict[str, Any] = {"question": question, "status": "error", "sql": None, "columns": [], "rows": [],
                                   "row_count": 0, "answer": None, "withheld_answer": None, "warning": None,
-                                  "error": None, "repairs": 0,
-                                  "first_error": None, "calls": [],
+                                  "error": None, "repairs": 0, "first_error": None, "calls": [],
                                   "prompt_versions": {"node2": NODE2_PROMPT_VERSION, "answer": ANSWER_PROMPT_VERSION}}
         calls = result["calls"]
         system = build_node2_prompt(self.store.categorical_values(), self._today())
         messages = [{"role": "system", "content": system},
                     {"role": "user", "content": question}]
         try:
-            raw_sql = self._call("node2", messages, NODE2_MAX_TOKENS, calls)
+            raw_sql = self._call(caller, "node2", messages, NODE2_MAX_TOKENS, calls)
         except Exception as exc:  # noqa: BLE001  (service boundary: reported, never raised to the user)
             result["error"] = self._redact(f"node2 call failed: {exc}")[:400]
             return result
@@ -264,7 +263,7 @@ class QuestionService:
                                  {"role": "user", "content": f"Câu SQL trên bị lỗi: {result['first_error']}. "
                                                              "Hãy viết lại đúng một câu SELECT, chỉ trả về SQL."}]
             try:
-                raw_sql = self._call("node2", repair, NODE2_MAX_TOKENS, calls)
+                raw_sql = self._call(caller, "node2", repair, NODE2_MAX_TOKENS, calls)
                 sql, columns, rows = self._execute(raw_sql)
             except Exception as second:  # noqa: BLE001  (service boundary: reported, never raised to the user)
                 result["sql"] = raw_sql
@@ -272,18 +271,28 @@ class QuestionService:
                 return result
         result.update(sql=sql, columns=columns, rows=rows, row_count=len(rows))
         if not rows or all(cell is None for row in rows for cell in row):  # nothing to answer from
-            result.update(status="no_data", answer=NO_DATA_ANSWER)
+            result["status"] = "no_data"
+        else:
+            result["status"] = "ok"
+        return result
+
+    def answer(self, question: str, caller: Any, *, answer_caller: Any = None) -> dict[str, Any]:
+        """Node 2, then a short answer that may only use numbers of the result rows."""
+        result = self.query(question, caller)
+        if result["status"] == "no_data":
+            result["answer"] = NO_DATA_ANSWER
+        if result["status"] != "ok":
             return result
+        columns, rows = result["columns"], result["rows"]
         answer_messages = [
             {"role": "system", "content": ANSWER_PROMPT.read_text(encoding="utf-8").strip()},
             {"role": "user", "content": f"Câu hỏi: {question}\nKết quả ({len(rows)} dòng):\n"
                                         f"{_table_text(columns, rows)}"}]
         try:
-            text = self._call("answer", answer_messages, ANSWER_MAX_TOKENS, calls)
+            text = self._call(answer_caller or caller, "answer", answer_messages, ANSWER_MAX_TOKENS, result["calls"])
         except Exception as exc:  # noqa: BLE001  (service boundary: reported, never raised to the user)
-            result.update(status="ok", warning="answer_failed", error=self._redact(str(exc))[:400])
+            result.update(warning="answer_failed", error=self._redact(str(exc))[:400])
             return result
-        result["status"] = "ok"
         if text and numbers_are_grounded(text, rows, question):
             result["answer"] = text
         else:

@@ -233,3 +233,35 @@ SELECT
     i.created_at AS uploaded_at,
     to_char(i.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') AS uploaded_date
 FROM invoices AS i;
+
+-- [M5-01 web console] Endpoints pasted from `flexsds serve` and measurement runs.
+-- Only the backend (demo_writer) reads these tables; demo_reader (Node 2 SQL) never sees them.
+CREATE TABLE IF NOT EXISTS endpoints (
+    endpoint_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL CHECK (length(name) > 0),
+    base_url TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL CHECK (platform IN ('modal', 'tunnel', 'other')),
+    model_id TEXT NOT NULL,
+    max_model_len INTEGER CHECK (max_model_len IS NULL OR max_model_len > 0),
+    meta JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(meta) = 'object'),
+    api_key TEXT,
+    is_baseline BOOLEAN NOT NULL DEFAULT false,
+    status TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok', 'down')),
+    status_message TEXT,
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_endpoints_one_baseline ON endpoints (is_baseline) WHERE is_baseline;
+
+CREATE TABLE IF NOT EXISTS bench_runs (
+    run_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('speed', 'chain')),
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed', 'interrupted')),
+    config JSONB NOT NULL CHECK (jsonb_typeof(config) = 'object'),
+    progress JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(progress) = 'object'),
+    result JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(result) = 'object'),
+    error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bench_runs_created_at ON bench_runs(created_at);

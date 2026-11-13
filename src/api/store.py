@@ -12,6 +12,10 @@ from typing import Any, Protocol
 from src.pipeline.postgres import writer
 
 UNFINISHED = ("queued", "ocr", "node1", "saving")
+ENDPOINT_COLUMNS = ("endpoint_id", "name", "base_url", "platform", "model_id", "max_model_len", "meta",
+                    "is_baseline", "status", "status_message", "checked_at", "created_at")
+ENDPOINT_FIELDS = frozenset(ENDPOINT_COLUMNS) | {"api_key"}
+BENCH_COLUMNS = ("run_id", "kind", "status", "config", "progress", "result", "error", "created_at", "updated_at")
 CATEGORICAL = {"v_invoice_facts": ("extraction_status", "document_type", "currency", "payment_method"),
                "v_tax_facts": ("tax_name",), "v_upload_facts": ("source",)}
 MAX_ROWS = 200
@@ -30,6 +34,19 @@ class Store(Protocol):
     def get_invoice(self, invoice_id: str) -> dict | None: ...
     def categorical_values(self) -> dict[str, list[str]]: ...
     def run_readonly(self, sql: str) -> tuple[list[str], list[list[Any]]]: ...
+    def list_endpoints(self) -> list[dict]: ...
+    def get_endpoint(self, endpoint_id: str, *, with_key: bool = False) -> dict | None: ...
+    def find_endpoint_by_url(self, base_url: str) -> dict | None: ...
+    def insert_endpoint(self, row: dict) -> None: ...
+    def update_endpoint(self, endpoint_id: str, fields: dict) -> None: ...
+    def set_baseline(self, endpoint_id: str | None) -> None: ...
+    def delete_endpoint(self, endpoint_id: str) -> bool: ...
+    def create_bench(self, run_id: str, kind: str, config: dict) -> None: ...
+    def update_bench(self, run_id: str, status: str, *, progress: dict | None = None, result: dict | None = None,
+                     error: str | None = None) -> None: ...
+    def get_bench(self, run_id: str) -> dict | None: ...
+    def list_bench(self, limit: int = 20) -> list[dict]: ...
+    def mark_bench_interrupted(self) -> int: ...
 
 
 def _plain(value: Any) -> Any:
@@ -140,3 +157,89 @@ class PostgresStore:
             columns = [d.name for d in cur.description or []]
             rows = [[_plain(v) for v in row] for row in cur.fetchmany(MAX_ROWS)]
         return columns, rows
+
+    # ---------------------------------------------------------------- endpoints
+    def _endpoint_row(self, row: tuple, *, with_key: bool) -> dict:
+        data = {k: _plain(v) for k, v in zip(ENDPOINT_COLUMNS, row)}
+        data["has_key"] = bool(row[len(ENDPOINT_COLUMNS)])
+        if with_key:
+            data["api_key"] = row[len(ENDPOINT_COLUMNS)]
+        return data
+
+    def _select_endpoints(self, where: str = "", params: tuple = ()) -> list[tuple]:
+        with self._tx() as conn:
+            return conn.execute(f"SELECT {', '.join(ENDPOINT_COLUMNS)}, api_key FROM endpoints {where} "
+                                "ORDER BY created_at, endpoint_id", params).fetchall()
+
+    def list_endpoints(self) -> list[dict]:
+        return [self._endpoint_row(r, with_key=False) for r in self._select_endpoints()]
+
+    def get_endpoint(self, endpoint_id: str, *, with_key: bool = False) -> dict | None:
+        rows = self._select_endpoints("WHERE endpoint_id = %s", (endpoint_id,))
+        return self._endpoint_row(rows[0], with_key=with_key) if rows else None
+
+    def find_endpoint_by_url(self, base_url: str) -> dict | None:
+        rows = self._select_endpoints("WHERE base_url = %s", (base_url,))
+        return self._endpoint_row(rows[0], with_key=False) if rows else None
+
+    @staticmethod
+    def _db_value(key: str, value: Any) -> Any:
+        return json.dumps(value, ensure_ascii=False) if key == "meta" else value
+
+    def insert_endpoint(self, row: dict) -> None:
+        keys = [k for k in row if k in ENDPOINT_FIELDS]
+        with self._tx() as conn:
+            conn.execute(f"INSERT INTO endpoints ({', '.join(keys)}) VALUES ({', '.join(['%s'] * len(keys))})",
+                         tuple(self._db_value(k, row[k]) for k in keys))
+
+    def update_endpoint(self, endpoint_id: str, fields: dict) -> None:
+        keys = [k for k in fields if k in ENDPOINT_FIELDS and k != "endpoint_id"]
+        if not keys:
+            return
+        assignments = ", ".join(f"{k} = %s" for k in keys)
+        with self._tx() as conn:
+            conn.execute(f"UPDATE endpoints SET {assignments} WHERE endpoint_id = %s",
+                         (*[self._db_value(k, fields[k]) for k in keys], endpoint_id))
+
+    def set_baseline(self, endpoint_id: str | None) -> None:
+        with self._tx() as conn:
+            conn.execute("UPDATE endpoints SET is_baseline = false WHERE is_baseline")
+            if endpoint_id is not None:
+                conn.execute("UPDATE endpoints SET is_baseline = true WHERE endpoint_id = %s", (endpoint_id,))
+
+    def delete_endpoint(self, endpoint_id: str) -> bool:
+        with self._tx() as conn:
+            return conn.execute("DELETE FROM endpoints WHERE endpoint_id = %s", (endpoint_id,)).rowcount > 0
+
+    # ---------------------------------------------------------------- measurement runs
+    def create_bench(self, run_id: str, kind: str, config: dict) -> None:
+        with self._tx() as conn:
+            conn.execute("INSERT INTO bench_runs (run_id, kind, status, config) VALUES (%s, %s, 'queued', %s)",
+                         (run_id, kind, json.dumps(config, ensure_ascii=False, default=str)))
+
+    def update_bench(self, run_id: str, status: str, *, progress: dict | None = None, result: dict | None = None,
+                     error: str | None = None) -> None:
+        def dump(value: dict | None) -> str | None:
+            return None if value is None else json.dumps(value, ensure_ascii=False, default=str)
+
+        with self._tx() as conn:
+            conn.execute("UPDATE bench_runs SET status = %s, progress = COALESCE(%s::jsonb, progress), "
+                         "result = COALESCE(%s::jsonb, result), error = %s, updated_at = now() WHERE run_id = %s",
+                         (status, dump(progress), dump(result), error, run_id))
+
+    def get_bench(self, run_id: str) -> dict | None:
+        with self._tx() as conn:
+            row = conn.execute(f"SELECT {', '.join(BENCH_COLUMNS)} FROM bench_runs WHERE run_id = %s",
+                               (run_id,)).fetchone()
+        return None if row is None else {k: _plain(v) for k, v in zip(BENCH_COLUMNS, row)}
+
+    def list_bench(self, limit: int = 20) -> list[dict]:
+        with self._tx() as conn:
+            rows = conn.execute(f"SELECT {', '.join(BENCH_COLUMNS)} FROM bench_runs ORDER BY created_at DESC "
+                                "LIMIT %s", (limit,)).fetchall()
+        return [{k: _plain(v) for k, v in zip(BENCH_COLUMNS, row)} for row in rows]
+
+    def mark_bench_interrupted(self) -> int:
+        with self._tx() as conn:
+            return conn.execute("UPDATE bench_runs SET status = 'interrupted', error = 'backend restarted', "
+                                "updated_at = now() WHERE status IN ('queued', 'running')").rowcount

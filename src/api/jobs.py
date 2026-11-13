@@ -17,7 +17,6 @@ from src.pipeline.extractor import Node1Extractor, Node1Success
 from src.pipeline.item_consistency import invoice_sum_consistent, line_consistent
 from src.pipeline.library_ocr import CHOSEN_ENGINE
 from src.pipeline.node1_request import build_chat_request, normalize_text
-from src.pipeline.ocr import OcrError
 from src.pipeline.postgres.writer import RunInfo
 from src.pipeline.text_normalize import strip_vietnamese_marks
 from src.pipeline.w1_workload import W1_V2_PROMPT_VERSION, compose_node1_prompt_v2
@@ -52,23 +51,23 @@ class JobFailed(Exception):
 
 
 class InvoicePipeline:
-    def __init__(self, store: Store, *, ocr_reader: Callable[[], Any], lane_caller: Callable[[str], Any],
-                 lane_map: dict[str, str], storage: Any = None, gpu_label: str = "A10G",
-                 on_service: Callable[[str, bool, str | None], None] | None = None,
-                 redact: Callable[[str], str] = lambda s: s) -> None:
+    """Node 1 on the endpoints chosen for one upload. The first endpoint is stored (the baseline when the
+    first one fails); every endpoint is compared with the baseline for speed and fields."""
+
+    def __init__(self, store: Store, *, ocr_reader: Callable[[], Any], caller_for: Callable[[str], Any],
+                 storage: Any = None, redact: Callable[[str], str] = lambda s: s) -> None:
         self.store = store
         self.storage = storage
         self.ocr_reader = ocr_reader
-        self.lane_caller = lane_caller
-        self.lane_map = lane_map
-        self.gpu_label = gpu_label
-        self._on_service = on_service or (lambda name, ok, message: None)
+        self.caller_for = caller_for
         self._redact = redact
 
-    def run(self, job_id: str, data: bytes, ext: str, compare_lanes: tuple[str, ...] = ("vanilla",)) -> None:
-        result: dict[str, Any] = {"gpu": self.gpu_label, "lane_map": dict(self.lane_map), "timings_ms": {}}
+    def run(self, job_id: str, data: bytes, ext: str, endpoints: list[dict], baseline_id: str | None = None) -> None:
+        result: dict[str, Any] = {
+            "endpoints": [{k: e.get(k) for k in ("endpoint_id", "name", "model_id")} for e in endpoints],
+            "primary": endpoints[0]["endpoint_id"], "baseline": baseline_id, "timings_ms": {}}
         try:
-            invoice_id = self._run(job_id, data, ext, compare_lanes, result)
+            invoice_id = self._run(job_id, data, ext, endpoints, baseline_id, result)
         except JobFailed as exc:
             log.info("job failed", extra={"job_id": job_id, "step": exc.step})
             self.store.update_job(job_id, "failed", result=result, error=self._redact(str(exc))[:500])
@@ -79,93 +78,90 @@ class InvoicePipeline:
         else:
             self.store.update_job(job_id, "done", result=result, invoice_id=invoice_id)
 
-    def _run(self, job_id: str, data: bytes, ext: str, compare_lanes: tuple[str, ...], result: dict) -> str:
-        storage_path = f"uploads/{job_id}.{ext}"
-        if self.storage is not None:
-            self.storage.upload(storage_path, data, CONTENT_TYPES[ext])
-        result["storage_path"] = storage_path
-
-        self.store.update_job(job_id, "ocr", result=result)
-        reader = self.ocr_reader()
+    def read_text(self, data: bytes, result: dict) -> str:
+        """OCR + mark stripping: the same text path as the W1_v3 package."""
         started = time.perf_counter()
         try:
-            ocr_result = reader.read(data)
+            ocr_result = self.ocr_reader().read(data)
         except Exception as exc:
-            if not isinstance(exc, OcrError):  # transport failure: the OCR service itself is down
-                self._on_service("ocr", False, str(exc))
             raise JobFailed("ocr", self._redact(str(exc))) from exc
-        self._on_service("ocr", True, None)
         result["timings_ms"]["ocr"] = (time.perf_counter() - started) * 1000
-        # Same text path as the W1_v3 package: marks stripped (the library OCR gets them wrong), lines normalised.
         text = normalize_text(strip_vietnamese_marks(ocr_result.text))
         result["ocr"] = {"text": text, "kind": "library", "engine": ocr_result.engine or CHOSEN_ENGINE,
                          "marks_stripped": True, "boxes": ocr_result.boxes, "latency_ms": ocr_result.latency_ms,
                          "versions": ocr_result.versions}
         if not text:
             raise JobFailed("ocr", "no text detected")
+        return text
+
+    def _run(self, job_id: str, data: bytes, ext: str, endpoints: list[dict], baseline_id: str | None,
+             result: dict) -> str:
+        storage_path = f"uploads/{job_id}.{ext}"
+        if self.storage is not None:
+            self.storage.upload(storage_path, data, CONTENT_TYPES[ext])
+        result["storage_path"] = storage_path
+
+        self.store.update_job(job_id, "ocr", result=result)
+        text = self.read_text(data, result)
 
         self.store.update_job(job_id, "node1", result=result)
-        node1_lane = self.lane_map["node1"]
-        lanes = list(dict.fromkeys([node1_lane, *compare_lanes]))
         started = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=len(lanes)) as pool:
-            outcomes = dict(zip(lanes, pool.map(lambda lane: self._run_lane(job_id, storage_path,
-                                                                            text, lane), lanes)))
+        with ThreadPoolExecutor(max_workers=len(endpoints)) as pool:
+            outcomes = dict(zip((e["endpoint_id"] for e in endpoints),
+                                pool.map(lambda e: self.run_endpoint(job_id, storage_path, text, e), endpoints)))
         result["timings_ms"]["node1"] = (time.perf_counter() - started) * 1000
-        result["lanes"] = {lane: outcome["report"] for lane, outcome in outcomes.items()}
-        self._compare(outcomes, result)
+        result["runs"] = {eid: outcome["report"] for eid, outcome in outcomes.items()}
+        self.compare(outcomes, result["runs"], baseline_id)
 
-        stored_lane = node1_lane if outcomes[node1_lane]["success"] else None
-        if stored_lane is None and "vanilla" in outcomes and outcomes["vanilla"]["success"]:
-            stored_lane = "vanilla"
-        if stored_lane is None:
-            errors = "; ".join(f"{lane}: {o['report']['error']}" for lane, o in outcomes.items())
+        primary = endpoints[0]["endpoint_id"]
+        stored = primary if outcomes[primary]["success"] else None
+        if stored is None and baseline_id in outcomes and outcomes[baseline_id]["success"]:
+            stored = baseline_id
+        if stored is None:
+            errors = "; ".join(f"{o['report']['name']}: {o['report']['error']}" for o in outcomes.values())
             raise JobFailed("node1", errors)
-        success: Node1Success = outcomes[stored_lane]["success"]
+        success: Node1Success = outcomes[stored]["success"]
         payload = success.canonical_payload
-        result["stored_lane"] = stored_lane
-        result["stored_from_fallback"] = stored_lane != node1_lane
+        result["stored_endpoint"] = stored
+        result["stored_from_fallback"] = stored != primary
         result["invoice"] = payload
         result["grounding"] = grounding_report(payload, text)
         result["item_check"] = {"lines": [line_consistent(item) for item in payload.get("items") or []],
                                 "invoice_sum": invoice_sum_consistent(payload)}
 
         self.store.update_job(job_id, "saving", result=result)
-        run = RunInfo(run_id=job_id, lane=stored_lane, model_name=outcomes[stored_lane]["report"]["model"],
-                      prompt_version=W1_V2_PROMPT_VERSION, notes="web demo upload")
-        invoice_id = self.store.save_invoice(payload, run, storage_path=storage_path,
-                                             latency_ms=success.latency_ms)
+        report = outcomes[stored]["report"]
+        run = RunInfo(run_id=job_id, lane=None, model_name=report["model"], prompt_version=W1_V2_PROMPT_VERSION,
+                      notes=f"web upload, endpoint {report['name']}")
+        invoice_id = self.store.save_invoice(payload, run, storage_path=storage_path, latency_ms=success.latency_ms)
         result["invoice_id"] = invoice_id
         return invoice_id
 
-    def _run_lane(self, job_id: str, storage_path: str, ocr_text: str, lane: str) -> dict[str, Any]:
-        caller = self.lane_caller(lane)
+    def run_endpoint(self, job_id: str, storage_path: str, ocr_text: str, endpoint: dict) -> dict[str, Any]:
+        caller = self.caller_for(endpoint["endpoint_id"])
         row = node1_request_row(job_id, storage_path, ocr_text, caller.model)
         outcome = Node1Extractor(caller, caller.model).run_request(row)
         metrics = caller.last_metrics.as_dict() if caller.last_metrics else {}
         ok = isinstance(outcome, Node1Success)
-        transport_failed = not ok and outcome.error_code.value == "TRANSPORT_ERROR"
-        self._on_service(lane, not transport_failed, None if not transport_failed else outcome.message)
-        report = {"lane": lane, "model": caller.model, "valid": ok, **metrics,
+        report = {**metrics, "endpoint_id": endpoint["endpoint_id"], "name": caller.lane, "model": caller.model,
+                  "valid": ok,
                   "error": None if ok else self._redact(f"{outcome.error_code.value} at {outcome.stage.value}: "
                                                          f"{outcome.message}")[:400]}
         return {"success": outcome if ok else None, "report": report}
 
     @staticmethod
-    def _compare(outcomes: dict[str, dict], result: dict) -> None:
-        vanilla = outcomes.get("vanilla")
-        for lane, outcome in outcomes.items():
-            report = result["lanes"][lane]
-            report["speedup_tpot_vs_vanilla"] = None
-            report["speedup_latency_vs_vanilla"] = None
+    def compare(outcomes: dict[str, dict], reports: dict[str, dict], baseline_id: str | None) -> None:
+        base = outcomes.get(baseline_id) if baseline_id else None
+        for eid, outcome in outcomes.items():
+            report = reports[eid]
+            report["is_baseline"] = eid == baseline_id
+            report["speedup_tpot_vs_baseline"] = report["speedup_latency_vs_baseline"] = None
             report["equal_fields"] = report["total_fields"] = None
             report["differing_fields"] = []
-            if vanilla is None:
+            if base is None or eid == baseline_id:
                 continue
-            ref = vanilla["report"]
-            report["speedup_tpot_vs_vanilla"] = speedup(ref.get("tpot_ms"), report.get("tpot_ms"))
-            report["speedup_latency_vs_vanilla"] = speedup(ref.get("latency_ms"), report.get("latency_ms"))
-            if outcome["success"] and vanilla["success"]:
-                comparison = compare_fields(outcome["success"].canonical_payload,
-                                            vanilla["success"].canonical_payload)
-                report.update(comparison)
+            ref = base["report"]
+            report["speedup_tpot_vs_baseline"] = speedup(ref.get("tpot_ms"), report.get("tpot_ms"))
+            report["speedup_latency_vs_baseline"] = speedup(ref.get("latency_ms"), report.get("latency_ms"))
+            if outcome["success"] and base["success"]:
+                report.update(compare_fields(outcome["success"].canonical_payload, base["success"].canonical_payload))

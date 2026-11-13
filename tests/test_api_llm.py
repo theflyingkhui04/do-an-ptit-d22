@@ -135,3 +135,18 @@ def test_connection_errors_stop_after_the_ready_timeout():
 
     with pytest.raises(LLMError, match="cannot reach"):
         caller(handler, clock=Clock(0.0, 0.0, 2000.0), ready_timeout_s=1200).chat_completions({"messages": []})
+
+
+def test_endpoint_without_a_key_sends_no_authorization_and_errors_stay_readable():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return httpx.Response(500, text="boom")
+
+    no_key = LaneCaller("flexsds-serve", "https://x.test/v1", "", "m",
+                        client=httpx.Client(transport=httpx.MockTransport(handler)), clock=Clock(0.0),
+                        sleep=lambda s: None)
+    with pytest.raises(LLMError) as info:
+        no_key.chat_completions({"messages": []})
+    assert seen == [None] and "***" not in str(info.value) and "HTTP 500" in str(info.value)

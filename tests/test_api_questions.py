@@ -13,7 +13,7 @@ from src.api.questions import (
     build_node2_prompt,
     numbers_are_grounded,
 )
-from tests.api_fakes import HEADERS, FakeCaller, FakeStore, build
+from tests.api_fakes import HEADERS, FakeCaller, FakeStore, build, endpoint
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 W2_PROMPT = REPO_ROOT / "experiments/configs/w2_v2/system_prompt.md"
@@ -44,11 +44,19 @@ def scripted(*replies: str) -> FakeCaller:
     return FakeCaller("static", content=lambda request: queue.pop(0))
 
 
-def service(store, sql_caller, answer_caller=None) -> QuestionService:
-    # SQL on lane static, short answer on lane vanilla, so the two scripted callers stay apart.
-    callers = {"static": sql_caller, "vanilla": answer_caller or scripted("Không dùng.")}
-    return QuestionService(store, lane_caller=callers.__getitem__,
-                           lane_map={"node1": "adaptive", "node2": "static", "answer": "vanilla", "report": "eagle"})
+class Bound:
+    """A QuestionService with its endpoint callers fixed, so tests read like ``qa.answer(question)``."""
+
+    def __init__(self, qa: QuestionService, sql_caller, answer_caller) -> None:
+        self.qa, self.sql_caller, self.answer_caller = qa, sql_caller, answer_caller
+
+    def answer(self, question: str) -> dict:
+        return self.qa.answer(question, self.sql_caller, answer_caller=self.answer_caller)
+
+
+def service(store, sql_caller, answer_caller=None) -> Bound:
+    # Separate scripted callers for SQL and the short answer keep the two replies apart.
+    return Bound(QuestionService(store), sql_caller, answer_caller or scripted("Không dùng."))
 
 
 # ---------------------------------------------------------------- 5.1 prompt
@@ -139,14 +147,31 @@ def test_number_grounding_rules():
 
 def test_question_endpoint_validation_and_wiring():
     store = QAStore([(["n"], [[29]])])
-    qa = service(store, scripted("SELECT COUNT(*) AS n FROM v_invoice_facts"), scripted("Có 29 hoá đơn."))
-    app, _, _ = build(store=store, questions=qa)
+    queue = ["SELECT COUNT(*) AS n FROM v_invoice_facts", "Có 29 hoá đơn."]
+    caller = FakeCaller("flexsds-serve", content=lambda request: queue.pop(0))
+    app, _, _ = build(store=store, questions=QuestionService(store), endpoints=[endpoint("ep_0000aaaa", "flexsds-serve")],
+                      callers={"ep_0000aaaa": caller})
     with TestClient(app) as client:
-        assert client.post("/api/questions", headers=HEADERS, json={"question": ""}).status_code == 422
-        assert client.post("/api/questions", headers=HEADERS, json={"question": "x" * 501}).status_code == 422
-        body = client.post("/api/questions", headers=HEADERS, json={"question": " Có bao nhiêu hoá đơn? "}).json()
+        ask = lambda body: client.post("/api/questions", headers=HEADERS, json=body)
+        assert ask({"question": "", "endpoint_id": "ep_0000aaaa"}).status_code == 422
+        assert ask({"question": "x" * 501, "endpoint_id": "ep_0000aaaa"}).status_code == 422
+        assert ask({"question": "Có bao nhiêu hoá đơn?"}).status_code == 422
+        assert ask({"question": "Có bao nhiêu hoá đơn?", "endpoint_id": "ep_missing"}).status_code == 422
+        assert ask({"question": "Có bao nhiêu hoá đơn?", "endpoint_id": "ep_0000ffff"}).status_code == 404
+        body = ask({"question": " Có bao nhiêu hoá đơn? ", "endpoint_id": "ep_0000aaaa"}).json()
     assert body["status"] == "ok" and body["answer"] == "Có 29 hoá đơn."
-    assert body["question"] == "Có bao nhiêu hoá đơn?"
+    assert body["question"] == "Có bao nhiêu hoá đơn?" and body["endpoint"] == {"endpoint_id": "ep_0000aaaa", "name": "flexsds-serve"}
+    assert [c["endpoint"] for c in body["calls"]] == ["flexsds-serve", "flexsds-serve"]
+
+
+def test_query_only_runs_the_sql_for_node3():
+    store = QAStore([(["n"], [[3]]), (["x"], [])])
+    qa = QuestionService(store)
+    caller = scripted("SELECT COUNT(*) AS n FROM v_invoice_facts", "SELECT 1 AS x FROM v_invoice_facts WHERE 1 = 0")
+    first = qa.query("Có bao nhiêu hoá đơn?", caller)
+    assert first["status"] == "ok" and first["rows"] == [[3]] and first["answer"] is None
+    assert [c["step"] for c in first["calls"]] == ["node2"]
+    assert qa.query("Rỗng?", caller)["status"] == "no_data"
 
 
 def test_prompt_explains_uploads_and_today_in_vietnam():

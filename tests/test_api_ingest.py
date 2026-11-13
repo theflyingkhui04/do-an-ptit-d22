@@ -15,6 +15,7 @@ from src.pipeline.text_normalize import has_vietnamese_marks
 from tests.api_fakes import (
     EXAMPLE,
     HEADERS,
+    LANE_IDS,
     OCR_TEXT,
     OCR_TEXT_PLAIN,
     FakeCaller,
@@ -30,6 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def upload(client, data=None, name="a.jpg", mime="image/jpeg", **form):
+    form.setdefault("endpoint_ids", LANE_IDS["adaptive"])
     return client.post("/api/invoices", headers=HEADERS, files={"file": (name, data or jpeg_bytes(), mime)},
                        data=form)
 
@@ -50,16 +52,17 @@ def test_valid_upload_runs_to_done_and_stores_the_adaptive_extraction():
     assert result["ocr"]["text"] == OCR_TEXT_PLAIN and not has_vietnamese_marks(result["ocr"]["text"])
     assert result["ocr"]["engine"] == "A" and result["ocr"]["marks_stripped"] is True
     assert result["ocr"]["kind"] == "library" and "finish_reason" not in result["ocr"]
-    assert result["stored_lane"] == "adaptive" and result["stored_from_fallback"] is False
+    assert result["stored_endpoint"] == LANE_IDS["adaptive"] and result["stored_from_fallback"] is False
+    assert result["primary"] == LANE_IDS["adaptive"] and result["baseline"] == LANE_IDS["vanilla"]
     assert job["invoice_id"] == result["invoice_id"] == f"{job['job_id']}:{job['job_id']}"
     for lane in ("adaptive", "vanilla"):
-        report = result["lanes"][lane]
+        report = result["runs"][LANE_IDS[lane]]
         assert report["valid"] is True
         for key in ("latency_ms", "ttft_ms", "tpot_ms", "output_tokens_per_s"):
             assert report[key] is not None
     assert result["grounding"]["ungrounded_fields"] == []
     payload, run = store.saved[0]
-    assert run.lane == "adaptive" and run.prompt_version == "node1_extractor.v2"
+    assert run.lane is None and run.model_name == "model-adaptive" and run.prompt_version == "node1_extractor.v2"
     assert payload["source"]["raw_text"] == OCR_TEXT_PLAIN
     assert storage.uploads == {f"uploads/{job['job_id']}.jpg": storage.uploads[f"uploads/{job['job_id']}.jpg"]}
 
@@ -140,7 +143,7 @@ def test_source_binding_failure_on_every_lane_stores_nothing():
     with TestClient(app) as client:
         job = finished_job(client, upload(client).json()["job_id"])
     assert job["status"] == "failed" and job["error"].startswith("node1:")
-    assert "SOURCE_BINDING_ERROR" in job["result"]["lanes"]["adaptive"]["error"]
+    assert "SOURCE_BINDING_ERROR" in job["result"]["runs"][LANE_IDS["adaptive"]]["error"]
     assert store.saved == []
 
 
@@ -187,32 +190,54 @@ def test_one_different_total_is_named():
     assert comparison["differing_fields"] == ["totals.total_amount.value"]
 
 
-def test_comparison_is_reported_per_lane_with_speedup():
+def test_comparison_is_reported_per_endpoint_against_the_baseline():
     app, _, _ = build()
     with TestClient(app) as client:
         result = finished_job(client, upload(client).json()["job_id"])["result"]
-    adaptive = result["lanes"]["adaptive"]
-    assert adaptive["equal_fields"] == adaptive["total_fields"]
-    assert round(adaptive["speedup_tpot_vs_vanilla"], 3) == round(20.0 / 14.0, 3)
-    assert result["lanes"]["vanilla"]["speedup_tpot_vs_vanilla"] == 1.0
+    adaptive = result["runs"][LANE_IDS["adaptive"]]
+    assert adaptive["equal_fields"] == adaptive["total_fields"] and adaptive["name"] == "adaptive"
+    assert round(adaptive["speedup_tpot_vs_baseline"], 3) == round(20.0 / 14.0, 3)
+    baseline = result["runs"][LANE_IDS["vanilla"]]
+    assert baseline["is_baseline"] is True and baseline["speedup_tpot_vs_baseline"] is None
 
 
-def test_compare_all_runs_four_lanes():
+def test_several_endpoints_run_together():
     app, _, _ = build()
     with TestClient(app) as client:
-        result = finished_job(client, upload(client, compare="all").json()["job_id"])["result"]
-    assert set(result["lanes"]) == {"vanilla", "static", "adaptive", "eagle"}
+        ids = ",".join(LANE_IDS.values())
+        result = finished_job(client, upload(client, endpoint_ids=ids).json()["job_id"])["result"]
+    assert set(result["runs"]) == set(LANE_IDS.values())
 
 
-def test_vanilla_is_stored_and_labelled_when_the_node1_lane_fails():
+def test_endpoint_choice_is_validated_and_the_baseline_joins():
+    app, _, _ = build()
+    with TestClient(app) as client:
+        assert upload(client, endpoint_ids="").status_code == 422
+        assert upload(client, endpoint_ids="ep_0000ffff").status_code == 404
+        assert upload(client, endpoint_ids=",".join(["ep_0000000a"] * 7 + list(LANE_IDS.values()))).status_code == 202
+        body = upload(client, endpoint_ids=LANE_IDS["static"]).json()
+    assert body["endpoint_ids"] == [LANE_IDS["static"], LANE_IDS["vanilla"]]
+
+
+def test_without_a_baseline_there_is_no_comparison():
+    from tests.api_fakes import lane_endpoints
+
+    app, _, _ = build(endpoints=lane_endpoints(baseline=None))
+    with TestClient(app) as client:
+        result = finished_job(client, upload(client).json()["job_id"])["result"]
+    assert result["baseline"] is None and list(result["runs"]) == [LANE_IDS["adaptive"]]
+    assert result["runs"][LANE_IDS["adaptive"]]["speedup_tpot_vs_baseline"] is None
+
+
+def test_baseline_is_stored_and_labelled_when_the_first_endpoint_fails():
     lanes = lane_callers(adaptive=FakeCaller("adaptive", content="not json"))
     app, store, _ = build(lanes=lanes)
     with TestClient(app) as client:
         job = finished_job(client, upload(client).json()["job_id"])
     assert job["status"] == "done"
-    assert job["result"]["stored_lane"] == "vanilla" and job["result"]["stored_from_fallback"] is True
-    assert store.saved[0][1].lane == "vanilla"
-    assert job["result"]["lanes"]["adaptive"]["valid"] is False
+    assert job["result"]["stored_endpoint"] == LANE_IDS["vanilla"] and job["result"]["stored_from_fallback"] is True
+    assert store.saved[0][1].model_name == "model-vanilla"
+    assert job["result"]["runs"][LANE_IDS["adaptive"]]["valid"] is False
 
 
 def test_grounding_flags_text_not_in_the_ocr():

@@ -156,14 +156,20 @@ def main(argv: list[str] | None = None) -> int:
 
         from src.api.llm import LaneCaller
         from src.api.questions import QuestionService
-        from src.api.settings import DEFAULT_LANE_MAP
         from src.client.modal_client import LANE_MODELS, lane_base_url, load_token
 
         os.environ.setdefault("PTIT_APP_NAME", "ptit-vllm-demo")
         token = load_token()
         http = httpx.Client(timeout=httpx.Timeout(600.0, connect=30.0))
-        service = QuestionService(store, lane_map=dict(DEFAULT_LANE_MAP), lane_caller=lambda lane: LaneCaller(
-            lane, lane_base_url(lane), token, LANE_MODELS[lane], client=http))
+        # Same calls as the locked run (18b456b): Node 2 SQL and the short answer both on lane static.
+        caller = LaneCaller("static", lane_base_url("static"), token, LANE_MODELS["static"], client=http)
+        questions = QuestionService(store)
+
+        class OnLane:
+            def answer(self, question: str) -> dict:
+                return questions.answer(question, caller)
+
+        service = OnLane()
     questions_file = REPO_ROOT / args.questions
     data = load_questions(questions_file)
     report = run(store, service, data, questions_sha256=file_sha256(questions_file))

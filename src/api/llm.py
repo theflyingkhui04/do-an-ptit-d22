@@ -66,11 +66,14 @@ class LaneCaller:
         self.last_metrics: CallMetrics | None = None
 
     def _error(self, message: str) -> LLMError:
-        return LLMError(f"{self.lane}: {message}".replace(self._token, "***"))
+        text = f"{self.lane}: {message}"
+        return LLMError(text.replace(self._token, "***") if self._token else text)
 
     def chat_completions(self, payload: dict[str, Any]) -> dict[str, Any]:
         body = {**payload, "model": self.model, "stream": True, "stream_options": {"include_usage": True}}
-        headers = {"Authorization": f"Bearer {self._token}", "Accept": "text/event-stream"}
+        headers = {"Accept": "text/event-stream"}
+        if self._token:  # endpoints started without a key accept anonymous calls
+            headers["Authorization"] = f"Bearer {self._token}"
         url = f"{self.base_url}/chat/completions"
         start = self._clock()
         while True:

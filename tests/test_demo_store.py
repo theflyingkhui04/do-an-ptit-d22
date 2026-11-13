@@ -301,3 +301,57 @@ def test_upload_view_reports_source_and_vietnam_date(pg):
     assert row[0] == "upload" and row[1] == row[2]
     with reader_connection() as reader:
         assert reader.execute("SELECT COUNT(*) FROM v_upload_facts WHERE source = 'upload'").fetchone()[0] == 1
+
+
+# ---------------------------------------------------------------- [M5-01 web console] endpoints and bench runs
+@needs_db
+def test_postgres_store_endpoints_keep_the_key_private(pg):
+    from src.api.store import PostgresStore
+
+    store = PostgresStore(DB_URL)
+    row = {"endpoint_id": "ep_00000001", "name": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+           "base_url": "https://canduckhoi--flexsds-serve.modal.run/v1", "platform": "modal",
+           "model_id": "Qwen/Qwen2.5-7B-Instruct-AWQ", "max_model_len": 4096,
+           "meta": {"gpu": "NVIDIA L4", "adaptive": True}, "api_key": "ak-secret.as-secret", "is_baseline": False,
+           "status": "ok", "status_message": None, "checked_at": "2026-11-12T10:00:00+00:00",
+           "created_at": "2026-11-12T10:00:00+00:00"}
+    store.insert_endpoint(row)
+    store.insert_endpoint({**row, "endpoint_id": "ep_00000002", "name": "vanilla", "api_key": None,
+                           "base_url": "https://u--ptit-vllm-demo-vanilla.us-east.modal.direct/v1"})
+    listed = store.list_endpoints()
+    assert [e["endpoint_id"] for e in listed] == ["ep_00000001", "ep_00000002"]
+    assert all("api_key" not in e for e in listed) and [e["has_key"] for e in listed] == [True, False]
+    assert listed[0]["meta"] == {"gpu": "NVIDIA L4", "adaptive": True}
+    assert store.get_endpoint("ep_00000001", with_key=True)["api_key"] == "ak-secret.as-secret"
+    assert store.find_endpoint_by_url("https://canduckhoi--flexsds-serve.modal.run/v1")["endpoint_id"] == "ep_00000001"
+    store.update_endpoint("ep_00000001", {"status": "down", "status_message": "không kết nối được"})
+    store.set_baseline("ep_00000002")
+    store.set_baseline("ep_00000001")
+    rows = {e["endpoint_id"]: e for e in store.list_endpoints()}
+    assert rows["ep_00000001"]["status"] == "down" and rows["ep_00000001"]["is_baseline"] is True
+    assert rows["ep_00000002"]["is_baseline"] is False
+    assert store.delete_endpoint("ep_00000002") is True and store.delete_endpoint("ep_00000002") is False
+    with reader_connection() as reader, pytest.raises(psycopg_error()):
+        reader.execute("SELECT api_key FROM demo.endpoints")
+
+
+def psycopg_error():
+    import psycopg
+
+    return psycopg.Error
+
+
+@needs_db
+def test_postgres_store_bench_runs(pg):
+    from src.api.store import PostgresStore
+
+    store = PostgresStore(DB_URL)
+    store.create_bench("bn_000000000001", "speed", {"endpoints": ["ep_1", "ep_2"], "loads": [1, 8]})
+    store.update_bench("bn_000000000001", "running", progress={"done": 3, "total": 32})
+    run = store.get_bench("bn_000000000001")
+    assert run["status"] == "running" and run["progress"] == {"done": 3, "total": 32} and run["kind"] == "speed"
+    assert store.mark_bench_interrupted() == 1
+    assert store.get_bench("bn_000000000001")["status"] == "interrupted"
+    store.update_bench("bn_000000000001", "done", result={"cells": []})
+    assert [r["run_id"] for r in store.list_bench()] == ["bn_000000000001"]
+    assert store.get_bench("bn_missing") is None

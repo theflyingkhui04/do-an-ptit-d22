@@ -16,10 +16,13 @@ def test_status_needs_no_key_but_everything_else_does():
     with TestClient(app) as client:
         assert client.get("/api/status").json()["backend"] == "ready"
         for method, path in (("get", "/api/invoices"), ("get", "/api/jobs/up_000000000000"),
-                             ("post", "/api/warmup")):
+                             ("get", "/api/endpoints"), ("get", "/api/bench"),
+                             ("delete", "/api/endpoints/ep_0000000a")):
             assert getattr(client, method)(path).status_code == 401
             assert getattr(client, method)(path, headers={"X-Demo-Key": "wrong-key-000"}).status_code == 401
         assert client.post("/api/questions", json={"question": "x"}).status_code == 401
+        assert client.post("/api/endpoints", json={"urls": ["https://x.modal.run/v1"]}).status_code == 401
+        assert client.post("/api/reports", json={"endpoint_id": "ep_0000000a"}).status_code == 401
         assert client.get("/api/invoices", headers=HEADERS).status_code == 200
 
 
@@ -28,13 +31,16 @@ def test_eleventh_upload_in_ten_minutes_is_429_with_retry_after():
     app, _, _ = build(clock=lambda: now[0])
     with TestClient(app) as client:
         for _ in range(10):
-            r = client.post("/api/invoices", headers=HEADERS, files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")})
+            r = client.post("/api/invoices", headers=HEADERS, files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")},
+                            data={"endpoint_ids": "ep_0000000c"})
             assert r.status_code == 202
-        r = client.post("/api/invoices", headers=HEADERS, files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")})
+        r = client.post("/api/invoices", headers=HEADERS, files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")},
+                        data={"endpoint_ids": "ep_0000000c"})
         assert r.status_code == 429
         assert int(r.headers["retry-after"]) == 600
         now[0] = 601.0
-        r = client.post("/api/invoices", headers=HEADERS, files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")})
+        r = client.post("/api/invoices", headers=HEADERS, files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")},
+                        data={"endpoint_ids": "ep_0000000c"})
         assert r.status_code == 202
 
 
@@ -77,15 +83,12 @@ def test_json_log_formatter_redacts_configured_secrets():
     assert DEMO_KEY not in line and "tok-secret-456" not in line and line.count("***") == 2
 
 
-def test_settings_require_a_demo_key_and_valid_lanes():
+def test_settings_require_a_demo_key():
     import pytest
 
     with pytest.raises(ValueError, match="DEMO_KEY"):
         Settings.from_env({})
-    with pytest.raises(ValueError, match="lane"):
-        Settings.from_env({"DEMO_KEY": DEMO_KEY, "DEMO_LANE_NODE1": "turbo"})
     settings = Settings.from_env({"DEMO_KEY": DEMO_KEY, "DEMO_FRONTEND_ORIGINS": "https://a.app/, https://b.app",
                                   "MODAL_PROXY_TOKEN_ID": "id1", "MODAL_PROXY_TOKEN_SECRET": "sec1"})
     assert settings.frontend_origins == ("https://a.app", "https://b.app")
     assert settings.modal_token == "id1.sec1"
-    assert settings.lane_map == {"node1": "adaptive", "node2": "static", "answer": "static", "report": "eagle"}
