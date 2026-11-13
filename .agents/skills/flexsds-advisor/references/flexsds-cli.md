@@ -53,8 +53,13 @@ Use a subprocess argv list; never execute the printed joined command as shell co
 Argparse invalid command/option -> exit 2. Imports/runtime may raise nonzero.
 Missing vllm/modal binary is caught and printed by runner, yet dispatcher returns
 0. Inspect text and verify readiness separately after an authorized real launch.
-For Windows UnicodeEncodeError, use UTF-8 Python output rather than suppressing
-errors. Capture raw stdout/stderr; strip ANSI only for presentation if needed.
+Windows console-script revalidation (2026-11-13): detect, profile and complete
+local serve --dry-run use automatic ASCII presentation when stdout cannot encode
+Unicode. Rich branding remains on UTF-8/TrueColor terminals; pipes, NO_COLOR and
+unknown terminal capabilities use an ASCII banner. No PYTHONUTF8 or
+PYTHONIOENCODING setup is required. Only presentation changed; interactive wizard
+execution and real serving remain outside this validation. Capture raw stdout/
+stderr using the actual stream encoding; a successful dry-run is not readiness.
 
 Product docs mention `test --endpoint`, `check-compat`, `detect --json`, --adaptive,
 --gpu-memory-utilization and profile calibration: these are absent from the

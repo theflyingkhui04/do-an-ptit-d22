@@ -1,0 +1,7 @@
+{
+  "src/flexsds/cli/main.py": "AST unchanged except presentation imports/write calls",
+  "src/flexsds/cli/wizard.py": "AST unchanged except presentation imports/write calls",
+  "src/flexsds/server/local_runner.py": "AST unchanged except presentation imports/write calls",
+  "src/flexsds/server/modal_runner.py": "AST unchanged except presentation imports/write calls",
+  "render_banner": "original Unicode renderer AST unchanged"
+}

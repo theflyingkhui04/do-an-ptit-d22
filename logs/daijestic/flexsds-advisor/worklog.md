@@ -173,3 +173,21 @@ PM handoff: Khôi, tớ đã hoàn thành skill flexsds-advisor v0.1 và commit 
 Skill dùng CLI thật để kiểm tra phần cứng/profile, dry-run cấu hình và chẩn đoán lỗi.
 21 test mới pass; tớ đã ghi rõ lỗi test cũ, giới hạn runner và các claim chưa được
 kiểm chứng. Nhờ Khôi review branch feat/flexsds-advisor-skill.
+
+## 2026-11-13: installed Windows console blocker and remediation
+
+The human review exposed a cp1252 UnicodeEncodeError not covered by the original
+forced-UTF-8 module demos. The historical report above is preserved; its readiness
+gate did not establish the default installed console boundary. The subsequent
+[Windows audit](windows-remediation.md) records the original failure, baseline
+attribution, explicit product requirement, presentation-only fix, test-first
+evidence and actual console-script revalidation.
+
+Current result: READY FOR REVIEW for this narrow integration correction. The new
+18-test encoding suite passes; focused baseline/advisor/encoding selection has
+47 passes. Expanded regression reports 144 passes / 2 failures, plus one separate
+collection error. All previous failures are individually audited against exported
+baseline sources; they remain disclosed. No real serving/cloud action or claim
+expansion occurred. Fix/test commit: c4212e9b6ffa035dcd9c4b64593aa8e199db7f0c.
+
+Wizard presentation follow-up commit: c70814c8fd52dc1ac61af58212a385474fd4f15e.
