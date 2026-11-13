@@ -60,10 +60,14 @@ function Chart({ spec, table }: { spec: ChartSpec; table: DataTable }) {
   }
   if (spec.type === "table") return <ResultTable columns={table.columns} rows={table.rows} max={12} flag={quantityFlag(table)} />;
   const value = table.columns.indexOf(spec.value ?? "");
-  const label = table.columns.findIndex((_, i) => i !== value && table.rows.some((r) => typeof r[i] === "string"));
+  // Label with one text column whose values are all different; otherwise join the text columns (date, store).
+  const texts = table.columns.map((_, i) => i).filter((i) => i !== value && table.rows.some((r) => typeof r[i] === "string"));
+  const unique = texts.find((i) => new Set(table.rows.map((r) => r[i])).size === table.rows.length);
+  const labelOf = (r: unknown[]) =>
+    unique !== undefined ? String(r[unique] ?? "—") : texts.map((i) => String(r[i] ?? "—")).join(", ");
   const rows = table.rows
     .filter((r) => typeof r[value] === "number")
-    .map((r) => [String(r[label] ?? "—"), r[value] as number] as [string, number]);
+    .map((r) => [labelOf(r), r[value] as number] as [string, number]);
   const sorted = spec.type === "bar" ? [...rows].sort((a, b) => b[1] - a[1]).slice(0, 8) : rows;
   return <BarChart rows={sorted} horizontal={spec.type === "bar"} unit={MONEY.test(spec.value ?? "") ? "đ" : ""} label={spec.title} />;
 }

@@ -196,6 +196,29 @@ describe("node 3", () => {
     expect(screen.getByRole("img", { name: "Tổng tiền theo cửa hàng" })).toBeInTheDocument();
   });
 
+  it("labels bars with enough columns to tell rows apart", async () => {
+    const invoices = {
+      key: "invoices", title: "Danh sách hoá đơn", columns: ["issued_date", "seller_name", "tong_tien", "so_mat_hang"],
+      rows: [["2020-08-16", "MINIMART ANAN", 161500, 8], ["2020-08-16", "CUA HANG X", 52000, 2], ["2020-08-15", "MINIMART ANAN", 30000, 1]],
+    };
+    const report = vi.fn(async () => ({
+      ...REPORT,
+      tables: REPORT.tables.map((t) => (t.key === "invoices" ? invoices : t)),
+      dashboard: { status: "ok" as const, error: null, charts: [
+        { table: "invoices", type: "bar" as const, value: "tong_tien", title: "Từng hoá đơn" },
+        { table: "by_date", type: "column" as const, value: "tong_tien", title: "Theo ngày" },
+      ] },
+    }));
+    open("node3", fakeApi({ report }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    const bars = await screen.findByRole("img", { name: "Từng hoá đơn" });
+    expect(bars).toHaveTextContent("2020-08-16, MINIMART ANAN");
+    expect(bars).toHaveTextContent("2020-08-16, CUA HANG X");
+    const days = screen.getByRole("img", { name: "Theo ngày" });
+    expect(days).toHaveTextContent("2020-08-10");
+    expect(days).not.toHaveTextContent("2020-08-10,");
+  });
+
   it("explains an empty scope instead of drawing anything", async () => {
     const report = vi.fn(async () => ({ ...REPORT, scope: { limit: 10, invoice_count: 0, label: "x" }, dashboard: { ...REPORT.dashboard, charts: [] } }));
     open("node3", fakeApi({ report }));
