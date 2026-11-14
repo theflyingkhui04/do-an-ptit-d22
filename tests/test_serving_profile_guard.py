@@ -25,6 +25,21 @@ def test_get_serving_cost_profile_strict_and_fallback():
     assert prof_name == "conservative_analytical_fallback"
 
 
+def test_get_serving_cost_profile_cpu_fails_in_strict_mode():
+    """Kiểm tra thiết bị CPU không được tự động gán profile_sm89_l4 khi strict=True."""
+    cpu_hw = HardwareInfo(
+        device_name="Host CPU",
+        sm_architecture="cpu",
+        total_vram_mb=16384.0,
+        free_vram_mb=16384.0,
+        cuda_version="N/A",
+        is_cuda_available=False,
+    )
+    cost_model, prof_name = get_serving_cost_profile(cpu_hw, allow_fallback=False)
+    assert cost_model is None
+    assert prof_name == ""
+
+
 def test_serve_fails_fast_when_missing_profile_without_fallback_flag(capsys):
     unknown_hw = HardwareInfo(
         device_name="NVIDIA Custom GPU",
