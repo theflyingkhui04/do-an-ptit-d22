@@ -1,0 +1,1311 @@
+{
+  "version": "canonical_questions.v1",
+  "questions_sha256": "488efdfc0626faf904dc6535d404384b22f074be57e7133d9906c142548684ff",
+  "run_at_utc": "2026-11-14T10:59:20+00:00",
+  "summary": {
+    "questions": 15,
+    "correct": 15,
+    "fabricated_answers": 0,
+    "answers_with_foreign_words": 0,
+    "executed_writes": 0,
+    "repairs": 2
+  },
+  "entries": [
+    {
+      "id": "c01",
+      "question": "Năm 2019 có bao nhiêu hoá đơn?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 1,
+      "first_error": "function pg_catalog.extract(unknown, text) does not exist\nLINE 1: ...COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE EXTRACT(YE...\n                                                             ^\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.",
+      "sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE issued_date LIKE '2019-%' LIMIT 200",
+      "reference_rows": [
+        [
+          2
+        ]
+      ],
+      "rows": [
+        [
+          2
+        ]
+      ],
+      "answer": "Năm 2019 có 2 hoá đơn.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1337.4414999852888,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1328.0000000086147,
+          "ttft_ms": 1092.9999999934807,
+          "tpot_ms": 8.392857143397643,
+          "prompt_tokens": 1028,
+          "completion_tokens": 29,
+          "output_tokens_per_s": 21.8373493974487,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.5,
+              "draft_acceptance_rate": 0.8333333333333334,
+              "acceptance_histogram": [
+                0,
+                2,
+                0,
+                6
+              ],
+              "num_spec_steps": 8,
+              "num_accepted_draft_tokens": 20,
+              "num_draft_tokens": 24,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1023.037499981001,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1016.0000000032596,
+          "ttft_ms": 812.9999999946449,
+          "tpot_ms": 8.45833333369228,
+          "prompt_tokens": 1147,
+          "completion_tokens": 25,
+          "output_tokens_per_s": 24.60629921251948,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.7142857142857144,
+              "draft_acceptance_rate": 0.9047619047619048,
+              "acceptance_histogram": [
+                0,
+                1,
+                0,
+                6
+              ],
+              "num_spec_steps": 7,
+              "num_accepted_draft_tokens": 19,
+              "num_draft_tokens": 21,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 900.804100005189,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 890.0000000139698,
+          "ttft_ms": 780.9999999881256,
+          "tpot_ms": 8.3846153866034,
+          "prompt_tokens": 238,
+          "completion_tokens": 14,
+          "output_tokens_per_s": 15.730337078404775,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.25,
+              "draft_acceptance_rate": 0.75,
+              "acceptance_histogram": [
+                1,
+                0,
+                0,
+                3
+              ],
+              "num_spec_steps": 4,
+              "num_accepted_draft_tokens": 9,
+              "num_draft_tokens": 12,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c02",
+      "question": "Tổng tiền các hoá đơn của Nhà sách Cẩm Phả là bao nhiêu?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT SUM(total_amount_value) AS tong_tien FROM v_invoice_facts WHERE seller_name ILIKE '%nha%sach%cam%pha%' LIMIT 200",
+      "reference_rows": [
+        [
+          75000.0
+        ]
+      ],
+      "rows": [
+        [
+          75000.0
+        ]
+      ],
+      "answer": "Tổng tiền các hoá đơn của Nhà sách Cẩm Phả là 75.000. Dữ liệu chỉ có 1 dòng.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1111.0641999985091,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1110.000000015134,
+          "ttft_ms": 828.0000000086147,
+          "tpot_ms": 9.724137931259285,
+          "prompt_tokens": 1033,
+          "completion_tokens": 30,
+          "output_tokens_per_s": 27.027027026658534,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.2222222222222223,
+              "draft_acceptance_rate": 0.7407407407407407,
+              "acceptance_histogram": [
+                0,
+                3,
+                1,
+                5
+              ],
+              "num_spec_steps": 9,
+              "num_accepted_draft_tokens": 20,
+              "num_draft_tokens": 27,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 1099.7144000139087,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1108.9999999967404,
+          "ttft_ms": 796.0000000020955,
+          "tpot_ms": 9.781249999832653,
+          "prompt_tokens": 246,
+          "completion_tokens": 33,
+          "output_tokens_per_s": 29.756537421187552,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.1818181818181817,
+              "draft_acceptance_rate": 0.7272727272727273,
+              "acceptance_histogram": [
+                2,
+                1,
+                1,
+                7
+              ],
+              "num_spec_steps": 11,
+              "num_accepted_draft_tokens": 24,
+              "num_draft_tokens": 33,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c03",
+      "question": "tong tien cac hoa don ngay 16/8/2020 la bao nhieu",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT SUM(total_amount_value) AS tong_tien FROM v_invoice_facts WHERE issued_date = '2020-08-16' LIMIT 200",
+      "reference_rows": [
+        [
+          1145548.0
+        ]
+      ],
+      "rows": [
+        [
+          1145548.0
+        ]
+      ],
+      "answer": "Tổng tiền các hóa đơn ngày 16/8/2020 là 1.145.548.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1038.754599983804,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1032.0000000065193,
+          "ttft_ms": 766.0000000032596,
+          "tpot_ms": 8.580645161395472,
+          "prompt_tokens": 1039,
+          "completion_tokens": 32,
+          "output_tokens_per_s": 31.007751937788615,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.7777777777777777,
+              "draft_acceptance_rate": 0.9259259259259259,
+              "acceptance_histogram": [
+                0,
+                1,
+                0,
+                8
+              ],
+              "num_spec_steps": 9,
+              "num_accepted_draft_tokens": 25,
+              "num_draft_tokens": 27,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 26781.339399982244,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 26780.999999988126,
+          "ttft_ms": 26483.99999999674,
+          "tpot_ms": 9.899999999712842,
+          "prompt_tokens": 256,
+          "completion_tokens": 31,
+          "output_tokens_per_s": 1.1575370598563812,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.3,
+              "draft_acceptance_rate": 0.7666666666666667,
+              "acceptance_histogram": [
+                1,
+                2,
+                0,
+                7
+              ],
+              "num_spec_steps": 10,
+              "num_accepted_draft_tokens": 23,
+              "num_draft_tokens": 30,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c04",
+      "question": "Cửa hàng nào có nhiều hoá đơn nhất?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT seller_name, COUNT(*) AS so_hoa_don FROM v_invoice_facts GROUP BY seller_name ORDER BY so_hoa_don DESC LIMIT 1",
+      "reference_rows": [
+        [
+          "MINIMART ANAN"
+        ]
+      ],
+      "rows": [
+        [
+          "MINIMART ANAN",
+          17
+        ]
+      ],
+      "answer": "Cửa hàng MINIMART ANAN có nhiều hoá đơn nhất với 17 hoá đơn.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1029.9804999958724,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1032.0000000065193,
+          "ttft_ms": 782.0000000065193,
+          "tpot_ms": 8.333333333333334,
+          "prompt_tokens": 1024,
+          "completion_tokens": 31,
+          "output_tokens_per_s": 30.03875968973272,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.875,
+              "draft_acceptance_rate": 0.9583333333333334,
+              "acceptance_histogram": [
+                0,
+                0,
+                1,
+                7
+              ],
+              "num_spec_steps": 8,
+              "num_accepted_draft_tokens": 23,
+              "num_draft_tokens": 24,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 960.4243000212591,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 967.9999999934807,
+          "ttft_ms": 796.9999999913853,
+          "tpot_ms": 8.550000000104774,
+          "prompt_tokens": 246,
+          "completion_tokens": 21,
+          "output_tokens_per_s": 21.694214876179164,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.5,
+              "draft_acceptance_rate": 0.8333333333333334,
+              "acceptance_histogram": [
+                0,
+                1,
+                1,
+                4
+              ],
+              "num_spec_steps": 6,
+              "num_accepted_draft_tokens": 15,
+              "num_draft_tokens": 18,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c05",
+      "question": "Hoá đơn có tổng tiền nhỏ nhất là của cửa hàng nào và bao nhiêu tiền?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT seller_name, total_amount_value AS tong_tien FROM v_invoice_facts WHERE total_amount_value = (SELECT MIN(total_amount_value) FROM v_invoice_facts) LIMIT 200",
+      "reference_rows": [
+        [
+          "CUA HANG NAM OANH",
+          16500.0
+        ]
+      ],
+      "rows": [
+        [
+          "CUA HANG NAM OANH",
+          16500.0
+        ]
+      ],
+      "answer": "Hoá đơn có tổng tiền nhỏ nhất là của cửa hàng CUA HANG NAM OANH với tổng tiền 16500.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1111.5410999918822,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1125.0,
+          "ttft_ms": 828.0000000086147,
+          "tpot_ms": 8.735294117393684,
+          "prompt_tokens": 1033,
+          "completion_tokens": 35,
+          "output_tokens_per_s": 31.11111111111111,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.7,
+              "draft_acceptance_rate": 0.9,
+              "acceptance_histogram": [
+                0,
+                1,
+                1,
+                8
+              ],
+              "num_spec_steps": 10,
+              "num_accepted_draft_tokens": 27,
+              "num_draft_tokens": 30,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 1099.1473000030965,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1092.9999999934807,
+          "ttft_ms": 828.0000000086147,
+          "tpot_ms": 8.548387096286,
+          "prompt_tokens": 261,
+          "completion_tokens": 32,
+          "output_tokens_per_s": 29.277218664401524,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.5555555555555554,
+              "draft_acceptance_rate": 0.8518518518518519,
+              "acceptance_histogram": [
+                1,
+                0,
+                1,
+                7
+              ],
+              "num_spec_steps": 9,
+              "num_accepted_draft_tokens": 23,
+              "num_draft_tokens": 27,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c06",
+      "question": "Quán Thức Coffee ở địa chỉ nào?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT seller_address AS dia_chi FROM v_invoice_facts WHERE seller_name ILIKE '%thuc%coffee%' LIMIT 200",
+      "reference_rows": [
+        [
+          "22 Quang Trung, P10, Go Vap"
+        ]
+      ],
+      "rows": [
+        [
+          "22 Quang Trung, P10, Go Vap"
+        ]
+      ],
+      "answer": "Quán Thức Coffee ở địa chỉ 22 Quang Trung, P10, Go Vap.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1085.4359999939334,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1078.0000000086147,
+          "ttft_ms": 844.0000000118744,
+          "tpot_ms": 10.173913043336539,
+          "prompt_tokens": 1024,
+          "completion_tokens": 24,
+          "output_tokens_per_s": 22.26345083470149,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.0,
+              "draft_acceptance_rate": 0.6666666666666666,
+              "acceptance_histogram": [
+                2,
+                1,
+                0,
+                5
+              ],
+              "num_spec_steps": 8,
+              "num_accepted_draft_tokens": 16,
+              "num_draft_tokens": 24,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 1036.7344999976922,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1030.9999999881256,
+          "ttft_ms": 812.0000000053551,
+          "tpot_ms": 9.124999999282105,
+          "prompt_tokens": 246,
+          "completion_tokens": 25,
+          "output_tokens_per_s": 24.24830261909596,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 4.0,
+              "draft_acceptance_rate": 1.0,
+              "acceptance_histogram": [
+                0,
+                0,
+                0,
+                6
+              ],
+              "num_spec_steps": 6,
+              "num_accepted_draft_tokens": 18,
+              "num_draft_tokens": 18,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c07",
+      "question": "Có bao nhiêu dòng mặt hàng có đơn giá trên 100.000 đồng?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT COUNT(*) AS so_dong FROM v_item_facts WHERE unit_price_value > 100000 LIMIT 200",
+      "reference_rows": [
+        [
+          4
+        ]
+      ],
+      "rows": [
+        [
+          4
+        ]
+      ],
+      "answer": "Có 4 dòng mặt hàng có đơn giá trên 100.000 đồng.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1052.2656999819446,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1046.9999999913853,
+          "ttft_ms": 812.0000000053551,
+          "tpot_ms": 9.79166666608459,
+          "prompt_tokens": 1036,
+          "completion_tokens": 25,
+          "output_tokens_per_s": 23.877745940979658,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.375,
+              "draft_acceptance_rate": 0.7916666666666666,
+              "acceptance_histogram": [
+                1,
+                1,
+                0,
+                6
+              ],
+              "num_spec_steps": 8,
+              "num_accepted_draft_tokens": 19,
+              "num_draft_tokens": 24,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 986.9910999841522,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 983.9999999967404,
+          "ttft_ms": 766.0000000032596,
+          "tpot_ms": 10.38095238064194,
+          "prompt_tokens": 245,
+          "completion_tokens": 22,
+          "output_tokens_per_s": 22.357723577309834,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.2857142857142856,
+              "draft_acceptance_rate": 0.7619047619047619,
+              "acceptance_histogram": [
+                1,
+                1,
+                0,
+                5
+              ],
+              "num_spec_steps": 7,
+              "num_accepted_draft_tokens": 16,
+              "num_draft_tokens": 21,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c08",
+      "question": "Có bao nhiêu dòng mặt hàng có chữ \"bánh\" trong tên?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT COUNT(*) AS so_dong FROM v_item_facts WHERE description ILIKE '%banh%' LIMIT 200",
+      "reference_rows": [
+        [
+          2
+        ]
+      ],
+      "rows": [
+        [
+          2
+        ]
+      ],
+      "answer": "Có 2 dòng mặt hàng có chữ \"bánh\" trong tên.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 995.5683999869507,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 983.9999999967404,
+          "ttft_ms": 781.0000000172295,
+          "tpot_ms": 10.149999998975545,
+          "prompt_tokens": 1031,
+          "completion_tokens": 21,
+          "output_tokens_per_s": 21.341463414704844,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.2857142857142856,
+              "draft_acceptance_rate": 0.7619047619047619,
+              "acceptance_histogram": [
+                1,
+                1,
+                0,
+                5
+              ],
+              "num_spec_steps": 7,
+              "num_accepted_draft_tokens": 16,
+              "num_draft_tokens": 21,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 933.0619999964256,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 937.0000000053551,
+          "ttft_ms": 796.9999999913853,
+          "tpot_ms": 8.750000000873115,
+          "prompt_tokens": 240,
+          "completion_tokens": 17,
+          "output_tokens_per_s": 18.143009605019042,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.4,
+              "draft_acceptance_rate": 0.8,
+              "acceptance_histogram": [
+                1,
+                0,
+                0,
+                4
+              ],
+              "num_spec_steps": 5,
+              "num_accepted_draft_tokens": 12,
+              "num_draft_tokens": 15,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c09",
+      "question": "Tổng tiền các hoá đơn có mua sữa chua là bao nhiêu?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 1,
+      "first_error": "JOIN_FANOUT: SUM(vif.total_amount_value) adds invoice-level column total_amount_value once per row of v_item_facts; aggregate v_invoice_facts without that join (use EXISTS to filter)",
+      "sql": "SELECT SUM(vif.total_amount_value) AS tong_tien FROM v_invoice_facts AS vif WHERE EXISTS(SELECT 1 FROM v_item_facts AS vifc WHERE vif.invoice_id = vifc.invoice_id AND vifc.description ILIKE '%sua%chua%') LIMIT 200",
+      "reference_rows": [
+        [
+          541500.0
+        ]
+      ],
+      "rows": [
+        [
+          541500.0
+        ]
+      ],
+      "answer": "Tổng tiền các hoá đơn có mua sữa chua là 541.500.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1396.6158999828622,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1406.0000000172295,
+          "ttft_ms": 812.0000000053551,
+          "tpot_ms": 9.737704918227449,
+          "prompt_tokens": 1032,
+          "completion_tokens": 62,
+          "output_tokens_per_s": 44.09672830671425,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.0,
+              "draft_acceptance_rate": 0.6666666666666666,
+              "acceptance_histogram": [
+                5,
+                2,
+                2,
+                12
+              ],
+              "num_spec_steps": 21,
+              "num_accepted_draft_tokens": 42,
+              "num_draft_tokens": 63,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1307.6297999941744,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1312.999999994645,
+          "ttft_ms": 828.0000000086147,
+          "tpot_ms": 8.083333333100503,
+          "prompt_tokens": 1165,
+          "completion_tokens": 61,
+          "output_tokens_per_s": 46.45849200323594,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.6470588235294117,
+              "draft_acceptance_rate": 0.8823529411764706,
+              "acceptance_histogram": [
+                2,
+                0,
+                0,
+                15
+              ],
+              "num_spec_steps": 17,
+              "num_accepted_draft_tokens": 45,
+              "num_draft_tokens": 51,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 960.2978999901097,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 968.9999999827705,
+          "ttft_ms": 766.0000000032596,
+          "tpot_ms": 8.82608695563091,
+          "prompt_tokens": 246,
+          "completion_tokens": 24,
+          "output_tokens_per_s": 24.76780185802553,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.7142857142857144,
+              "draft_acceptance_rate": 0.9047619047619048,
+              "acceptance_histogram": [
+                0,
+                0,
+                2,
+                5
+              ],
+              "num_spec_steps": 7,
+              "num_accepted_draft_tokens": 19,
+              "num_draft_tokens": 21,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c10",
+      "question": "Có bao nhiêu hoá đơn mua nước Coca?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT COUNT(*) AS so_hoa_don FROM v_item_facts WHERE description ILIKE '%coca%' AND quantity_value IS NOT NULL LIMIT 200",
+      "reference_rows": [
+        [
+          2
+        ]
+      ],
+      "rows": [
+        [
+          2
+        ]
+      ],
+      "answer": "Có 2 hoá đơn mua nước Coca.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 2061.0151999862865,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 2062.000000005355,
+          "ttft_ms": 1812.000000005355,
+          "tpot_ms": 9.25925925925926,
+          "prompt_tokens": 1026,
+          "completion_tokens": 28,
+          "output_tokens_per_s": 13.579049466502077,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.3333333333333335,
+              "draft_acceptance_rate": 0.7777777777777778,
+              "acceptance_histogram": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "num_spec_steps": 9,
+              "num_accepted_draft_tokens": 21,
+              "num_draft_tokens": 27,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 935.2993000065908,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 937.9999999946449,
+          "ttft_ms": 812.9999999946449,
+          "tpot_ms": 11.363636363636363,
+          "prompt_tokens": 236,
+          "completion_tokens": 12,
+          "output_tokens_per_s": 12.793176972354487,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.5,
+              "draft_acceptance_rate": 0.8333333333333334,
+              "acceptance_histogram": [
+                0,
+                1,
+                0,
+                3
+              ],
+              "num_spec_steps": 4,
+              "num_accepted_draft_tokens": 10,
+              "num_draft_tokens": 12,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c11",
+      "question": "Có bao nhiêu hoá đơn được lập sau 8 giờ tối?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE issued_time > '20:00:00' LIMIT 200",
+      "reference_rows": [
+        [
+          2
+        ]
+      ],
+      "rows": [
+        [
+          2
+        ]
+      ],
+      "answer": "Có 2 hoá đơn được lập sau 8 giờ tối.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1024.7152000083588,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1031.0000000172295,
+          "ttft_ms": 797.0000000204891,
+          "tpot_ms": 8.66666666654594,
+          "prompt_tokens": 1029,
+          "completion_tokens": 28,
+          "output_tokens_per_s": 27.158098932620835,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 4.0,
+              "draft_acceptance_rate": 1.0,
+              "acceptance_histogram": [
+                0,
+                0,
+                0,
+                7
+              ],
+              "num_spec_steps": 7,
+              "num_accepted_draft_tokens": 21,
+              "num_draft_tokens": 21,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 948.3634000062011,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 953.0000000086147,
+          "ttft_ms": 812.9999999946449,
+          "tpot_ms": 10.000000000997845,
+          "prompt_tokens": 239,
+          "completion_tokens": 15,
+          "output_tokens_per_s": 15.739769149910185,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.0,
+              "draft_acceptance_rate": 0.6666666666666666,
+              "acceptance_histogram": [
+                1,
+                1,
+                0,
+                3
+              ],
+              "num_spec_steps": 5,
+              "num_accepted_draft_tokens": 10,
+              "num_draft_tokens": 15,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c12",
+      "question": "Từ ngày 10 đến hết ngày 12 tháng 8 năm 2020 có bao nhiêu hoá đơn?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE issued_date LIKE '2020-08-10%' OR issued_date LIKE '2020-08-11%' OR issued_date LIKE '2020-08-12%' LIMIT 200",
+      "reference_rows": [
+        [
+          12
+        ]
+      ],
+      "rows": [
+        [
+          12
+        ]
+      ],
+      "answer": "Từ ngày 10 đến hết ngày 12 tháng 8 năm 2020 có 12 hoá đơn.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1270.2437000116333,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1265.9999999741558,
+          "ttft_ms": 796.9999999913853,
+          "tpot_ms": 7.688524589881484,
+          "prompt_tokens": 1042,
+          "completion_tokens": 62,
+          "output_tokens_per_s": 48.973143760873356,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.8125,
+              "draft_acceptance_rate": 0.9375,
+              "acceptance_histogram": [
+                1,
+                0,
+                0,
+                15
+              ],
+              "num_spec_steps": 16,
+              "num_accepted_draft_tokens": 45,
+              "num_draft_tokens": 48,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 1017.6671000081114,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1015.0000000139698,
+          "ttft_ms": 797.0000000204891,
+          "tpot_ms": 7.785714285481455,
+          "prompt_tokens": 253,
+          "completion_tokens": 29,
+          "output_tokens_per_s": 28.57142857103533,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.5,
+              "draft_acceptance_rate": 0.8333333333333334,
+              "acceptance_histogram": [
+                0,
+                2,
+                0,
+                6
+              ],
+              "num_spec_steps": 8,
+              "num_accepted_draft_tokens": 20,
+              "num_draft_tokens": 24,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c13",
+      "question": "Có bao nhiêu hoá đơn được tải lên từ web?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT COUNT(*) AS so_hoa_don_tai_len FROM v_upload_facts WHERE source = 'upload' LIMIT 200",
+      "reference_rows": [
+        [
+          0
+        ]
+      ],
+      "rows": [
+        [
+          0
+        ]
+      ],
+      "answer": "Không có hoá đơn nào được tải lên từ web.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1063.3197000133805,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1062.999999994645,
+          "ttft_ms": 827.9999999795109,
+          "tpot_ms": 10.68181818250609,
+          "prompt_tokens": 1027,
+          "completion_tokens": 23,
+          "output_tokens_per_s": 21.636876763984823,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.0,
+              "draft_acceptance_rate": 0.6666666666666666,
+              "acceptance_histogram": [
+                2,
+                1,
+                0,
+                5
+              ],
+              "num_spec_steps": 8,
+              "num_accepted_draft_tokens": 16,
+              "num_draft_tokens": 24,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "endpoint": "static",
+          "wall_ms": 898.2329999853391,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 905.9999999881256,
+          "ttft_ms": 796.9999999913853,
+          "tpot_ms": 9.90909090879458,
+          "prompt_tokens": 240,
+          "completion_tokens": 12,
+          "output_tokens_per_s": 13.245033112756376,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.0,
+              "draft_acceptance_rate": 0.6666666666666666,
+              "acceptance_histogram": [
+                0,
+                2,
+                0,
+                2
+              ],
+              "num_spec_steps": 4,
+              "num_accepted_draft_tokens": 8,
+              "num_draft_tokens": 12,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c14",
+      "question": "Liệt kê các hoá đơn có tổng tiền trên 1 triệu đồng.",
+      "expected_status": "no_data",
+      "status": "no_data",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT issued_date, seller_name, total_amount_value AS tong_tien FROM v_invoice_facts WHERE total_amount_value > 1000000 LIMIT 200",
+      "reference_rows": [],
+      "rows": [],
+      "answer": "Không có dữ liệu khớp câu hỏi.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 1146.7330000014044,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1141.0000000032596,
+          "ttft_ms": 796.9999999913853,
+          "tpot_ms": 10.750000000371074,
+          "prompt_tokens": 1029,
+          "completion_tokens": 33,
+          "output_tokens_per_s": 28.921998247068995,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 2.916666666666667,
+              "draft_acceptance_rate": 0.6388888888888888,
+              "acceptance_histogram": [
+                2,
+                3,
+                1,
+                6
+              ],
+              "num_spec_steps": 12,
+              "num_accepted_draft_tokens": 23,
+              "num_draft_tokens": 36,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "c15",
+      "question": "Mã số thuế người mua nào xuất hiện trên các hoá đơn?",
+      "expected_status": "no_data",
+      "status": "no_data",
+      "correct": true,
+      "fabricated_answer": false,
+      "foreign_words": [],
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT DISTINCT buyer_tax_code FROM v_invoice_facts LIMIT 200",
+      "reference_rows": [],
+      "rows": [
+        [
+          null
+        ]
+      ],
+      "answer": "Không có dữ liệu khớp câu hỏi.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "endpoint": "static",
+          "wall_ms": 901.9068999914452,
+          "lane": "static",
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 890.0000000139698,
+          "ttft_ms": 781.0000000172295,
+          "tpot_ms": 10.899999999674037,
+          "prompt_tokens": 1029,
+          "completion_tokens": 11,
+          "output_tokens_per_s": 12.359550561603752,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 2.5,
+              "draft_acceptance_rate": 0.5,
+              "acceptance_histogram": [
+                1,
+                1,
+                1,
+                1
+              ],
+              "num_spec_steps": 4,
+              "num_accepted_draft_tokens": 6,
+              "num_draft_tokens": 12,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
