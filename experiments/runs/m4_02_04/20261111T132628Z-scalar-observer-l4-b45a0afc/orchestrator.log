@@ -1,0 +1,6 @@
+{
+  "offline_validation": "FAIL",
+  "verdict": "LIVE OBSERVER NOT VERIFIED",
+  "error": "Traceback (most recent call last):\n  File \"/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/experiments/scalar_colab_smoke.py\", line 574, in run\n    verdict = validate(root)\n              ^^^^^^^^^^^^^^\n  File \"/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/experiments/scalar_smoke_evidence.py\", line 81, in validate\n    validate_identity(environment[\"identity\"], environment[\"identity\"])\n  File \"/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/experiments/scalar_cost_evidence.py\", line 58, in validate_identity\n    require(tuple(observed[key] for key in (\"sm_architecture\", \"dtype\", \"quantization\"))\n  File \"/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay/experiments/scalar_cost_evidence.py\", line 31, in require\n    raise ValueError(message)\nValueError: Hardware/runtime profile mismatch\n"
+}
+LIVE OBSERVER NOT VERIFIED

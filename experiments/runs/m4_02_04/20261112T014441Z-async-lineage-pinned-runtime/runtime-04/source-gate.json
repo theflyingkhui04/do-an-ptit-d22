@@ -1,0 +1,102 @@
+{
+  "timestamp_utc": "2026-11-12T02:01:25.766440+00:00",
+  "hostname": "modal",
+  "provider": "Modal CPU preflight",
+  "git_sha": "fb4544166c428e73b164756a2ef0e11ad6b97d6f",
+  "python": "3.11.5 (main, Aug 26 2023, 07:22:50) [Clang 16.0.3 ]",
+  "vllm": "0.30.0",
+  "torch": "2.13.0",
+  "files": [
+    {
+      "path": "vllm/v1/core/sched/async_scheduler.py",
+      "bytes": 3283,
+      "sha256": "e586a0ef3c6778be56a93e7f9bb712d4de9de6e7d7fe7e3e1d51dae83ecfc508",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "bytes": 12558,
+      "sha256": "3a66c8efaefe10c572f6f33cf1f8aa4610758c945130cad62eb9f7331005677c",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "bytes": 152786,
+      "sha256": "c1db45f3bbad3a875dd8638331b8870c4380ac1ab4734265ba5c863833a82884",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/core/sched/utils.py",
+      "bytes": 4351,
+      "sha256": "1ed988044eb8028c77ede875bd1a5fd05ff6998b455d61e3997d6a3d7fc1c3a7",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/engine/core.py",
+      "bytes": 106584,
+      "sha256": "268bf40534a853812867ae8e80040f190983cb364b41182b55969aace20c93f5",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/engine/core_client.py",
+      "bytes": 81200,
+      "sha256": "fd6ca0cb7499b3086eef2fc57674b7ace56ef1c648f09e92e144b255b79018f8",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/executor/uniproc_executor.py",
+      "bytes": 7800,
+      "sha256": "3cb039b80fe9b03dc1122f93c1f8a4098ef1355104b317ff6df25358f4349494",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/outputs.py",
+      "bytes": 18031,
+      "sha256": "65ab7698bbdea1d53502ef8df3689bec860521ab6e2fab3c7bff63151be039b1",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/request.py",
+      "bytes": 15829,
+      "sha256": "da610d5203e72d2d524adc5fb39df11502a23520f2f31d9a44cf13d343f9c25d",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/sample/rejection_sampler.py",
+      "bytes": 41582,
+      "sha256": "0bb9d224887ccb1355e16199005cc23a4afc6fa75156eca419851b7247d99750",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/spec_decode/draft_model.py",
+      "bytes": 4489,
+      "sha256": "6b884f49a75f01d1aa6b2d27159b63fa27f7ba7f0518d2810d1a5b565e14f026",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/spec_decode/llm_base_proposer.py",
+      "bytes": 84767,
+      "sha256": "5bd11c41f0a8cf1272b5880d9878043f876bee6c7e04fb781e613f92930b15ab",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/spec_decode/utils.py",
+      "bytes": 32977,
+      "sha256": "318067397e6827153b484953b4f245e64b0a04308cfe05fa6760418b83a15ed8",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/worker/gpu_input_batch.py",
+      "bytes": 48714,
+      "sha256": "18cf455c9d0eea61cc581c7932f2e6cd09786914e82dd35eef1c1430da359a0f",
+      "status": "PASS"
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "bytes": 340999,
+      "sha256": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
+      "status": "PASS"
+    }
+  ],
+  "source_gate": "PASS"
+}

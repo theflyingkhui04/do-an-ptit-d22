@@ -1,0 +1,153 @@
+{
+  "LOCAL_READY_FOR_COLAB": "PASS",
+  "source_commit": "187cfff5f8c2a72b9bfb227d97e6221458ddc283",
+  "requirements": [
+    {
+      "id": 1,
+      "requirement": "branch_baseline",
+      "status": "PASS",
+      "evidence": "baseline.json and worklog"
+    },
+    {
+      "id": 2,
+      "requirement": "pm_change",
+      "status": "PASS",
+      "evidence": "m4_treatments.py and methodology"
+    },
+    {
+      "id": 3,
+      "requirement": "explicit_treatments",
+      "status": "PASS",
+      "evidence": "test_m4_treatments.py"
+    },
+    {
+      "id": 4,
+      "requirement": "same_target_revision",
+      "status": "PASS",
+      "evidence": "test_same_trained_speculator_and_target"
+    },
+    {
+      "id": 5,
+      "requirement": "same_speculator_revision",
+      "status": "PASS",
+      "evidence": "test_same_trained_speculator_and_target"
+    },
+    {
+      "id": 6,
+      "requirement": "no_old_draft",
+      "status": "PASS",
+      "evidence": "test_same_trained_speculator_and_target"
+    },
+    {
+      "id": 7,
+      "requirement": "adaptive_attachment",
+      "status": "PASS",
+      "evidence": "test_scheduler_metrics_and_deterministic_serialization"
+    },
+    {
+      "id": 8,
+      "requirement": "no_local_pinned_blocker",
+      "status": "PASS",
+      "evidence": "19 pinned hashes/source contract"
+    },
+    {
+      "id": 9,
+      "requirement": "source_contract_tests",
+      "status": "PASS",
+      "evidence": "pinned-contract.json"
+    },
+    {
+      "id": 10,
+      "requirement": "adaptive_logic",
+      "status": "PASS",
+      "evidence": "cpu-tests.log"
+    },
+    {
+      "id": 11,
+      "requirement": "lossless_infrastructure",
+      "status": "PASS",
+      "evidence": "test_m4_lossless.py"
+    },
+    {
+      "id": 12,
+      "requirement": "1000_lifecycle_steps",
+      "status": "PASS",
+      "evidence": "test_m4_lifecycle.py"
+    },
+    {
+      "id": 13,
+      "requirement": "sm80_schema_support",
+      "status": "PASS",
+      "evidence": "test_m4_a100_profile.py"
+    },
+    {
+      "id": 14,
+      "requirement": "no_fake_profile",
+      "status": "PASS",
+      "evidence": "repository file inventory"
+    },
+    {
+      "id": 15,
+      "requirement": "profile_consumption_documented",
+      "status": "PASS",
+      "evidence": "methodology: measured costs not consumed; VRAM/KV/acceptance policy retained"
+    },
+    {
+      "id": 16,
+      "requirement": "54_cells",
+      "status": "PASS",
+      "evidence": "test_m4_campaign.py and m4_02_06_protocol.json"
+    },
+    {
+      "id": 17,
+      "requirement": "runtime_readiness_evaluator",
+      "status": "PASS",
+      "evidence": "test_m4_readiness.py"
+    },
+    {
+      "id": 18,
+      "requirement": "resume_state",
+      "status": "PASS",
+      "evidence": "test_m4_campaign.py"
+    },
+    {
+      "id": 19,
+      "requirement": "aggregation",
+      "status": "PASS",
+      "evidence": "test_m4_campaign.py and test_aggregate_results.py"
+    },
+    {
+      "id": 20,
+      "requirement": "git_evidence_design",
+      "status": "PASS",
+      "evidence": "m4_git_evidence.py tests and user handoff"
+    },
+    {
+      "id": 21,
+      "requirement": "source_vs_evidence",
+      "status": "PASS",
+      "evidence": "source-freeze.json and handoff"
+    },
+    {
+      "id": 22,
+      "requirement": "copy_paste_handoff",
+      "status": "PASS",
+      "evidence": "8 parsed user-run Python cells"
+    },
+    {
+      "id": 23,
+      "requirement": "no_cloud_execution",
+      "status": "PASS",
+      "evidence": "local-only worklog; no notebook/runtime/GPU allocation"
+    },
+    {
+      "id": 24,
+      "requirement": "no_fabricated_a100_claim",
+      "status": "PASS",
+      "evidence": "all GPU/profile/model results explicitly pending"
+    }
+  ],
+  "A100_PROFILE": "NOT MEASURED",
+  "ADAPTIVE_RUNTIME": "NOT VERIFIED ON A100",
+  "FULL_SWEEP": "NOT RUN"
+}

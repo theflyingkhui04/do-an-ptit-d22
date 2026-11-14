@@ -1,0 +1,224 @@
+{
+  "schema_version": "m4-component-calibration-v1",
+  "artifact_kind": "component_report",
+  "not_consumer_profile": true,
+  "canonical_profile_generated": false,
+  "runtime_tree_available": false,
+  "scientific_limitation": "Canonical arbitrary-tree topologies are represented in the cost/controller layer but are not executed by the current vLLM serving/proposer path.",
+  "technical_alignment_status": "TEAM TECHNICAL ALIGNMENT REQUIRED: TreeAdaptive N/64 versus FlexCostModel max(0,N-1) verification formulas and derived-cost provenance. Canonical topology profile generation is disabled. Legacy Modal pilot/full submission remains disabled.",
+  "gamma_attn_status": "not_calibrated_pending_formula_alignment",
+  "environment": {
+    "gpu": "Tesla T4",
+    "gpu_compute_capability": [
+      7,
+      5
+    ],
+    "gpu_memory_total_mb": 14911.6875,
+    "driver_version": "580.178.04",
+    "cuda_version": "13.0",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.30.0",
+    "nvidia_smi_output": "Sun Nov  8 10:08:21 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 580.178.04             Driver Version: 580.178.04     CUDA Version: 13.0     |\n+-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  Tesla T4                       Off |   00000000:00:04.0 Off |                    0 |\n| N/A   37C    P8             10W /   70W |       3MiB /  15360MiB |      0%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n|   1  Tesla T4                       Off |   00000000:00:05.0 Off |                    0 |\n| N/A   40C    P8             10W /   70W |       0MiB /  15360MiB |      0%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n\n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|  No running processes found                                                             |\n+-----------------------------------------------------------------------------------------+\n",
+    "nvidia_smi_stderr": "",
+    "nvidia_smi_returncode": 0,
+    "cuda_available": true,
+    "expected_gpu": "T4",
+    "observed_gpu": "Tesla T4",
+    "observed_gpu_type": "T4",
+    "canonical_hardware": true,
+    "sm_architecture": "sm_75",
+    "run_id": "t4-cell-diagnostic-v2-20261108-100821",
+    "timestamp_utc": "2026-11-08T10:08:23.487349+00:00",
+    "source_commit": "de369da6f494c4ee2dd980a82b0936c96c88d6cc",
+    "working_tree_clean": true,
+    "backend": "local_cuda",
+    "run_type": "smoke",
+    "requested_run_type": "smoke",
+    "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+    "draft_revision": "c3adca7e211b471d97a519a625df7ffd37b8b461",
+    "draft_method": "eagle3",
+    "dtype": "half",
+    "quantization": "awq",
+    "contexts": [
+      1024
+    ],
+    "batches": [
+      1,
+      2
+    ],
+    "k_values": [
+      1
+    ],
+    "batch_grid": [
+      1,
+      2
+    ],
+    "k_grid": [
+      1
+    ],
+    "warmup": 2,
+    "repeats": 2,
+    "timing_method": "worker_cuda_synchronize_perf_counter_wall_ms",
+    "runner_selection": "VLLM_USE_V2_MODEL_RUNNER=0",
+    "target_boundary": "model forward only; excludes logits and sampling",
+    "proposer_boundary": "EAGLE propose call; includes preparation and sampling",
+    "canonical_component_run": false,
+    "engine_lifecycle": "fresh_process_per_k_batch_context",
+    "admission_policy": "sleep_level_0_enqueue_wake_scheduling",
+    "engine_sizing_policy": "seqs=B; tokens=max(max_model_len,B*context); utilization=0.85",
+    "status": "complete",
+    "error": null
+  },
+  "measurement_summary": [
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 1,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 2,
+      "n_failed": 0,
+      "n_warmup": 2,
+      "median_ms": 4.004765999980009,
+      "p90_ms": 4.018787999939377,
+      "min_ms": 3.9907440000206407,
+      "max_ms": 4.018787999939377,
+      "variance_ratio": 0.007002656314720138,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 2,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 2,
+      "n_failed": 0,
+      "n_warmup": 2,
+      "median_ms": 4.173999499982983,
+      "p90_ms": 4.230194000001575,
+      "min_ms": 4.117804999964392,
+      "max_ms": 4.230194000001575,
+      "variance_ratio": 0.02692597352674364,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 1,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 2,
+      "n_failed": 0,
+      "n_warmup": 2,
+      "median_ms": 28.866385500009528,
+      "p90_ms": 29.15043699999842,
+      "min_ms": 28.582334000020637,
+      "max_ms": 29.15043699999842,
+      "variance_ratio": 0.019680434184515223,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 2,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 2,
+      "n_failed": 0,
+      "n_warmup": 2,
+      "median_ms": 35.79715949990714,
+      "p90_ms": 37.626873999897725,
+      "min_ms": 33.96744499991655,
+      "max_ms": 37.626873999897725,
+      "variance_ratio": 0.10222679819024932,
+      "variance_warning": false
+    }
+  ],
+  "linear_proposer_fits": {},
+  "full_repeat_requirement_met": false,
+  "cost_semantics": {
+    "component_latencies": "measured",
+    "proposal_fits": "empirical_linear_regression"
+  },
+  "cell_results": [
+    {
+      "cell_id": "k1-b1-c1024",
+      "K": 1,
+      "batch_size": 1,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "half",
+        "quantization": "awq",
+        "max_model_len": 4096,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 4,
+      "attempted_generations": 4,
+      "n_raw_records": 8
+    },
+    {
+      "cell_id": "k1-b2-c1024",
+      "K": 1,
+      "batch_size": 2,
+      "context_len": 1024,
+      "returncode": 0,
+      "engine_kwargs": {
+        "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "dtype": "half",
+        "quantization": "awq",
+        "max_model_len": 4096,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.85,
+        "enable_prefix_caching": false,
+        "generation_config": "vllm",
+        "enforce_eager": true,
+        "compilation_config": {
+          "mode": 0
+        },
+        "async_scheduling": false,
+        "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+        "enable_chunked_prefill": false,
+        "speculative_config": {
+          "method": "eagle3",
+          "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+          "num_speculative_tokens": 1,
+          "draft_sample_method": "greedy",
+          "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+        }
+      },
+      "status": "complete",
+      "error": null,
+      "error_category": null,
+      "allocator_warnings": [],
+      "planned_generation_attempts": 4,
+      "attempted_generations": 4,
+      "n_raw_records": 8
+    }
+  ]
+}

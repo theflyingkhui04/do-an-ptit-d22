@@ -1,0 +1,170 @@
+INFO 11-08 12:26:10 [api_utils.py:286] non-default args: {'dtype': 'bfloat16', 'max_model_len': 4096, 'enable_prefix_caching': False, 'gpu_memory_utilization': 0.85, 'max_num_batched_tokens': 8192, 'max_num_seqs': 8, 'disable_log_stats': True, 'revision': 'b25037543e9394b818fdfca67ab2a00ecc7dd641', 'quantization': 'awq_marlin', 'enforce_eager': True, 'enable_chunked_prefill': False, 'speculative_config': {'method': 'eagle3', 'model': 'duckhoi/qwen2.5-7b-eagle3.1-speculator', 'num_speculative_tokens': 4, 'draft_sample_method': 'greedy', 'revision': 'c3adca7e211b471d97a519a625df7ffd37b8b461'}, 'compilation_config': {'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': [], 'ir_enable_torch_wrap': None, 'splitting_ops': None, 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': None, 'compile_ranges_endpoints': None, 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': None, 'cudagraph_num_of_warmups': 0, 'cudagraph_capture_sizes': None, 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': None, 'pass_config': {}, 'max_cudagraph_capture_size': None, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': None, 'static_all_moe_layers': []}, 'worker_extension_cls': 'experiments.m4_worker_observer.M4ObserverExtension', 'generation_config': 'vllm', 'async_scheduling': False, 'model': 'Qwen/Qwen2.5-7B-Instruct-AWQ'}
+INFO 11-08 12:26:10 [model.py:692] Resolved architecture: Qwen2ForCausalLM
+WARNING 11-08 12:26:10 [model.py:2364] Casting torch.float16 to torch.bfloat16.
+INFO 11-08 12:26:10 [model.py:2030] Using max model len 4096
+WARNING 11-08 12:26:11 [arg_utils.py:2812] This model does not officially support disabling chunked prefill. Disabling this manually may cause the engine to crash or produce incorrect outputs.
+INFO 11-08 12:26:12 [model.py:692] Resolved architecture: LlamaForCausalLMEagle3
+INFO 11-08 12:26:12 [model.py:2030] Using max model len 32768
+INFO 11-08 12:26:12 [speculative.py:1651] Overriding draft model max model len from 32768 to 4096
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Parse safetensors files:   0%|          | 0/2 [00:00<?, ?it/s]Parse safetensors files:  50%|█████     | 1/2 [00:00<00:00,  1.23it/s]Parse safetensors files: 100%|██████████| 2/2 [00:00<00:00,  2.43it/s]
+WARNING 11-08 12:26:13 [vllm.py:1547] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+WARNING 11-08 12:26:13 [vllm.py:1570] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+INFO 11-08 12:26:13 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'])
+INFO 11-08 12:26:13 [vllm.py:1780] Cudagraph is disabled under eager mode
+INFO 11-08 12:26:13 [compilation.py:336] Enabled custom fusions: norm_quant, act_quant
+(EngineCore pid=35728) INFO 11-08 12:26:17 [core.py:123] Initializing a V1 LLM engine (v0.30.0) with config: model='Qwen/Qwen2.5-7B-Instruct-AWQ', speculative_config=SpeculativeConfig(method='eagle3', model='duckhoi/qwen2.5-7b-eagle3.1-speculator', num_spec_tokens=4), tokenizer='Qwen/Qwen2.5-7B-Instruct-AWQ', skip_tokenizer_init=False, tokenizer_mode=auto, revision=b25037543e9394b818fdfca67ab2a00ecc7dd641, tokenizer_revision=b25037543e9394b818fdfca67ab2a00ecc7dd641, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=auto_awq, quantization_config=None, enforce_eager=True, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=Qwen/Qwen2.5-7B-Instruct-AWQ, enable_prefix_caching=False, enable_chunked_prefill=False, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['all'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 0, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native']), enable_flashinfer_autotune=True, enable_cutedsl_warmup=True, enable_jit_warmup=True, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None)
+(EngineCore pid=35728) INFO 11-08 12:26:18 [worker_base.py:306] Injected <class 'experiments.m4_worker_observer.M4ObserverExtension'> into <class 'vllm.v1.worker.gpu_worker.Worker'> for extended collective_rpc calls ['m4_begin', 'm4_finish', 'm4_install', 'm4_memory']
+(EngineCore pid=35728) INFO 11-08 12:26:18 [parallel_state.py:1827] world_size=1 rank=0 local_rank=0 distributed_init_method=file:///tmp/vllm_dist_66f9ba5f380a4b79a1333de5a508cb3f backend=nccl
+(EngineCore pid=35728) INFO 11-08 12:26:18 [parallel_state.py:2267] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, ETP rank 0, EP rank N/A, EPLB rank N/A
+(EngineCore pid=35728) INFO 11-08 12:26:19 [topk_topp_sampler.py:78] Using FlashInfer for top-p & top-k sampling.
+(EngineCore pid=35728) WARNING 11-08 12:26:19 [__init__.py:205] min_p and logit_bias parameters won't work with speculative decoding.
+(EngineCore pid=35728) INFO 11-08 12:26:19 [gpu_model_runner.py:5317] Starting to load model Qwen/Qwen2.5-7B-Instruct-AWQ...
+(EngineCore pid=35728) INFO 11-08 12:26:20 [auto_awq.py:447] Using MarlinLinearKernel for AutoAWQMarlinLinearMethod
+(EngineCore pid=35728) INFO 11-08 12:26:20 [cuda.py:538] Using FLASH_ATTN attention backend out of potential backends: ['FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION'].
+(EngineCore pid=35728) INFO 11-08 12:26:20 [flash_attn.py:1116] Using FlashAttention version 2
+(EngineCore pid=35728) INFO 11-08 12:26:20 [weight_utils.py:895] Filesystem type for checkpoints: OVERLAY. Checkpoint size: 5.19 GiB. Available RAM: 48.66 GiB.
+(EngineCore pid=35728) INFO 11-08 12:26:20 [weight_utils.py:918] Auto-prefetch is disabled because the filesystem (OVERLAY) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(EngineCore pid=35728) Loading safetensors checkpoint shards:   0% Completed | 0/2 [00:00<?, ?it/s]
+(EngineCore pid=35728) Loading safetensors checkpoint shards:  50% Completed | 1/2 [00:01<00:01,  1.56s/it]
+(EngineCore pid=35728) Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:02<00:00,  1.09s/it]
+(EngineCore pid=35728) Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:02<00:00,  1.16s/it]
+(EngineCore pid=35728) 
+(EngineCore pid=35728) INFO 11-08 12:26:23 [default_loader.py:430] Loading weights took 2.35 seconds
+(EngineCore pid=35728) INFO 11-08 12:26:24 [gpu_model_runner.py:5348] Loading drafter model...
+(EngineCore pid=35728) INFO 11-08 12:26:24 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'])
+(EngineCore pid=35728) INFO 11-08 12:26:25 [weight_utils.py:895] Filesystem type for checkpoints: OVERLAY. Checkpoint size: 1.66 GiB. Available RAM: 48.62 GiB.
+(EngineCore pid=35728) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=35728) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00, 898.72it/s]
+(EngineCore pid=35728) 
+(EngineCore pid=35728) INFO 11-08 12:26:25 [default_loader.py:430] Loading weights took 0.48 seconds
+(EngineCore pid=35728) INFO 11-08 12:26:27 [llm_base_proposer.py:1471] Detected EAGLE model with distinct embed_tokens weights. Keeping separate embedding weights from the target model.
+(EngineCore pid=35728) INFO 11-08 12:26:28 [llm_base_proposer.py:1551] Detected EAGLE model with distinct lm_head weights. Keeping separate lm_head weights from the target model.
+(EngineCore pid=35728) INFO 11-08 12:26:28 [gpu_model_runner.py:5416] Model loading took 6.96 GiB memory and 8.066649 seconds
+(EngineCore pid=35728) INFO 11-08 12:26:28 [utils.py:320] Using LBNHC KV cache layout.
+(EngineCore pid=35728) INFO 11-08 12:26:34 [gpu_worker.py:640] Available KV cache memory: 10.22 GiB
+(EngineCore pid=35728) INFO 11-08 12:26:34 [kv_cache_utils.py:2395] GPU KV cache size: 184,832 tokens, Maximum concurrency for 4,096 tokens per request: 45.12x
+(EngineCore pid=35728) INFO 11-08 12:26:34 [kernel_warmup.py:172] JIT kernel warmup starting.
+(EngineCore pid=35728) JIT kernel warmup (174 compile keys):   0%|          | 0/12 [00:00<?, ?kernel/s]JIT kernel warmup (174 compile keys):  25%|██▌       | 3/12 [00:00<00:00, 16.51kernel/s, _DecoratedTritonJitKernel (72 keys)]JIT kernel warmup (174 compile keys): 100%|██████████| 12/12 [00:00<00:00, 43.14kernel/s, ComputeSlotMappingKernel (1 keys)] 
+(EngineCore pid=35728) INFO 11-08 12:26:34 [kernel_warmup.py:185] JIT kernel warmup finished in 0.34s.
+(EngineCore pid=35728) INFO 11-08 12:26:35 [gpu_worker.py:888] Free memory on device (21.84/22.03 GiB) on startup. Desired GPU memory utilization is (0.85, 18.73 GiB). Actual usage is 7.26 GiB for consumed memory (weights + non-torch), 1.24 GiB for peak activation, and 0.0 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=10820536320` (10.08 GiB) to fit into requested memory, or `--kv-cache-memory=14165985280` (13.19 GiB) to fully utilize gpu memory. Current kv cache memory in use is 10.22 GiB.
+(EngineCore pid=35728) INFO 11-08 12:26:35 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+(EngineCore pid=35728) INFO 11-08 12:26:36 [torch_utils.py:287] Reducing Torch threads from 6 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+(EngineCore pid=35728) INFO 11-08 12:26:36 [core.py:379] init engine (profile, create kv cache, warmup model) took 7.24 s
+(EngineCore pid=35728) INFO 11-08 12:26:36 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'])
+INFO 11-08 12:26:37 [hf.py:642] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(EngineCore pid=35728) INFO 11-08 12:26:37 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:26:37 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:26:40 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:26:40 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:26:43 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:26:43 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:26:46 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:26:46 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:26:49 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:26:49 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:26:52 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:26:52 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:26:55 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:26:55 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:26:58 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:26:58 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:01 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:01 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:04 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:04 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:07 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:07 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:10 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:10 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:13 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:13 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:16 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:16 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:19 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:19 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:22 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:22 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:25 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:25 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:28 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:28 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:31 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:31 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:34 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:34 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:37 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:37 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:40 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:40 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:43 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:43 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:46 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:46 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:49 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:49 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:51 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:51 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:54 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:54 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:27:57 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:27:57 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:00 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:00 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:03 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:03 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:06 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:06 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:09 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:09 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:12 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:12 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:15 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:15 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:18 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:18 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:21 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:21 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:24 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:24 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:27 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:27 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:30 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:30 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:33 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:33 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:36 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:36 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:39 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:39 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:42 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:42 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:45 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:45 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:48 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:48 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:51 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:51 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:54 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:54 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:28:57 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:28:57 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:29:00 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:29:00 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:29:03 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:29:03 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:29:06 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:29:06 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:29:09 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:29:09 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:29:12 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:29:12 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:29:15 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:29:15 [scheduler.py:2600] setting pause state to UNPAUSED
+(EngineCore pid=35728) INFO 11-08 12:29:17 [scheduler.py:2600] setting pause state to PAUSED_NEW
+(EngineCore pid=35728) INFO 11-08 12:29:17 [scheduler.py:2600] setting pause state to UNPAUSED
+INFO 11-08 12:29:20 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(EngineCore pid=35728) INFO 11-08 12:29:20 [core.py:1342] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=35728) INFO 11-08 12:29:20 [core.py:1493] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=35728) INFO 11-08 12:29:20 [core.py:1524] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=35728) INFO 11-08 12:29:20 [core.py:1355] [shutdown] EngineCore: exiting busy loop

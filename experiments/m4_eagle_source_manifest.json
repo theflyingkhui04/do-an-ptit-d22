@@ -1,0 +1,26 @@
+{
+  "vllm": "0.30.0",
+  "source_url": "https://github.com/vllm-project/vllm/tree/v0.30.0",
+  "files": [
+    {
+      "path": "vllm/v1/spec_decode/eagle.py",
+      "bytes": 554,
+      "sha256": "b2b1f7d15117b43108be368756d9c6e9334d9415a070e46178e18bb7c6476378"
+    },
+    {
+      "path": "vllm/config/speculative.py",
+      "bytes": 87011,
+      "sha256": "9c642a87264339c0dbc1d0b57330572149df0f9d5e16c6893b9895e50a619e19"
+    },
+    {
+      "path": "vllm/config/scheduler.py",
+      "bytes": 14778,
+      "sha256": "822179da62be4bca0619c8590082ae09123f5c4415f9cc2037be673748239edb"
+    },
+    {
+      "path": "vllm/entrypoints/openai/chat_completion/protocol.py",
+      "bytes": 48443,
+      "sha256": "51fb06a943201ffdc0a0bbae44b79a996bdd6ae3373593a67666868d996451b2"
+    }
+  ]
+}

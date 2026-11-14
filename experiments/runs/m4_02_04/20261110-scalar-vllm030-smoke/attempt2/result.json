@@ -1,0 +1,9 @@
+{
+  "source_commit": "a6cd6ad5cee5374738f890c270ada4ca01f0946b",
+  "phases": {
+    "A": "PASS",
+    "B": "PASS",
+    "D": "REQUESTS_COMPLETED_ISOLATION_REQUIRES_TRACE_REVIEW"
+  },
+  "server_alive_after_requests": true
+}

@@ -1,0 +1,4 @@
+# Preserve evidence hashes; CRLF is part of the original capture.
+* -text whitespace=cr-at-eol
+# Raw logs retain terminal padding exactly as captured.
+*.log whitespace=-blank-at-eol,cr-at-eol

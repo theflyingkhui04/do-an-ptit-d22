@@ -1,0 +1,190 @@
+{
+  "schema_version": "m4-component-calibration-v1",
+  "artifact_kind": "component_report",
+  "not_consumer_profile": true,
+  "canonical_profile_generated": false,
+  "runtime_tree_available": false,
+  "scientific_limitation": "Canonical arbitrary-tree topologies are represented in the cost/controller layer but are not executed by the current vLLM serving/proposer path.",
+  "technical_alignment_status": "TEAM TECHNICAL ALIGNMENT REQUIRED: TreeAdaptive N/64 versus FlexCostModel max(0,N-1) verification formulas and derived-cost provenance. Canonical profile generation and pilot/full submission are disabled.",
+  "gamma_attn_status": "not_calibrated_pending_formula_alignment",
+  "environment": {
+    "run_id": "20261108-m40202-l4-one-cell-smoke-05",
+    "timestamp_utc": "2026-11-08T03:04:33.517598+00:00",
+    "source_commit": "11d0b412d18be2bedcb6c2073c949674d7a6d195",
+    "requested_gpu": "L4",
+    "gpu": "NVIDIA L4",
+    "sm_architecture": "sm_89",
+    "gpu_memory_total_mb": 23034.0,
+    "driver_version": "610.57.04",
+    "cuda_version": "13.0",
+    "torch_version": "2.13.0+cu130",
+    "vllm_version": "0.30.0",
+    "dtype": "bfloat16",
+    "quantization": "awq_marlin",
+    "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+    "draft_revision": "c3adca7e211b471d97a519a625df7ffd37b8b461",
+    "draft_method": "eagle3",
+    "K": 1,
+    "engine_kwargs": {
+      "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+      "dtype": "bfloat16",
+      "quantization": "awq_marlin",
+      "max_model_len": 4096,
+      "max_num_seqs": 32,
+      "max_num_batched_tokens": 4096,
+      "gpu_memory_utilization": 0.85,
+      "enable_prefix_caching": false,
+      "generation_config": "vllm",
+      "enforce_eager": true,
+      "compilation_config": {
+        "mode": 0
+      },
+      "async_scheduling": false,
+      "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+      "enable_chunked_prefill": false,
+      "speculative_config": {
+        "method": "eagle3",
+        "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+        "num_speculative_tokens": 1,
+        "draft_sample_method": "greedy",
+        "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+      }
+    },
+    "runner_selection": "VLLM_USE_V2_MODEL_RUNNER=0",
+    "context_len": 1024,
+    "warmup": 5,
+    "repeats": 2,
+    "stage": "smoke",
+    "batch_grid": [
+      1
+    ],
+    "k_grid": [
+      1
+    ],
+    "timing_method": "worker_cuda_synchronize_perf_counter_wall_ms",
+    "target_boundary": "model forward only; excludes logits and sampling",
+    "proposer_boundary": "EAGLE propose call; includes preparation and sampling",
+    "worker_source_hashes": [
+      {
+        "runner": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
+        "eagle": "b2b1f7d15117b43108be368756d9c6e9334d9415a070e46178e18bb7c6476378",
+        "base_proposer": "5bd11c41f0a8cf1272b5880d9878043f876bee6c7e04fb781e613f92930b15ab"
+      }
+    ],
+    "batch_admission": "worker-observed exact B, uniform K+1 queries, context L; reject otherwise",
+    "status": "complete",
+    "environments": {
+      "1": {
+        "run_id": "20261108-m40202-l4-one-cell-smoke-05",
+        "timestamp_utc": "2026-11-08T03:04:33.517598+00:00",
+        "source_commit": "11d0b412d18be2bedcb6c2073c949674d7a6d195",
+        "requested_gpu": "L4",
+        "gpu": "NVIDIA L4",
+        "sm_architecture": "sm_89",
+        "gpu_memory_total_mb": 23034.0,
+        "driver_version": "610.57.04",
+        "cuda_version": "13.0",
+        "torch_version": "2.13.0+cu130",
+        "vllm_version": "0.30.0",
+        "dtype": "bfloat16",
+        "quantization": "awq_marlin",
+        "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+        "draft_revision": "c3adca7e211b471d97a519a625df7ffd37b8b461",
+        "draft_method": "eagle3",
+        "K": 1,
+        "engine_kwargs": {
+          "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+          "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+          "dtype": "bfloat16",
+          "quantization": "awq_marlin",
+          "max_model_len": 4096,
+          "max_num_seqs": 32,
+          "max_num_batched_tokens": 4096,
+          "gpu_memory_utilization": 0.85,
+          "enable_prefix_caching": false,
+          "generation_config": "vllm",
+          "enforce_eager": true,
+          "compilation_config": {
+            "mode": 0
+          },
+          "async_scheduling": false,
+          "worker_extension_cls": "experiments.m4_worker_observer.M4ObserverExtension",
+          "enable_chunked_prefill": false,
+          "speculative_config": {
+            "method": "eagle3",
+            "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "num_speculative_tokens": 1,
+            "draft_sample_method": "greedy",
+            "revision": "c3adca7e211b471d97a519a625df7ffd37b8b461"
+          }
+        },
+        "runner_selection": "VLLM_USE_V2_MODEL_RUNNER=0",
+        "context_len": 1024,
+        "warmup": 5,
+        "repeats": 2,
+        "stage": "smoke",
+        "batch_grid": [
+          1
+        ],
+        "k_grid": [
+          1
+        ],
+        "timing_method": "worker_cuda_synchronize_perf_counter_wall_ms",
+        "target_boundary": "model forward only; excludes logits and sampling",
+        "proposer_boundary": "EAGLE propose call; includes preparation and sampling",
+        "worker_source_hashes": [
+          {
+            "runner": "87c29d08c0bbf66993d8b984811e7325e35e6436242a773feb55ec88f16b2c51",
+            "eagle": "b2b1f7d15117b43108be368756d9c6e9334d9415a070e46178e18bb7c6476378",
+            "base_proposer": "5bd11c41f0a8cf1272b5880d9878043f876bee6c7e04fb781e613f92930b15ab"
+          }
+        ],
+        "batch_admission": "worker-observed exact B, uniform K+1 queries, context L; reject otherwise",
+        "status": "complete"
+      }
+    }
+  },
+  "measurement_summary": [
+    {
+      "measurement_kind": "eagle_propose",
+      "batch_size": 1,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 2,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 3.196482000006995,
+      "p90_ms": 3.2203380000055404,
+      "min_ms": 3.1726260000084494,
+      "max_ms": 3.2203380000055404,
+      "variance_ratio": 0.014926409720745045,
+      "variance_warning": false
+    },
+    {
+      "measurement_kind": "linear_verify_forward",
+      "batch_size": 1,
+      "K": 1,
+      "context_len": 1024,
+      "n_success": 2,
+      "n_failed": 0,
+      "n_warmup": 5,
+      "median_ms": 16.91656650000084,
+      "p90_ms": 17.009319000010237,
+      "min_ms": 16.823813999991444,
+      "max_ms": 17.009319000010237,
+      "variance_ratio": 0.01096587773995295,
+      "variance_warning": false
+    }
+  ],
+  "linear_proposer_fits": {},
+  "full_repeat_requirement_met": false,
+  "cost_semantics": {
+    "component_latencies": "measured",
+    "proposal_fits": "empirical_linear_regression"
+  }
+}

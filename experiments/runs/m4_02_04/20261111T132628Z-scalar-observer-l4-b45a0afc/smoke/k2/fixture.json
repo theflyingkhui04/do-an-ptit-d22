@@ -1,0 +1,40 @@
+{
+  "source": "in-repository deterministic counting fixture",
+  "prompt": "Count from one to fifty, writing each number in words and separating them with commas. Begin: one, two, three,",
+  "prompt_sha256": "5f34b570aecf9879fba03bd4fefb63947a8b86cf33f2e8d352b0974f69fcd166",
+  "prompt_token_ids": [
+    2507,
+    504,
+    825,
+    311,
+    32417,
+    11,
+    4378,
+    1817,
+    1372,
+    304,
+    4244,
+    323,
+    49445,
+    1105,
+    448,
+    76602,
+    13,
+    18597,
+    25,
+    825,
+    11,
+    1378,
+    11,
+    2326,
+    11
+  ],
+  "tokenized_prompt_sha256": "27fbd9e65fc7b15f2d9148dd923d20e3c4e9a7c39461ff12bc235057dc006468",
+  "max_tokens": 48,
+  "sampling": {
+    "temperature": 0.0,
+    "seed": 42,
+    "ignore_eos": true
+  },
+  "fixture_slot": "fixture-slot-0"
+}

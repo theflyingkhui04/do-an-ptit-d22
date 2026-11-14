@@ -1,0 +1,15 @@
+F.                                                                       [100%]
+================================== FAILURES ===================================
+____________________ test_local_runner_stop_process_group _____________________
+
+    def test_local_runner_stop_process_group():
+        runner = LocalServingRunner()
+        pid_file = "/tmp/test_flexsds.pid"
+>       with open(pid_file, "w") as f:
+             ^^^^^^^^^^^^^^^^^^^
+E       PermissionError: [Errno 13] Permission denied: '/tmp/test_flexsds.pid'
+
+tests\test_local_runner.py:39: PermissionError
+=========================== short test summary info ===========================
+FAILED tests/test_local_runner.py::test_local_runner_stop_process_group - Per...
+1 failed, 1 passed in 0.41s

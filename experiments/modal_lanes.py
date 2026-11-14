@@ -212,6 +212,9 @@ def build_vllm_args(
         args += ["--speculative-config", json.dumps(spec)]
     if cfg.scheduler_cls is not None:
         args += ["--scheduler-cls", cfg.scheduler_cls]
+        if lane == "adaptive":
+            args += ["--distributed-executor-backend",
+                     "src.server.lineage_executor.LineageUniProcExecutor"]
     if cfg.speculative_config is not None:
         args += ["--per-request-spec-decode-metrics", "summary"]
     return args

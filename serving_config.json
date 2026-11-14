@@ -1,0 +1,19 @@
+{
+  "flexsds_version": "0.2.0",
+  "action": "serve",
+  "backend": "modal",
+  "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+  "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+  "draft_method": "eagle3",
+  "use_heterogeneous_vocab": false,
+  "enable_adaptive": true,
+  "profile_applied": "profile_sm89_l4.json",
+  "target_gpu": "L4",
+  "colab_tunnel_url": "",
+  "modal_deploy": false,
+  "hardware": {
+    "device_name": "CPU",
+    "sm_architecture": "cpu",
+    "free_vram_mb": 1580.5
+  }
+}

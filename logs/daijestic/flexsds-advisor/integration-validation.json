@@ -1,0 +1,25 @@
+{
+  "focused_command": "python -B -m pytest -q -p no:cacheprovider tests/test_flexsds_integration.py tests/test_flexsds_advisor.py tests/test_compatibility_guard.py tests/test_local_runner.py tests/test_modal_runner_cli.py tests/test_colab_runner.py tests/test_credentials_manager.py tests/test_cli_wizard_flow.py tests/test_end_to_end_flow.py tests/test_flexsds_client.py tests/test_cli_chat_command.py tests/test_cli_monitor_command.py tests/test_task_runner.py tests/test_cli_output_encoding.py tests/test_flexsds_baseline.py --tb=short",
+  "environment": {
+    "PYTHONPATH": "src;.",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "focused": {
+    "passed": 131,
+    "skipped": 1,
+    "exit": 0,
+    "seconds": 29.25
+  },
+  "broad": {
+    "command": "python -B - (CPU-only stdin harness invoking pytest.main([tests, -q, -p, no:cacheprovider, --tb=short, --continue-on-collection-errors]))",
+    "passed": 1594,
+    "failed": 24,
+    "skipped": 132,
+    "errors": 8,
+    "subtests_passed": 204,
+    "seconds": 565.01,
+    "exit": 1
+  },
+  "skill_validation": "Skill is valid!",
+  "console_cases_passed": 12
+}

@@ -1,0 +1,13 @@
+{
+  "Scheduler": {
+    "matches_l3_installed_class": true,
+    "normalized_sha256": "620f4072b94ea24468a66c521c39fde53faf155667a3bd04ddb7ecf9e3aaa12e",
+    "AST_matches_L3_class": true
+  },
+  "AsyncScheduler": {
+    "matches_l3_installed_class": false,
+    "normalized_sha256": "89296f22eef52df3582b18e5a95667bbd2243e2ec4a94a400de4641c3f6381d8",
+    "AST_matches_L3_class": true,
+    "text_difference": "Only comment em dash is U+FFFD in prior L3 snapshot; executable AST identical. Raw evidence unchanged."
+  }
+}

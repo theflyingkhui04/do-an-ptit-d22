@@ -1,0 +1,67 @@
+[
+  {
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-s",
+      "tests/test_cli_wizard_flow.py"
+    ],
+    "exit_code": 2,
+    "stdout": "\n=================================== ERRORS ====================================\n_______________ ERROR collecting tests/test_cli_wizard_flow.py ________________\nImportError while importing test module 'C:\\Users\\daibu\\AppData\\Local\\Temp\\flexsds-baseline-s0nrwfwj\\tests\\test_cli_wizard_flow.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\nD:\\ProgramFiles\\Python3_11\\Lib\\importlib\\__init__.py:126: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_cli_wizard_flow.py:3: in <module>\n    from flexsds.cli.wizard import PLATFORM_CHOICES\nE   ImportError: cannot import name 'PLATFORM_CHOICES' from 'flexsds.cli.wizard' (C:\\Users\\daibu\\AppData\\Local\\Temp\\flexsds-baseline-s0nrwfwj\\src\\flexsds\\cli\\wizard.py)\n=========================== short test summary info ===========================\nERROR tests/test_cli_wizard_flow.py\n!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.66s\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-s",
+      "tests/test_local_runner.py::test_local_runner_stop_process_group"
+    ],
+    "exit_code": 1,
+    "stdout": "F\n================================== FAILURES ===================================\n____________________ test_local_runner_stop_process_group _____________________\n\n    def test_local_runner_stop_process_group():\n        runner = LocalServingRunner()\n        pid_file = \"/tmp/test_flexsds.pid\"\n>       with open(pid_file, \"w\") as f:\n             ^^^^^^^^^^^^^^^^^^^\nE       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/test_flexsds.pid'\n\ntests\\test_local_runner.py:39: FileNotFoundError\n=========================== short test summary info ===========================\nFAILED tests/test_local_runner.py::test_local_runner_stop_process_group - Fil...\n1 failed in 0.11s\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-s",
+      "tests/test_tree_adaptive_controller.py::test_decision_latency_benchmark"
+    ],
+    "exit_code": 0,
+    "stdout": "\nAverage decision latency: 24.971 microseconds (0.024971 ms)\n.\n1 passed in 0.56s\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-s",
+      "tests/test_tree_adaptive_controller.py::test_decision_latency_benchmark"
+    ],
+    "exit_code": 0,
+    "stdout": "\nAverage decision latency: 23.798 microseconds (0.023798 ms)\n.\n1 passed in 0.30s\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "D:\\ProgramFiles\\Python3_11\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-s",
+      "tests/test_tree_adaptive_controller.py::test_decision_latency_benchmark"
+    ],
+    "exit_code": 0,
+    "stdout": "\nAverage decision latency: 26.939 microseconds (0.026939 ms)\n.\n1 passed in 0.33s\n",
+    "stderr": ""
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "request": {
+    "model": "qwen2.5-7b-adaptive",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Write a short sentence about the ocean."
+      }
+    ],
+    "temperature": 0,
+    "seed": 42,
+    "max_tokens": 48
+  },
+  "status": 200,
+  "response": "{\"id\":\"chatcmpl-bb3944da3c02fb5a\",\"object\":\"chat.completion\",\"created\":1794307556,\"model\":\"qwen2.5-7b-adaptive\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"The ocean is vast and full of mysteries.\",\"refusal\":null,\"annotations\":null,\"audio\":null,\"function_call\":null,\"reasoning\":null},\"logprobs\":null,\"finish_reason\":\"stop\",\"stop_reason\":null,\"token_ids\":null,\"routed_experts\":null}],\"service_tier\":null,\"system_fingerprint\":\"vllm-0.30.0-5f94a4f4\",\"usage\":{\"prompt_tokens\":37,\"total_tokens\":47,\"completion_tokens\":10,\"prompt_tokens_details\":null,\"completion_tokens_details\":null},\"prompt_logprobs\":null,\"prompt_token_ids\":null,\"prompt_text\":null,\"kv_transfer_params\":null,\"ec_transfer_params\":null,\"metrics\":{\"time_to_first_token_ms\":null,\"generation_time_ms\":null,\"queue_time_ms\":null,\"mean_itl_ms\":null,\"tokens_per_second\":null,\"speculative_decoding\":{\"mean_acceptance_length\":1.3333333333333333,\"draft_acceptance_rate\":0.1111111111111111,\"acceptance_histogram\":[2,1,0,0,0],\"num_spec_steps\":3,\"num_accepted_draft_tokens\":1,\"num_draft_tokens\":9,\"num_spec_tokens\":4,\"per_step_accepted\":null,\"per_step_drafted\":null}}}"
+}

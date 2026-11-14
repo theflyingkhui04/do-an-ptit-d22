@@ -1,0 +1,21 @@
+{
+  "canonical_git_sha": "16528241468e2624ccfe07a69a67fcc123bfe4a3",
+  "canonical_repo": "/content/do-an-ptit-d22-run",
+  "overlay_repo": "/content/20261111T132628Z-scalar-observer-l4-b45a0afc-observer-overlay",
+  "changed_file": "experiments/scalar_colab_smoke.py",
+  "canonical_file_sha256": "6ae78b068bf0ed3b9bb91220e68b20045c31e546fdf5302c385b81a96a39bdf3",
+  "runtime_file_sha256": "3534dd2cef3723a0cd48aa5333ebf940f5ebd23f7a85a34c2400208b46d819fc",
+  "runtime_only_changes": [
+    "source_gate validates immutable canonical RUN_REPO",
+    "environment gate skips invalid full constraint snapshot replay while preserving key runtime, hardware and pinned-source gates",
+    "AutoAWQ config identity corrected from awq_marlin to auto_awq",
+    "runtime dtype checks separated from quantization checks"
+  ],
+  "production_source_changed": false,
+  "constraint_snapshot_status": "INVALID_FOR_CANONICAL_PYTHON_3_11",
+  "quantization_gate_repair": {
+    "old_expected_config": "awq_marlin",
+    "new_expected_config": "auto_awq",
+    "reason": "vLLM AutoAWQConfig identity is auto_awq; Marlin is a selected linear backend/kernel"
+  }
+}
