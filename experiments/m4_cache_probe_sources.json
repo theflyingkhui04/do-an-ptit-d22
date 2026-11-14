@@ -114,6 +114,48 @@
       "sha256": "3cb039b80fe9b03dc1122f93c1f8a4098ef1355104b317ff6df25358f4349494",
       "bytes": 7800,
       "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/executor/uniproc_executor.py"
+    },
+    {
+      "path": "vllm/forward_context.py",
+      "sha256": "cc1473477dcc7b762c3901b25cc7bf35c06a2c42f193136fed553abf6fe33f0e",
+      "bytes": 14580,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/forward_context.py"
+    },
+    {
+      "path": "vllm/model_executor/layers/quantization/auto_awq.py",
+      "sha256": "4461351c05a44bd75225162d2617ac5a5cb1c2ea81da48a8de32e714bdd4133c",
+      "bytes": 32615,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/model_executor/layers/quantization/auto_awq.py"
+    },
+    {
+      "path": "vllm/v1/attention/backends/flash_attn.py",
+      "sha256": "b170a4789e18104c1bee35bea70df51abe6766693d8f4726a59f2e6f5c4282aa",
+      "bytes": 81870,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/attention/backends/flash_attn.py"
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "sha256": "3a66c8efaefe10c572f6f33cf1f8aa4610758c945130cad62eb9f7331005677c",
+      "bytes": 12558,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/core/sched/output.py"
+    },
+    {
+      "path": "vllm/v1/engine/input_processor.py",
+      "sha256": "c8abd8e4e14d99929d45a7ff3b2a74898269c5e2a7fa30b826623ee85e4ce813",
+      "bytes": 23935,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/engine/input_processor.py"
+    },
+    {
+      "path": "vllm/v1/engine/output_processor.py",
+      "sha256": "e47b86cd69ce1c1e3f53dac655eaa75c32a4057d10f4a1db16bb83a397f2a329",
+      "bytes": 34979,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/engine/output_processor.py"
+    },
+    {
+      "path": "vllm/v1/structured_output/backend_xgrammar.py",
+      "sha256": "a6041ddf35d7aebb8452697ed16274451af533042acfc46760860725d153f5cb",
+      "bytes": 15575,
+      "url": "https://github.com/vllm-project/vllm/blob/v0.30.0/vllm/v1/structured_output/backend_xgrammar.py"
     }
   ],
   "hooks": [
@@ -193,6 +235,13 @@
       "lines": "377-378,740-751",
       "semantics": "CoreClient shutdown owns engine/process release",
       "behavior_change": "diagnostic finally invokes shutdown even after capture or cleanup failure"
+    },
+    {
+      "module": "vllm/v1/worker/gpu_model_runner.py",
+      "function": "GPUModelRunner._determine_batch_execution_and_padding / _sample",
+      "lines": "3953-4101,3658-3672",
+      "semantics": "read actual graph mode/padding; retain first actual sampled mismatch on GPU without forcing IDs",
+      "behavior_change": "explicit trajectory diagnostic only; original returns retained"
     }
   ],
   "reviewed_tests": [

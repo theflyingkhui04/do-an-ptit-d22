@@ -26,7 +26,7 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def engine_config():
+def engine_config(diagnostic_mode='cache_probe'):
     config = engine_kwargs('vanilla')
     # Pinned EngineArgs uses 8192 for LLM_CLASS but 2048 for the historical
     # A100 API server. Preserve the server's resolved budget explicitly.
@@ -35,6 +35,11 @@ def engine_config():
         scheduler_cls='experiments.m4_cache_probe_hooks.CacheProbeScheduler',
         worker_extension_cls='experiments.m4_cache_probe_hooks.CacheProbeWorkerExtension',
         distributed_executor_backend='uni')
+    if diagnostic_mode == 'decode_trajectory':
+        config.update(scheduler_cls='experiments.m4_decode_trajectory.TrajectoryScheduler',
+            worker_extension_cls='experiments.m4_decode_trajectory.TrajectoryWorkerExtension')
+    elif diagnostic_mode != 'cache_probe':
+        raise ValueError('Unknown diagnostic mode')
     return config
 
 
@@ -50,7 +55,19 @@ def sampling_config(request):
     return result
 
 
-def prepare(directory,source_commit,workload,prompt_id,index):
+def expected_effective_config():
+    """Exact reviewed historical flags, shared by live and offline validation."""
+    return dict(max_num_batched_tokens=2048,max_num_seqs=32,
+        enable_chunked_prefill=True,async_scheduling=True,enable_prefix_caching=True,
+        dtype='torch.bfloat16',enforce_eager=False,max_model_len=4096,
+        compilation_mode='VLLM_COMPILE',cudagraph_mode='FULL_AND_PIECEWISE',
+        cudagraph_capture_sizes=[1,2,4,8,16,24,32,40,48,56,64])
+
+
+def prepare(directory,source_commit,workload,prompt_id,index,diagnostic_mode='cache_probe'):
+    engine_config(diagnostic_mode)  # Reject unknown modes before writing artifacts.
+    if diagnostic_mode == 'decode_trajectory' and (workload,prompt_id,index) != ('W1','m0_04_001',549):
+        raise ValueError('Trajectory diagnostic is scoped to W1/m0_04_001/index 549')
     case = load_input(workload,prompt_id,index)
     case.update(schema_version=SCHEMA,source_commit=source_commit,historical_source_commit=FROZEN_SOURCE,
         evidence_commit=EVIDENCE_COMMIT,instrumentation_commit=source_commit,
@@ -58,6 +75,12 @@ def prepare(directory,source_commit,workload,prompt_id,index):
         construction='preserved original prompt IDs + vanilla repeat-0 generated IDs[:generation_index]',
         cache_conditioning='original prompt only; never full generated prefix',
         replay_limitation='Forced continuation is prefilled, not the historical sequence of decode forwards.')
+    if diagnostic_mode == 'decode_trajectory':
+        case.update(diagnostic_mode=diagnostic_mode,
+            run_id=directory.name,
+            construction='sequential: original prompt only; forced: original prompt + reference prefix at selected boundary',
+            cache_conditioning='none; verified cold reset before each condition',
+            replay_limitation='Sequential execution is natural; forced prefill compares only the identical selected logical boundary.')
     write_new(directory/'input.json',case)
     return case
 
@@ -118,7 +141,12 @@ def worker(directory,source_commit):
     from huggingface_hub import HfApi,snapshot_download
     manifest = verify_runtime_sources()
     case = json.loads((directory/'input.json').read_text(encoding='utf8'))
-    if case['instrumentation_commit'] != source_commit or token_hash(case['forced_input_token_ids']) != case['input_token_ids_sha256']:
+    mode = case.get('diagnostic_mode','cache_probe')
+    config = engine_config(mode)
+    if mode == 'decode_trajectory' and (case['workload'],case['prompt_id'],case['generation_index']) != ('W1','m0_04_001',549):
+        raise ValueError('Trajectory diagnostic is scoped to W1/m0_04_001/index 549')
+    if (case['source_commit'] != source_commit or case['instrumentation_commit'] != source_commit
+            or token_hash(case['forced_input_token_ids']) != case['input_token_ids_sha256']):
         raise ValueError('Prepared input provenance differs')
     expected = load_input(case['workload'],case['prompt_id'],case['generation_index'])
     if any(case[k] != expected[k] for k in expected):
@@ -152,7 +180,6 @@ def worker(directory,source_commit):
         [sys.executable,'-m','pip','freeze'],text=True).splitlines()))
     from vllm import LLM,SamplingParams
     from vllm.sampling_params import StructuredOutputsParams
-    config = engine_config()
     with diagnostic_engine(LLM(**config),directory) as llm:
         effective = llm.llm_engine.vllm_config
         flags = dict(max_num_batched_tokens=effective.scheduler_config.max_num_batched_tokens,
@@ -166,23 +193,28 @@ def worker(directory,source_commit):
             cudagraph_mode=effective.compilation_config.cudagraph_mode.name,
             cudagraph_capture_sizes=effective.compilation_config.cudagraph_capture_sizes)
         write_new(directory/'effective-config.json',flags)
-        expected_flags = dict(max_num_batched_tokens=2048,max_num_seqs=32,
-            enable_chunked_prefill=True,async_scheduling=True,enable_prefix_caching=True,
-            dtype='torch.bfloat16',enforce_eager=False,max_model_len=4096,
-            compilation_mode='VLLM_COMPILE',cudagraph_mode='FULL_AND_PIECEWISE',
-            cudagraph_capture_sizes=[1,2,4,8,16,24,32,40,48,56,64])
+        expected_flags = expected_effective_config()
         if flags != expected_flags:
             raise RuntimeError('Resolved engine/compilation flags differ from historical Vanilla; review required')
-        install = llm.collective_rpc('m4_probe_install')
-        if len(install)!=1 or not install[0]['installed']:
-            raise RuntimeError('Single diagnostic worker required')
-        write_new(directory/'hook-installation.json',install)
         settings = sampling_config(case['historical_request'])
         def params():
             kwargs = dict(settings)
             if 'structured_outputs' in kwargs:
                 kwargs['structured_outputs'] = StructuredOutputsParams(**kwargs['structured_outputs'])
             return SamplingParams(**kwargs)
+        if mode == 'decode_trajectory':
+            from experiments.m4_decode_trajectory import run_conditions
+            run_conditions(llm,directory,case,params,dict(environment=env,
+                engine_config=config,effective_config=flags,sampling_config=settings,
+                source_commit=source_commit,instrumentation_commit=source_commit,
+                run_id=directory.name,timestamp_utc=now(),
+                model=dict(target=TARGET,revision=TARGET_REVISION,tokenizer_revision=TARGET_REVISION,
+                    dtype='bfloat16',quantization='awq_marlin'),historical_environment_drift=drift))
+            return
+        install = llm.collective_rpc('m4_probe_install')
+        if len(install)!=1 or not install[0]['installed']:
+            raise RuntimeError('Single diagnostic worker required')
+        write_new(directory/'hook-installation.json',install)
         results,differences = [],[]
         for sequence,condition in enumerate(('COLD','CACHE_HIT')*2):
             repetition = sequence//2+1
@@ -262,7 +294,8 @@ def run(directory,source_commit):
         raise RuntimeError('Diagnostic requires a clean single GPU; existing jobs left untouched')
     command = [sys.executable,'-B','-m','experiments.run_m4_cache_probe','worker',
                '--out',str(directory),'--source-commit',source_commit]
-    write_new(directory/'launch.json',dict(command=command,engine_config=engine_config(),
+    mode = json.loads((directory/'input.json').read_text(encoding='utf8')).get('diagnostic_mode','cache_probe')
+    write_new(directory/'launch.json',dict(command=command,engine_config=engine_config(mode),
         source_commit=source_commit,historical_source_commit=FROZEN_SOURCE,instrumentation_commit=source_commit,timestamp_utc=now()))
     status = 'FAIL'
     try:
@@ -309,12 +342,13 @@ def main():
     parser.add_argument('--workload',choices=list(('W1','W2','W3')),default='W1')
     parser.add_argument('--prompt-id',default='m0_04_001')
     parser.add_argument('--generation-index',type=int,default=549)
+    parser.add_argument('--diagnostic-mode',choices=['cache_probe','decode_trajectory'],default='cache_probe')
     args = parser.parse_args()
     source_commit = validated_source_commit(args.source_commit)
     directory = artifact_path(args.out,kind='new_directory' if args.action=='prepare' else 'directory')
     if args.action=='prepare':
         directory.mkdir()
-        case = prepare(directory,source_commit,args.workload,args.prompt_id,args.generation_index)
+        case = prepare(directory,source_commit,args.workload,args.prompt_id,args.generation_index,args.diagnostic_mode)
         print(json.dumps({k:case[k] for k in ('prompt_id','input_token_count','input_token_ids_sha256')}))
         return
     if args.action=='run' and {q.name for q in directory.iterdir()} != {'input.json'}:
@@ -325,6 +359,13 @@ def main():
         else:
             verify_run_manifest(directory,source_commit)
             read = lambda name: json.loads((directory/name).read_text(encoding='utf8'))
+            if read('input.json').get('diagnostic_mode') == 'decode_trajectory':
+                from experiments.m4_decode_trajectory import analyze_trajectory
+                result = analyze_trajectory(read('sequential_decode_cold.json'),
+                    read('forced_prefill_cold.json'),read('input.json'),expected_source_commit=source_commit)
+                print(json.dumps(result,indent=2))
+                if result['classification']=='INCONCLUSIVE': raise SystemExit(1)
+                return
             result = analyze_replays([read(name+'.json') for name in
                 ('cold','cache_hit','cold_replay_2','cache_hit_replay_2')],
                 [read('vector-difference'+suffix+'.json') for suffix in ('','_replay_2')])

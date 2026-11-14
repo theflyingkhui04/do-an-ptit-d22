@@ -228,3 +228,230 @@ python -m experiments.run_m4_cache_probe analyze --source-commit <diagnostic-sha
 Full-sweep readiness remains blocked pending a proven repair and a fresh passing
 canonical readiness diagnostic. Review this diff and CPU evidence before any
 publication or Colab execution.
+
+## Audited A100 cache probe and remaining evidence limit
+
+Reviewed source: `873cf2c373411e6f0ca6c61dbe9798e5dc5e2f30`.
+Run: `m4-02-06-cache-probe-20261113T234943682317Z-873cf2c3`.
+The supplied tar.gz SHA256 is
+`4d6d56c0fc7f64e60c293e5fb32b5b9bdf9e07408873a649b38cc90a9fe3b209`.
+All 24 manifest-listed files match their SHA256 and inventory. The prepared
+input matches `load_input()` from frozen historical evidence byte-for-byte at
+the integer-array level. No original artifact was edited.
+
+| Condition (both repetitions) | Raw argmax recorded / winner in saved top 20 | 4164 | 3752 | Top-1 minus top-2 | Actual reused tokens | Computed / query tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| COLD | 3752 | 26.75 | 26.75 | 0 | 0 | 2048 / 23 |
+| CACHE_HIT | 3752 | 26.625 | 26.75 | 0.125 | 1520 | 1520 / 551 |
+
+Both raw and grammar-masked recorded argmaxes are 3752 in all four conditions.
+The cold tie is exact at captured BF16 precision. The 1520-token hit is verified
+from request-local `cache.jsonl` as 95 blocks of 16, not from request intent.
+The different query shapes are observed, not inferred kernel causality.
+
+Both vector-difference JSONs record max=0.171875 and
+mean=0.028460560366511345 over 152064 entries. Both within-condition repeat
+records report max=mean=0, and the complete saved logit-summary objects are
+identical within each condition. **The four original full vectors are absent.**
+The original collector reduces them in memory without serializing them.
+Independent full-vector max/mean/repeat/global-argmax recomputation is therefore
+unavailable: the historical full-vector audit remains incomplete and blocked.
+Top-20 observations and saved reductions must not be presented as reconstructed
+full tensors. The operator confirmed no separately preserved vectors are known.
+This limitation does not prevent CPU/static design of the next diagnostic.
+
+The unchanged analyzer at that SHA follows `analyze()` lines 228–235:
+`same=True`, `changed=True`, hence the explicit same-argmax/changed-logits
+`INCONCLUSIVE` branch. Validation has no reasons; both pairs agree and
+`analyze_replays()` reports exact repeatability. Re-executing it on the preserved
+JSON reproduces `analysis.json` exactly. The worker deliberately raises at
+`run_m4_cache_probe.py:255`. `hook-cleanup.json` confirms restoration and engine
+shutdown; lifecycle memory returns to 6 MiB with no GPU processes. This was a
+completed measurement followed by an intentional failure status, not an
+infrastructure crash. Recorded environment drift is empty, and the preserved
+runtime-source manifest equals the source manifest at the executed SHA.
+
+Supported observation: cache reuse changes the saved numerical logit evidence
+under an identical forced prefix. Cache causation of the historical token flip
+is unproven because even cold forced prefill selects 3752.
+`ROOT_CAUSE_NOT_PROVEN`; `FULL_SWEEP_BLOCKED`.
+
+## Minimal execution-history follow-up (disabled by default)
+
+Opt in only through `prepare --diagnostic-mode decode_trajectory`. Existing
+cache-probe mode and canonical serving retain their defaults. The trajectory
+implementation is separated into `experiments/m4_decode_trajectory.py` because
+sequential first-mismatch capture has different lifecycle/state contracts from
+the original single forced-boundary collector. It reuses frozen input loading,
+engine/environment/source gates, cache observation, forced grammar seeding,
+instance-hook restoration, append-only writes and parent process/GPU cleanup.
+
+Only W1 / m0_04_001 / target index 549 is supported. Two conditions are necessary:
+
+1. `SEQUENTIAL_DECODE_COLD`: reset the logical prefix cache; submit only the
+   original 1522 prompt IDs with the historical greedy seed/max_tokens/EOS and
+   JSON-object parameters. Sample naturally. Never prefill the historical
+   generated prefix, seed sequential grammar, overwrite sampled IDs or alter KV.
+2. `FORCED_PREFILL_COLD`: reset again; submit original prompt plus the reference
+   generated prefix at the selected boundary. Restore grammar using the reviewed
+   forced-prefix mechanism. Require actual request-local lookup count zero.
+
+No optional sequential cache-hit condition is included: it would not resolve
+the primary difference between sequential cold and forced-prefill cold.
+
+The raw measurement remains `model.compute_logits` return. `_sample` entry
+captures grammar-masked logits, and `_sample` return supplies the actual token.
+A constant-size device latch compares that token with reference[i] and retains
+the FIRST mismatch, or boundary 549 if none occurred earlier. Raw and masked
+vocabulary rows stay on GPU; there is no per-token full-vector host transfer or
+device-to-host decision synchronization. Transient GPU clones/device selection
+and CPU shape/mask bookkeeping add diagnostic overhead. This is not timing data.
+
+The host compares cumulative delivered token IDs and aborts immediately at the
+first delivered mismatch/target. Async work can already be in flight. The device
+latch cannot be overwritten by that later work; any delivered suffix is recorded
+separately and excluded. No historical tokens are forced after a mismatch.
+Boundary indices must be contiguous. Recomputations/preemptions, missing hooks,
+unexpected batching, premature EOS, unknown grammar-state counters and input
+identity inconsistencies fail closed. There is no automatic retry.
+
+If the first mismatch is index j<549, freeze A at j and evaluate B using
+`original + reference[:j]`, not index 549. The result is
+`EARLIER_DIVERGENCE_OBSERVED`, with trajectory status
+`HISTORICAL_TRAJECTORY_NOT_REPRODUCED`. It cannot support an index-549 claim.
+
+Collection occurs by worker RPC after abort, using the existing UniProc
+ownership/barrier contract. Actual GPU query-ID snapshots reconstruct the full
+logical input; they must equal original+reference[:j]. Store prompt, generated
+prefix and full logical token arrays, their compact-JSON hashes and index.
+Prefix hashes at index 549 are:
+
+- Prompt: `ac2940b3044c3e8bd563ebbffe5d88b207c7d144375027d97fb378fa2dc55a81`.
+- Generated: `ba579161a70b4aa19b19b4262ceb73c1c540dbf51ce1bce4c0dfdf75e752622b`.
+- Full logical: `3f52b8b8ee17eca82386c6e5ab6fa0510ee089e71dbffe60cf0efcabdd5fc75a`.
+
+The new `m4.decode_trajectory.v1` condition JSONs serialize **all 152064 raw
+logits**, as float32 JSON values that losslessly represent captured BF16.
+Masked vectors are serialized too; JSON null explicitly means negative infinity.
+They also include raw/masked argmax, sampled/historical token, tracked competing
+logits (including the actual first-divergence candidates), top 20, margins,
+dtype, query/computed counts, cache block IDs, actual graph mode/padding and
+request-owned grammar bitmask bytes/shape/hash. Unvalidated `worker-*.json`
+snapshots preserve returned vectors before subsequent provenance/schema guards.
+Missing evidence/guard failure produces `INCONCLUSIVE` and a nonzero worker exit.
+
+The historical log records grammar backend configuration `auto`; it does not
+prove the resolved backend or historical internal matcher state. Do not relabel
+that as observed XGrammar. The follow-up records the resolved backend and grammar
+classes, processed-token count, reasoning gate and actual effective bitmask at
+mask preparation. Natural A and seeded B must have equal grammar class/backend,
+prefix count and mask. With no reasoning parser, the initial reasoning-ended
+flag may differ at index zero without changing the effective mask; later
+boundaries require the flag to be true. An unsupported/missing processed-token
+counter fails closed instead of changing the backend configuration.
+
+### Pinned runtime trace for trajectory instrumentation
+
+Every source below is v0.30.0; added installed-source hashes are in the existing
+source manifest. Current/latest docs are not used as implementation proof.
+
+| File | Function/location | Relevant invariant |
+| --- | --- | --- |
+| `vllm/v1/core/sched/scheduler.py` | `schedule` 561; `_update_after_schedule` 1520 | Token accounting unifies prefill/decode; advance computed counts after scheduling; chunk state includes async placeholders. |
+| `vllm/v1/core/sched/async_scheduler.py` | `_update_after_schedule` 19; `_update_request_with_output` 51 | Placeholder counts are not emitted IDs; cache only computed non-placeholder tokens. |
+| `vllm/v1/core/kv_cache_manager.py` | `get_computed_blocks` 265; `allocate_slots` 370 | Only complete prefix blocks hit; recompute final token for logits; slot allocation tracks computed/new/lookahead regions. |
+| `vllm/v1/worker/gpu_model_runner.py` | `_prepare_inputs` 1971; `_build_attention_metadata` 2297; `_get_slot_mappings` 4103 | Actual query IDs/positions depend on computed offsets; slot tables map into KV; CPU token tables can contain async placeholders. Capture actual GPU inputs. |
+| same runner | `_determine_batch_execution_and_padding` 3953; `execute_model` 4282–4469 | Uniform-decode/shape selects graph mode and padding before forward; observe its original return without changing it. |
+| `vllm/v1/attention/backends/flash_attn.py` | `FlashAttentionImpl.forward` 1166; `do_kv_cache_update` 1438 | Attention reads cached K/V; slot mapping drives `reshape_and_cache_flash` writes. No kernel defect is inferred. |
+| `vllm/model_executor/models/qwen2.py` | `Qwen2ForCausalLM.compute_logits` 511 | Head projection calls model LogitsProcessor; reviewed return remains the raw measurement point. |
+| same runner | `sample_tokens` 4566–4605; `_sample` 3658 | Grammar mutates logits before `_sample`; its return contains actual GPU sampled IDs; retain original tensors/returns. |
+| `vllm/v1/sample/sampler.py` | `forward` 73; `sample` 244 | Sampler converts to float32/processes logits; greedy branch returns argmax. Raw head logits and masked decisions are distinct. |
+| `vllm/v1/structured_output/__init__.py` | `grammar_init` 115; `grammar_bitmask`; `accept_tokens` 438 | Resolved backend creates grammar; mask derives from current grammar; committed generated tokens advance grammar. |
+| `vllm/v1/structured_output/backend_xgrammar.py` | `accept_tokens` 157; `fill_bitmask` 208 | Processed-token count advances per accepted token; next mask derives from matcher state. Unsupported state is not guessed. |
+| `vllm/model_executor/layers/quantization/auto_awq.py` | `AutoAWQMarlinLinearMethod.create_weights` 432–447; `apply` 512 | Quantized kernel selection is an alternative numerical contributor; this diagnostic changes none of it. |
+| `vllm/v1/engine/input_processor.py` / `output_processor.py` | `assign_request_id` 266–279 / request construction 384 | Internal ID returned by add_request differs from the external label returned in RequestOutput. Abort/capture/cache use internal ownership. |
+
+Pinned upstream reset-cache tests listed above were inspected, not executed.
+They establish reset contracts, not GPU numerical equivalence.
+
+### Decision precedence
+
+First reject instrumentation/provenance/prefix/grammar mismatches as
+`INCONCLUSIVE`. Then classify an earlier mismatch as
+`EARLIER_DIVERGENCE_OBSERVED`. At 549, identical vectors and argmax select
+`H_TRAJECTORY_NOT_SUPPORTED` (case D takes precedence over overlapping case B).
+Otherwise sequential raw/sample=4164 versus forced raw/sample=3752 selects
+`H_TRAJECTORY_SUPPORTED`; sequential raw/sample=3752 selects
+`HISTORICAL_TRAJECTORY_NOT_REPRODUCED`. Other combinations remain
+`INCONCLUSIVE`. No tolerance is invented. Every outcome retains
+`ROOT_CAUSE_NOT_PROVEN` and `FULL_SWEEP_BLOCKED`.
+
+H_TRAJECTORY is execution-history dependence at identical logical input, not an
+assertion that a particular KV/kernel component is defective. Alternatives remain
+quantized GEMM/attention shape, chunked prefill, CUDA graphs, allocator/block
+history, first-request/compiler state, grammar state and scheduler/batching.
+Equal engine flags alone do not make those histories identical.
+
+### Review gate and future invocation
+
+The initial implementation phase stopped at **LOCAL FOLLOW-UP DIAGNOSTIC READY
+FOR REVIEW** after CPU verification. The subsequent explicitly authorized final
+review permits a new commit and normal push after all publication gates pass.
+No GPU, Colab, Modal, sweep, PR or Trello operation is authorized in that review.
+Only after publication and another run review, with the same pinned
+environment and fresh external artifact directory, prepare with:
+
+```text
+python -B -m experiments.run_m4_cache_probe prepare --diagnostic-mode decode_trajectory --source-commit <reviewed-published-sha> --out <fresh-run-directory>
+```
+
+The existing `run` command reads the prepared mode from input.json. The existing
+`analyze` command verifies the final manifest and independently reduces the new
+saved full vectors; it does not mutate artifacts. Source cleanliness prevents
+running the current uncommitted patch as immutable GPU evidence.
+
+CPU verification (no claim of GPU numerical correctness):
+
+```powershell
+$env:PYTHONPATH="$PWD;$PWD\src"
+python -B -m pytest -q -rs -p no:cacheprovider tests/test_m4_decode_trajectory.py tests/test_m4_cache_probe.py tests/test_m4_readiness.py tests/test_m4_lossless.py tests/test_m4_treatments.py tests/test_m4_lifecycle.py
+git diff --check
+```
+
+Initial implementation baseline: **143 passed, 4 skipped, 0 failed**. The skipped tests are
+`test_m4_treatments.py:49,70,77` and `test_m4_lifecycle.py:9`; their optional
+preserved installed-source cache is unavailable. New trajectory hook, teardown,
+first-mismatch and serialization tests all execute on CPU. No GPU numerical
+claim follows from these tests. Tracked and new-file whitespace checks are clean.
+
+## Final pre-publication review
+
+Two MAJOR findings were reproduced and remediated before publication:
+
+- Offline analysis accepted matching but incorrect effective flags and did not
+  bind condition source, run identity and delivered output to the prepared case.
+  The analyzer now rechecks the exact frozen historical input, validates the
+  reviewed effective configuration, binds executed/manifest/source/run IDs, and
+  verifies actual delivered tokens, the selected decision and masked stage.
+  The expected flags are shared with the live gate without changing their values.
+- Collection errors could discard retained tensors before the normal RPC result
+  was serialized. A failed collection now preserves transferable raw and masked
+  vectors plus actual query chunks in `failed-<condition>-vectors.json`, before
+  re-raising. Base64 encodes native-byte-order IEEE754 float32 bytes, with original
+  captured dtype, shape and byte order recorded. This preserves NaN/Inf values
+  too, without treating an invalid capture as valid scientific evidence.
+
+The hook tests exercise indices 0, 1, 548 and 549, actual sampled-token feedback,
+reused input/logit buffers, later in-flight work, exceptions and cleanup. New
+regression tests cover all provenance corrections and failed-vector preservation.
+No teacher forcing or production semantic change was introduced. No unresolved
+BLOCKER or MAJOR remained after this review. MINOR/NIT: none requiring remediation.
+
+Final required CPU suite: **160 passed, 4 skipped, 0 failed**. The same four
+optional pinned installed-source-cache tests remain SKIPPED for the reasons
+listed above. All 26 pinned reference source hashes and tracked/new-file
+whitespace checks passed. GPU numerical correctness remains untested.
+
+The publication gate authorizes only a new descendant of `873cf2c...` on
+`origin/fix/m4-02-06-greedy-repro`, after confirming that remote target. It does
+not authorize rewriting the original commit or starting the controlled GPU run.
