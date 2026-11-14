@@ -195,6 +195,31 @@ def validate_source_binding(
     )
 
 
+SOURCE_POLICIES = ("restore", "strict")
+
+
+def restore_source(payload: dict[str, Any], expected_source: object) -> list[str]:
+    """[M5-01, 14/11] Put the pipeline-owned ``source`` block back from the request.
+
+    The model is asked to echo ``source`` (ids, image path, OCR text) verbatim, and a
+    7B model sometimes slips while copying (``uploads/up_f6_f63076ff8332.jpg`` on the
+    web, a stray quote in ``raw_text`` on 5/30 W1_v3 devset receipts). These values
+    are known to the pipeline, so they are restored instead of failing the invoice;
+    every restored key is reported as a normalization.
+    """
+    if not isinstance(expected_source, dict):
+        return []
+    actual = payload.get("source")
+    if actual == expected_source:
+        return []
+    payload["source"] = copy.deepcopy(expected_source)
+    if not isinstance(actual, dict):
+        return ["source restored from the request (missing in the answer)"]
+    keys = sorted(set(actual) | set(expected_source))
+    return [f"source.{key} restored from the request" for key in keys
+            if actual.get(key) != expected_source.get(key)]
+
+
 def normalize_canonical_payload(
     payload: dict[str, Any],
     expected_source: object,
@@ -299,12 +324,18 @@ class Node1Extractor:
         client: OpenAICompatibleClient,
         model: str,
         json_schema_path: Path = DEFAULT_JSON_SCHEMA_PATH,
+        source_policy: str = "restore",
     ) -> None:
         if not model:
             raise ValueError("model must be non-empty")
+        if source_policy not in SOURCE_POLICIES:
+            raise ValueError(f"source_policy must be one of {SOURCE_POLICIES}, got {source_policy!r}")
         self.client = client
         self.model = model
         self.json_schema_path = json_schema_path
+        # "restore": the pipeline owns ``source`` (default since 14/11).
+        # "strict": a copy slip fails the sample, as in the W1 runs reported before 14/11.
+        self.source_policy = source_policy
 
     def preflight(self) -> None:
         """Fail fast before the sample loop if endpoint/model is unusable."""
@@ -442,6 +473,8 @@ class Node1Extractor:
                 payload,
                 expected_source,
             )
+            if self.source_policy == "restore":
+                normalizations += restore_source(payload, expected_source)
             validate_source_binding(payload, expected_source)
         except ExtractorError as exc:
             return self._failure(

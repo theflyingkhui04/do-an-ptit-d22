@@ -484,12 +484,14 @@ class Node1ExtractorRuntimeTests(unittest.TestCase):
     def make_extractor(
         self,
         response: dict,
+        source_policy: str = "restore",
     ) -> tuple[Node1Extractor, FakeClient]:
         client = FakeClient(response=response)
         extractor = Node1Extractor(
             client=client,  # type: ignore[arg-type]
             model="qwen2.5-7b-vanilla",
             json_schema_path=SCHEMA_PATH,
+            source_policy=source_policy,
         )
         return extractor, client
 
@@ -634,13 +636,14 @@ class Node1ExtractorRuntimeTests(unittest.TestCase):
         self.assertIsNone(result.raw_response)
         self.assertIsNotNone(result.latency_ms)
 
-    def test_run_request_source_mismatch_is_sample_failure(self) -> None:
+    def test_run_request_source_mismatch_is_sample_failure_when_strict(self) -> None:
         payload = load_example()
         payload["source"]["raw_text"] = "model changed source"
         extractor, _ = self.make_extractor(
             response_with_content(
                 json.dumps(payload, ensure_ascii=False)
-            )
+            ),
+            source_policy="strict",
         )
         row = make_request_row(load_example())
 
@@ -657,6 +660,40 @@ class Node1ExtractorRuntimeTests(unittest.TestCase):
             ExtractorStage.SOURCE_BINDING,
         )
         self.assertIsNotNone(result.raw_response)
+
+    def test_run_request_restores_a_source_the_model_copied_wrong(self) -> None:
+        """The source block belongs to the pipeline: a copy slip (seen live as
+        ``uploads/up_f6_f63076ff8332.jpg``) is put back, noted, and the invoice stays valid."""
+        expected = make_request_row(load_example())["expected_source"]
+        payload = load_example()
+        payload["source"]["image_path"] = payload["source"]["image_path"].replace("/", "/x_", 1)
+        payload["source"]["raw_text"] = payload["source"]["raw_text"] + '"'
+        extractor, _ = self.make_extractor(
+            response_with_content(json.dumps(payload, ensure_ascii=False))
+        )
+
+        result = extractor.run_request(make_request_row(load_example()))
+
+        self.assertIsInstance(result, Node1Success)
+        assert isinstance(result, Node1Success)
+        self.assertEqual(result.canonical_payload["source"], expected)
+        self.assertIn("source.image_path restored from the request", result.normalizations)
+        self.assertIn("source.raw_text restored from the request", result.normalizations)
+
+    def test_run_request_restores_a_missing_source(self) -> None:
+        payload = load_example()
+        del payload["source"]
+        extractor, _ = self.make_extractor(
+            response_with_content(json.dumps(payload, ensure_ascii=False))
+        )
+        result = extractor.run_request(make_request_row(load_example()))
+        self.assertIsInstance(result, Node1Success)
+        assert isinstance(result, Node1Success)
+        self.assertIn("source restored from the request (missing in the answer)", result.normalizations)
+
+    def test_unknown_source_policy_is_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            Node1Extractor(client=FakeClient(), model="m", source_policy="lenient")  # type: ignore[arg-type]
 
     def test_run_request_schema_error_is_sample_failure(self) -> None:
         payload = load_example()

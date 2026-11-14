@@ -133,18 +133,19 @@ def test_no_text_or_ocr_down_fails_at_ocr_without_calling_node1():
         assert called == [] and store.saved == [] and len(ocr.calls) == 1
 
 
-def test_source_binding_failure_on_every_lane_stores_nothing():
+def test_a_source_copied_wrong_is_restored_and_reported():
     def wrong_source(request):
-        return node1_answer(request, mutate=lambda p: p["source"].update(raw_text="BỊA"))
+        return node1_answer(request, mutate=lambda p: p["source"].update(image_path="uploads/up_f6_x.jpg"))
 
     lanes = lane_callers(adaptive=FakeCaller("adaptive", content=wrong_source),
                          vanilla=FakeCaller("vanilla", content=wrong_source))
     app, store, _ = build(lanes=lanes)
     with TestClient(app) as client:
         job = finished_job(client, upload(client).json()["job_id"])
-    assert job["status"] == "failed" and job["error"].startswith("node1:")
-    assert "SOURCE_BINDING_ERROR" in job["result"]["runs"][LANE_IDS["adaptive"]]["error"]
-    assert store.saved == []
+    assert job["status"] == "done" and len(store.saved) == 1
+    run = job["result"]["runs"][LANE_IDS["adaptive"]]
+    assert run["valid"] is True and run["source_restored"] == ["image_path"]
+    assert job["result"]["invoice"]["source"]["image_path"] == f"uploads/{job['job_id']}.jpg"
 
 
 def test_unknown_job_is_404():

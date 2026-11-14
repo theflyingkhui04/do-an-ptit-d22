@@ -40,6 +40,7 @@ from src.pipeline.extractor import (  # noqa: E402
     Node1Extractor,
     Node1Failure,
     Node1Success,
+    SOURCE_POLICIES,
 )
 from src.pipeline.openai_compatible import OpenAICompatibleClient  # noqa: E402
 from src.pipeline.validation import DEFAULT_JSON_SCHEMA_PATH  # noqa: E402
@@ -381,6 +382,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument(
+        "--source-policy",
+        choices=SOURCE_POLICIES,
+        default="restore",
+        help="restore: the pipeline puts the source block back (default since 14/11); "
+        "strict: a source copy slip fails the sample, as in the runs reported before 14/11",
+    )
+    parser.add_argument(
         "--requests",
         type=Path,
         default=DEFAULT_REQUESTS_PATH,
@@ -540,6 +548,7 @@ def main(argv: list[str] | None = None) -> int:
         client=client,
         model=args.model,
         json_schema_path=args.json_schema,
+        source_policy=args.source_policy,
     )
 
     # A wrong database or an existing run must stop before any server call.
@@ -818,6 +827,7 @@ def main(argv: list[str] | None = None) -> int:
         "run_id": args.run_id,
         "schema_version": schema_version,
         "prompt_version": prompt_version,
+        "source_policy": args.source_policy,
         "workload_id": workload_id,
         "dataset_version": dataset_version,
         "w1_package_sha256": package_sha256,

@@ -140,7 +140,9 @@ class FakeExtractor:
     latencies: list[float | None] = []
     preflight_calls = 0
 
-    def __init__(self, client, model, json_schema_path) -> None:  # noqa: ANN001
+    def __init__(self, client, model, json_schema_path, source_policy="restore") -> None:  # noqa: ANN001
+        self.source_policy = source_policy
+        type(self).last_policy = source_policy
         self.queue = list(type(self).latencies)
         self.example = json.loads(EXAMPLE_JSON.read_text(encoding="utf-8"))
 
@@ -245,6 +247,13 @@ class RunnerMainTests(unittest.TestCase):
         self.run_main([100.0], "--hardware", "modal-A10G")
         self.assertEqual(self.summary()["hardware"], "modal-A10G")
         self.assertIn("modal-A10G", self.query("SELECT notes FROM extraction_runs")[0][0])
+
+    def test_source_policy_defaults_to_restore_and_is_recorded(self) -> None:
+        self.run_main([100.0])
+        self.assertEqual(self.summary()["source_policy"], "restore")
+        self.run_main([100.0], "--source-policy", "strict", "--replace-run")
+        self.assertEqual(self.summary()["source_policy"], "strict")
+        self.assertEqual(FakeExtractor.last_policy, "strict")
 
     def test_hardware_defaults_to_null(self) -> None:
         self.run_main([100.0])

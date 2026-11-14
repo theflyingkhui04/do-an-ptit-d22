@@ -143,8 +143,10 @@ class InvoicePipeline:
         outcome = Node1Extractor(caller, caller.model).run_request(row)
         metrics = caller.last_metrics.as_dict() if caller.last_metrics else {}
         ok = isinstance(outcome, Node1Success)
+        restored = [n.split(" ", 1)[0].removeprefix("source.") for n in (outcome.normalizations if ok else ())
+                    if n.startswith("source") and "restored from the request" in n]
         report = {**metrics, "endpoint_id": endpoint["endpoint_id"], "name": caller.lane, "model": caller.model,
-                  "valid": ok,
+                  "valid": ok, "source_restored": restored,
                   "error": None if ok else self._redact(f"{outcome.error_code.value} at {outcome.stage.value}: "
                                                          f"{outcome.message}")[:400]}
         return {"success": outcome if ok else None, "report": report}
