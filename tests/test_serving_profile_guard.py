@@ -39,7 +39,7 @@ def test_serve_fails_fast_when_missing_profile_without_fallback_flag(capsys):
         ret = main(["serve", "--backend", "local", "--dry-run"])
         assert ret == 1
         captured = capsys.readouterr()
-        assert "Chưa có hồ sơ độ trễ cho GPU" in captured.out
+        assert "No latency profile for GPU" in captured.out or "Chưa có hồ sơ độ trễ cho GPU" in captured.out
         assert "flexsds profile --benchmark" in captured.out
 
 

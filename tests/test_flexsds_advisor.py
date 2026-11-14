@@ -27,7 +27,7 @@ def invoke(args, cwd):
 
 
 @pytest.mark.parametrize("args, expected", [
-    (["--version"], "0.2.0-alpha"),
+    (["--version"], "0.2.0"),
     (["--help"], "{detect,profile,stop,auth,serve,chat,monitor}"),
     (["detect"], "Hardware:"),
     (["profile"], "Linked hardware profile:"),

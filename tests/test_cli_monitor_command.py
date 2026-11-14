@@ -76,7 +76,7 @@ def test_monitor_format_record():
     line = TelemetryMonitor.format_record(record)
     assert "Step 10" in line
     assert "k=4" in line
-    assert "chấp nhận=3/4" in line
+    assert "accepted=3/4" in line or "chấp nhận=3/4" in line
     assert "0.75" in line
 
 

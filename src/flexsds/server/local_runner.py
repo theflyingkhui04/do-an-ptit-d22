@@ -154,8 +154,8 @@ class LocalServingRunner:
             return None
 
         if not self.check_port_available(effective_port):
-            print(f"\n\033[31m[Lỗi]\033[0m Cổng {effective_port} đang bị chiếm dụng bởi tiến trình khác.")
-            print(f"  Gợi ý: Dùng cờ --port <cổng_khác> hoặc chạy: flexsds stop")
+            print(f"\n\033[31m[Error]\033[0m Port {effective_port} is already in use by another process.")
+            print(f"  Tip: Use '--port <other_port>' or run: flexsds stop")
             return None
 
         if background and os.name == "nt":

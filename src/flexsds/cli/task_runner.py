@@ -95,20 +95,20 @@ class TaskRunner:
                 icon = "\033[90m○\033[0m"
                 lines.append(f"  {icon} [{idx}/{len(self.tasks)}] \033[90m{t.name}\033[0m")
 
-        # Footer hướng dẫn phím tắt
+        # Shortcut help footer
         if self.show_details:
-            footer = "  \033[90m[\033[36mCtrl+O\033[90m: Thu gọn chi tiết log | \033[36mCtrl+C\033[90m: Dừng]\033[0m"
+            footer = "  \033[90m[\033[36mCtrl+O\033[90m: Hide log details | \033[36mCtrl+C\033[90m: Stop]\033[0m"
         else:
-            footer = "  \033[90m[\033[36mCtrl+O\033[90m: Xem chi tiết tác vụ | \033[36mCtrl+C\033[90m: Dừng]\033[0m"
+            footer = "  \033[90m[\033[36mCtrl+O\033[90m: View task details | \033[36mCtrl+C\033[90m: Stop]\033[0m"
 
         lines.append("")
         lines.append(footer)
 
-        # Nếu chế độ mở rộng đang bật, hiển thị khung log của tác vụ đang chạy hoặc vừa chạy
+        # Expanded detail log view
         if self.show_details and active_task and active_task.logs:
             lines.append("")
-            lines.append(f"  \033[90m┌─── \033[1;37mNhật ký tác vụ: {active_task.name}\033[0m \033[90m" + "─" * 30 + "┐\033[0m")
-            recent_logs = active_task.logs[-8:]  # Hiển thị 8 dòng gần nhất
+            lines.append(f"  \033[90m┌─── \033[1;37mTask log: {active_task.name}\033[0m \033[90m" + "─" * 30 + "┐\033[0m")
+            recent_logs = active_task.logs[-8:]  # 8 most recent lines
             for log_line in recent_logs:
                 lines.append(f"  \033[90m│\033[0m \033[90m{log_line[:76]}\033[0m")
             lines.append("  \033[90m└" + "─" * 60 + "┘\033[0m")

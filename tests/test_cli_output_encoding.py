@@ -64,7 +64,7 @@ def test_banner_falls_back_without_losing_identity(monkeypatch, hardware, encodi
     result = sink.getvalue()
     assert result.isascii()
     assert "\x1b" not in result
-    assert all(word in result for word in ("FlexSDS", "PTIT", "NVIDIA L4", "sm_89", "Modal"))
+    assert all(word in result for word in ("FlexSDS", "PTIT", "NVIDIA L4", "sm_89", "Not yet configured"))
 
 
 def test_missing_encoding_and_isatty_are_safe(monkeypatch, hardware):

@@ -6,10 +6,22 @@ The web_server decorator owns startup readiness and endpoint exposure.
 from __future__ import annotations
 import json
 import os
+import sys
 import subprocess
 from pathlib import Path
 
-from flexsds.server.local_runner import LocalServingRunner
+# Ensure flexsds package root is in sys.path when executed directly by modal CLI
+_pkg_root = str(Path(__file__).resolve().parents[2])
+if _pkg_root not in sys.path:
+    sys.path.insert(0, _pkg_root)
+
+try:
+    from flexsds.server.local_runner import LocalServingRunner
+except ModuleNotFoundError:
+    try:
+        from src.flexsds.server.local_runner import LocalServingRunner
+    except ModuleNotFoundError:
+        from local_runner import LocalServingRunner
 
 APP_NAME = "flexsds-serving"
 SERVING_CONFIG = json.loads(os.environ.get("FLEXSDS_SERVING_CONFIG", "{}"))
@@ -31,10 +43,19 @@ if modal is not None:
         .pip_install("vllm==0.30.0", "fastapi", "psutil")
         .env({"PYTHONPATH": "/root/project:/root/project/src",
               "FLEXSDS_SERVING_CONFIG": json.dumps(SERVING_CONFIG)})
-        .add_local_dir(str(PROJECT_ROOT / "src"), remote_path="/root/project/src")
-        .add_local_file(str(PROJECT_ROOT / "experiments/scalar_vllm_source_manifest.json"),
-                        remote_path="/root/project/experiments/scalar_vllm_source_manifest.json")
     )
+    src_dir = PROJECT_ROOT / "src"
+    if src_dir.exists():
+        image = image.add_local_dir(str(src_dir), remote_path="/root/project/src")
+    else:
+        flexsds_dir = Path(__file__).resolve().parents[1]
+        image = image.add_local_dir(str(flexsds_dir), remote_path="/root/project/src/flexsds")
+
+    manifest_file = PROJECT_ROOT / "experiments/scalar_vllm_source_manifest.json"
+    if manifest_file.exists():
+        image = image.add_local_file(str(manifest_file),
+                                     remote_path="/root/project/experiments/scalar_vllm_source_manifest.json")
+
     volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)
 
     @app.function(image=image, gpu=GPU,

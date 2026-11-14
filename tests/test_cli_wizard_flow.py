@@ -7,7 +7,7 @@ from flexsds.cli.main import parse_args
 def test_wizard_platform_selection_structure():
     assert "Modal.com" in PLATFORM_CHOICES[0]
     assert "Google Colab" in PLATFORM_CHOICES[1]
-    assert "Tự dùng GPU" in PLATFORM_CHOICES[2]
+    assert "Local vLLM" in PLATFORM_CHOICES[2]
 
 
 def test_cli_stop_command_parser():

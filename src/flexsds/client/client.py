@@ -16,10 +16,15 @@ class FlexSDSClient:
 
     base_url: str
     api_key: str
+    last_usage: Optional[Dict[str, Any]] = None
 
     def __init__(self, base_url: str = "http://localhost:8000/v1", api_key: Optional[str] = None) -> None:
-        self.base_url = base_url.rstrip("/")
+        clean_url = base_url.rstrip("/")
+        if not clean_url.endswith("/v1"):
+            clean_url = f"{clean_url}/v1"
+        self.base_url = clean_url
         self.api_key = api_key or "EMPTY"
+        self.last_usage = None
 
     def _make_request(
         self,
@@ -73,12 +78,14 @@ class FlexSDSClient:
         model: str = "qwen2.5-7b-adaptive",
         temperature: float = 0.0,
     ) -> Iterator[str]:
-        """Gửi yêu cầu trò chuyện và trả về từng token văn bản (streaming SSE)."""
+        """Sends chat request and yields streamed response tokens (SSE)."""
+        self.last_usage = None
         payload = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
         req = self._make_request("chat/completions", data=payload)
 
@@ -97,6 +104,8 @@ class FlexSDSClient:
                     break
                 try:
                     chunk = json.loads(chunk_str)
+                    if "usage" in chunk and chunk["usage"]:
+                        self.last_usage = chunk["usage"]
                     choices = chunk.get("choices", [])
                     if choices:
                         delta = choices[0].get("delta", {})

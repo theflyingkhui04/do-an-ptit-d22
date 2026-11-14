@@ -268,14 +268,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         if cost_model is None:
             print(
-                f"\n\033[1;31m✖ [Lỗi phần cứng] Chưa có hồ sơ độ trễ cho GPU '{hw_info.device_name} ({hw_info.sm_architecture})'. "
-                f"Vui lòng chạy lệnh đo đạc: flexsds profile --benchmark (hoặc thêm cờ '--allow-fallback').\033[0m"
+                f"\n\033[1;31m✖ [Hardware Error] No latency profile for GPU '{hw_info.device_name} ({hw_info.sm_architecture})'. "
+                f"Please calibrate using: flexsds profile --benchmark (or pass '--allow-fallback').\033[0m"
             )
             return 1
 
         if profile_name == "conservative_analytical_fallback":
             print(
-                f"  \033[1;33m⚠ [Cảnh báo phần cứng] Sử dụng hồ sơ suy diễn dè dặt ({profile_name} / Conservative Fallback).\033[0m"
+                f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
             )
 
         if args.target and args.draft:

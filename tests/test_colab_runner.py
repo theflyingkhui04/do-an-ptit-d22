@@ -32,3 +32,31 @@ def test_colab_notebook_file_exists():
         data = json.load(f)
     assert "cells" in data
     assert len(data["cells"]) >= 3
+
+
+def test_colab_runner_sync_notebook_config(tmp_path):
+    import json
+    runner = ColabServingRunner()
+    fake_nb = tmp_path / "test_nb.ipynb"
+    fake_nb.write_text(json.dumps({
+        "cells": [
+            {
+                "cell_type": "code",
+                "source": [
+                    'TARGET_MODEL = "old"  #@param {type:"string"}\n',
+                    'DRAFT_MODEL = "old_draft"  #@param {type:"string"}\n',
+                ]
+            }
+        ]
+    }), encoding="utf-8")
+    cfg = {
+        "target_model": "custom/target-model",
+        "draft_model": "custom/draft-model",
+        "draft_method": "draft_model",
+    }
+    success = runner.sync_notebook_config(cfg, notebook_path=str(fake_nb))
+    assert success is True
+    updated = json.loads(fake_nb.read_text(encoding="utf-8"))
+    cell_code = "".join(updated["cells"][0]["source"])
+    assert "custom/target-model" in cell_code
+    assert "custom/draft-model" in cell_code

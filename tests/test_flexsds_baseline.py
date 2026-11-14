@@ -18,7 +18,7 @@ except ModuleNotFoundError:
 
 def test_flexsds_version():
     """Verifies package version format."""
-    assert __version__ == "0.2.0-alpha"
+    assert __version__ == "0.2.0"
 
 
 def test_banner_rendering():

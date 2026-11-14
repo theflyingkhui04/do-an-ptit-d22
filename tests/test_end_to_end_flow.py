@@ -171,5 +171,5 @@ def test_end_to_end_chat_session_with_client_stream(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert "FlexSDS phục vụ thành công!" in captured.out
-    assert "Thống kê suy luận" in captured.out
+    assert "Inference Telemetry" in captured.out or "Thống kê suy luận" in captured.out
     assert "SSE content chunks" in captured.out

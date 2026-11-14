@@ -41,3 +41,17 @@ def test_client_stream_chat_parses_sse(monkeypatch):
     client = FlexSDSClient(base_url="http://localhost:8000/v1")
     tokens = list(client.stream_chat([{"role": "user", "content": "Hi"}], model="qwen2.5-7b-adaptive"))
     assert "".join(tokens) == "Xin chào"
+
+
+def test_client_url_normalization():
+    c1 = FlexSDSClient(base_url="https://know-gap-detroit-autos.trycloudflare.com")
+    assert c1.base_url == "https://know-gap-detroit-autos.trycloudflare.com/v1"
+
+    c2 = FlexSDSClient(base_url="https://know-gap-detroit-autos.trycloudflare.com/")
+    assert c2.base_url == "https://know-gap-detroit-autos.trycloudflare.com/v1"
+
+    c3 = FlexSDSClient(base_url="https://know-gap-detroit-autos.trycloudflare.com/v1")
+    assert c3.base_url == "https://know-gap-detroit-autos.trycloudflare.com/v1"
+
+    c4 = FlexSDSClient(base_url="https://know-gap-detroit-autos.trycloudflare.com/v1/")
+    assert c4.base_url == "https://know-gap-detroit-autos.trycloudflare.com/v1"
