@@ -6,7 +6,7 @@ import pytest
 from flexsds.server.local_runner import LocalServingRunner
 
 
-def test_local_runner_build_command_speculative_json():
+def test_local_runner_build_command_eagle3_omits_incompatible_scheduler():
     runner = LocalServingRunner()
     config = {
         "serving": {
@@ -15,10 +15,30 @@ def test_local_runner_build_command_speculative_json():
             "draft_method": "eagle3",
             "use_heterogeneous_vocab": True,
             "port": 8000,
+            "enable_adaptive": True,
         }
     }
     cmd = runner.build_command(config)
-    assert "vllm" in cmd[0] or "python" in cmd[0]
+    assert "--speculative-config" in cmd
+    spec_idx = cmd.index("--speculative-config") + 1
+    assert "num_speculative_tokens_per_batch_size" not in cmd[spec_idx]
+    assert "--scheduler-cls" not in cmd
+    assert "--distributed-executor-backend" not in cmd
+
+
+def test_local_runner_build_command_draft_model_includes_adaptive_scheduler():
+    runner = LocalServingRunner()
+    config = {
+        "serving": {
+            "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+            "draft_model": "Qwen/Qwen2.5-0.5B-Instruct",
+            "draft_method": "draft_model",
+            "use_heterogeneous_vocab": False,
+            "port": 8000,
+            "enable_adaptive": True,
+        }
+    }
+    cmd = runner.build_command(config)
     assert "--speculative-config" in cmd
     spec_idx = cmd.index("--speculative-config") + 1
     assert "num_speculative_tokens_per_batch_size" in cmd[spec_idx]
@@ -52,8 +72,8 @@ def test_local_runner_build_command_contains_lineage_executor():
     cfg = {
         "serving": {
             "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
-            "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
-            "draft_method": "eagle3",
+            "draft_model": "Qwen/Qwen2.5-0.5B-Instruct",
+            "draft_method": "draft_model",
             "use_heterogeneous_vocab": True,
             "port": 8000,
             "enable_adaptive": True,

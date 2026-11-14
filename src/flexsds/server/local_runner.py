@@ -59,13 +59,17 @@ class LocalServingRunner:
             quantization = serving_cfg.get("quantization", "none")
             dtype = serving_cfg.get("dtype", "bfloat16")
 
+        is_eagle = (draft_method == "eagle3")
+
         speculative_config: Dict[str, Any] = {
             "method": draft_method,
             "model": draft_model,
             "num_speculative_tokens": 4,
-            "num_speculative_tokens_per_batch_size": [[1, 32, 4]],
             "draft_sample_method": "greedy",
         }
+        if not is_eagle:
+            speculative_config["num_speculative_tokens_per_batch_size"] = [[1, 32, 4]]
+
         if use_hetero:
             speculative_config["use_heterogeneous_vocab"] = True
 
@@ -94,7 +98,8 @@ class LocalServingRunner:
         if quantization != "none":
             cmd.extend(["--quantization", quantization])
 
-        if serving_cfg.get("enable_adaptive", True):
+        # Chỉ gắn scheduler tùy biến cho phương pháp draft_model truyền thống
+        if serving_cfg.get("enable_adaptive", True) and not is_eagle:
             cmd.extend([
                 "--speculative-config", json.dumps(speculative_config),
                 "--scheduler-cls", "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
@@ -102,9 +107,10 @@ class LocalServingRunner:
                 "--per-request-spec-decode-metrics", "summary",
             ])
         else:
-            # Static speculation uses vLLM's default scheduler/executor, not the adaptive pair.
-            speculative_config.pop("num_speculative_tokens_per_batch_size", None)
-            cmd.extend(["--speculative-config", json.dumps(speculative_config)])
+            cmd.extend([
+                "--speculative-config", json.dumps(speculative_config),
+                "--per-request-spec-decode-metrics", "summary",
+            ])
 
         return cmd
 
@@ -121,7 +127,8 @@ class LocalServingRunner:
         """Thiết lập các biến môi trường cho FlexSDS Adaptive Scheduler."""
         serving_cfg = config.get("serving", config)
         env = dict(os.environ)
-        project_root = str(Path(__file__).resolve().parents[3])
+        resolved = Path(__file__).resolve()
+        project_root = str(resolved.parents[3]) if len(resolved.parents) > 3 else "/root/project"
         existing_pythonpath = env.get("PYTHONPATH", "")
         if project_root not in existing_pythonpath:
             env["PYTHONPATH"] = f"{project_root}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else project_root
