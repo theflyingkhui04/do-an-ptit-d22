@@ -1,0 +1,62 @@
+[
+  {
+    "request": "Báo cáo chi tiêu và dashboard của các hoá đơn gần nhất",
+    "limit": 10,
+    "dashboard_status": "ok",
+    "charts": [
+      "invoices:bar",
+      "by_store:bar"
+    ],
+    "report_status": "ok",
+    "completion_tokens": 690,
+    "tpot_ms": 11.952104499275155,
+    "numbers": 61,
+    "ungrounded": [],
+    "timings_ms": {
+      "data": 4082,
+      "dashboard": 3840,
+      "report": 9443
+    },
+    "text": "Báo cáo chi tiêu và dashboard của các hoá đơn gần nhất\n\n1. Tổng số hoá đơn và tổng tiền:\n   - Tổng số hoá đơn: 10\n   - Tổng tiền: 2.201.808 đồng\n\n2. Tổng tiền theo cửa hàng:\n   - MINIMART ANAN: 8 hoá đơn, tổng tiền 1.573.058 đồng\n   - MINIMART: 1 hoá đơn, tổng tiền 553.750 đồng\n   - NHA SACH GD-TC CAM PHA: 1 hoá đơn, tổng tiền 75.000 đồng\n\n3. Tổng tiền theo ngày lập:\n   - 2020-08-12: 2 hoá đơn, tổng tiền 258.510 đồng\n   - 2020-08-14: 1 hoá đơn, tổng tiền 75.000 đồng\n   - 2020-08-15: 2 hoá đơn, tổng tiền 722.750 đồng\n   - 2020-08-16: 5 hoá đơn, tổng tiền 1.145.548 đồng\n\n4. Mặt hàng mua nhiều nhất:\n   - Ovatine hop 180ml NT: 48 đơn vị, tổng tiền 295.008 đồng\n   - 29100548000 Mi haohao 75g NT: 30 đơn vị, tổng tiền 95.010 đồng\n   - Bot canh hai chau 190g: 10 đơn vị, tổng tiền 35.400 đồng\n   - Sua dau nanh goldsoy 200ml NT: 10 đơn vị, tổng tiền 33.000 đồng\n   - Kem sua chua well yo cac lo NT: 7 đơn vị, tổng tiền 24.500 đồng\n   - 291001210000 Bot canh hai chau 190g NT: 6 đơn vị, tổng tiền 21.000 đồng\n   - Vo ke ngang 200 tr: 5 đơn vị, tổng tiền 75.000 đồng\n   - Bun bo hue va bun gio heo: 4 đơn vị, tổng tiền 26.000 đồng\n   - Sua chua nha dam 100g NT: 4 đơn vị, tổng tiền 26.000 đồng\n\n5. Thuế theo loại và thuế suất:\n   - Dữ liệu về thuế chưa được cung cấp.\n\nHạn chế của dữ liệu:\n- Dữ liệu về thuế chưa được cung cấp, do đó không thể tính toán tổng tiền thuế.\n- Không có thông tin về số lượng mặt hàng cụ thể trong mỗi hoá đơn, chỉ có tổng số mặt hàng.\n- Dữ liệu về mặt hàng mua nhiều nhất chỉ bao gồm 10 mặt hàng, có thể còn nhiều mặt hàng khác không được liệt kê."
+  },
+  {
+    "request": "Cửa hàng nào chi nhiều nhất? So sánh các cửa hàng",
+    "limit": null,
+    "dashboard_status": "ok",
+    "charts": [
+      "by_store:bar"
+    ],
+    "report_status": "ok",
+    "completion_tokens": 579,
+    "tpot_ms": 12.70415224912367,
+    "numbers": 50,
+    "ungrounded": [],
+    "timings_ms": {
+      "data": 3800,
+      "dashboard": 1468,
+      "report": 8672
+    },
+    "text": "Báo cáo phân tích chi phí của các cửa hàng:\n\n1. **Cửa hàng chi nhiều nhất:**\n   - Cửa hàng MINIMART ANAN đã chi tổng cộng 2.904.594 đồng, là cửa hàng chi nhiều nhất trong phạm vi dữ liệu.\n\n2. **Cửa hàng chi ít nhất:**\n   - Cửa hàng Saigon Co.op đã chi 27.200 đồng, là cửa hàng chi ít nhất trong phạm vi dữ liệu.\n\n3. **Tổng tiền theo cửa hàng:**\n   - MINIMART ANAN: 2.904.594 đồng\n   - MINIMART: 553.750 đồng\n   - CUA HANG NAM OANH: 171.500 đồng\n   - NHA SACH GD-TC CAM PHA: 75.000 đồng\n   - MINIMARTANAN: 63.750 đồng\n   - THUC COFFEE: 52.000 đồng\n   - Saigon Co.op: 27.200 đồng\n\n4. **Tổng tiền theo ngày lập:**\n   - 2019-04-21: 52.000 đồng\n   - 2019-09-23: 27.200 đồng\n   - 2020-08-09: 234.016 đồng\n   - 2020-08-10: 366.000 đồng\n   - 2020-08-11: 16.500 đồng\n   - 2020-08-12: 887.764 đồng\n   - 2020-08-14: 75.000 đồng\n   - 2020-08-15: 722.750 đồng\n   - 2020-08-16: 1.145.548 đồng\n\n**Hạn chế của dữ liệu:**\n- Dữ liệu chỉ bao gồm 25 hóa đơn bán lẻ, nên không thể đánh giá toàn diện về chi phí của các cửa hàng.\n- Không có thông tin về thuế GTGT cho các cửa hàng khác ngoài MINIMART ANAN.\n- Dữ liệu về mặt hàng mua nhiều nhất không liên quan trực tiếp đến chi phí của các cửa hàng.\n\nBáo cáo này dựa hoàn toàn trên dữ liệu đã được cung cấp."
+  },
+  {
+    "request": "Tình hình thuế VAT trong các hoá đơn",
+    "limit": null,
+    "dashboard_status": "ok",
+    "charts": [
+      "taxes:kpi",
+      "by_store:bar",
+      "by_date:bar"
+    ],
+    "report_status": "ok",
+    "completion_tokens": 768,
+    "tpot_ms": 11.551499348110276,
+    "numbers": 87,
+    "ungrounded": [],
+    "timings_ms": {
+      "data": 4251,
+      "dashboard": 2928,
+      "report": 10216
+    },
+    "text": "Báo cáo về thuế VAT trong các hóa đơn:\n\n1. Tổng số hóa đơn: 25 hóa đơn.\n2. Tổng số tiền các hóa đơn: 3.847.794 đồng.\n3. Trung bình mỗi hóa đơn: 153.912 đồng.\n4. Số hóa đơn có thuế VAT: 1 hóa đơn.\n\n### Phân tích chi tiết:\n\n1. **Cửa hàng bán hàng nhiều nhất**:\n   - MINIMART ANAN: 17 hóa đơn, tổng tiền 2.904.594 đồng.\n   - MINIMART: 1 hóa đơn, tổng tiền 553.750 đồng.\n   - CUA HANG NAM OANH: 3 hóa đơn, tổng tiền 171.500 đồng.\n   - NHA SACH GD-TC CAM PHA: 1 hóa đơn, tổng tiền 75.000 đồng.\n   - MINIMARTANAN: 1 hóa đơn, tổng tiền 63.750 đồng.\n   - THUC COFFEE: 1 hóa đơn, tổng tiền 52.000 đồng.\n   - Saigon Co.op: 1 hóa đơn, tổng tiền 27.200 đồng.\n\n2. **Ngày lập hóa đơn**:\n   - 2019-04-21: 1 hóa đơn, tổng tiền 52.000 đồng.\n   - 2019-09-23: 1 hóa đơn, tổng tiền 27.200 đồng.\n   - 2020-08-09: 2 hóa đơn, tổng tiền 234.016 đồng.\n   - 2020-08-10: 4 hóa đơn, tổng tiền 366.000 đồng.\n   - 2020-08-11: 1 hóa đơn, tổng tiền 16.500 đồng.\n   - 2020-08-12: 7 hóa đơn, tổng tiền 887.764 đồng.\n   - 2020-08-14: 1 hóa đơn, tổng tiền 75.000 đồng.\n   - 2020-08-15: 2 hóa đơn, tổng tiền 722.750 đồng.\n   - 2020-08-16: 5 hóa đơn, tổng tiền 1.145.548 đồng.\n\n3. **Mặt hàng mua nhiều nhất**:\n   - Gia c đăng ký: 6.500 đơn vị, tổng tiền 63.750 đồng.\n   - 291008350000 SCU susu dau VNM 110ml NT: 3.917 đơn vị, tổng tiền 188.016 đồng.\n   - Ovatine hop 180ml NT: 48 đơn vị, tổng tiền 295.008 đồng.\n   - 29100715000 Sua dan bo duong VNM 110ml NT: 48 đơn vị, tổng tiền 212.016 đồng.\n   - 29104103000 SDN fami hop 200ml N0: 36 đơn vị, tổng tiền "
+  }
+]
