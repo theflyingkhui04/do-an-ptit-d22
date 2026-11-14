@@ -40,7 +40,7 @@ def engine_config(diagnostic_mode='cache_probe',localization_stage=None):
             worker_extension_cls='experiments.m4_decode_trajectory.TrajectoryWorkerExtension')
     elif diagnostic_mode != 'cache_probe':
         raise ValueError('Unknown diagnostic mode')
-    if localization_stage == 'layer_boundaries':
+    if localization_stage in ('layer_boundaries','layer0_internal'):
         if diagnostic_mode != 'decode_trajectory':
             raise ValueError('Layer localization requires explicit trajectory diagnostic mode')
         config['worker_cls'] = 'experiments.m4_layer_probe_runtime.LayerBoundaryWorker'
@@ -72,8 +72,9 @@ def prepare(directory,source_commit,workload,prompt_id,index,diagnostic_mode='ca
     engine_config(diagnostic_mode,localization_stage)  # Reject unknown modes before writing artifacts.
     if localization_stage is not None:
         from experiments.m4_head_input_probe import HEAD_STAGE
+        from experiments.m4_layer0_probe import INTERNAL_STAGE
         from experiments.m4_layer_probe import LAYER_STAGE
-        if diagnostic_mode != 'decode_trajectory' or localization_stage not in (HEAD_STAGE,LAYER_STAGE):
+        if diagnostic_mode != 'decode_trajectory' or localization_stage not in (HEAD_STAGE,LAYER_STAGE,INTERNAL_STAGE):
             raise ValueError('Localization requires explicit trajectory diagnostic mode')
     if diagnostic_mode == 'decode_trajectory' and (workload,prompt_id,index) != ('W1','m0_04_001',549):
         raise ValueError('Trajectory diagnostic is scoped to W1/m0_04_001/index 549')
@@ -154,9 +155,12 @@ def worker(directory,source_commit):
     case = json.loads((directory/'input.json').read_text(encoding='utf8'))
     mode = case.get('diagnostic_mode','cache_probe')
     config = engine_config(mode,case.get('localization_stage'))
-    if case.get('localization_stage') == 'layer_boundaries':
+    if case.get('localization_stage') in ('layer_boundaries','layer0_internal'):
         from experiments.m4_layer_probe_runtime import verify_layer_sources
         manifest = verify_layer_sources()
+        if case.get('localization_stage') == 'layer0_internal':
+            from experiments.m4_layer0_sources import verify_internal_sources
+            manifest = verify_internal_sources()
     if mode == 'decode_trajectory' and (case['workload'],case['prompt_id'],case['generation_index']) != ('W1','m0_04_001',549):
         raise ValueError('Trajectory diagnostic is scoped to W1/m0_04_001/index 549')
     if (case['source_commit'] != source_commit or case['instrumentation_commit'] != source_commit
@@ -358,7 +362,7 @@ def main():
     parser.add_argument('--prompt-id',default='m0_04_001')
     parser.add_argument('--generation-index',type=int,default=549)
     parser.add_argument('--diagnostic-mode',choices=['cache_probe','decode_trajectory'],default='cache_probe')
-    parser.add_argument('--localization-stage',choices=['lm_head_input','layer_boundaries'],default=None)
+    parser.add_argument('--localization-stage',choices=['lm_head_input','layer_boundaries','layer0_internal'],default=None)
     args = parser.parse_args()
     source_commit = validated_source_commit(args.source_commit)
     directory = artifact_path(args.out,kind='new_directory' if args.action=='prepare' else 'directory')
@@ -380,9 +384,11 @@ def main():
                 from experiments.m4_decode_trajectory import analyze_trajectory
                 from experiments.m4_head_input_probe import HEAD_STAGE,analyze_head_input,require_completed_lifecycle
                 from experiments.m4_layer_probe import LAYER_STAGE,analyze_layers
-                if read('input.json').get('localization_stage') in (HEAD_STAGE,LAYER_STAGE):
+                from experiments.m4_layer0_probe import INTERNAL_STAGE,analyze_internal
+                if read('input.json').get('localization_stage') in (HEAD_STAGE,LAYER_STAGE,INTERNAL_STAGE):
                     require_completed_lifecycle(read('hook-cleanup.json'),read('lifecycle.json'))
-                analyze = (analyze_layers if read('input.json').get('localization_stage')==LAYER_STAGE else
+                analyze = (analyze_internal if read('input.json').get('localization_stage')==INTERNAL_STAGE else
+                           analyze_layers if read('input.json').get('localization_stage')==LAYER_STAGE else
                            analyze_head_input if read('input.json').get('localization_stage')==HEAD_STAGE
                            else analyze_trajectory)
                 result = analyze(read('sequential_decode_cold.json'),

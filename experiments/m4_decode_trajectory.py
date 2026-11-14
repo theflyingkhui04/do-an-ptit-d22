@@ -27,6 +27,7 @@ from experiments.m4_treatments import TARGET, TARGET_REVISION
 from experiments.m4_head_input_probe import (HEAD_STAGE,head_contract,clone_head_input,
     serialize_head_input,analyze_head_input)
 from experiments.m4_layer_probe import LAYER_STAGE,serialize_layers,analyze_layers
+from experiments.m4_layer0_probe import INTERNAL_STAGE,serialize_internal,analyze_internal
 
 SCHEMA = 'm4.decode_trajectory.v1'
 VOCABULARY_SIZE = 152064  # Frozen Qwen target; matches preserved probe vectors.
@@ -43,7 +44,7 @@ def _frozen_reference():
 def validate_prepared_case(case, expected_source_commit=None):
     expected = _frozen_reference()
     if (case.get('diagnostic_mode') != 'decode_trajectory'
-            or case.get('localization_stage') not in (None,HEAD_STAGE,LAYER_STAGE)
+            or case.get('localization_stage') not in (None,HEAD_STAGE,LAYER_STAGE,INTERNAL_STAGE)
             or any(case.get(key) != value for key,value in expected.items())):
         raise ValueError('Prepared case differs from frozen historical trajectory')
     source = case.get('source_commit')
@@ -183,14 +184,14 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
         if hasattr(self, '_m4_probe'):
             raise RuntimeError('Diagnostic already installed')
         stage = config.get('localization_stage')
-        if stage not in (None,HEAD_STAGE,LAYER_STAGE):
+        if stage not in (None,HEAD_STAGE,LAYER_STAGE,INTERNAL_STAGE):
             raise RuntimeError('Unsupported localization stage')
-        if stage == LAYER_STAGE and (not hasattr(self,'_m4_layer_runtime')
+        if stage in (LAYER_STAGE,INTERNAL_STAGE) and (not hasattr(self,'_m4_layer_runtime')
                 or not self._m4_layer_runtime.ready):
             raise RuntimeError('Layer observer was not installed before graph capture')
         self._m4_probe = dict(armed=None, output=None, candidate=None, shape=None,
             sampling_output=None, metadata={}, queries={},localization_stage=stage,
-            head_contract=head_contract(runner) if stage in (HEAD_STAGE,LAYER_STAGE) else None)
+            head_contract=head_contract(runner) if stage in (HEAD_STAGE,LAYER_STAGE,INTERNAL_STAGE) else None)
         self._m4_hooks = _InstanceHooks()
         execute, compute = runner.execute_model, runner.model.compute_logits
         sample_tokens, sample = runner.sample_tokens, runner._sample
@@ -200,7 +201,7 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
             self._m4_probe['output'] = output
             self._m4_probe['candidate'] = None
             self._m4_probe['shape'] = None
-            if stage == LAYER_STAGE:
+            if stage in (LAYER_STAGE,INTERNAL_STAGE):
                 self._m4_layer_runtime.current = None
             try:
                 return execute(output, *args, **kwargs)
@@ -219,7 +220,7 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
             head_input, layout = None, None
             s = self._m4_probe
             armed, output = s['armed'], s['output']
-            if s['localization_stage'] in (HEAD_STAGE,LAYER_STAGE) and armed is not None and output is not None:
+            if s['localization_stage'] in (HEAD_STAGE,LAYER_STAGE,INTERNAL_STAGE) and armed is not None and output is not None:
                 ids = runner.input_batch.req_ids
                 if len(ids) != 1 or runner.requests[ids[0]].prompt_token_ids != armed['prompt']:
                     raise RuntimeError('LM-head boundary request isolation mismatch')
@@ -266,7 +267,7 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
                     raise RuntimeError('Missing paired LM-head input measurement')
                 s['candidate']['head_input'] = head_input
                 s['metadata'][index]['head_input_layout'] = layout
-            elif s['localization_stage'] == LAYER_STAGE:
+            elif s['localization_stage'] in (LAYER_STAGE,INTERNAL_STAGE):
                 if head_input is None:
                     raise RuntimeError('Missing final norm layer measurement')
                 table,stamp = self._m4_layer_runtime.snapshot(head_input)
@@ -327,7 +328,7 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
             self.m4_probe_uninstall()
             raise
         return dict(installed=True, measurement_point=MEASUREMENT,
-            layer_contract=(self._m4_layer_runtime.contract if stage==LAYER_STAGE else None),
+            layer_contract=(self._m4_layer_runtime.contract if stage in (LAYER_STAGE,INTERNAL_STAGE) else None),
             synchronization='GPU first-mismatch latch; full-vector host transfer only after abort')
 
     def m4_probe_uninstall(self):
@@ -443,9 +444,11 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
                 raise RuntimeError('LM-head input hook did not retain selected decision')
             result['head_input'] = serialize_head_input(selected['head_input'],
                 meta.pop('head_input_layout'),s['head_contract'],result)
-        elif s['localization_stage'] == LAYER_STAGE:
+        elif s['localization_stage'] in (LAYER_STAGE,INTERNAL_STAGE):
             self._m4_layer_runtime.check_kv_unchanged()
-            result['layer_boundaries'] = serialize_layers(selected['layer_table'],selected['layer_stamp'],
+            serializer = serialize_internal if s['localization_stage']==INTERNAL_STAGE else serialize_layers
+            key = 'layer0_internal' if s['localization_stage']==INTERNAL_STAGE else 'layer_boundaries'
+            result[key] = serializer(selected['layer_table'],selected['layer_stamp'],
                 self._m4_layer_runtime.contract,result)
         s.update(armed=None, candidate=None, metadata={}, queries={})
         return result
@@ -705,7 +708,8 @@ def _run_conditions(llm, directory, case, params, common):
         # substitute top-N/reductions for the independently auditable vector.
         write_new(directory/f'{name.lower()}.json', result)
         results.append(result)
-    analyze = (analyze_layers if case.get('localization_stage')==LAYER_STAGE else
+    analyze = (analyze_internal if case.get('localization_stage')==INTERNAL_STAGE else
+               analyze_layers if case.get('localization_stage')==LAYER_STAGE else
                analyze_head_input if case.get('localization_stage')==HEAD_STAGE else analyze_trajectory)
     analysis = analyze(*results, case,expected_source_commit=common['source_commit'])
     write_new(directory/'analysis.json', analysis)

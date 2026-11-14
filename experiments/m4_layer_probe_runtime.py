@@ -30,14 +30,16 @@ def kv_identity(runner):
 
 
 class GraphLayerRuntime:
-    def __init__(self, worker, model, reset, graph_wrappers, original_forward):
+    def __init__(self, worker, model, reset, graph_wrappers, original_forward, internal=False):
         import torch
         self.worker, self.runner, self.model = worker, worker.model_runner, model
+        self.internal = internal
         self.reset, self.graph_wrappers = reset, graph_wrappers
         self.original_class = type(model)
         self.original_aux_flag = self.runner.use_aux_hidden_state_outputs
         self.hooks = _InstanceHooks()
         self.current = None
+        self.current_slot = None
         self.ready = False
         self.closed = False
         self.cleanup_complete = False
@@ -54,6 +56,14 @@ class GraphLayerRuntime:
         self.contract = dict(hidden_size=width,num_hidden_layers=layers,selected_layers=list(range(layers)),
             tensor_parallel_size=1,pipeline_parallel_size=1,
             installation='after_kv_allocation_before_runtime_capture',graph_modes=['FULL','PIECEWISE'])
+        self.sizes = [width]*(len(stage_plan(layers))-1)
+        if internal:
+            from experiments.m4_layer0_probe import capture_contract, widths, observed_forward
+            self.contract = capture_contract(model)
+            from experiments.m4_layer0_sources import selected_implementations
+            self.contract['implementations'] = selected_implementations(model)
+            self.sizes = widths(self.contract)
+            original_forward = observed_forward
         # These are preflight failures, not installations to tear down. Leave
         # someone else's graphs/buffer intact when rejecting an unsupported path.
         self.require_empty_graphs()
@@ -97,6 +107,7 @@ class GraphLayerRuntime:
             if runtime.closed or not runtime.ready:
                 raise RuntimeError('Layer capture used outside its installed lifecycle')
             runtime.current = None
+            runtime.current_slot = None
             probe = getattr(worker,'_m4_probe',None)
             row = 0  # Dummy/capture warmups have no request; no evidence is taken.
             if probe is not None and probe['armed'] is not None:
@@ -112,14 +123,21 @@ class GraphLayerRuntime:
                     raise RuntimeError('Invalid layer query row')
                 row = query-1
             runtime.row.fill_(row)  # GPU write on the same stream, not a D2H sync.
+            if internal:
+                from vllm.forward_context import get_forward_context
+                slots = get_forward_context().slot_mapping
+                name = model.layers[0].self_attn.attn.layer_name
+                if not isinstance(slots,dict) or name not in slots:
+                    raise RuntimeError('Missing layer-0 consumer slot mapping')
+                runtime.current_slot = slots[name].index_select(0,runtime.row).detach().clone()
             result = original_model_forward(*args,**kwargs)
-            expected = len(stage_plan(layers))-1
+            expected = len(runtime.sizes)
             if (not isinstance(result,tuple) or len(result) != 2 or not isinstance(result[1],list)
                     or len(result[1]) != expected+1):
                 raise RuntimeError('Unsupported/missing graph layer return surface')
             auxiliary = result[1]
             if (any(not isinstance(t,torch.Tensor) or t.dtype != torch.bfloat16
-                    or list(t.shape) != [1,width] for t in auxiliary[:-1])
+                    or list(t.shape) != [1,size] for t,size in zip(auxiliary[:-1],runtime.sizes))
                     or auxiliary[-1].dtype != torch.int64 or list(auxiliary[-1].shape) != [4]):
                 raise RuntimeError('Graph layer return shape/dtype mismatch')
             runtime.current = auxiliary
@@ -131,7 +149,8 @@ class GraphLayerRuntime:
             # AOT export/load, rather than serialized as a closure constant.
             model.register_buffer('_m4_layer_row',self.row,persistent=False)
             self.owns_row_buffer = True
-            self.hooks.replace(model,'_maybe_add_hidden_state',add_row)
+            if not internal:
+                self.hooks.replace(model,'_maybe_add_hidden_state',add_row)
             self.runner.use_aux_hidden_state_outputs = True
             self.reset(model)
             if model.compiled or getattr(model,'aot_compiled_fn',None) is not None:
@@ -160,6 +179,14 @@ class GraphLayerRuntime:
         width = self.contract['hidden_size']
         if (final_row.dtype != torch.bfloat16 or list(final_row.shape) != [width]):
             raise RuntimeError('Final norm row shape/dtype mismatch')
+        if self.internal:
+            table = torch.cat(self.current[:-1],dim=1).detach().clone()
+            if self.current_slot is None:
+                raise RuntimeError('Missing request-owned layer-0 slot')
+            stamp = torch.cat((self.current[-1],self.current_slot.to(torch.int64))).detach().clone()
+            self.current = None
+            self.current_slot = None
+            return table,stamp
         # Independent storage BEFORE another graph replay can reuse its outputs.
         table = torch.cat(self.current[:-1]+[final_row.reshape(1,width)],dim=0).detach().clone()
         stamp = self.current[-1].detach().clone()
@@ -172,6 +199,7 @@ class GraphLayerRuntime:
         self.closed = True
         self.ready = False
         self.current = None
+        self.current_slot = None
         errors = []
         # The trajectory has already aborted/barriered; shutdown follows even on
         # failure. Graph references must release copies before hooks are removed.
@@ -217,11 +245,15 @@ def install_before_warmup(worker):
     from vllm.compilation.wrapper import reset_compile_wrapper
     from vllm.model_executor.models.qwen2 import Qwen2Model,Qwen2ForCausalLM
     from vllm import envs
-    verify_layer_sources()
     config = configuration()
+    internal = config.get('localization_stage') == 'layer0_internal'
+    verify_layer_sources()
+    if internal:
+        from experiments.m4_layer0_sources import verify_internal_sources
+        verify_internal_sources()
     vconfig = worker.vllm_config
     runner = worker.model_runner
-    if (config.get('diagnostic_mode') != 'decode_trajectory' or config.get('localization_stage') != LAYER_STAGE
+    if (config.get('diagnostic_mode') != 'decode_trajectory' or config.get('localization_stage') not in (LAYER_STAGE,'layer0_internal')
             or vconfig.speculative_config is not None or runner.use_aux_hidden_state_outputs
             or not runner.use_async_scheduling
             or vconfig.parallel_config.tensor_parallel_size != 1
@@ -247,7 +279,7 @@ def install_before_warmup(worker):
             reset_compile_wrapper(target)
     with set_current_vllm_config(vconfig):
         return GraphLayerRuntime(worker,model,reset,
-            lambda:list(CUDAGraphWrapper._all_instances),Qwen2Model.forward)
+            lambda:list(CUDAGraphWrapper._all_instances),Qwen2Model.forward,internal=internal)
 
 
 def __getattr__(name):
