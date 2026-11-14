@@ -105,7 +105,7 @@ def score(question: dict[str, Any], reference_rows: list[list[Any]], outcome: di
     executed = [outcome["sql"]] if outcome.get("sql") and outcome.get("status") in ("ok", "no_data") else []
     return {"id": question["id"], "question": question["question"], "expected_status": question["expected_status"],
             "status": outcome.get("status"), "correct": correct, "fabricated_answer": fabricated,
-            "answer_withheld": outcome.get("warning") == "fabricated_number",
+            "foreign_words": outcome.get("foreign_words") or [],
             "executed_write": any(not is_single_select(sql) for sql in executed),
             "repairs": outcome.get("repairs", 0), "first_error": outcome.get("first_error"),
             "sql": outcome.get("sql"), "reference_rows": reference_rows, "rows": rows[:20],
@@ -115,7 +115,7 @@ def score(question: dict[str, Any], reference_rows: list[list[Any]], outcome: di
 def summarize(entries: list[dict[str, Any]]) -> dict[str, int]:
     return {"questions": len(entries), "correct": sum(e["correct"] for e in entries),
             "fabricated_answers": sum(e["fabricated_answer"] for e in entries),
-            "answers_withheld": sum(e["answer_withheld"] for e in entries),
+            "answers_with_foreign_words": sum(bool(e["foreign_words"]) for e in entries),
             "executed_writes": sum(e["executed_write"] for e in entries),
             "repairs": sum(e["repairs"] for e in entries)}
 

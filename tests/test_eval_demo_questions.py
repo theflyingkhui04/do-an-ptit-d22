@@ -46,6 +46,11 @@ def test_scoring_no_data_fabrication_and_writes():
     entry = ev.score(ok_q, [[4930094.0]], {"status": "ok", "rows": [[4930094.0]], "answer": "Tổng 4.930.095 đồng",
                                            "sql": "SELECT 1"})
     assert entry["correct"] and entry["fabricated_answer"] and not entry["executed_write"]
+    odd = ev.score(ok_q, [[4930094.0]], {"status": "ok", "rows": [[4930094.0]], "answer": "Tổng 4.930.094. beğen",
+                                         "sql": "SELECT 1", "foreign_words": ["beğen"]})
+    assert odd["foreign_words"] == ["beğen"] and not odd["fabricated_answer"]
+    assert ev.summarize([entry, odd])["answers_with_foreign_words"] == 1
+    assert "answers_withheld" not in ev.summarize([entry, odd])
     assert ev.is_single_select("SELECT 1") and not ev.is_single_select("DELETE FROM invoices")
 
 

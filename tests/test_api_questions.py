@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from src.api.questions import (
     NO_DATA_ANSWER,
     QuestionService,
+    _table_text,
     build_node2_prompt,
     foreign_words,
     numbers_are_grounded,
@@ -129,13 +130,16 @@ def test_zero_rows_is_no_data_without_calling_the_answer_model():
     assert answer.calls == []
 
 
-def test_fabricated_number_withholds_the_answer():
+# 14/11: the console compares endpoints, so a flawed answer is shown with its flags, never hidden
+def test_an_answer_with_a_number_outside_the_rows_is_shown_and_flagged():
     store = QAStore([(["total"], [[4930094.0]])])
     qa = service(store, scripted("SELECT SUM(total_amount_value) AS total FROM v_invoice_facts"),
                  scripted("Tổng là 4.930.095 đồng."))
     result = qa.answer("Tổng tiền là bao nhiêu?")
-    assert result["status"] == "ok" and result["answer"] is None
-    assert result["warning"] == "fabricated_number" and result["rows"] == [[4930094.0]]
+    assert result["status"] == "ok" and result["answer"] == "Tổng là 4.930.095 đồng."
+    assert result["warning"] == "fabricated_number" and result["ungrounded_numbers"] == ["4.930.095"]
+    assert result["foreign_words"] == [] and result["rows"] == [[4930094.0]]
+    assert "withheld_answer" not in result
 
 
 def test_number_grounding_rules():
@@ -194,12 +198,13 @@ def test_vietnam_today_uses_utc_plus_seven():
     assert vietnam_today(datetime(2026, 11, 8, 16, 59, tzinfo=timezone.utc)) == "2026-11-08"
 
 
-def test_withheld_answer_text_is_kept_for_audit():
+def test_a_clean_answer_carries_empty_flags():
     store = QAStore([(["total"], [[4930094.0]])])
     qa = service(store, scripted("SELECT SUM(total_amount_value) AS total FROM v_invoice_facts"),
-                 scripted("Tổng là 4.930.095 đồng."))
+                 scripted("Tổng là 4.930.094 đồng."))
     result = qa.answer("Tổng tiền là bao nhiêu?")
-    assert result["answer"] is None and result["withheld_answer"] == "Tổng là 4.930.095 đồng."
+    assert result["answer"] == "Tổng là 4.930.094 đồng." and result["warning"] is None
+    assert result["foreign_words"] == [] and result["ungrounded_numbers"] == []
 
 
 def test_all_null_result_is_no_data_without_the_answer_model():
@@ -259,11 +264,37 @@ def test_foreign_words_are_found_but_vietnamese_names_and_units_pass():
     assert foreign_words("Đường Trần Phú, Quảng Ngãi, ỨNG DỤNG, Ỹ, ữ") == []
 
 
-def test_an_answer_with_foreign_words_is_withheld():
+def test_an_answer_with_foreign_words_is_shown_and_flagged():
     store = QAStore([(["t"], [[75000.0]])])
     qa = service(store, scripted("SELECT SUM(total_amount_value) AS t FROM v_invoice_facts"),
                  scripted("Tổng tiền là 75.000. beğen dữ liệu không đủ."))
     result = qa.answer("Tổng tiền là bao nhiêu?")
-    assert result["status"] == "ok" and result["answer"] is None
+    assert result["status"] == "ok" and result["answer"] == "Tổng tiền là 75.000. beğen dữ liệu không đủ."
     assert result["warning"] == "foreign_text" and result["foreign_words"] == ["beğen"]
-    assert result["withheld_answer"] == "Tổng tiền là 75.000. beğen dữ liệu không đủ."
+    assert result["ungrounded_numbers"] == []
+
+
+def test_both_flags_are_kept_when_an_answer_has_both_problems():
+    store = QAStore([(["t"], [[75000.0]])])
+    qa = service(store, scripted("SELECT SUM(total_amount_value) AS t FROM v_invoice_facts"),
+                 scripted("Tổng tiền là 76.000. beğen"))
+    result = qa.answer("Tổng tiền là bao nhiêu?")
+    assert result["answer"] == "Tổng tiền là 76.000. beğen"
+    assert result["foreign_words"] == ["beğen"] and result["ungrounded_numbers"] == ["76.000"]
+
+
+# ---------------------------------------------------------------- 14/11: "75000.0" in the answer table
+def test_answer_table_writes_whole_floats_without_the_trailing_zero():
+    """Replayed on vanilla (no speculative decoding): with "75000.0" in the table, Qwen2.5-7B-AWQ wrote
+    "75.000. beğen" (greedy, 3/3); with "75000" it ended the sentence cleanly."""
+    assert _table_text(["t", "avg", "name", "n"], [[75000.0, 170003.24, "MINIMART", None], [541500.0, 0.5, "x", 3]]) == (
+        "t | avg | name | n\n75000 | 170003.24 | MINIMART | \n541500 | 0.5 | x | 3")
+
+
+def test_the_answer_prompt_gets_whole_numbers():
+    store = QAStore([(["t"], [[75000.0]])])
+    answer = scripted("Tổng tiền là 75.000.")
+    qa = service(store, scripted("SELECT SUM(total_amount_value) AS t FROM v_invoice_facts"), answer)
+    qa.answer("Tổng tiền là bao nhiêu?")
+    user = answer.calls[0]["messages"][-1]["content"]
+    assert "75000\n" in user + "\n" and "75000.0" not in user

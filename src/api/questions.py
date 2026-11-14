@@ -288,10 +288,20 @@ def numbers_are_grounded(answer: str, rows: list[list[Any]], question: str) -> b
     return True
 
 
+def _cell_text(value: Any) -> str:
+    """75000.0 -> "75000". Replayed 14/11 on vanilla (no speculative decoding, greedy): with "75000.0" in the table
+    Qwen2.5-7B-AWQ ended "75.000." with a stray " beğen" (p~0.5 vs 0.39 for end of turn); with "75000" it did not."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
 def _table_text(columns: list[str], rows: list[list[Any]]) -> str:
     lines = [" | ".join(columns)]
     for row in rows[:ANSWER_TABLE_ROWS]:
-        lines.append(" | ".join("" if v is None else str(v) for v in row))
+        lines.append(" | ".join(_cell_text(v) for v in row))
     return "\n".join(lines)
 
 
@@ -329,8 +339,9 @@ class QuestionService:
     def query(self, question: str, caller: Any) -> dict[str, Any]:
         """Node 2 only: one checked read-only SQL (one repair allowed) and its rows."""
         result: dict[str, Any] = {"question": question, "status": "error", "sql": None, "columns": [], "rows": [],
-                                  "row_count": 0, "answer": None, "withheld_answer": None, "warning": None,
-                                  "error": None, "repairs": 0, "first_error": None, "calls": [], "text_rewrites": [], "foreign_words": [],
+                                  "row_count": 0, "answer": None, "warning": None, "foreign_words": [],
+                                  "ungrounded_numbers": [], "error": None, "repairs": 0, "first_error": None,
+                                  "calls": [], "text_rewrites": [],
                                   "prompt_versions": {"node2": NODE2_PROMPT_VERSION, "answer": ANSWER_PROMPT_VERSION}}
         calls = result["calls"]
         system = build_node2_prompt(self.store.categorical_values(), self._today())
@@ -380,11 +391,16 @@ class QuestionService:
         except Exception as exc:  # noqa: BLE001  (service boundary: reported, never raised to the user)
             result.update(warning="answer_failed", error=self._redact(str(exc))[:400])
             return result
-        odd = foreign_words(text or "")
-        if text and not odd and numbers_are_grounded(text, rows, question):
-            result["answer"] = text
-        else:
-            result["warning"] = "foreign_text" if odd else "fabricated_number" if text else "empty_answer"
-            result["foreign_words"] = odd
-            result["withheld_answer"] = text or None  # audit only; the web never shows it
+        # The console compares endpoints, so the answer is shown as the model wrote it and its flaws are flagged
+        # (14/11: hiding a flawed answer hid the quality difference being measured).
+        text = text or ""
+        result["answer"] = text or None
+        result["foreign_words"] = foreign_words(text)
+        result["ungrounded_numbers"] = ungrounded_numbers(text, rows, question)
+        if not text:
+            result["warning"] = "empty_answer"
+        elif result["foreign_words"]:
+            result["warning"] = "foreign_text"
+        elif result["ungrounded_numbers"]:
+            result["warning"] = "fabricated_number"
         return result
