@@ -67,7 +67,8 @@ def test_wizard_disabled_adaptive_skips_profile_mapping():
     assert config["profile_applied"] is None
 
 
-def test_wizard_remote_serving_hardware_resolution():
+def test_wizard_remote_serving_hardware_resolution(tmp_path, monkeypatch):
+    monkeypatch.setattr("flexsds.core.cost_model.USER_PROFILES_DIR", tmp_path)
     """Kiểm tra logic phân giải đúng kiến trúc GPU đích khi chạy Modal/Colab."""
     from flexsds.core.hardware import HardwareInfo
     from flexsds.core.cost_model import load_profile_for_hardware
@@ -127,6 +128,12 @@ def test_wizard_uncalibrated_gpu_abort_action(tmp_path, monkeypatch, capsys):
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import HardwareInfo
 
+    from flexsds.core.compatibility import evaluate_serving_preflight as real_preflight
+    def preflight(*args, **kwargs):
+        result = real_preflight(*args, **kwargs)
+        result.report.draft_method = "draft_model"
+        return result
+    monkeypatch.setattr("flexsds.cli.wizard.evaluate_serving_preflight", preflight)
     cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
 
     def fake_prompt_choice(question, choices, default_idx=0):
@@ -174,6 +181,12 @@ def test_wizard_uncalibrated_gpu_switch_static_action(tmp_path, monkeypatch, cap
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import HardwareInfo
 
+    from flexsds.core.compatibility import evaluate_serving_preflight as real_preflight
+    def preflight(*args, **kwargs):
+        result = real_preflight(*args, **kwargs)
+        result.report.draft_method = "draft_model"
+        return result
+    monkeypatch.setattr("flexsds.cli.wizard.evaluate_serving_preflight", preflight)
     cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
 
     def fake_prompt_choice(question, choices, default_idx=0):
@@ -234,6 +247,15 @@ def test_wizard_uncalibrated_gpu_calibrate_action(tmp_path, monkeypatch, capsys)
     from pathlib import Path
     from unittest.mock import MagicMock
 
+    from flexsds.core.compatibility import evaluate_serving_preflight as real_preflight
+    def preflight(*args, **kwargs):
+        result = real_preflight(*args, **kwargs)
+        result.report.draft_method = "draft_model"
+        return result
+    monkeypatch.setattr("flexsds.cli.wizard.evaluate_serving_preflight", preflight)
+    profile_fixture = tmp_path / "measured.json"
+    profile_fixture.write_text("{}")
+    monkeypatch.setattr("flexsds.cli.wizard.resolve_profile_path", lambda name: profile_fixture)
     cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
 
     def fake_prompt_choice(question, choices, default_idx=0):
@@ -266,13 +288,13 @@ def test_wizard_uncalibrated_gpu_calibrate_action(tmp_path, monkeypatch, capsys)
     benchmark_called = []
     fake_cost_model = MagicMock()
 
-    def fake_benchmark(hw, target_model=None, draft_model=None):
+    def fake_benchmark(hw, target_model=None, draft_model=None, backend=None):
         benchmark_called.append((hw.sm_architecture, target_model, draft_model))
         return fake_cost_model, Path("/fake/path/profile_sm86_a10g.json")
 
     call_count = {"count": 0}
 
-    def fake_load_profile(hw, strict=True):
+    def fake_load_profile(hw, strict=True, **kwargs):
         call_count["count"] += 1
         if call_count["count"] == 1:
             return None, ""

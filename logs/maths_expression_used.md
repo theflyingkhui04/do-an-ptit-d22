@@ -1,6 +1,6 @@
 # Tổng hợp các công thức toán học và biểu thức kỹ thuật trong đồ án D22
 
-> **Đề tài:** Hardware-Aware Speculative Decoding for Self-Hosted LLM Inference on Consumer GPUs  
+> **Đề tài:** FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs
 > **Kho lưu trữ:** `do-an-ptit-d22`  
 > **Mục đích:** Bảng tra cứu toàn diện tất cả các công thức toán học, mô hình chi phí, chỉ số phục vụ và hàm mất mát kèm **tham chiếu task Trello chi tiết** xuyên suốt từ cột mốc M0 đến M3.
 

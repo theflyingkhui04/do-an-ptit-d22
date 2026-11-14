@@ -19,6 +19,7 @@ try:
     from flexsds.core.cost_model import (
         FlexCostModel,
         load_profile_for_hardware,
+        resolve_profile_path,
         run_hardware_micro_benchmark,
     )
     from flexsds.core.credentials import CredentialsManager
@@ -41,6 +42,7 @@ except ModuleNotFoundError:
     from src.flexsds.core.cost_model import (
         FlexCostModel,
         load_profile_for_hardware,
+        resolve_profile_path,
         run_hardware_micro_benchmark,
     )
     from src.flexsds.core.credentials import CredentialsManager
@@ -54,7 +56,7 @@ except ModuleNotFoundError:
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="flexsds",
-        description="FlexSDS: Flexible Speculative Decoding Serving Engine for LLMs",
+        description="FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs",
     )
     parser.add_argument(
         "-v", "--version", action="version", version=f"flexsds {__version__}"
@@ -90,6 +92,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=None,
         help="Model identifier override for benchmarking",
     )
+
+    profile_parser.add_argument("--backend", choices=["local", "modal"], default="local")
+    profile_parser.add_argument("--gpu", choices=["A10G", "L4", "T4"], default="A10G")
 
     # Command: stop
     subparsers.add_parser("stop", help="Stop running local FlexSDS server")
@@ -132,7 +137,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--no-adaptive", action="store_true", help="Disable HardwareAdaptive optimization engine"
     )
     serve_parser.add_argument(
-        "--allow-fallback", action="store_true", help="Allow running with conservative analytical fallback if exact GPU profile is missing"
+        "--allow-fallback", action="store_true", help="Deprecated: analytical fallback cannot satisfy empirical serving requirements"
     )
     serve_parser.add_argument(
         "--dry-run", action="store_true", help="Print execution command without launching"
@@ -157,16 +162,11 @@ def get_serving_cost_profile(
     allow_fallback: bool = False,
     custom_profile_path: Optional[str] = None,
 ) -> tuple[Optional[FlexCostModel], str]:
-    """Tải hồ sơ chi phí phần cứng phục vụ cho lệnh serve với cơ chế chặn sớm (fail-fast).
-
-    Nếu allow_fallback=False và không tìm thấy hồ sơ chính xác cho GPU hiện tại,
-    trả về (None, "") để kích hoạt xử lý chặn sớm an toàn.
-    Nếu allow_fallback=True, cho phép nạp hồ sơ suy diễn dè dặt phân tích an toàn.
-    """
+    """Load an empirical serving profile; legacy allow_fallback cannot bypass it."""
     return load_profile_for_hardware(
         hw_info,
         custom_profile_path=custom_profile_path,
-        strict=not allow_fallback,
+        strict=True,
     )
 
 
@@ -237,11 +237,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         if getattr(args, "benchmark", False):
             target_model = args.model or args.target
             draft_model = args.draft
-            cost_model, saved_path = run_hardware_micro_benchmark(
-                hw_info=hw_info,
-                target_model=target_model,
-                draft_model=draft_model,
-            )
+            if args.backend == "modal":
+                sm = {"A10G": "sm_86", "L4": "sm_89", "T4": "sm_75"}[args.gpu]
+                hw_info = HardwareInfo(device_name=f"Remote {args.gpu}", sm_architecture=sm,
+                                       total_vram_mb=0, free_vram_mb=0, cuda_version="unknown",
+                                       is_cuda_available=True)
+            try:
+                cost_model, saved_path = run_hardware_micro_benchmark(
+                    hw_info=hw_info, target_model=target_model, draft_model=draft_model, backend=args.backend,
+                )
+            except (RuntimeError, ValueError, OSError) as exc:
+                print(f"Calibration failed: {exc}")
+                return 1
             print(f"\n\033[1;32m✔ Calibrated & saved new hardware profile: {saved_path}\033[0m")
             return 0
 
@@ -295,8 +302,14 @@ def main(argv: Optional[list[str]] = None) -> int:
                 serving_hw = hw_info
 
             if not args.no_adaptive:
-                cost_model, profile_name = get_serving_cost_profile(
-                    serving_hw, allow_fallback=getattr(args, "allow_fallback", False)
+                target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
+                draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
+                method = check_compatibility(target_model, draft_model, serving_hw.free_vram_mb).draft_method
+                if method == "eagle3":
+                    print("EAGLE adaptive is unsupported; use --no-adaptive for static EAGLE (k=4).")
+                    return 2
+                cost_model, profile_name = load_profile_for_hardware(
+                    serving_hw, strict=True, target_model=target_model, draft_model=draft_model,
                 )
                 if cost_model is None or not profile_name:
                     print(
@@ -328,6 +341,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
                 "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
                 "enable_adaptive": not args.no_adaptive,
+                "profile_path": str(resolve_profile_path(profile_name)) if not args.no_adaptive else None,
             }}
             if args.backend == "colab":
                 print("Colab guidance only: no server or endpoint was created; supplied models are not forwarded to the notebook.")
@@ -348,13 +362,17 @@ def main(argv: Optional[list[str]] = None) -> int:
                 if args.backend == "local":
                     return LocalServingRunner().launch(cfg, port=args.port, background=args.background)
                 return ModalServingRunner().launch(cfg, deploy=args.deploy)
-            proc = tasks.run_task(task, launch)
+            try:
+                proc = tasks.run_task(task, launch)
+            except (ValueError, RuntimeError, OSError) as exc:
+                print(f"Serving launch failed: {exc}")
+                return 1
             return finish_launch(proc, background=args.backend == "local" and args.background)
 
     try:
         result = run_interactive_wizard(hw_info)
         return result.get("exit_code", 0) if isinstance(result, dict) else 0
-    except ServingBlockedError as exc:
+    except (ServingBlockedError, ValueError, RuntimeError, OSError) as exc:
         print(str(exc))
         return 2
 

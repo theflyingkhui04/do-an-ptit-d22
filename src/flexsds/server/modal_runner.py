@@ -6,6 +6,9 @@ import sys
 import json
 import shutil
 import subprocess
+import re
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -50,7 +53,7 @@ class ModalServingRunner:
         """Forward non-secret serving settings and package paths for app construction."""
         cfg = config.get("serving", config)
         keys = ("target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
-                "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs")
+                "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
         env = dict(os.environ)
         env["FLEXSDS_SERVING_CONFIG"] = json.dumps({k: cfg[k] for k in keys if k in cfg})
 
@@ -80,6 +83,12 @@ class ModalServingRunner:
             print("  Or configure via: modal setup")
             return None
 
+        cfg = config.get('serving', config)
+        if cfg.get('enable_adaptive', False):
+            from flexsds.server.local_runner import LocalServingRunner
+            LocalServingRunner().build_command(config)
+            LocalServingRunner().setup_environment(config)
+
         cmd = self.build_modal_command(config, deploy=deploy)
 
         if dry_run:
@@ -90,7 +99,35 @@ class ModalServingRunner:
             return None
 
         try:
-            proc = subprocess.Popen(cmd, env=self.setup_environment(config))
+            proc = subprocess.Popen(cmd, env=self.setup_environment(config), stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, bufsize=1)
+            endpoint = []
+            logs_done = threading.Event()
+            def forward_logs():
+                for line in proc.stdout:
+                    print(line.rstrip())
+                    match = re.search(r"https://[a-zA-Z0-9.-]+\.modal\.run", line)
+                    if match and not endpoint:
+                        endpoint.append(match.group())
+                logs_done.set()
+            threading.Thread(target=forward_logs, daemon=True).start()
+            def ready():
+                from flexsds.server.readiness import verify_endpoint
+                deadline = time.monotonic() + 900
+                while not endpoint:
+                    code = proc.poll()
+                    if code is not None and logs_done.is_set() and not endpoint:
+                        raise RuntimeError(f"Modal exited before exposing endpoint (exit {code})")
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("Timed out waiting for Modal endpoint URL")
+                    time.sleep(0.2)
+                print(f"Endpoint assigned: {endpoint[0]}; checking model and inference...")
+                model = verify_endpoint(endpoint[0], process=proc, deployed=deploy,
+                                        timeout=max(0.1, deadline-time.monotonic()))
+                print(f"Inference verified: {endpoint[0]}/v1 (model={model})")
+                if not deploy:
+                    print("Development mode: keep this terminal open; Ctrl-C stops the app.")
+            proc._flexsds_readiness = ready
             return proc
         except FileNotFoundError:
             print("\n\033[31m[Error]\033[0m 'modal' CLI not found. Install with: pip install modal")

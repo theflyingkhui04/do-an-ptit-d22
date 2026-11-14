@@ -30,6 +30,7 @@ try:
     )
     from flexsds.core.cost_model import (
         load_profile_for_hardware,
+        resolve_profile_path,
         run_hardware_micro_benchmark,
     )
     from flexsds.server.local_runner import LocalServingRunner, finish_launch
@@ -45,6 +46,7 @@ except ModuleNotFoundError:
     )
     from src.flexsds.core.cost_model import (
         load_profile_for_hardware,
+        resolve_profile_path,
         run_hardware_micro_benchmark,
     )
     from src.flexsds.server.local_runner import LocalServingRunner, finish_launch
@@ -432,6 +434,13 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         default_val=True,
     )
 
+    if enable_adaptive and report.draft_method == "eagle3":
+        print("EAGLE adaptive is not supported by this serving runtime; static EAGLE uses k=4.")
+        choice = prompt_choice("Choose supported serving mode:", ["Use static EAGLE (k=4)", "Abort setup"], default_idx=0)
+        if "Abort" in choice:
+            return {"action": "abort", "exit_code": 1}
+        enable_adaptive = False
+
     # Step 6: Profile Mapping
     if backend in ("modal", "colab"):
         remote_sm_map = {
@@ -459,7 +468,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     if not enable_adaptive:
         print("\033[32m✔ HardwareAdaptive engine: Disabled (Static speculation mode)\033[0m")
     else:
-        cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True)
+        cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True, target_model=target_model, draft_model=draft_model)
         if cost_model is None or not profile_name or profile_name == "conservative_analytical_fallback":
             print(
                 f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile found for GPU "
@@ -479,17 +488,15 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
 
             if "Calibrate" in missing_action:
                 print(f"\nCalibrating hardware cost profile for {serving_hw.device_name} ({serving_hw.sm_architecture})...")
-                res = run_hardware_micro_benchmark(
-                    serving_hw,
-                    target_model=target_model,
-                    draft_model=draft_model,
-                )
-                if isinstance(res, tuple):
-                    cost_model, saved_path = res
-                else:
-                    saved_path = res
+                try:
+                    cost_model, saved_path = run_hardware_micro_benchmark(
+                        serving_hw, target_model=target_model, draft_model=draft_model, backend=backend,
+                    )
+                except (RuntimeError, ValueError, OSError) as exc:
+                    print(f"Calibration failed; no serving launched: {exc}")
+                    return {"action": "abort", "exit_code": 1}
                 print(f"\033[1;32m✔ Calibrated & saved new hardware profile: {saved_path}\033[0m")
-                cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True)
+                cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True, target_model=target_model, draft_model=draft_model)
                 print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
             elif "Switch to static" in missing_action:
                 enable_adaptive = False
@@ -512,6 +519,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         "use_heterogeneous_vocab": report.use_heterogeneous_vocab,
         "enable_adaptive": enable_adaptive,
         "profile_applied": profile_name,
+        "profile_path": str(resolve_profile_path(profile_name)) if profile_name else None,
         "target_gpu": target_gpu,
         "colab_tunnel_url": colab_tunnel_url,
         "modal_deploy": modal_deploy,

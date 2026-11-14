@@ -39,6 +39,16 @@ class CostProfile:
         return base_t if k == 0 else (base_t + k * draft_step_t)
 
 
+class EmpiricalCostProfile(CostProfile):
+    """Use the closest measured batch for an observed K; never invent costs."""
+    def get_cost(self, k: int, batch_size: int = 1) -> float:
+        batches = [b for cand_k, b in self.matrix if cand_k == k]
+        if not batches:
+            raise ValueError(f'No measured cost for K={k}')
+        closest = min(batches, key=lambda b: (abs(b-batch_size), b))
+        return self.matrix[(k, closest)]
+
+
 class BudgetController:
     """Adaptive Speculative Controller v0 based on rolling acceptance rate alpha."""
 

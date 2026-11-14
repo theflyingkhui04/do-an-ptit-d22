@@ -103,7 +103,7 @@ def test_no_truecolor_uses_plain_ascii(monkeypatch, hardware, tty, no_color, ter
 @pytest.mark.parametrize("args,expected", [
     (["detect"], "Hardware:"), (["profile"], "Linked hardware profile:"),
     (["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft",
-      "Qwen/Qwen2.5-0.5B-Instruct", "--backend", "local", "--dry-run"],
+      "Qwen/Qwen2.5-0.5B-Instruct", "--backend", "local", "--no-adaptive", "--dry-run"],
      "Dry-run execution command:"),
 ])
 def test_command_completes_on_cp1252(monkeypatch, hardware, args, expected):

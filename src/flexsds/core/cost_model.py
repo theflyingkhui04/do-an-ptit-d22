@@ -354,15 +354,64 @@ def save_hardware_profile(
     )
     filename = f"profile_{sm_architecture}_{slug}.json" if device_name else f"profile_{sm_architecture}.json"
     file_path = save_dir / filename
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(profile_data, f, indent=2)
+    import os
+    import tempfile
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', dir=save_dir, delete=False, encoding='utf-8') as f:
+            temporary = Path(f.name)
+            json.dump(profile_data, f, indent=2, allow_nan=False)
+        os.replace(temporary, file_path)
+    finally:
+        if temporary and temporary.exists():
+            temporary.unlink()
     return file_path
+
+
+def resolve_profile_path(name: str) -> Path:
+    for directory in (USER_PROFILES_DIR, PROFILES_DIR):
+        path = directory / name
+        if path.is_file():
+            return path.resolve()
+    raise FileNotFoundError(f"Profile artifact missing: {name}")
+
+
+def validate_measured_profile(data, hardware=None, target_model=None, draft_model=None):
+    """Reproduce scalar matrix from preserved worker samples, not a measured label."""
+    from flexsds.core.calibration import build_profile, SCHEMA
+    meta = data.get('metadata', {})
+    if meta.get('schema') != SCHEMA or meta.get('measurement_status') != 'measured':
+        raise ValueError('Profile lacks verified empirical evidence; recalibrate')
+    evidence = data.get('evidence', {})
+    config = evidence.get('config', {})
+    try:
+        rebuilt = build_profile(config, evidence['groups'], data['grid']['batches'])
+    except (KeyError, TypeError, IndexError) as exc:
+        raise ValueError('Malformed calibration evidence') from exc
+    for field in ('cost_matrix_ms', 'models', 'draft_method', 'grid'):
+        if data.get(field) != rebuilt[field]:
+            raise ValueError(f'Profile {field} differs from worker evidence')
+    for field in ('raw_sha256', 'device', 'sm_architecture', 'cost_semantics', 'vllm_version'):
+        if meta.get(field) != rebuilt['metadata'][field]:
+            raise ValueError(f'Profile {field} identity mismatch')
+    if hardware and meta['sm_architecture'] != hardware.sm_architecture:
+        raise ValueError('Profile GPU architecture mismatch')
+    if hardware and hardware.device_name.startswith('Remote '):
+        if hardware.device_name[7:] not in meta['device']:
+            raise ValueError('Profile GPU model mismatch')
+    if target_model and data['models']['target'] != target_model:
+        raise ValueError('Profile target model mismatch')
+    if draft_model and data['models']['draft'] != draft_model:
+        raise ValueError('Profile draft model mismatch')
+    return data
 
 
 def load_profile_for_hardware(
     hw_info: Optional[HardwareInfo] = None,
     custom_profile_path: Optional[Union[str, Path]] = None,
     strict: bool = False,
+    target_model: Optional[str] = None,
+    draft_model: Optional[str] = None,
 ) -> Tuple[Optional[FlexCostModel], str]:
     """Loads hardware cost profile using a hierarchical resolution strategy.
 
@@ -376,10 +425,16 @@ def load_profile_for_hardware(
     with the exact frozen M4 B/K grid and never falls back to L4/analytical data.
     """
     sm_arch = hw_info.sm_architecture if hw_info else "sm_89"
+    if strict and sm_arch == "cpu":
+        return None, ""
 
     def load_checked(path: Path) -> Tuple[FlexCostModel, str]:
-        if sm_arch == "sm_80":
-            data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if strict and data.get("metadata", {}).get("schema") == "flexsds-component-v1":
+            validate_measured_profile(data, hw_info, target_model, draft_model)
+        elif strict and sm_arch != "sm_80":
+            raise ValueError("Profile has no verified worker measurements; recalibrate or use static mode")
+        if sm_arch == "sm_80" and data.get("metadata", {}).get("schema") != "flexsds-component-v1":
             meta = data.get("metadata", {})
             matrix = data.get("cost_matrix_ms", {})
 
@@ -415,11 +470,19 @@ def load_profile_for_hardware(
     if USER_PROFILES_DIR.exists():
         user_direct = USER_PROFILES_DIR / f"profile_{sm_arch}.json"
         if user_direct.exists():
-            return load_checked(user_direct)
+            try:
+                return load_checked(user_direct)
+            except ValueError:
+                if not strict:
+                    raise
 
         matches = sorted(USER_PROFILES_DIR.glob(f"profile_{sm_arch}*.json"))
-        if matches:
-            return load_checked(matches[0])
+        for match in matches:
+            try:
+                return load_checked(match)
+            except ValueError:
+                if not strict:
+                    raise
 
     # M4 invariant: A100 must use the measured scalar profile.
     if sm_arch == "sm_80":
@@ -445,7 +508,11 @@ def load_profile_for_hardware(
     if built_in_filename:
         built_in_path = PROFILES_DIR / built_in_filename
         if built_in_path.exists():
-            return FlexCostModel.from_json(built_in_path), built_in_filename
+            try:
+                return load_checked(built_in_path)
+            except ValueError:
+                if not strict:
+                    raise
 
     # Develop behavior: strict mode fails closed.
     if strict:
@@ -496,102 +563,38 @@ def run_hardware_micro_benchmark(
     draft_model: str = "duckhoi/qwen2.5-7b-eagle3.1-speculator",
     batch_sizes: Optional[List[int]] = None,
     target_dir: Optional[Path] = None,
+    backend: str = "local",
 ) -> Tuple[FlexCostModel, Path]:
-    """Runs micro-benchmarks or calibrated measurements for target and draft models.
+    """Measure actual vLLM worker components; never substitute analytical costs.
 
-    Computes latency tables across batch sizes, saves profile to JSON via save_hardware_profile(),
-    and returns (FlexCostModel, saved_path).
+    Remote hardware must be dispatched explicitly with backend='modal'.
     """
-    if batch_sizes is None:
-        batch_sizes = [1, 2, 4, 8]
+    from flexsds.core.calibration import BATCHES, KS, build_profile, run_local_group
+    from flexsds.core.compatibility import check_compatibility
+    batches = BATCHES if batch_sizes is None else sorted(set(batch_sizes))
+    if not batches or any(type(b) is not int or b not in BATCHES for b in batches):
+        raise ValueError("Invalid calibration batch grid")
+    if backend == "local" and hw_info.device_name.startswith("Remote "):
+        raise ValueError("Remote GPU calibration requires backend='modal'")
+    config = dict(target_model=target_model, draft_model=draft_model,
+                  draft_method=check_compatibility(target_model, draft_model, hw_info.free_vram_mb).draft_method,
+                  sm_architecture=hw_info.sm_architecture)
+    if backend == "modal":
+        from flexsds.server.modal_runner import ModalServingRunner
+        from flexsds.server.modal_calibration import calibrate
+        if not ModalServingRunner().check_credentials():
+            raise RuntimeError("Modal credentials missing; run flexsds auth login --provider modal")
+        config['target_gpu'] = hw_info.device_name.removeprefix('Remote ')
+        groups = calibrate(config, batches)
+    elif backend == "local":
+        if not hw_info.is_cuda_available:
+            raise RuntimeError("Calibration requires a real CUDA GPU; use --backend modal --gpu A10G")
+        groups = [run_local_group(config, k, batches) for k in KS]
     else:
-        batch_sizes = sorted(list(set(batch_sizes)))
-
-    sm_arch = hw_info.sm_architecture or "sm_89"
-    device_name = hw_info.device_name or "Generic GPU"
-
-    # Baseline forward pass latencies (ms) at batch_size=1
-    arch_baselines = {
-        "sm_90": (8.5, 1.8),   # H100
-        "sm_89": (19.0, 4.8),  # L4 / RTX 4090
-        "sm_86": (16.5, 3.8),  # A10G / RTX 3090
-        "sm_80": (12.0, 2.8),  # A100
-        "sm_75": (38.0, 9.5),  # T4
-    }
-    base_t, base_d = arch_baselines.get(sm_arch, (20.0, 4.5))
-
-    # Optional hardware probe if CUDA and torch are available
-    if hw_info.is_cuda_available:
-        try:
-            import torch
-            if torch.cuda.is_available():
-                device = torch.device("cuda")
-                x = torch.randn(1024, 4096, device=device, dtype=torch.float16)
-                w = torch.randn(4096, 4096, device=device, dtype=torch.float16)
-                for _ in range(3):
-                    _ = torch.matmul(x, w)
-                torch.cuda.synchronize()
-                del x, w
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
-
-    c_t_dict: Dict[str, float] = {}
-    c_d_dict: Dict[str, float] = {}
-    ratio_dict: Dict[str, float] = {}
-    cost_matrix_ms: Dict[str, float] = {}
-    attn_verify_factor = 0.008
-
-    for b in batch_sizes:
-        # Realistic hardware latency scaling with batch size
-        ct = round(base_t * (1.0 + 0.025 * (b - 1)), 3)
-        cd = round(base_d * (1.0 + 0.020 * (b - 1)), 3)
-        b_str = str(b)
-        c_t_dict[b_str] = ct
-        c_d_dict[b_str] = cd
-        ratio_dict[b_str] = round(cd / ct, 4)
-
-        cost_matrix_ms[f"k0_b{b}"] = ct
-        cost_matrix_ms[f"topo_T0_b{b}"] = ct
-        for k in range(1, 7):
-            cv = round(ct * (1.0 + attn_verify_factor * max(0, k - 1)), 3)
-            c_step = round(cv + k * cd, 3)
-            cost_matrix_ms[f"k{k}_b{b}"] = c_step
-            cost_matrix_ms[f"topo_T{k}_b{b}"] = c_step
-
-    profile_data = {
-        "metadata": {
-            "device": device_name,
-            "sm_architecture": sm_arch,
-            "vram_total_mb": hw_info.total_vram_mb,
-            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            "provenance": "micro_benchmark_calibrated",
-            "attn_verify_factor": attn_verify_factor,
-        },
-        "models": {
-            "target": target_model,
-            "draft": draft_model,
-        },
-        "grid": {
-            "batches": batch_sizes,
-            "candidate_budgets": [0, 1, 2, 3, 4, 5, 6],
-        },
-        "forward_costs_median_ms": {
-            "target_c_t": c_t_dict,
-            "draft_c_d": c_d_dict,
-            "c_d_over_c_t_ratio": ratio_dict,
-        },
-        "forward_target": c_t_dict,
-        "forward_draft": c_d_dict,
-        "cost_matrix_ms": cost_matrix_ms,
-    }
-
-    saved_path = save_hardware_profile(
-        profile_data=profile_data,
-        sm_architecture=sm_arch,
-        device_name=device_name,
-        target_dir=target_dir,
-    )
-    cost_model = FlexCostModel.from_json(saved_path)
-    return cost_model, saved_path
-
+        raise ValueError("Calibration supports local CUDA or Modal, not Colab guidance")
+    data = build_profile(config, groups, batches)
+    import hashlib
+    identity = hashlib.sha256(json.dumps(data['models'], sort_keys=True).encode()).hexdigest()[:12]
+    saved_path = save_hardware_profile(data, hw_info.sm_architecture,
+                                       f"{hw_info.device_name}_{identity}", target_dir)
+    return FlexCostModel.from_json(saved_path), saved_path

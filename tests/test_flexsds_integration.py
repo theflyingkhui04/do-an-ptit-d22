@@ -18,7 +18,7 @@ from flexsds.server.local_runner import LocalServingRunner
 from flexsds.server.modal_runner import ModalServingRunner
 
 PAIR = ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ",
-        "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator"]
+        "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator", "--no-adaptive"]
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -178,7 +178,8 @@ def test_modal_app_allocates_gpu_exposes_port_and_preserves_exact_config(monkeyp
     web = Mock(side_effect=lambda *a, **kw: lambda f: f)
     fake_modal = SimpleNamespace(App=Mock(return_value=app),
         Image=SimpleNamespace(debian_slim=Mock(return_value=image)),
-        Volume=SimpleNamespace(from_name=Mock(return_value="volume")), web_server=web)
+        Volume=SimpleNamespace(from_name=Mock(return_value="volume")), web_server=web,
+        is_local=lambda: True)
     monkeypatch.setitem(sys.modules, "modal", fake_modal)
     spec = importlib.util.spec_from_file_location("audit_modal_app", ROOT / "src/flexsds/server/modal_app.py")
     module = importlib.util.module_from_spec(spec)
