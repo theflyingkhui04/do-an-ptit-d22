@@ -427,8 +427,12 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     )
 
     # Step 6: Profile Mapping
-    cost_model, profile_name = load_profile_for_hardware(hw_info)
-    print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+    profile_name = None
+    if not enable_adaptive:
+        print("\033[32m✔ HardwareAdaptive engine: Disabled (Static speculation mode)\033[0m")
+    else:
+        cost_model, profile_name = load_profile_for_hardware(hw_info)
+        print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
 
     # Save serving configuration
     config: Dict[str, Any] = {

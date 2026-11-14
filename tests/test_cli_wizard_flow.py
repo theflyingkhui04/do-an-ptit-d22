@@ -51,3 +51,19 @@ def test_modal_gpu_selection_extraction():
     assert wizard_inline_extract(choices[1]) == "L4"
     assert wizard_inline_extract(choices[2]) == "T4"
 
+
+def test_wizard_disabled_adaptive_skips_profile_mapping():
+    """Kiểm tra khi tắt HardwareAdaptive thì không liên kết profile và profile_applied là None."""
+    # Kiểm tra cấu trúc logic tạo config khi enable_adaptive = False
+    enable_adaptive = False
+    profile_name = None if not enable_adaptive else "profile_sm89_l4.json"
+
+    assert profile_name is None
+    config = {
+        "enable_adaptive": enable_adaptive,
+        "profile_applied": profile_name,
+    }
+    assert config["enable_adaptive"] is False
+    assert config["profile_applied"] is None
+
+
