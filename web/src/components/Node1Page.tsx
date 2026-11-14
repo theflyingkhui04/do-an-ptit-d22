@@ -74,6 +74,11 @@ function RunCard({ run, color }: { run: RunReport; color: string }) {
       ) : (
         <p className="text-[13px] text-bad">{run.error}</p>
       )}
+      {(run.source_restored ?? []).length > 0 && (
+        <p className="text-[12.5px] text-ink-3" title="Model chép sai giá trị nguồn mà hệ thống đã gửi; hệ thống điền lại giá trị đúng.">
+          Hệ thống điền lại nguồn: {run.source_restored!.join(", ")}
+        </p>
+      )}
       {same !== null && (
         <div className="text-[13px]">
           {run.differing_fields.length === 0 ? (

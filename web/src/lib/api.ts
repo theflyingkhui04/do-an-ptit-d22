@@ -91,6 +91,7 @@ export interface RunReport {
   equal_fields: number | null;
   total_fields: number | null;
   differing_fields: string[];
+  source_restored?: string[];
 }
 
 export interface JobResult {
@@ -142,6 +143,7 @@ export interface QuestionResult {
   repairs: number;
   first_error: string | null;
   calls: CallInfo[];
+  text_rewrites?: { column: string; from: string; to: string }[];
   endpoint?: { endpoint_id: string; name: string };
 }
 

@@ -62,6 +62,12 @@ function Outcome({ result }: { result: QuestionResult }) {
       </div>
 
       {result.sql && <SqlBlock sql={result.sql} />}
+      {(result.text_rewrites ?? []).length > 0 && (
+        <Notice tone="info">
+          Khớp chữ không dấu (dữ liệu hoá đơn lưu không dấu):{" "}
+          {result.text_rewrites!.map((r) => `${r.from} → ${r.to}`).join("; ")}
+        </Notice>
+      )}
       {result.status !== "error" ? (
         <ul className="flex flex-wrap gap-2" aria-label="Kiểm tra SQL">
           {CHECKS.map((c) => <li key={c}><Pill tone="good" icon={ShieldCheck}>{c}</Pill></li>)}

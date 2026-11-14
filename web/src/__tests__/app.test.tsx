@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import Console from "@/components/Console";
 import { ApiError, type Api, type BenchRun, type Job } from "@/lib/api";
 
-import { BASE, CHAIN, ENDPOINTS, FAST, REPORT, doneJob, endpoint, fakeApi, jpegFile, question, speedRun } from "./fakes";
+import { BASE, CHAIN, ENDPOINTS, FAST, REPORT, doneJob, endpoint, fakeApi, jpegFile, question, run, speedRun } from "./fakes";
 
 function open(page: string, api: Api) {
   window.sessionStorage.setItem("ptit-demo-key", "good-key-123");
@@ -139,6 +139,16 @@ describe("node 1", () => {
     expect(api.invoices).toHaveBeenCalledTimes(2);
   });
 
+  it("notes when the system put back a source value the model copied wrong", async () => {
+    const job = vi.fn(async () => doneJob({ runs: { [FAST]: run(FAST, "adaptive", { source_restored: ["image_path"] }), [BASE]: run(BASE, "vanilla") } }));
+    open("node1", fakeApi({ job }));
+    const user = userEvent.setup();
+    await user.upload(await screen.findByLabelText("Ảnh hoá đơn"), jpegFile());
+    await user.click(screen.getByRole("button", { name: "Chạy Node 1" }));
+    expect(await screen.findByTestId(`run-${FAST}`)).toHaveTextContent("Hệ thống điền lại nguồn: image_path");
+    expect(screen.getByTestId(`run-${BASE}`)).not.toHaveTextContent("điền lại nguồn");
+  });
+
   it("explains a source copy error and suggests running again", async () => {
     const failed: Job = { ...doneJob(), status: "failed", invoice_id: null,
       error: "node1: adaptive: SOURCE_BINDING_ERROR at SOURCE_BINDING: Source binding mismatch: value mismatch: image_path" };
@@ -175,6 +185,13 @@ describe("node 2", () => {
     expect(screen.getByText("Chỉ đọc (một câu SELECT)")).toBeInTheDocument();
     expect(within(screen.getByRole("table", { name: "Kết quả SQL" })).getByText("3.912.548")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Sinh SQL 2,1 s/ })).toBeInTheDocument();
+  });
+
+  it("says how a text filter was matched against the unaccented data", async () => {
+    const ask = vi.fn(async () => question({ text_rewrites: [{ column: "seller_name", from: "%Nhà sách Cẩm Phả%", to: "%nha%sach%cam%pha%" }] }));
+    open("node2", fakeApi({ ask }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Q1" }));
+    expect(await screen.findByText(/Khớp chữ không dấu/)).toHaveTextContent("%Nhà sách Cẩm Phả% → %nha%sach%cam%pha%");
   });
 
   it("shows a blocked query with its reason", async () => {
