@@ -263,21 +263,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
 
     if args.command == "serve":
-        cost_model, profile_name = get_serving_cost_profile(
-            hw_info, allow_fallback=getattr(args, "allow_fallback", False)
-        )
-        if cost_model is None:
-            print(
-                f"\n\033[1;31m✖ [Hardware Error] No latency profile for GPU '{hw_info.device_name} ({hw_info.sm_architecture})'. "
-                f"Please calibrate using: flexsds profile --benchmark (or pass '--allow-fallback').\033[0m"
-            )
-            return 1
-
-        if profile_name == "conservative_analytical_fallback":
-            print(
-                f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
-            )
-
         raw_args = argv if argv is not None else sys.argv[1:]
         has_explicit_platform = any(a.startswith("--backend") or a.startswith("--gpu") for a in raw_args)
         if (args.target and args.draft) or (
@@ -286,6 +271,56 @@ def main(argv: Optional[list[str]] = None) -> int:
             and not (args.target and not args.draft)
             and not (args.draft and not args.target)
         ):
+            target_gpu = getattr(args, "gpu", "L4")
+            if args.backend in ("modal", "colab"):
+                remote_sm_map = {
+                    "A10G": "sm_86",
+                    "L4": "sm_89",
+                    "T4": "sm_75",
+                    "A100": "sm_80",
+                }
+                target_sm = remote_sm_map.get(target_gpu, "sm_89")
+                budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0, "A100": 40000.0}
+                target_vram = budgets.get(target_gpu, 22000.0)
+                serving_hw = HardwareInfo(
+                    device_name=f"Remote {target_gpu}",
+                    sm_architecture=target_sm,
+                    total_vram_mb=target_vram,
+                    free_vram_mb=target_vram,
+                    cuda_version="12.4",
+                    is_cuda_available=True,
+                    device_count=1,
+                )
+            else:
+                serving_hw = hw_info
+
+            if not args.no_adaptive:
+                if args.backend in ("modal", "colab"):
+                    cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=False)
+                    if profile_name == "conservative_analytical_fallback":
+                        print(
+                            f"\033[33m⚠ [Hardware Profile Warning] No measured profile for GPU '{target_gpu or serving_hw.device_name}' "
+                            f"({serving_hw.sm_architecture}). Using conservative analytical fallback.\033[0m"
+                        )
+                        print("  Tip: Calibrate exact latency using: flexsds profile --benchmark (or disable adaptive to use static speculation)")
+                    else:
+                        print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+                else:
+                    cost_model, profile_name = get_serving_cost_profile(
+                        serving_hw, allow_fallback=getattr(args, "allow_fallback", False)
+                    )
+                    if cost_model is None:
+                        print(
+                            f"\n\033[1;31m✖ [Hardware Error] No latency profile for GPU '{serving_hw.device_name} ({serving_hw.sm_architecture})'. "
+                            f"Please calibrate using: flexsds profile --benchmark (or pass '--allow-fallback').\033[0m"
+                        )
+                        return 1
+
+                    if profile_name == "conservative_analytical_fallback":
+                        print(
+                            f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
+                        )
+
             target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
             draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
 
