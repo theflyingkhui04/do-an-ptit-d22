@@ -29,6 +29,10 @@ def finish_launch(proc, background: bool = False) -> int:
             readiness()
         else:
             print("Endpoint readiness is not verified for this process.")
+        session = getattr(proc, '__dict__', {}).get('_flexsds_session')
+        if session and output:
+            from flexsds.cli.serving_session import present_session
+            present_session(proc, output, **session)
         code = proc.poll() if background else proc.wait()
         return code if isinstance(code, int) else 0
     except (RuntimeError, OSError, ValueError) as exc:

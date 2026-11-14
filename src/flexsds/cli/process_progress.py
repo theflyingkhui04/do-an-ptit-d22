@@ -1,4 +1,4 @@
-"""Compact subprocess progress; Ctrl+O replays and streams complete saved logs."""
+"""Compact subprocess progress with a temporary Ctrl+O log viewer."""
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+import textwrap
 from flexsds.cli.output import ascii_text
 
 LOG_DIR = Path.home() / '.flexsds' / 'logs'
@@ -25,6 +26,10 @@ class ProcessProgress:
         self.message = 'Preparing Modal ' + kind
         self.app_url = None
         self.details = False
+        self.paused = False
+        self.panel_offset = 0
+        self.panel_signature = None
+        self.pending_notices = []
         self.closed = False
         self.interactive = sys.stdout.isatty() and sys.stdin.isatty()
         self.lock = threading.RLock()
@@ -49,7 +54,10 @@ class ProcessProgress:
             sys.stdout.write(ascii_text(text))
 
     def _draw(self):
-        if self.closed or self.details:
+        if self.closed or self.paused:
+            return
+        if self.details:
+            self._draw_panel()
             return
         elapsed = int(time.monotonic()-self.started)
         hint = 'Ctrl+O for details' if self.interactive else f'log: {self.log_path}'
@@ -74,6 +82,9 @@ class ProcessProgress:
 
     def notice(self, text):
         with self.lock:
+            if self.paused or (self.interactive and self.details):
+                self.pending_notices.append(text)
+                return
             if self.interactive and not self.details:
                 self._write('\r\x1b[K')
                 self.last_drawn = None
@@ -96,8 +107,11 @@ class ProcessProgress:
             self.log.write(line)
             self.log.flush()
             if self.details:
-                self._write(clean+'\n')
-                sys.stdout.flush()
+                if self.interactive:
+                    self._draw_panel()
+                else:
+                    self._write(clean+'\n')
+                    sys.stdout.flush()
             app = re.search(r'https://modal.com/apps/[^\s\x1b]+',clean)
             if app and app.group() != self.app_url:
                 self.app_url = app.group()
@@ -125,25 +139,77 @@ class ProcessProgress:
             elif 'Application startup complete' in clean:
                 self.update('Checking endpoint readiness',85)
 
+    def _draw_panel(self):
+        width, height = shutil.get_terminal_size((100, 24))
+        width = max(1, width - 1)
+        rows = max(1, height - 5)
+        signature = (self.log_path.stat().st_size, width, height, self.panel_offset)
+        if signature == self.panel_signature:
+            return
+        self.panel_signature = signature
+        self.log.flush()
+        with self.log_path.open(encoding='utf-8') as saved:
+            lines = [part for line in saved for part in
+                     (textwrap.wrap(ANSI.sub('', line).rstrip(), width=width,
+                                    replace_whitespace=True) or [''])]
+        self.panel_offset = min(self.panel_offset, max(0, len(lines) - rows))
+        end = max(rows, len(lines) - self.panel_offset)
+        visible = lines[max(0, end - rows):end]
+        header = 'Modal logs | Ctrl+O: close | Up/Down or j/k: scroll | G: latest'
+        body = [header[:width], '-' * width, *visible,
+                '-' * width, str(self.log_path)[:width]]
+        self._write('\x1b[H\x1b[2J' + '\n'.join(body))
+        sys.stdout.flush()
+
     def toggle_details(self):
         with self.lock:
-            if self.closed:
+            if self.closed or self.paused:
                 return
             self.details = not self.details
             if self.details:
-                self._write('\r\x1b[K\n--- Modal logs (Ctrl+O to collapse) ---\n')
-                self.log.flush()
-                with self.log_path.open(encoding='utf-8') as saved:
-                    for line in saved:
-                        self._write(ANSI.sub('',line))
-                sys.stdout.flush()
+                self.panel_offset = 0
+                self.panel_signature = None
+                if self.interactive:
+                    self._write('\x1b[?1049h')
+                    self._draw_panel()
+                else:
+                    self._write(self.log_path.read_text(encoding='utf-8'))
             else:
-                # Full logs stay in scrollback and on disk; reset the visible view.
-                self._write('\x1b[2J\x1b[H')
+                if self.interactive:
+                    self._write('\x1b[?1049l')
                 self.last_drawn = None
-                if self.app_url:
-                    self._write('View app: '+self.app_url+'\n')
+                for text in self.pending_notices:
+                    self._write('\r\x1b[K' + text + '\n')
+                self.pending_notices.clear()
                 self._draw()
+
+    def suspend(self):
+        """Release stdin and the terminal while log capture continues."""
+        self.stop.set()
+        if self.listener and self.listener is not threading.current_thread():
+            self.listener.join(timeout=0.5)
+        with self.lock:
+            if self.details:
+                self.toggle_details()
+            if self.terminal:
+                import termios
+                fd, old = self.terminal
+                try:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old)
+                except OSError:
+                    pass
+                self.terminal = None
+            if self.interactive and not self.paused and not self.closed:
+                self._write('\r\x1b[K')
+                sys.stdout.flush()
+            self.paused = True
+
+    def resume(self):
+        if self.closed:
+            return
+        self.paused = False
+        self.stop.clear()
+        self.start()
 
     def start(self):
         if not self.interactive:
@@ -168,8 +234,17 @@ class ProcessProgress:
                             import msvcrt
                             if msvcrt.kbhit(): key = msvcrt.getwch()
                         elif select.select([sys.stdin.fileno()],[],[],0)[0]:
-                            key = os.read(sys.stdin.fileno(),1).decode(errors='replace')
+                            fd = sys.stdin.fileno()
+                            key = os.read(fd,1).decode(errors='replace')
+                            if key == '\x1b':
+                                while select.select([fd], [], [], 0.01)[0]:
+                                    key += os.read(fd, 1).decode(errors='replace')
+                                key = {'\x1b[A': 'k', '\x1b[B': 'j', '\x1b[F': 'G'}.get(key, key)
                         if key == '\x0f': self.toggle_details()
+                        elif self.details and key in ('j', 'k', 'G'):
+                            with self.lock:
+                                if key == 'G': self.panel_offset = 0
+                                else: self.panel_offset = max(0, self.panel_offset + (3 if key == 'k' else -3))
                         with self.lock: self._draw()
                     except (OSError,ValueError):
                         return
@@ -202,25 +277,13 @@ class ProcessProgress:
         return thread
 
     def close(self):
-        self.stop.set()
-        if self.listener and self.listener is not threading.current_thread():
-            self.listener.join(timeout=0.3)
+        self.suspend()
         with self.lock:
             if self.closed:
                 return
-            if self.terminal:
-                import termios
-                fd,old = self.terminal
-                try:
-                    termios.tcsetattr(fd,termios.TCSADRAIN,old)
-                except OSError:
-                    pass  # A disconnected terminal cannot be restored.
-                self.terminal = None
             self.closed = True
             self.log.close()
-            if self.interactive:
-                self._write('\n')
-                sys.stdout.flush()
+
 
 
 def run_logged_process(command, *, env, timeout, total_cells):

@@ -66,6 +66,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     examples = {
+        "clear": "flexsds clear modal",
         "detect": "flexsds detect",
         "profile": "flexsds profile --benchmark --backend modal --gpu A10G",
         "stop": "flexsds stop",
@@ -82,6 +83,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         return group.add_parser(name, help=help, description=help,
                                 epilog=f"Example: {examples[name]}",
                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    clear_parser = add_command(subparsers, "clear", help="Disconnect a local service account and require login again")
+    clear_parser.add_argument("provider", choices=["modal"], help="Clear FlexSDS tokens and the active native Modal profile")
 
     # Command: detect
     add_command(subparsers, "detect", help="Detect and display hardware / GPU specs")
@@ -198,6 +202,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.command == "monitor" and args.refresh_rate <= 0:
         print("Refresh rate must be positive")
         return 2
+    if args.command == "clear":
+        from flexsds.server.modal_auth import clear_modal
+        try:
+            clear_modal(CredentialsManager())
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"Modal disconnect failed: {exc}")
+            return 1
+        print("Modal disconnected locally. Log in again when selecting Modal, or run flexsds auth login --provider modal.")
+        return 0
     hw_info = detect_hardware()
 
     if args.command == "stop":
@@ -239,6 +252,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             prov = args.provider
             key_name = args.key or ("HF_TOKEN" if prov == "huggingface" else ("MODAL_TOKEN_ID" if prov == "modal" else "TOKEN"))
             val = args.token or getpass.getpass(f"Enter {key_name} for {prov}: ")
+            if prov == "modal" and args.key is None and val:
+                secret = getpass.getpass("Enter MODAL_TOKEN_SECRET for modal: ").strip()
+                if not secret:
+                    print("Both Modal token ID and secret are required.")
+                    return 1
+                cred_mgr.set_credential(prov, "MODAL_TOKEN_SECRET", secret)
             if val:
                 cred_mgr.set_credential(prov, key_name, val.strip())
                 print(f"\033[32m✔ Securely saved {key_name} for {prov} (POSIX mode 0600; Windows uses filesystem ACLs).\033[0m")

@@ -28,18 +28,8 @@ class ModalServingRunner:
 
     def check_credentials(self) -> bool:
         """Kiểm tra thông tin định danh Modal qua CredentialsManager, biến môi trường hoặc ~/.modal.toml."""
-        self.cred_mgr.inject_into_environ()
-
-        token_id = os.environ.get("MODAL_TOKEN_ID") or self.cred_mgr.get_credential("modal", "MODAL_TOKEN_ID")
-        token_secret = os.environ.get("MODAL_TOKEN_SECRET") or self.cred_mgr.get_credential("modal", "MODAL_TOKEN_SECRET")
-        if token_id and token_secret:
-            return True
-
-        toml_path = os.path.expanduser("~/.modal.toml")
-        if os.path.exists(toml_path):
-            return True
-
-        return False
+        from flexsds.server.modal_auth import prepare_modal_auth
+        return prepare_modal_auth(self.cred_mgr)
 
     def build_modal_command(self, config: Dict[str, Any], deploy: bool = False) -> List[str]:
         """Tạo danh sách đối số dòng lệnh gọi công cụ CLI modal tới modal_app.py."""
@@ -52,6 +42,10 @@ class ModalServingRunner:
         cfg = config.get("serving", config)
         keys = ("target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
                 "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
+        if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
+            # Calibration also uses this method without the serving launch preflight.
+            from flexsds.server.modal_auth import prepare_modal_auth
+            prepare_modal_auth(self.cred_mgr)
         env = dict(os.environ)
         env["FLEXSDS_SERVING_CONFIG"] = json.dumps({k: cfg[k] for k in keys if k in cfg})
 
@@ -128,6 +122,8 @@ class ModalServingRunner:
                 output.update('Waiting for endpoint readiness',15)
                 model = verify_endpoint(endpoint[0], process=proc, deployed=deploy,
                                         timeout=max(0.1, deadline-time.monotonic()))
+                proc._flexsds_session = dict(endpoint=endpoint[0].rstrip('/')+'/v1', model=model,
+                                            config=cfg, deploy=deploy)
                 output.notice(f"Inference verified: {endpoint[0]}/v1 (model={model})")
                 output.update('Serving ready' if not deploy else 'Deployment verified',100)
                 if deploy:

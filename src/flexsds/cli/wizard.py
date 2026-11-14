@@ -170,6 +170,8 @@ def _get_key_stroke() -> str:
 
 
 CHOICE_HELP = {
+    'Watch log': 'View live server logs. Copy the chat command into another terminal; Ctrl+O closes the log viewer.',
+    'Realtime chat with deployed LLM': 'Send messages to the verified endpoint with streaming responses. /exit returns here.',
     "Launch serving": "Configure models, check compatibility, and start an inference API.",
     "Detect hardware": "Show local GPU, CUDA availability, and available memory.",
     "Benchmark & profile GPU": "Inspect the local profile; use flexsds profile --benchmark to measure.",
@@ -417,7 +419,8 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             setup_now = prompt_bool("Configure Modal credentials now?", default_val=True)
             if setup_now:
                 token_id = prompt_string("Enter MODAL_TOKEN_ID (or press Enter to skip):", default_val="")
-                token_secret = prompt_string("Enter MODAL_TOKEN_SECRET (or press Enter to skip):", default_val="")
+                import getpass
+                token_secret = getpass.getpass("Enter MODAL_TOKEN_SECRET (or press Enter to skip): ")
                 if token_id and token_secret:
                     modal_runner.cred_mgr.set_credential("modal", "MODAL_TOKEN_ID", token_id.strip())
                     modal_runner.cred_mgr.set_credential("modal", "MODAL_TOKEN_SECRET", token_secret.strip())

@@ -72,4 +72,10 @@ Regression tests kiểm tra CPU không tạo profile measured, remote dispatch/f
 
 Calibration và serving mặc định hiện một dòng `[x%] tác vụ đang chạy (Ctrl+O for details)`, kèm app URL. Phần trăm theo các mốc khởi động và số cell đã đo; không tăng giả theo thời gian chờ GPU/warmup.
 
-`Ctrl+O` mở toàn bộ log đã lưu và stream log mới; bấm lại để thu gọn. File đầy đủ nằm ở `~/.flexsds/logs/modal-*.log` và được in đường dẫn khi bắt đầu. Khi output không phải terminal, CLI chỉ in các mốc tiến độ và đường dẫn log. Ctrl+C hủy tác vụ và trả terminal về chế độ bình thường.
+`Ctrl+O` mở khung log trong alternate screen; bấm lại để đóng và khôi phục màn hình chính, không để log vừa xem trên màn hình chính. Dùng Up/Down hoặc j/k để cuộn, G để về log mới nhất. File đầy đủ nằm ở `~/.flexsds/logs/modal-*.log` và được in đường dẫn khi bắt đầu. Khi output không phải terminal, CLI chỉ in các mốc tiến độ và đường dẫn log. Ctrl+C hủy tác vụ và trả terminal về chế độ bình thường.
+
+### Ngắt tài khoản và dùng endpoint
+
+`flexsds clear modal` xóa token Modal trong FlexSDS và profile Modal hiện hành ở máy này; giữ các profile khác. FlexSDS bỏ qua token cũ còn được shell truyền vào sau khi clear. Đăng nhập lại trong wizard, bằng `flexsds auth login --provider modal`, hoặc `modal setup`. Lệnh không thu hồi token trên cloud và không dừng app đang chạy.
+
+Sau khi kiểm tra inference thành công, CLI hiển thị `Endpoint LLM created:` cùng API, model, GPU, mode và đường dẫn log, rồi cho chọn **Watch log** hoặc **Realtime chat with deployed LLM**. Lệnh `flexsds chat --endpoint ... --model ...` được in sẵn để mở ở terminal khác. `/exit` rời chat về menu. Development serving cần giữ terminal hiện tại mở; Ctrl+C kết thúc phiên.

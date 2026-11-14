@@ -99,7 +99,8 @@ finally:
         os.write(master,b'\x0f')
         until(b'PTY_RAW_LOG')
         os.write(master,b'\x0f')
-        until(b'\x1b[2J')
+        until(b'\x1b[?1049l')
+        assert b'\x1b[?1049h' in buffer
         os.kill(proc.pid,signal.SIGINT)
         until(b'RESTORED True')
         assert proc.wait(timeout=5)==0
@@ -131,3 +132,17 @@ def test_profile_cancel_is_a_clean_cli_exit(monkeypatch,capsys):
     monkeypatch.setattr(cli,'run_hardware_micro_benchmark',cancel)
     assert cli.main(['profile','--benchmark'])==130
     assert 'Calibration cancelled.' in capsys.readouterr().out
+
+
+def test_close_open_popup_restores_primary_and_keeps_capture_paused(capsys):
+    progress = pp.ProcessProgress('serving')
+    progress.interactive = True
+    progress.feed('only-in-popup\n')
+    capsys.readouterr()
+    progress.toggle_details()
+    progress.close()
+    text = capsys.readouterr().out
+    assert '\x1b[?1049h' in text and '\x1b[?1049l' in text
+    assert 'only-in-popup' in text.split('\x1b[?1049l')[0]
+    assert 'only-in-popup' not in text.split('\x1b[?1049l')[1]
+    assert progress.closed and not progress.details
