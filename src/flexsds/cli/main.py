@@ -295,31 +295,22 @@ def main(argv: Optional[list[str]] = None) -> int:
                 serving_hw = hw_info
 
             if not args.no_adaptive:
-                if args.backend in ("modal", "colab"):
-                    cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=False)
-                    if profile_name == "conservative_analytical_fallback":
-                        print(
-                            f"\033[33m⚠ [Hardware Profile Warning] No measured profile for GPU '{target_gpu or serving_hw.device_name}' "
-                            f"({serving_hw.sm_architecture}). Using conservative analytical fallback.\033[0m"
-                        )
-                        print("  Tip: Calibrate exact latency using: flexsds profile --benchmark (or disable adaptive to use static speculation)")
-                    else:
-                        print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
-                else:
-                    cost_model, profile_name = get_serving_cost_profile(
-                        serving_hw, allow_fallback=getattr(args, "allow_fallback", False)
+                cost_model, profile_name = get_serving_cost_profile(
+                    serving_hw, allow_fallback=getattr(args, "allow_fallback", False)
+                )
+                if cost_model is None or not profile_name:
+                    print(
+                        f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile for GPU '{serving_hw.device_name} ({serving_hw.sm_architecture})'. "
+                        f"Please calibrate using: flexsds profile --benchmark (or run with --no-adaptive for static speculation).\033[0m"
                     )
-                    if cost_model is None:
-                        print(
-                            f"\n\033[1;31m✖ [Hardware Error] No latency profile for GPU '{serving_hw.device_name} ({serving_hw.sm_architecture})'. "
-                            f"Please calibrate using: flexsds profile --benchmark (or pass '--allow-fallback').\033[0m"
-                        )
-                        return 1
+                    return 1
 
-                    if profile_name == "conservative_analytical_fallback":
-                        print(
-                            f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
-                        )
+                if profile_name == "conservative_analytical_fallback":
+                    print(
+                        f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
+                    )
+                else:
+                    print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
 
             target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
             draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"

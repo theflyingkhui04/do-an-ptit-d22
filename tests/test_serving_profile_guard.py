@@ -54,7 +54,11 @@ def test_serve_fails_fast_when_missing_profile_without_fallback_flag(capsys):
         ret = main(["serve", "--backend", "local", "--dry-run"])
         assert ret == 1
         captured = capsys.readouterr()
-        assert "No latency profile for GPU" in captured.out or "Chưa có hồ sơ độ trễ cho GPU" in captured.out
+        assert (
+            "No measured latency profile for GPU" in captured.out
+            or "No latency profile for GPU" in captured.out
+            or "Chưa có hồ sơ độ trễ cho GPU" in captured.out
+        )
         assert "flexsds profile --benchmark" in captured.out
 
 
@@ -98,3 +102,24 @@ def test_serve_fails_fast_when_draft_is_incompatible_architecture(capsys):
         assert ret == 2
         captured = capsys.readouterr()
         assert "Launch blocked" in captured.out or "incompatible" in captured.out
+
+
+def test_serve_modal_fails_fast_when_gpu_profile_missing(capsys):
+    ret = main(["serve", "--backend", "modal", "--gpu", "A10G", "--dry-run"])
+    assert ret == 1
+    captured = capsys.readouterr()
+    assert (
+        "No measured latency profile for GPU" in captured.out
+        or "No latency profile for GPU" in captured.out
+    )
+    assert "A10G" in captured.out
+    assert "sm_86" in captured.out
+    assert "flexsds profile --benchmark" in captured.out
+
+
+def test_serve_modal_proceeds_with_no_adaptive(capsys):
+    ret = main(["serve", "--backend", "modal", "--gpu", "A10G", "--no-adaptive", "--dry-run"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "Preview only; not a readiness check" in captured.out
+
