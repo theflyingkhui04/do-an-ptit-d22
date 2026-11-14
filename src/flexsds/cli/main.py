@@ -19,6 +19,7 @@ try:
     from flexsds.core.cost_model import (
         FlexCostModel,
         load_profile_for_hardware,
+        resolve_profile_path,
         run_hardware_micro_benchmark,
     )
     from flexsds.core.credentials import CredentialsManager
@@ -41,6 +42,7 @@ except ModuleNotFoundError:
     from src.flexsds.core.cost_model import (
         FlexCostModel,
         load_profile_for_hardware,
+        resolve_profile_path,
         run_hardware_micro_benchmark,
     )
     from src.flexsds.core.credentials import CredentialsManager
@@ -54,7 +56,8 @@ except ModuleNotFoundError:
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="flexsds",
-        description="FlexSDS: Flexible Speculative Decoding Serving Engine for LLMs",
+        description="FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs",
+        epilog="Run flexsds for the wizard, or flexsds COMMAND --help for command details.",
     )
     parser.add_argument(
         "-v", "--version", action="version", version=f"flexsds {__version__}"
@@ -62,15 +65,37 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
+    examples = {
+        "clear": "flexsds clear modal",
+        "detect": "flexsds detect",
+        "profile": "flexsds profile --benchmark --backend modal --gpu A10G",
+        "stop": "flexsds stop",
+        "auth": "flexsds auth status",
+        "login": "flexsds auth login --provider modal",
+        "status": "flexsds auth status",
+        "logout": "flexsds auth logout --provider modal",
+        "serve": "flexsds serve --backend modal --gpu A10G --dry-run",
+        "chat": "flexsds chat --endpoint http://localhost:8000/v1",
+        "monitor": "flexsds monitor --trace-file telemetry/serving_trace.jsonl",
+    }
+
+    def add_command(group, name, *, help):
+        return group.add_parser(name, help=help, description=help,
+                                epilog=f"Example: {examples[name]}",
+                                formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    clear_parser = add_command(subparsers, "clear", help="Disconnect a local service account and require login again")
+    clear_parser.add_argument("provider", choices=["modal"], help="Clear FlexSDS tokens and the active native Modal profile")
+
     # Command: detect
-    subparsers.add_parser("detect", help="Detect and display hardware / GPU specs")
+    add_command(subparsers, "detect", help="Detect and display hardware / GPU specs")
 
     # Command: profile
-    profile_parser = subparsers.add_parser("profile", help="Load hardware cost profile for current GPU")
+    profile_parser = add_command(subparsers, "profile", help="Load hardware cost profile for current GPU")
     profile_parser.add_argument(
         "--benchmark",
         action="store_true",
-        help="Run micro-benchmark to measure and save profile",
+        help="Measure real model costs on CUDA and save a profile (may take minutes)",
     )
     profile_parser.add_argument(
         "--target",
@@ -91,28 +116,31 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Model identifier override for benchmarking",
     )
 
+    profile_parser.add_argument("--backend", choices=["local", "modal"], default="local", help="Where to run calibration")
+    profile_parser.add_argument("--gpu", choices=["A10G", "L4", "T4"], default="A10G", help="GPU to allocate for Modal calibration")
+
     # Command: stop
-    subparsers.add_parser("stop", help="Stop running local FlexSDS server")
+    add_command(subparsers, "stop", help="Stop running local FlexSDS server")
 
     # Command: auth
-    auth_parser = subparsers.add_parser("auth", help="Manage secure credentials outside repository")
+    auth_parser = add_command(subparsers, "auth", help="Manage secure credentials outside repository")
     auth_subparsers = auth_parser.add_subparsers(dest="auth_action", help="Auth action to perform")
     
     # auth login
-    auth_login_parser = auth_subparsers.add_parser("login", help="Save API key / token securely")
+    auth_login_parser = add_command(auth_subparsers, "login", help="Save API key / token securely")
     auth_login_parser.add_argument("--provider", choices=["modal", "huggingface", "cloudflare"], default="modal", help="Target service provider")
     auth_login_parser.add_argument("--key", type=str, default=None, help="Specific credential key name")
     auth_login_parser.add_argument("--token", type=str, default=None, help="Token value (prompted securely if omitted)")
 
     # auth status
-    auth_subparsers.add_parser("status", help="Show masked status of saved credentials")
+    add_command(auth_subparsers, "status", help="Show masked status of saved credentials")
 
     # auth logout
-    auth_logout_parser = auth_subparsers.add_parser("logout", help="Delete saved credentials")
-    auth_logout_parser.add_argument("--provider", type=str, default=None, help="Target service provider to remove")
+    auth_logout_parser = add_command(auth_subparsers, "logout", help="Delete saved credentials")
+    auth_logout_parser.add_argument("--provider", type=str, default=None, help="Provider to remove; omit to remove all saved providers")
 
     # Command: serve
-    serve_parser = subparsers.add_parser("serve", help="Launch speculative serving server")
+    serve_parser = add_command(subparsers, "serve", help="Launch speculative serving server")
     serve_parser.add_argument("--target", type=str, help="Target model identifier")
     serve_parser.add_argument("--draft", type=str, help="Draft model or speculator head identifier")
     serve_parser.add_argument(
@@ -132,20 +160,20 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--no-adaptive", action="store_true", help="Disable HardwareAdaptive optimization engine"
     )
     serve_parser.add_argument(
-        "--allow-fallback", action="store_true", help="Allow running with conservative analytical fallback if exact GPU profile is missing"
+        "--allow-fallback", action="store_true", help="Deprecated: analytical fallback cannot satisfy empirical serving requirements"
     )
     serve_parser.add_argument(
         "--dry-run", action="store_true", help="Print execution command without launching"
     )
 
     # Command: chat
-    chat_parser = subparsers.add_parser("chat", help="Start interactive streaming chat with served model")
+    chat_parser = add_command(subparsers, "chat", help="Start interactive streaming chat with served model")
     chat_parser.add_argument("--endpoint", type=str, default="http://localhost:8000/v1", help="API base URL")
     chat_parser.add_argument("--model", type=str, default=None, help="Served model name override")
     chat_parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature")
 
     # Command: monitor
-    monitor_parser = subparsers.add_parser("monitor", help="Live telemetry monitor for speculative decoding traces")
+    monitor_parser = add_command(subparsers, "monitor", help="Live telemetry monitor for speculative decoding traces")
     monitor_parser.add_argument("--trace-file", type=str, default="telemetry/serving_trace.jsonl", help="Path to JSONL telemetry trace")
     monitor_parser.add_argument("--refresh-rate", type=float, default=1.0, help="Telemetry poll interval in seconds")
 
@@ -157,16 +185,11 @@ def get_serving_cost_profile(
     allow_fallback: bool = False,
     custom_profile_path: Optional[str] = None,
 ) -> tuple[Optional[FlexCostModel], str]:
-    """Tải hồ sơ chi phí phần cứng phục vụ cho lệnh serve với cơ chế chặn sớm (fail-fast).
-
-    Nếu allow_fallback=False và không tìm thấy hồ sơ chính xác cho GPU hiện tại,
-    trả về (None, "") để kích hoạt xử lý chặn sớm an toàn.
-    Nếu allow_fallback=True, cho phép nạp hồ sơ suy diễn dè dặt phân tích an toàn.
-    """
+    """Load an empirical serving profile; legacy allow_fallback cannot bypass it."""
     return load_profile_for_hardware(
         hw_info,
         custom_profile_path=custom_profile_path,
-        strict=not allow_fallback,
+        strict=True,
     )
 
 
@@ -179,6 +202,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.command == "monitor" and args.refresh_rate <= 0:
         print("Refresh rate must be positive")
         return 2
+    if args.command == "clear":
+        from flexsds.server.modal_auth import clear_modal
+        try:
+            clear_modal(CredentialsManager())
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"Modal disconnect failed: {exc}")
+            return 1
+        print("Modal disconnected locally. Log in again when selecting Modal, or run flexsds auth login --provider modal.")
+        return 0
     hw_info = detect_hardware()
 
     if args.command == "stop":
@@ -220,6 +252,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             prov = args.provider
             key_name = args.key or ("HF_TOKEN" if prov == "huggingface" else ("MODAL_TOKEN_ID" if prov == "modal" else "TOKEN"))
             val = args.token or getpass.getpass(f"Enter {key_name} for {prov}: ")
+            if prov == "modal" and args.key is None and val:
+                secret = getpass.getpass("Enter MODAL_TOKEN_SECRET for modal: ").strip()
+                if not secret:
+                    print("Both Modal token ID and secret are required.")
+                    return 1
+                cred_mgr.set_credential(prov, "MODAL_TOKEN_SECRET", secret)
             if val:
                 cred_mgr.set_credential(prov, key_name, val.strip())
                 print(f"\033[32m✔ Securely saved {key_name} for {prov} (POSIX mode 0600; Windows uses filesystem ACLs).\033[0m")
@@ -237,11 +275,21 @@ def main(argv: Optional[list[str]] = None) -> int:
         if getattr(args, "benchmark", False):
             target_model = args.model or args.target
             draft_model = args.draft
-            cost_model, saved_path = run_hardware_micro_benchmark(
-                hw_info=hw_info,
-                target_model=target_model,
-                draft_model=draft_model,
-            )
+            if args.backend == "modal":
+                sm = {"A10G": "sm_86", "L4": "sm_89", "T4": "sm_75"}[args.gpu]
+                hw_info = HardwareInfo(device_name=f"Remote {args.gpu}", sm_architecture=sm,
+                                       total_vram_mb=0, free_vram_mb=0, cuda_version="unknown",
+                                       is_cuda_available=True)
+            try:
+                cost_model, saved_path = run_hardware_micro_benchmark(
+                    hw_info=hw_info, target_model=target_model, draft_model=draft_model, backend=args.backend,
+                )
+            except KeyboardInterrupt:
+                print("Calibration cancelled.")
+                return 130
+            except (RuntimeError, ValueError, OSError) as exc:
+                print(f"Calibration failed: {exc}")
+                return 1
             print(f"\n\033[1;32m✔ Calibrated & saved new hardware profile: {saved_path}\033[0m")
             return 0
 
@@ -263,24 +311,39 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
 
     if args.command == "serve":
-        cost_model, profile_name = get_serving_cost_profile(
-            hw_info, allow_fallback=getattr(args, "allow_fallback", False)
-        )
-        if cost_model is None:
-            print(
-                f"\n\033[1;31m✖ [Lỗi phần cứng] Chưa có hồ sơ độ trễ cho GPU '{hw_info.device_name} ({hw_info.sm_architecture})'. "
-                f"Vui lòng chạy lệnh đo đạc: flexsds profile --benchmark (hoặc thêm cờ '--allow-fallback').\033[0m"
-            )
-            return 1
+        raw_args = argv if argv is not None else sys.argv[1:]
+        has_explicit_platform = any(a.startswith("--backend") or a.startswith("--gpu") for a in raw_args)
+        if (args.target and args.draft) or (
+            args.dry_run
+            and has_explicit_platform
+            and not (args.target and not args.draft)
+            and not (args.draft and not args.target)
+        ):
+            target_gpu = getattr(args, "gpu", "L4")
+            if args.backend in ("modal", "colab"):
+                remote_sm_map = {
+                    "A10G": "sm_86",
+                    "L4": "sm_89",
+                    "T4": "sm_75",
+                    "A100": "sm_80",
+                }
+                target_sm = remote_sm_map.get(target_gpu, "sm_89")
+                budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0, "A100": 40000.0}
+                target_vram = budgets.get(target_gpu, 22000.0)
+                serving_hw = HardwareInfo(
+                    device_name=f"Remote {target_gpu}",
+                    sm_architecture=target_sm,
+                    total_vram_mb=target_vram,
+                    free_vram_mb=target_vram,
+                    cuda_version="12.4",
+                    is_cuda_available=True,
+                    device_count=1,
+                )
+            else:
+                serving_hw = hw_info
 
-        if profile_name == "conservative_analytical_fallback":
-            print(
-                f"  \033[1;33m⚠ [Cảnh báo phần cứng] Sử dụng hồ sơ suy diễn dè dặt ({profile_name} / Conservative Fallback).\033[0m"
-            )
-
-        if args.target and args.draft:
-            target_model = args.target
-            draft_model = args.draft
+            target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
+            draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
 
             preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
                                                    args.backend, getattr(args, "gpu", "L4"))
@@ -289,19 +352,39 @@ def main(argv: Optional[list[str]] = None) -> int:
                 print("Launch blocked: " + "; ".join(preflight.reasons))
             if args.backend != "local":
                 print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
+            if not args.dry_run and not preflight.is_safe:
+                return 2
+
+            if not args.no_adaptive:
+                cost_model, profile_name = load_profile_for_hardware(
+                    serving_hw, strict=True, target_model=target_model, draft_model=draft_model,
+                )
+                if cost_model is None or not profile_name:
+                    print(
+                        f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile for GPU '{serving_hw.device_name} ({serving_hw.sm_architecture})'. "
+                        f"Please calibrate using: flexsds profile --benchmark (or run with --no-adaptive for static speculation).\033[0m"
+                    )
+                    return 1
+
+                if profile_name == "conservative_analytical_fallback":
+                    print(
+                        f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
+                    )
+                else:
+                    print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+
             cfg = {"serving": {
                 "target_model": target_model, "draft_model": draft_model,
                 "draft_method": preflight.report.draft_method,
                 "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
                 "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
                 "enable_adaptive": not args.no_adaptive,
+                "profile_path": str(resolve_profile_path(profile_name)) if not args.no_adaptive else None,
             }}
             if args.backend == "colab":
                 print("Colab guidance only: no server or endpoint was created; supplied models are not forwarded to the notebook.")
                 print("Open notebooks/flexsds_colab_server.ipynb and configure the exact models on that runtime.")
                 return 0
-            if not args.dry_run and not preflight.is_safe:
-                return 2
             if args.dry_run:
                 print("Preview only; not a readiness check.")
                 if args.backend == "local":
@@ -315,13 +398,17 @@ def main(argv: Optional[list[str]] = None) -> int:
                 if args.backend == "local":
                     return LocalServingRunner().launch(cfg, port=args.port, background=args.background)
                 return ModalServingRunner().launch(cfg, deploy=args.deploy)
-            proc = tasks.run_task(task, launch)
+            try:
+                proc = launch(task) if args.backend == "modal" else tasks.run_task(task, launch)
+            except (ValueError, RuntimeError, OSError) as exc:
+                print(f"Serving launch failed: {exc}")
+                return 1
             return finish_launch(proc, background=args.backend == "local" and args.background)
 
     try:
         result = run_interactive_wizard(hw_info)
         return result.get("exit_code", 0) if isinstance(result, dict) else 0
-    except ServingBlockedError as exc:
+    except (ServingBlockedError, ValueError, RuntimeError, OSError) as exc:
         print(str(exc))
         return 2
 

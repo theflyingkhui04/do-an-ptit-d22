@@ -30,9 +30,23 @@ def supports_truecolor(stream) -> bool:
             return False
     except OSError:
         return False
-    return (os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
+    if (os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
             or os.environ.get("TERM", "").endswith(("-direct", "-truecolor"))
-            or bool(os.environ.get("WT_SESSION")))
+            or bool(os.environ.get("WT_SESSION"))):
+        return True
+    if os.name == "nt":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+            mode = ctypes.c_ulong()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                # ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+                if kernel32.SetConsoleMode(handle, mode.value | 0x0004):
+                    return True
+        except Exception:
+            pass
+    return False
 
 
 def ascii_text(text: str) -> str:

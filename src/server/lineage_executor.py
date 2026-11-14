@@ -28,17 +28,36 @@ def verify_sources():
             raise RuntimeError(f"Unsupported async lineage source: {path}")
 
 
+def verify_eagle_sources():
+    root = Path(vllm.__file__).resolve().parent.parent
+    manifest = Path(__file__).resolve().parents[2] / "experiments/m4_eagle_source_manifest.json"
+    for record in json.loads(manifest.read_text())["files"]:
+        if hashlib.sha256((root / record["path"]).read_bytes()).hexdigest() != record["sha256"]:
+            raise RuntimeError(f"Unsupported EAGLE lineage source: {record['path']}")
+
+
+def validate_speculator_contract(spec):
+    """The EAGLE extension is narrower than arbitrary vLLM speculation support."""
+    if spec is None or spec.method not in ("draft_model", "eagle3"):
+        raise RuntimeError("Async lineage requires draft_model or eagle3")
+    if spec.method == "eagle3":
+        verify_eagle_sources()
+        if (getattr(spec, "parallel_drafting", False)
+                or not getattr(spec, "num_speculative_tokens_per_batch_size", None)):
+            raise RuntimeError("EAGLE lineage requires sequential dynamic-K drafting")
+
+
 class LineageUniProcExecutor(UniProcExecutor):
     def _init_executor(self):
         verify_sources()
         config = self.vllm_config
         parallel = config.parallel_config
         spec = config.speculative_config
+        validate_speculator_contract(spec)
         if (parallel.world_size != 1 or parallel.data_parallel_size != 1
                 or not config.scheduler_config.async_scheduling
-                or spec is None or spec.method != "draft_model"
                 or spec.disable_padded_drafter_batch):
-            raise RuntimeError("Async lineage supports only single-worker async padded draft_model")
+            raise RuntimeError("Async lineage supports only single-worker async padded drafting")
         super()._init_executor()
         runner = self.driver_worker.worker.model_runner
         if (type(runner).__module__ != "vllm.v1.worker.gpu_model_runner"

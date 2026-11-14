@@ -1,5 +1,6 @@
 """Tests for Modal cloud serving runner (BYOC, ephemeral, and deploy modes)."""
 import os
+import shutil
 from unittest.mock import patch
 import pytest
 from flexsds.server.modal_runner import ModalServingRunner
@@ -9,7 +10,7 @@ def test_modal_runner_build_command_ephemeral_and_deploy():
     runner = ModalServingRunner()
     config = {"serving": {"target_gpu": "L4", "port": 8000}}
     cmd_run = runner.build_modal_command(config, deploy=False)
-    assert "modal" in cmd_run[0]
+    assert os.path.basename(cmd_run[0]) == "modal"
     assert "serve" in cmd_run
 
     cmd_deploy = runner.build_modal_command(config, deploy=True)
@@ -44,7 +45,7 @@ def test_modal_runner_build_command_uses_standalone_app():
     runner = ModalServingRunner()
     cfg = {"serving": {"target_gpu": "A10G"}}
     cmd = runner.build_modal_command(cfg, deploy=False)
-    assert "modal" in cmd
+    assert os.path.basename(cmd[0]) == "modal"
     assert "serve" in cmd
     assert any("modal_app.py" in arg for arg in cmd)
     assert '"target_gpu": "A10G"' in runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"]
@@ -83,7 +84,39 @@ def test_modal_runner_check_process_status():
     assert code == 1
 
 
+def test_modal_runner_resolves_modal_binary(monkeypatch):
+    runner = ModalServingRunner()
+    config = {"serving": {"target_gpu": "A10G"}}
+
+    # Giả lập trên Windows tìm thấy modal.cmd
+    monkeypatch.setattr("shutil.which", lambda name: "C:\\Python\\Scripts\\modal.cmd" if name == "modal" else None)
+    cmd = runner.build_modal_command(config, deploy=False)
+    assert cmd[0] == "C:\\Python\\Scripts\\modal.cmd"
+    assert "serve" in cmd
+
+
+def test_modal_runner_setup_environment_uses_os_pathsep(monkeypatch):
+    runner = ModalServingRunner()
+    config = {"serving": {"target_gpu": "A10G"}}
+    monkeypatch.setenv("PYTHONPATH", "custom_path")
+    env = runner.setup_environment(config)
+    pp = env.get("PYTHONPATH", "")
+    assert len(pp) > 0
+    assert os.pathsep in pp
+    assert "custom_path" not in pp
+
+
 @pytest.fixture(autouse=True)
 def isolated_default_credentials(tmp_path, monkeypatch):
     from flexsds.core.credentials import CredentialsManager
     monkeypatch.setattr(CredentialsManager, "DEFAULT_PATH", tmp_path / "no_credentials")
+
+
+def test_modal_environment_does_not_leak_host_python_packages(monkeypatch):
+    import sys
+    from pathlib import Path
+    monkeypatch.setenv('PYTHONPATH','/host/site-packages:/host/dist-packages')
+    monkeypatch.setattr(sys,'path',[*sys.path,'/host/venv/site-packages'])
+    paths=ModalServingRunner().setup_environment({})['PYTHONPATH'].split(os.pathsep)
+    root=Path(__file__).resolve().parents[1]
+    assert paths == [str(root/'src'),str(root)]

@@ -1,5 +1,9 @@
 # Bản đồ tài liệu
 
+**Đề tài:** FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs
+
+Tên và trạng thái triển khai hiện tại: [README](../README.md). Hướng dẫn calibration/serving: [runbook CLI/Modal](runbooks/flexsds-cli-modal-calibration.md).
+
 Danh sách **đầy đủ** các tài liệu đồ án cần có, vai trò của từng file, và ai chịu trách nhiệm. Mở file này trước khi định viết bất cứ tài liệu mới nào — để không tạo ra file trùng vai trò.
 
 ## Nguyên tắc

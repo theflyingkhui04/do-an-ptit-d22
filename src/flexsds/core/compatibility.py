@@ -93,9 +93,9 @@ def get_model_config(
                 with open(config_file, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as exc:
-                raise ModelMetadataError(f"Không thể đọc tệp config cục bộ '{config_file}': {exc}") from exc
+                raise ModelMetadataError(f"Cannot read local config file '{config_file}': {exc}") from exc
         else:
-            raise ModelMetadataError(f"Không tìm thấy tệp config.json trong đường dẫn cục bộ '{model_id_or_path}'")
+            raise ModelMetadataError(f"Config file config.json not found in local path '{model_id_or_path}'")
 
     # 2. Chuẩn hóa định danh mô hình từ xa và xác định thư mục cache
     clean_id = model_id_or_path.strip().replace("https://huggingface.co/", "").strip("/")
@@ -125,7 +125,7 @@ def get_model_config(
             data = json.loads(content)
     except Exception as exc:
         raise NetworkOfflineError(
-            f"Không thể tải metadata cho mô hình '{clean_id}' từ Hugging Face Hub: {exc}"
+            f"Cannot fetch metadata for model '{clean_id}' from Hugging Face Hub: {exc}"
         ) from exc
 
     # 5. Lưu vào cache cục bộ cho các lần kiểm tra sau
@@ -362,7 +362,7 @@ def check_compatibility(
     # 5. Architecture Family compatibility
     if not is_compatible:
         warnings.append(
-            f"Phiên bản FlexSDS hiện tại chỉ hỗ trợ kiến trúc đầu nháp EAGLE. Mô hình nháp '{draft_model}' không được hỗ trợ."
+            f"Current FlexSDS release supports EAGLE speculator architectures. Draft model '{draft_model}' is not supported."
         )
     else:
         target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
@@ -376,11 +376,11 @@ def check_compatibility(
     # 6. Cảnh báo dự phòng ngoại tuyến nếu không nạp được metadata từ mạng hay cache
     if target_cfg is None:
         warnings.append(
-            f"Không thể tải metadata cấu hình cho mô hình mục tiêu '{target_model}' (mất mạng hoặc chưa có cache). Sử dụng dự phòng theo tên."
+            f"Unable to load configuration metadata for target model '{target_model}' (network offline or cache missing). Falling back to heuristic defaults."
         )
     if draft_cfg is None:
         warnings.append(
-            f"Không thể tải metadata cấu hình cho mô hình nháp '{draft_model}' (mất mạng hoặc chưa có cache). Sử dụng dự phòng theo tên."
+            f"Unable to load configuration metadata for draft model '{draft_model}' (network offline or cache missing). Falling back to heuristic defaults."
         )
 
     return CompatibilityReport(

@@ -64,9 +64,9 @@ class TelemetryMonitor:
         return (
             f"[\033[36mStep {step}\033[0m] "
             f"k={k} | "
-            f"{color}chấp nhận={accepted}/{executed}\033[0m | "
-            f"tỷ lệ={ratio_str} | "
-            f"làn={lane}"
+            f"{color}accepted={accepted}/{executed}\033[0m | "
+            f"ratio={ratio_str} | "
+            f"lane={lane}"
         )
 
 
@@ -77,12 +77,12 @@ def run_live_monitor(
     """CLI entry point for streaming telemetry trace updates."""
     monitor = TelemetryMonitor(trace_path=trace_file)
 
-    print("\n\033[1;37mBộ theo dõi thích ứng thời gian thực (FlexSDS Live Telemetry)\033[0m")
-    print(f"  Tệp theo dõi: \033[36m{trace_file}\033[0m")
-    print(f"  Tần suất cập nhật: \033[33m{refresh_rate}s\033[0m | \033[90mNhấn Ctrl+C để dừng\033[0m\n")
+    print("\n\033[1;37mFlexSDS Live Telemetry Monitor\033[0m")
+    print(f"  Trace file: \033[36m{trace_file}\033[0m")
+    print(f"  Refresh rate: \033[33m{refresh_rate}s\033[0m | \033[90mPress Ctrl+C to stop\033[0m\n")
 
     if not os.path.exists(trace_file):
-        print(f"  \033[90m(Đang chờ máy chủ tạo tệp trace tại {trace_file}...)\033[0m")
+        print(f"  \033[90m(Waiting for server to create trace file at {trace_file}...)\033[0m")
 
     try:
         while True:
@@ -91,5 +91,5 @@ def run_live_monitor(
                 print(f"  {monitor.format_record(r)}")
             time.sleep(refresh_rate)
     except KeyboardInterrupt:
-        print("\n\033[90mĐã dừng bộ theo dõi thích ứng.\033[0m")
+        print("\n\033[90mTelemetry monitor stopped.\033[0m")
         return 0

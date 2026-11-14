@@ -1,12 +1,24 @@
-# Đặc tả sản phẩm FlexSDS: Hệ thống phục vụ suy luận phỏng đoán thích ứng
+# Đặc tả mục tiêu sản phẩm FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs
 
 > **Dự án:** Đồ án tốt nghiệp đại học — Ngành Công nghệ Thông tin, PTIT  
-> **Tên sản phẩm:** `FlexSDS` (*Flexible Speculative Decoding Serving*)  
+> **Tên sản phẩm:** FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs
 > **Phiên bản tài liệu:** 1.0 (Sprint 5 / M4)  
 > **Người thực hiện chính:** Cấn Đức Khôi, Bùi Đức Đại  
 > **Trạng thái:** Bản thảo kỹ thuật chính thức  
 
 ---
+
+## Trạng thái đối chiếu ngày 14/11/2026
+
+Đề tài tập trung vào EAGLE kết hợp điều khiển thích ứng theo phần cứng. Các yêu cầu bên dưới là đặc tả mục tiêu, không phải danh sách tính năng đã nghiệm thu. Phạm vi hiện tại:
+
+- CLI đã nối **Hardware-Adaptive EAGLE scalar K** theo đường M4, với profile v2, async scheduler và paired lineage executor. CPU/source contract và functional GPU smoke ở batch 1 đã kiểm tra; full-grid và so sánh lossless/speedup còn chờ nghiệm thu. Static `k=4` là chế độ đối chứng có thể chọn.
+- Calibration mới đã đo component trên Modal A10G ở batch 1 và K=0..4, giữ 275 raw records; full grid tới batch 32 còn chờ kiểm chứng.
+- Các lane baseline `draft_model` giữ nguyên ý nghĩa đối chứng. Đường adaptive EAGLE dùng cơ chế scalar chung đã được nhánh M4 mở rộng, có kiểm tra source EAGLE riêng.
+- Tree-adaptive được hoãn theo [quyết định phạm vi M4](../logs/problems/2026-11-12-m4-02-04-tree-adaptive-vllm-flattening-and-lineage-v02.md). Không diễn giải scalar K thành cấu trúc cây đã thực thi.
+- Lossless nói về tính đúng đắn của đầu ra; không đồng nghĩa bảo đảm speedup ≥1 trong mọi workload.
+
+Hành vi CLI hiện hành được mô tả tại [runbook](runbooks/flexsds-cli-modal-calibration.md). Các mô tả cây, web demo và bảo đảm hiệu năng trong phần đặc tả gốc dưới đây cần được nghiệm thu riêng trước khi công bố là khả năng sản phẩm.
 
 ## 1. Bối cảnh và vấn đề giải quyết
 

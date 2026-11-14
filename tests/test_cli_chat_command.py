@@ -41,7 +41,7 @@ def test_chat_session_streaming_turn(monkeypatch, capsys):
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "Xin chào!" in captured.out
-    assert "Thống kê suy luận" in captured.out
+    assert "Inference Telemetry" in captured.out
 
 
 def test_chat_handles_sigint_gracefully(monkeypatch):

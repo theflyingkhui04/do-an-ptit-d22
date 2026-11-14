@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flexsds"
-version = "0.2.0a1"
-description = "Flexible Speculative Decoding Serving Engine for LLMs"
+version = "0.2.0"
+description = "FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs"
 authors = [
     {name = "Can Duc Khoi"},
-    {name = "Bui Duc Dai"}
+    {name = "Bui Duc Dai"},
+    {name = "Nguyen The Duong"}
 ]
 readme = "README.md"
 requires-python = ">=3.9"
@@ -26,7 +27,8 @@ flexsds = "flexsds.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["flexsds*"]
+include = ["flexsds*", "server*", "proposer*", "pipeline*"]
 
 [tool.setuptools.package-data]
 flexsds = ["profiles/*.json", "assets/*"]
+pipeline = ["prompts/*.md", "schemas/*.json", "examples/*", "sqlite/*.sql"]

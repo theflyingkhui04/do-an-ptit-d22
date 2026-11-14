@@ -1,76 +1,126 @@
+"""Calibration must preserve worker evidence, never synthesize empirical costs."""
+import copy
+import json
 import pytest
-from pathlib import Path
 from flexsds.core.hardware import HardwareInfo
-from flexsds.core.cost_model import (
-    run_hardware_micro_benchmark,
-    FlexCostModel,
-    USER_PROFILES_DIR,
-)
-from flexsds.cli.main import main
+from flexsds.core import calibration as cal
+from flexsds.core import cost_model as cm
 
 
-def test_run_hardware_micro_benchmark_creates_profile(tmp_path, monkeypatch):
-    import flexsds.core.cost_model as cm
-    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path)
-
-    mock_hw = HardwareInfo(
-        device_name="NVIDIA RTX 4090",
-        sm_architecture="sm_89",
-        total_vram_mb=24576.0,
-        free_vram_mb=20000.0,
-        cuda_version="12.4",
-        is_cuda_available=True,
-    )
-    model, saved_path = run_hardware_micro_benchmark(
-        hw_info=mock_hw,
-        target_model="Qwen/Qwen2.5-7B-Instruct-AWQ",
-        draft_model="duckhoi/qwen2.5-7b-eagle3.1-speculator",
-        batch_sizes=[1, 2, 4],
-        target_dir=tmp_path,
-    )
-    assert isinstance(model, FlexCostModel)
-    assert saved_path.exists()
-    assert "sm_89" in saved_path.name
-    assert model.forward_target[1] > 0
-    assert model.forward_draft[1] > 0
+def observed_groups(config, batches):
+    groups = []
+    for k in cal.KS:
+        records = [dict(k=k, batch=b, context=cal.CONTEXT, repeat=r, warmup=r < cal.WARMUP,
+                        samples=dict(target=10.+k+b, draft=2.*max(1,k)),
+                        shapes=[dict(batch=b, query=[k+1]*b, context=[cal.CONTEXT]*b)])
+                   for b in batches for r in range(cal.WARMUP+cal.REPEATS)]
+        groups.append(dict(device='NVIDIA A10G', sm_architecture='sm_86', records=records,
+                           vllm_version='0.30.0', target_revision='a'*40, draft_revision='b'*40))
+    return groups
 
 
-def test_cli_profile_with_benchmark_flag(capsys, monkeypatch, tmp_path):
-    import flexsds.core.cost_model as cm
-    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path)
-
-    ret = main(["profile", "--benchmark"])
-    assert ret == 0
-    captured = capsys.readouterr()
-    assert "Calibrated & saved new hardware profile" in captured.out
+@pytest.fixture
+def measured_profile():
+    config = dict(target_model='target', draft_model='draft', draft_method='draft_model',
+                  sm_architecture='sm_86', target_gpu='A10G')
+    return cal.build_profile(config, observed_groups(config, cal.BATCHES), cal.BATCHES)
 
 
-def test_run_hardware_micro_benchmark_default_batch_sizes(tmp_path, monkeypatch):
-    import flexsds.core.cost_model as cm
-    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path)
-
-    mock_hw = HardwareInfo(
-        device_name="NVIDIA A100-SXM4-40GB",
-        sm_architecture="sm_80",
-        total_vram_mb=40960.0,
-        free_vram_mb=38000.0,
-        cuda_version="12.2",
-        is_cuda_available=True,
-    )
-    model, saved_path = run_hardware_micro_benchmark(
-        hw_info=mock_hw,
-        target_model="Qwen/Qwen2.5-7B-Instruct-AWQ",
-        draft_model="Qwen/Qwen2.5-0.5B-Instruct",
-    )
-    assert isinstance(model, FlexCostModel)
-    assert saved_path.exists()
-    assert saved_path.parent == tmp_path
-    assert 8 in model.forward_target
-    assert 8 in model.forward_draft
-    assert model.forward_target[8] > model.forward_target[1]
+def test_cpu_cannot_create_empirical_profile(tmp_path, monkeypatch):
+    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model'})())
+    cpu = HardwareInfo('CPU', 'cpu', 0, 0, 'N/A', False)
+    with pytest.raises(RuntimeError, match='real CUDA'):
+        cm.run_hardware_micro_benchmark(cpu, target_dir=tmp_path)
+    assert not list(tmp_path.iterdir())
 
 
-def test_core_init_exports_run_hardware_micro_benchmark():
-    import flexsds.core as core
-    assert hasattr(core, "run_hardware_micro_benchmark")
-    assert callable(core.run_hardware_micro_benchmark)
+def test_remote_gpu_cannot_be_calibrated_on_laptop(tmp_path):
+    hw = HardwareInfo('Remote A10G', 'sm_86', 0, 0, 'N/A', True)
+    with pytest.raises(ValueError, match='backend'):
+        cm.run_hardware_micro_benchmark(hw, target_dir=tmp_path)
+    assert not list(tmp_path.iterdir())
+
+
+def test_modal_dispatch_and_roundtrip(tmp_path, monkeypatch):
+    from flexsds.server import modal_calibration
+    monkeypatch.setattr('flexsds.server.modal_runner.ModalServingRunner.check_credentials', lambda self: True)
+    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model'})())
+    calls = []
+    def remote(config, batches):
+        calls.append((config, batches))
+        return observed_groups(config, batches)
+    monkeypatch.setattr(modal_calibration, 'calibrate', remote)
+    hw = HardwareInfo('Remote A10G', 'sm_86', 0, 0, 'N/A', True)
+    model, path = cm.run_hardware_micro_benchmark(hw, 'target', 'draft', target_dir=tmp_path, backend='modal')
+    assert calls[0][0]['target_gpu'] == 'A10G'
+    assert model.matrix[(2, 1)] == 17.0
+    cm.validate_measured_profile(json.loads(path.read_text()), hw, 'target', 'draft')
+
+
+@pytest.mark.parametrize('damage', ['sample', 'matrix', 'missing', 'duplicate', 'shape', 'hash', 'model'])
+def test_corrupt_or_incomplete_profile_rejected(measured_profile, damage):
+    data = copy.deepcopy(measured_profile)
+    group = data['evidence']['groups'][1]
+    if damage == 'sample': group['records'][5]['samples']['target'] = float('nan')
+    if damage == 'matrix': data['cost_matrix_ms']['k1_b1'] = 999
+    if damage == 'missing': group['records'].pop()
+    if damage == 'duplicate': group['records'].append(group['records'][0])
+    if damage == 'shape': group['records'][0]['shapes'] = []
+    if damage == 'hash': data['metadata']['raw_sha256'] = 'bad'
+    if damage == 'model': data['models']['target'] = 'other'
+    with pytest.raises(ValueError): cm.validate_measured_profile(data)
+
+
+def test_failed_modal_calibration_does_not_write_profile(tmp_path, monkeypatch):
+    monkeypatch.setattr('flexsds.server.modal_runner.ModalServingRunner.check_credentials', lambda self: True)
+    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model'})())
+    def fail(*args): raise RuntimeError('GPU OOM')
+    monkeypatch.setattr('flexsds.server.modal_calibration.calibrate', fail)
+    with pytest.raises(RuntimeError, match='OOM'):
+        cm.run_hardware_micro_benchmark(HardwareInfo('Remote A10G','sm_86',0,0,'',True), target_dir=tmp_path, backend='modal')
+    assert not list(tmp_path.iterdir())
+
+
+def test_modal_dispatch_uses_cli_when_sdk_is_in_another_pipx(monkeypatch):
+    from flexsds.server.modal_calibration import calibrate
+    seen = []
+    def run(command, *, env, **kwargs):
+        seen.append(command)
+        request = json.loads(env['FLEXSDS_CALIBRATION_REQUEST'])
+        assert request['config']['target_gpu'] == 'A10G'
+        from pathlib import Path
+        Path(env['FLEXSDS_CALIBRATION_OUTPUT']).write_text('[{"measured":true}]')
+    monkeypatch.setattr('flexsds.server.modal_calibration.run_logged_process', run)
+    assert calibrate({'target_gpu':'A10G'}, [1]) == [{'measured':True}]
+    assert seen[0][1] == 'run'
+    assert seen[0][2].endswith('modal_calibration_app.py')
+
+
+def test_k0_includes_drafter_cache_sync_and_rejects_vanilla_only(measured_profile):
+    assert measured_profile['cost_matrix_ms']['k0_b1'] == 13.0
+    broken = copy.deepcopy(measured_profile)
+    del broken['evidence']['groups'][0]['records'][0]['samples']['draft']
+    with pytest.raises(ValueError, match='latency'):
+        cm.validate_measured_profile(broken)
+
+
+@pytest.mark.parametrize('device,expected', [('NVIDIA A10',True),('NVIDIA A10G',True),
+                                            ('NVIDIA RTX 3090',False),('NVIDIA L4',False)])
+def test_modal_a10g_cuda_alias_is_narrow(device, expected):
+    from flexsds.core.hardware import matches_gpu_label
+    assert matches_gpu_label('A10G',device) is expected
+
+
+def test_profile_roundtrip_accepts_actual_modal_a10_name(measured_profile):
+    config = measured_profile['evidence']['config']
+    groups = measured_profile['evidence']['groups']
+    for group in groups: group['device'] = 'NVIDIA A10'
+    data = cal.build_profile(config,groups,cal.BATCHES)
+    cm.validate_measured_profile(data, HardwareInfo('Remote A10G','sm_86',0,0,'',True))
+
+
+def test_raw_cuda_names_share_only_the_a10_resource_alias():
+    from flexsds.core.hardware import matches_gpu_label
+    assert matches_gpu_label('NVIDIA A10G','NVIDIA A10')
+    assert matches_gpu_label('NVIDIA A10','NVIDIA A10G')
+    assert not matches_gpu_label('NVIDIA A10G','NVIDIA RTX 3090')

@@ -1,19 +1,20 @@
 {
-  "flexsds_version": "0.2.0-alpha",
+  "flexsds_version": "0.2.0",
   "action": "serve",
   "backend": "modal",
   "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
   "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
   "draft_method": "eagle3",
-  "use_heterogeneous_vocab": true,
+  "use_heterogeneous_vocab": false,
   "enable_adaptive": true,
-  "profile_applied": "profile_sm89_l4.json",
-  "target_gpu": "L4",
+  "profile_applied": "profile_sm_86_remote_a10g_fcda5486b12d.json",
+  "profile_path": "/home/duckhoi04/.flexsds/profiles/profile_sm_86_remote_a10g_fcda5486b12d.json",
+  "target_gpu": "A10G",
   "colab_tunnel_url": "",
   "modal_deploy": false,
   "hardware": {
-    "device_name": "CPU",
-    "sm_architecture": "cpu",
-    "free_vram_mb": 3651.5
+    "device_name": "Remote A10G",
+    "sm_architecture": "sm_86",
+    "free_vram_mb": 22000.0
   }
 }

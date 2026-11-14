@@ -4,9 +4,11 @@ from __future__ import annotations
 import sys
 from typing import Optional
 try:
+    from flexsds import __version__
     from flexsds.cli.output import ascii_text, print_output, supports_truecolor, supports_unicode
     from flexsds.core.hardware import HardwareInfo, detect_hardware
 except ModuleNotFoundError:
+    from src.flexsds import __version__
     from src.flexsds.cli.output import ascii_text, print_output, supports_truecolor, supports_unicode
     from src.flexsds.core.hardware import HardwareInfo, detect_hardware
 
@@ -41,13 +43,13 @@ def render_banner(hw_info: Optional[HardwareInfo] = None) -> str:
         "\033[1;37m  ██╔══╝  ██║     ██╔══╝   ██╔██╗ ╚════██║██║  ██║╚════██║\033[0m",
         "\033[1;37m  ██║     ███████╗███████╗██╔╝ ██╗███████║██████╔╝███████║\033[0m",
         "",
-        "  \033[1;37mFlexSDS\033[0m \033[90m· Speculative Decoding Serving Engine · v0.2.0-alpha\033[0m",
-        "  \033[90mNhóm đồ án D22\033[0m",
-        "  \033[90mHọc viện Công nghệ Bưu chính Viễn thông (PTIT)\033[0m",
+        f"  \033[1;37mFlexSDS\033[0m \033[90m· Hardware-Adaptive EAGLE Serving Engine · v{__version__}\033[0m",
+        "  \033[90mD22 Thesis Team\033[0m",
+        "  \033[90mPosts and Telecommunications Institute of Technology (PTIT)\033[0m",
         "",
         f"  \033[90m•\033[0m \033[37mHardware\033[0m    : \033[90m{gpu_str}\033[0m",
         "  \033[90m•\033[0m \033[37mEngine\033[0m      : \033[90mHardwareAdaptive v0.2\033[0m",
-        "  \033[90m•\033[0m \033[37mBackends\033[0m    : \033[90mModal / Colab / Local vLLM\033[0m",
+        "  \033[90m•\033[0m \033[37mBackend\033[0m     : \033[90mNot yet configured\033[0m",
     ]
 
     max_rows = max(len(PTIT_LOGO_ANSI), len(info_lines))
@@ -61,13 +63,19 @@ def render_banner(hw_info: Optional[HardwareInfo] = None) -> str:
 
 
 def render_ascii_banner(hw_info: HardwareInfo) -> str:
-    """Compact branding/status fallback; hardware logic remains in HardwareInfo."""
+    """Compact ASCII branding banner with PTIT logo and FLEXSDS art."""
     return ascii_text(
-        "FlexSDS | Speculative Decoding Serving Engine | v0.2.0-alpha\n"
-        "PTIT | Hoc vien Cong nghe Buu chinh Vien thong | Nhom do an D22\n"
-        f"Hardware: {hw_info.summary()}\n"
-        "Engine: TreeAdaptive v0.2\n"
-        "Backends: Modal / Colab / Local vLLM"
+        "  +---------+   ______ _           ____  ____  ____  \n"
+        "  |  PTIT   |  |  ____| |         / ___||  _ \\/ ___| \n"
+        "  | D22-04  |  | |__  | | _____ _| |__  | | | \\___ \\ \n"
+        "  +---------+  |  __| | |/ _ \\ \\/ \\___ \\| | | |___) |\n"
+        "               |_|    |_|\\___/_/\\_\\____/|____/|____/ \n"
+        "\n"
+        f"  FlexSDS | Hardware-Adaptive EAGLE Serving Engine | v{__version__}\n"
+        "  PTIT | Posts and Telecommunications Institute of Technology | D22 Thesis Team\n"
+        f"  Hardware: {hw_info.summary()}\n"
+        "  Engine: HardwareAdaptive v0.2\n"
+        "  Backend: Not yet configured"
     )
 
 

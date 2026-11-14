@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,33 +16,55 @@ except ImportError:
     HAS_TERMIOS = False
 
 try:
+    import msvcrt
+    HAS_MSVCRT = True
+except ImportError:
+    HAS_MSVCRT = False
+
+try:
+    from flexsds import __version__
     from flexsds.cli.output import print_output as print
     from flexsds.core.hardware import detect_hardware, HardwareInfo
     from flexsds.core.compatibility import (
         evaluate_serving_preflight,
         ServingBlockedError,
     )
-    from flexsds.core.cost_model import load_profile_for_hardware
+    from flexsds.core.cost_model import (
+        load_profile_for_hardware,
+        resolve_profile_path,
+        run_hardware_micro_benchmark,
+    )
     from flexsds.server.local_runner import LocalServingRunner, finish_launch
     from flexsds.server.colab_runner import ColabServingRunner
     from flexsds.server.modal_runner import ModalServingRunner
 except ModuleNotFoundError:
+    from src.flexsds import __version__
     from src.flexsds.cli.output import print_output as print
     from src.flexsds.core.hardware import detect_hardware, HardwareInfo
     from src.flexsds.core.compatibility import (
         evaluate_serving_preflight,
         ServingBlockedError,
     )
-    from src.flexsds.core.cost_model import load_profile_for_hardware
+    from src.flexsds.core.cost_model import (
+        load_profile_for_hardware,
+        resolve_profile_path,
+        run_hardware_micro_benchmark,
+    )
     from src.flexsds.server.local_runner import LocalServingRunner, finish_launch
     from src.flexsds.server.colab_runner import ColabServingRunner
     from src.flexsds.server.modal_runner import ModalServingRunner
 
 
 PLATFORM_CHOICES = [
-    "Modal.com (Serverless GPU đám mây)",
-    "Google Colab (GPU miễn phí T4/L4)",
-    "Tự dùng GPU nội bộ (Local vLLM)",
+    "Modal.com (Cloud Serverless GPU)",
+    "Google Colab (Free GPU T4/L4)",
+    "Local vLLM (Self-hosted GPU)",
+]
+
+MODAL_GPU_CHOICES = [
+    "A10G (Recommended - 24 GB VRAM)",
+    "L4 (24 GB VRAM - Capacity limited)",
+    "T4 (16 GB VRAM)",
 ]
 
 
@@ -90,11 +113,139 @@ def render_box(title: str, items: list[tuple[str, str, str]], min_width: int = 5
     return "\n".join(lines)
 
 
+def _get_key_stroke() -> str:
+    """Reads a single key stroke across Linux/macOS and Windows."""
+    if HAS_MSVCRT:
+        ch = msvcrt.getwch()
+        if ch in ("\x00", "\xe0"):
+            ch2 = msvcrt.getwch()
+            if ch2 == "H":
+                return "up"
+            elif ch2 == "P":
+                return "down"
+            return "other"
+        elif ch in ("\r", "\n", " "):
+            return "enter"
+        elif ch == "\x03":
+            return "ctrl_c"
+        elif ch.isdigit():
+            return f"digit:{ch}"
+        elif ch in ("k", "K"):
+            return "up"
+        elif ch in ("j", "J"):
+            return "down"
+        return "other"
+
+    if HAS_TERMIOS:
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":
+                ch2 = sys.stdin.read(1)
+                if ch2 == "[":
+                    ch3 = sys.stdin.read(1)
+                    if ch3 == "A":
+                        return "up"
+                    elif ch3 == "B":
+                        return "down"
+                return "other"
+            elif ch in ("\r", "\n", " "):
+                return "enter"
+            elif ch == "\x03":
+                return "ctrl_c"
+            elif ch.isdigit():
+                return f"digit:{ch}"
+            elif ch in ("k", "K"):
+                return "up"
+            elif ch in ("j", "J"):
+                return "down"
+            return "other"
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+    return "fallback"
+
+
+
+CHOICE_HELP = {
+    'Watch log': 'View live server logs. Copy the chat command into another terminal; Ctrl+O closes the log viewer.',
+    'Realtime chat with deployed LLM': 'Send messages to the verified endpoint with streaming responses. /exit returns here.',
+    "Launch serving": "Configure models, check compatibility, and start an inference API.",
+    "Detect hardware": "Show local GPU, CUDA availability, and available memory.",
+    "Benchmark & profile GPU": "Inspect the local profile; use flexsds profile --benchmark to measure.",
+    "Default:": "Use Qwen2.5-7B AWQ with the team's EAGLE-3.1 speculator.",
+    "Custom Hugging Face model": "Enter your own target and draft model IDs or local paths.",
+    "Modal.com": "Run on a cloud GPU using your Modal account.",
+    "Google Colab": "Prepare a notebook and connect through its tunnel URL.",
+    "Local vLLM": "Run vLLM on this machine; requires a compatible CUDA GPU.",
+    "A10G": "24 GB GPU for the default AWQ target and EAGLE head.",
+    "L4": "24 GB cloud GPU; availability depends on Modal capacity.",
+    "T4": "16 GB GPU; check model memory and dtype compatibility.",
+    "A100 / L4": "Select the GPU available in your Colab runtime.",
+    "Development": "Temporary Modal service; keep this terminal open to keep it running.",
+    "Production": "Persistent Modal deployment; continues after the CLI exits.",
+    "Calibrate": "Measure model costs on the selected GPU and save a real profile.",
+    "Switch to static": "Serve with a fixed draft budget, without adaptive profile decisions.",
+    "Abort setup": "Cancel setup without launching a server.",
+}
+
+BOOL_HELP = {
+    "Enable HardwareAdaptive": (
+        "Choose draft budget K from measured costs and acceptance feedback.",
+        "Use static speculation without hardware-adaptive budget changes.",
+    ),
+    "Launch server": ("Start the configured server and verify its endpoint.", "Save configuration without starting a server."),
+    "Run server in background": ("Keep the local server running and write logs to a file.", "Stream server logs here; Ctrl-C stops the foreground process."),
+    "Configure Modal credentials": ("Save Modal credentials locally for cloud access.", "Skip credential setup; configure Modal before launching."),
+    "Open containing folder": ("Open the notebook folder in your file manager.", "Keep the notebook path visible without opening a file manager."),
+}
+
+
+def choice_description(question: str, choice: str) -> str:
+    if choice in ("Yes", "No"):
+        for prefix, descriptions in BOOL_HELP.items():
+            if question.startswith(prefix):
+                return descriptions[choice == "No"]
+        return "Continue with this setting." if choice == "Yes" else "Skip this setting."
+    for prefix, description in CHOICE_HELP.items():
+        if choice.startswith(prefix):
+            return description
+    return f"Select {choice}."
+
+
+def _menu_line(text: str) -> str:
+    # Reserve one column: terminal auto-wrap would invalidate cursor movement.
+    width = max(1, shutil.get_terminal_size((100, 24)).columns - 1)
+    return text if len(text) <= width else text[:max(0, width - 3)] + "." * min(3, width)
+
 def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> str:
     """Prompt user to select an option using arrow keys and Enter."""
-    if not sys.stdin.isatty() or not HAS_TERMIOS:
+    if not sys.stdin.isatty():
         print(f"\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[default_idx]}\033[0m")
         return choices[default_idx]
+
+    # If neither termios nor msvcrt is available, use interactive numbered input
+    if not HAS_TERMIOS and not HAS_MSVCRT:
+        print(f"\n\033[1;37m? {question}\033[0m")
+        for i, c in enumerate(choices, 1):
+            marker = " (default)" if i - 1 == default_idx else ""
+            print(f"  \033[90m{i}.\033[0m {c}{marker}")
+        print(f"  Info: {choice_description(question, choices[default_idx])}")
+        try:
+            raw = input(f"Select [1-{len(choices)}] (default {default_idx + 1}): ").strip()
+            if not raw:
+                choice = choices[default_idx]
+            elif raw.isdigit() and 1 <= int(raw) <= len(choices):
+                choice = choices[int(raw) - 1]
+            else:
+                choice = choices[default_idx]
+        except (EOFError, KeyboardInterrupt):
+            print("\n")
+            sys.exit(0)
+        print(f"\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choice}\033[0m")
+        return choice
 
     current = default_idx
     n = len(choices)
@@ -105,60 +256,48 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
 
     def render(first: bool = False) -> None:
         if not first:
-            print(f"\033[{n}A", end="")
+            print(f"\033[{n+1}A", end="")
         for i, choice in enumerate(choices):
             print("\r\033[K", end="")
             if i == current:
-                print(f"  \033[1;37m> {choice}\033[0m\n", end="")
+                print(f"\033[1;37m{_menu_line('  > ' + choice)}\033[0m\n", end="")
             else:
-                print(f"    \033[90m{choice}\033[0m\n", end="")
+                print(f"\033[90m{_menu_line('    ' + choice)}\033[0m\n", end="")
+        footer = _menu_line("  Info: " + choice_description(question, choices[current]))
+        print(f"\r\033[K\033[36m{footer}\033[0m\n", end="")
         sys.stdout.flush()
 
     render(first=True)
 
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
     try:
-        tty.setcbreak(fd)
         while True:
-            ch = sys.stdin.read(1)
-            if ch == "\x1b":
-                ch2 = sys.stdin.read(1)
-                if ch2 == "[":
-                    ch3 = sys.stdin.read(1)
-                    if ch3 == "A":  # Up arrow
-                        current = (current - 1) % n
-                        render()
-                    elif ch3 == "B":  # Down arrow
-                        current = (current + 1) % n
-                        render()
-            elif ch in ("k", "K"):
+            key = _get_key_stroke()
+            if key == "up":
                 current = (current - 1) % n
                 render()
-            elif ch in ("j", "J"):
+            elif key == "down":
                 current = (current + 1) % n
                 render()
-            elif ch.isdigit():
-                idx = int(ch) - 1
+            elif key.startswith("digit:"):
+                idx = int(key.split(":")[1]) - 1
                 if 0 <= idx < n:
                     current = idx
                     render()
                     break
-            elif ch in ("\r", "\n", " "):
+            elif key == "enter":
                 break
-            elif ch == "\x03":  # Ctrl+C
+            elif key == "ctrl_c":
                 print("\033[?25h\n", end="")
                 sys.exit(0)
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         print("\033[?25h", end="")  # Show cursor
         sys.stdout.flush()
 
     # Collapse into clean single confirmed line
-    print(f"\033[{n+1}A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[current]}\033[0m\n", end="")
-    for _ in range(n):
-        print("\033[K\n", end="")
-    print(f"\033[{n}A", end="")
+    print(f"\033[{n+2}A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[current]}\033[0m\n", end="")
+    for _ in range(n+1):
+        print("\r\033[K\n", end="")
+    print(f"\033[{n+1}A", end="")
     sys.stdout.flush()
 
     return choices[current]
@@ -171,8 +310,9 @@ def prompt_string(question: str, default_val: str = "") -> str:
         return default_val
 
     hint = f" \033[90m[{default_val}]\033[0m" if default_val else ""
+    sep = " " if question.rstrip().endswith(":") else ": "
     try:
-        print(f"\n\033[1;37m? {question}\033[0m{hint}: ", end="")
+        print(f"\n\033[1;37m? {question}\033[0m{hint}{sep}", end="")
         sys.stdout.flush()
         user_input = sys.stdin.readline().strip()
         val = user_input if user_input else default_val
@@ -236,11 +376,18 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
 
     platform_choice = prompt_choice("Serving platform:", PLATFORM_CHOICES, default_idx=0)
     backend = "modal" if "Modal" in platform_choice else ("colab" if "Colab" in platform_choice else "local")
-    target_gpu = "L4"
+    target_gpu = "A10G"
     if backend == "modal":
-        target_gpu = prompt_choice("Modal GPU:", ["L4", "A10G", "T4"], default_idx=0)
+        modal_gpu_choices = [
+            "A10G (Recommended - 24 GB VRAM)",
+            "L4 (24 GB VRAM - Capacity limited)",
+            "T4 (16 GB VRAM)",
+        ]
+        chosen = prompt_choice("Modal GPU:", modal_gpu_choices, default_idx=0)
+        target_gpu = "A10G" if "A10G" in chosen else ("L4" if "L4" in chosen else "T4")
     elif backend == "colab":
-        target_gpu = "T4"
+        gpu_choice = prompt_choice("Colab GPU:", ["T4", "A100 / L4"], default_idx=0)
+        target_gpu = "T4" if "T4" in gpu_choice else "L4"
     preflight = evaluate_serving_preflight(target_model, draft_model, hw_info, backend, target_gpu)
     print(preflight.report.summary())
     preflight.require_safe()
@@ -265,23 +412,62 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     colab_tunnel_url = ""
     modal_deploy = False
     if backend == "modal":
-        if not ModalServingRunner().check_credentials():
-            print("Modal credentials missing; use flexsds auth login securely before launch.")
+        modal_runner = ModalServingRunner()
+        if not modal_runner.check_credentials():
+            print("\n\033[1;33m⚠ [Authentication Warning] Modal credentials not configured.\033[0m")
+            print("  Modal requires MODAL_TOKEN_ID and MODAL_TOKEN_SECRET to serve or deploy.")
+            setup_now = prompt_bool("Configure Modal credentials now?", default_val=True)
+            if setup_now:
+                token_id = prompt_string("Enter MODAL_TOKEN_ID (or press Enter to skip):", default_val="")
+                import getpass
+                token_secret = getpass.getpass("Enter MODAL_TOKEN_SECRET (or press Enter to skip): ")
+                if token_id and token_secret:
+                    modal_runner.cred_mgr.set_credential("modal", "MODAL_TOKEN_ID", token_id.strip())
+                    modal_runner.cred_mgr.set_credential("modal", "MODAL_TOKEN_SECRET", token_secret.strip())
+                    modal_runner.cred_mgr.inject_into_environ()
+                    print("\033[32m✔ Modal credentials saved securely.\033[0m")
+                else:
+                    print("  Credentials not provided. You can configure later via 'flexsds auth login --provider modal'.")
+            else:
+                print("  Skipped. You can configure later via 'flexsds auth login --provider modal' or 'modal setup'.")
+
         mode_choice = prompt_choice("Modal deployment mode:",
                                    ["Development (modal serve)", "Production (modal deploy)"], default_idx=0)
         modal_deploy = "Production" in mode_choice
 
-    elif "Google Colab" in platform_choice:
-        backend = "colab"
-        gpu_choice = prompt_choice("Colab GPU:", ["T4", "A100 / L4"], default_idx=0)
-        target_gpu = "T4" if "T4" in gpu_choice else "L4"
-
+    elif backend == "colab":
         colab_runner = ColabServingRunner()
+        nb_path = colab_runner.resolve_notebook_path()
+        colab_runner.sync_notebook_config({
+            "target_model": target_model,
+            "draft_model": draft_model,
+            "draft_method": report.draft_method,
+            "enable_adaptive": True,
+        }, notebook_path=str(nb_path))
+
         instructions = colab_runner.get_colab_instructions(target_gpu=target_gpu)
+        abs_nb = str(nb_path.resolve())
+        parent_dir = str(nb_path.parent.resolve())
+        cmd_linux = f'xdg-open "{parent_dir}"'
+        cmd_win = f'explorer /select,"{abs_nb}"'
+
         print("\n\033[1;37mGoogle Colab Instructions:\033[0m")
         for step in instructions["steps"]:
             print(f"  \033[90m{step}\033[0m")
-        print(f"  Notebook URL: \033[34m{instructions['notebook_url']}\033[0m\n")
+        print(f"\n  \033[1;37mLocal notebook path (upload this to Colab):\033[0m")
+        print(f"    \033[36m{abs_nb}\033[0m")
+        print(f"  \033[1;37mCommands to reveal notebook folder:\033[0m")
+        print(f"    • Linux  : \033[33m{cmd_linux}\033[0m")
+        print(f"    • Windows: \033[33m{cmd_win}\033[0m")
+        print(f"  \033[1;37mDirect Colab URL (if repository is authorized):\033[0m")
+        print(f"    \033[34m{instructions['notebook_url']}\033[0m\n")
+
+        open_folder = prompt_bool("Open containing folder in file manager now?", default_val=False)
+        if open_folder:
+            if colab_runner.open_in_file_manager(nb_path):
+                print("  \033[32m✔ File manager opened.\033[0m")
+            else:
+                print("  \033[33m⚠ Could not open file manager automatically. Please use the command above.\033[0m")
 
         colab_tunnel_url = prompt_string("Paste Cloudflare tunnel URL (Enter to skip):", "")
         if colab_tunnel_url:
@@ -306,12 +492,78 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     )
 
     # Step 6: Profile Mapping
-    cost_model, profile_name = load_profile_for_hardware(hw_info)
-    print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+    if backend in ("modal", "colab"):
+        remote_sm_map = {
+            "A10G": "sm_86",
+            "L4": "sm_89",
+            "T4": "sm_75",
+            "A100": "sm_80",
+        }
+        target_sm = remote_sm_map.get(target_gpu, "sm_89")
+        budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0, "A100": 40000.0}
+        target_vram = budgets.get(target_gpu, 22000.0)
+        serving_hw = HardwareInfo(
+            device_name=f"Remote {target_gpu}",
+            sm_architecture=target_sm,
+            total_vram_mb=target_vram,
+            free_vram_mb=target_vram,
+            cuda_version="12.4",
+            is_cuda_available=True,
+            device_count=1,
+        )
+    else:
+        serving_hw = hw_info
+
+    profile_name = None
+    if not enable_adaptive:
+        print("\033[32m✔ HardwareAdaptive engine: Disabled (Static speculation mode)\033[0m")
+    else:
+        cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True, target_model=target_model, draft_model=draft_model)
+        if cost_model is None or not profile_name or profile_name == "conservative_analytical_fallback":
+            print(
+                f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile found for GPU "
+                f"'{target_gpu or serving_hw.device_name}' ({serving_hw.sm_architecture}).\033[0m"
+            )
+            print("  HardwareAdaptive requires an empirical calibration profile to dynamically optimize speculative step size k.")
+
+            missing_action = prompt_choice(
+                "Hardware profile is missing. What would you like to do?",
+                [
+                    "Calibrate GPU profile now (run micro-benchmark)",
+                    "Switch to static speculation (serve without HardwareAdaptive)",
+                    "Abort setup",
+                ],
+                default_idx=0,
+            )
+
+            if "Calibrate" in missing_action:
+                print(f"\nCalibrating hardware cost profile for {serving_hw.device_name} ({serving_hw.sm_architecture})...")
+                try:
+                    cost_model, saved_path = run_hardware_micro_benchmark(
+                        serving_hw, target_model=target_model, draft_model=draft_model, backend=backend,
+                    )
+                except KeyboardInterrupt:
+                    print("Calibration cancelled; no server launched.")
+                    return {"action": "abort", "exit_code": 130}
+                except (RuntimeError, ValueError, OSError) as exc:
+                    print(f"Calibration failed; no serving launched: {exc}")
+                    return {"action": "abort", "exit_code": 1}
+                print(f"\033[1;32m✔ Calibrated & saved new hardware profile: {saved_path}\033[0m")
+                cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True, target_model=target_model, draft_model=draft_model)
+                print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+            elif "Switch to static" in missing_action:
+                enable_adaptive = False
+                profile_name = None
+                print("\033[32m✔ Switched to static speculation mode (HardwareAdaptive disabled)\033[0m")
+            else:
+                print("\n\033[1;31m✖ Serving setup aborted: Cannot enable HardwareAdaptive without a calibrated profile.\033[0m")
+                return {"action": "abort", "exit_code": 1}
+        else:
+            print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
 
     # Save serving configuration
     config: Dict[str, Any] = {
-        "flexsds_version": "0.2.0-alpha",
+        "flexsds_version": __version__,
         "action": "serve",
         "backend": backend,
         "target_model": target_model,
@@ -320,13 +572,14 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         "use_heterogeneous_vocab": report.use_heterogeneous_vocab,
         "enable_adaptive": enable_adaptive,
         "profile_applied": profile_name,
+        "profile_path": str(resolve_profile_path(profile_name)) if profile_name else None,
         "target_gpu": target_gpu,
         "colab_tunnel_url": colab_tunnel_url,
         "modal_deploy": modal_deploy,
         "hardware": {
-            "device_name": hw_info.device_name,
-            "sm_architecture": hw_info.sm_architecture,
-            "free_vram_mb": hw_info.free_vram_mb,
+            "device_name": serving_hw.device_name,
+            "sm_architecture": serving_hw.sm_architecture,
+            "free_vram_mb": serving_hw.free_vram_mb,
         },
     }
 
@@ -346,15 +599,29 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             return config
         elif backend == "modal":
             modal_runner = ModalServingRunner()
+            if not modal_runner.check_credentials():
+                print("\n\033[1;31m✖ [Authentication Error] Modal credentials not configured.\033[0m")
+                print("  Please run: flexsds auth login --provider modal")
+                print("  Or configure via: modal setup")
+                config["exit_code"] = 1
+                return config
             proc = modal_runner.launch(config, deploy=modal_deploy)
             config["exit_code"] = finish_launch(proc)
             return config
         elif backend == "colab":
-            endpoint = colab_tunnel_url or "http://localhost:8000/v1"
+            if colab_tunnel_url:
+                clean_tunnel = colab_tunnel_url.rstrip("/")
+                if not clean_tunnel.endswith("/v1"):
+                    endpoint = f"{clean_tunnel}/v1"
+                else:
+                    endpoint = clean_tunnel
+            else:
+                endpoint = "http://localhost:8000/v1"
+            config["endpoint"] = endpoint
             print("\n\033[1;32mColab guidance only; no server or endpoint created.\033[0m")
-            print(f"  \033[1;37mGợi ý:\033[0m Chạy lệnh: \033[36mflexsds chat --endpoint {endpoint}\033[0m để bắt đầu trò chuyện!\n")
+            print(f"  \033[1;37mTip:\033[0m Run command: \033[36mflexsds chat --endpoint {endpoint}\033[0m to start chatting!\n")
     else:
         print("\n\033[1;32mConfiguration saved; no server launched or readiness established.\033[0m")
-        print("  \033[1;37mGợi ý:\033[0m Chạy \033[36mflexsds chat\033[0m để kết nối máy chủ khi đã bật.\n")
+        print("  \033[1;37mTip:\033[0m Run \033[36mflexsds chat\033[0m to connect when server is running.\n")
 
     return config

@@ -22,7 +22,8 @@ CONTEXT = 1024
 TIMING = "worker_cuda_synchronize_perf_counter_wall_ms"
 LIMITATION = ("Canonical arbitrary-tree topologies are represented in the cost/controller "
               "layer but are not executed by the current vLLM serving/proposer path.")
-GPU_CONFIG = {"L4": ("l4-bf16", "sm_89"), "T4": ("fp16-fallback", "sm_75")}
+GPU_CONFIG = {"L4": ("l4-bf16", "sm_89"), "T4": ("fp16-fallback", "sm_75"),
+              "A100": ("l4-bf16", "sm_80")}
 
 
 def utc_now():
@@ -238,8 +239,8 @@ def classify_hardware(name, capability, expected_gpu):
     """Use observed name AND capability, never notebook accelerator settings."""
     capability = tuple(capability or ())
     observed = next((gpu for gpu, (_, sm) in GPU_CONFIG.items()
-                     if gpu in name.split() and capability ==
-                     ((8, 9) if sm == "sm_89" else (7, 5))), None)
+                     if (gpu in name.split() or gpu == "A100" and "A100" in name) and capability ==
+                     {"sm_89": (8, 9), "sm_75": (7, 5), "sm_80": (8, 0)}[sm]), None)
     return dict(expected_gpu=expected_gpu, observed_gpu=name, observed_gpu_type=observed,
                 canonical_hardware=observed == expected_gpu and observed is not None,
                 sm_architecture=f"sm_{capability[0]}{capability[1]}" if len(capability) == 2 else None)

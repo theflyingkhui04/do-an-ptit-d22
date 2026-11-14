@@ -64,7 +64,7 @@ def test_banner_falls_back_without_losing_identity(monkeypatch, hardware, encodi
     result = sink.getvalue()
     assert result.isascii()
     assert "\x1b" not in result
-    assert all(word in result for word in ("FlexSDS", "PTIT", "NVIDIA L4", "sm_89", "Modal"))
+    assert all(word in result for word in ("FlexSDS", "PTIT", "NVIDIA L4", "sm_89", "Not yet configured"))
 
 
 def test_missing_encoding_and_isatty_are_safe(monkeypatch, hardware):
@@ -103,7 +103,7 @@ def test_no_truecolor_uses_plain_ascii(monkeypatch, hardware, tty, no_color, ter
 @pytest.mark.parametrize("args,expected", [
     (["detect"], "Hardware:"), (["profile"], "Linked hardware profile:"),
     (["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft",
-      "Qwen/Qwen2.5-0.5B-Instruct", "--backend", "local", "--dry-run"],
+      "Qwen/Qwen2.5-0.5B-Instruct", "--backend", "local", "--no-adaptive", "--dry-run"],
      "Dry-run execution command:"),
 ])
 def test_command_completes_on_cp1252(monkeypatch, hardware, args, expected):

@@ -59,7 +59,7 @@ def test_reject_non_eagle_draft_architecture(tmp_path):
             draft_model="Qwen/Qwen2.5-0.5B-Instruct",
         )
         assert report.is_compatible is False
-        assert any("chỉ hỗ trợ kiến trúc đầu nháp EAGLE" in w for w in report.warnings)
+        assert any("supports EAGLE" in w or "chỉ hỗ trợ kiến trúc đầu nháp EAGLE" in w for w in report.warnings)
 
 
 def test_accept_eagle_draft_architecture_and_detect_hetero_vocab(tmp_path):
@@ -113,5 +113,5 @@ def test_check_compatibility_offline_fallback_rejects_non_eagle():
             draft_model="Qwen/Qwen2.5-0.5B-Instruct",
         )
         assert report.is_compatible is False
-        assert any("chỉ hỗ trợ kiến trúc đầu nháp EAGLE" in w for w in report.warnings)
+        assert any("supports EAGLE" in w or "chỉ hỗ trợ kiến trúc đầu nháp EAGLE" in w for w in report.warnings)
 

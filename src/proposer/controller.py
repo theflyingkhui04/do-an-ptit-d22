@@ -39,6 +39,16 @@ class CostProfile:
         return base_t if k == 0 else (base_t + k * draft_step_t)
 
 
+class EmpiricalCostProfile(CostProfile):
+    """Use the closest measured batch for an observed K; never invent costs."""
+    def get_cost(self, k: int, batch_size: int = 1) -> float:
+        batches = [b for cand_k, b in self.matrix if cand_k == k]
+        if not batches:
+            raise ValueError(f'No measured cost for K={k}')
+        closest = min(batches, key=lambda b: (abs(b-batch_size), b))
+        return self.matrix[(k, closest)]
+
+
 class BudgetController:
     """Adaptive Speculative Controller v0 based on rolling acceptance rate alpha."""
 
@@ -52,6 +62,7 @@ class BudgetController:
         candidate_budgets: Optional[List[int]] = None,
         cost_profile: Optional[CostProfile] = None,
         min_free_vram_mb: float = 1500.0,
+        history_limit: Optional[int] = None,
     ):
         self.window_size = window_size
         self.ema_beta = ema_beta
@@ -64,7 +75,9 @@ class BudgetController:
 
         self.initial_alpha = initial_alpha
         self._window: deque[float] = deque(maxlen=window_size)
-        self._history: List[dict] = []
+        if history_limit is not None and (type(history_limit) is not int or history_limit < 1):
+            raise ValueError("history_limit must be a positive integer")
+        self._history = [] if history_limit is None else deque(maxlen=history_limit)
 
     def get_rolling_alpha(self) -> float:
         """Returns the current Exponential Moving Average of alpha."""
@@ -216,6 +229,7 @@ class AdaptiveDraftController(BudgetController):
         kv_cache_recover_pct: float = 80.0,
         memory_cooldown_steps: int = 3,
         enable_vram_guard: bool = True,
+        history_limit: Optional[int] = None,
     ):
         super().__init__(
             window_size=window_size,
@@ -226,6 +240,7 @@ class AdaptiveDraftController(BudgetController):
             candidate_budgets=candidate_budgets,
             cost_profile=cost_profile,
             min_free_vram_mb=min_free_vram_mb,
+            history_limit=history_limit,
         )
         if kv_cache_recover_pct > kv_cache_high_pct:
             raise ValueError(

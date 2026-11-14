@@ -10,7 +10,7 @@ Original file is located at
 import os
 from google.colab import drive
 
-# CẤU HÌNH THÔNG TIN
+# CONFIGURATION
 # Public clone URL; Git handles any configured credentials.
 REPO_OWNER = "theflyingkhui04"
 REPO_NAME = "do-an-ptit-d22"
@@ -20,17 +20,17 @@ CLONE_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 VSCODE_DRIVE_BACKUP = "/content/drive/MyDrive/vllm_colab_backup"
 
 
-# BƯỚC 1: KẾT NỐI GOOGLE DRIVE
+# STEP 1: CONNECT GOOGLE DRIVE
 print("\n" + "="*60)
-print("==> BƯỚC 1/4: KẾT NỐI GOOGLE DRIVE")
+print("==> STEP 1/4: CONNECT GOOGLE DRIVE")
 print("="*60)
 drive.mount('/content/drive', force_remount=False)
 os.makedirs(f"{VSCODE_DRIVE_BACKUP}/.vscode-cli", exist_ok=True)
 
 
-# BƯỚC 2: ĐỒNG BỘ MÃ NGUỒN REPO
+# STEP 2: SYNC REPOSITORY SOURCE CODE
 print("\n" + "="*60)
-print("==> BƯỚC 2/4: ĐỒNG BỘ MÃ NGUỒN REPO TỪ GITHUB")
+print("==> STEP 2/4: SYNC REPO SOURCE CODE FROM GITHUB")
 print("="*60)
 if not os.path.exists(TARGET_DIR):
     !git clone {CLONE_URL} {TARGET_DIR}
@@ -40,23 +40,23 @@ else:
 !chmod +x {TARGET_DIR}/scripts/*.sh
 
 
-# BƯỚC 3: CÀI ĐẶT MÔI TRƯỜNG vLLM
+# STEP 3: SETUP vLLM ENVIRONMENT
 print("\n" + "="*60)
-print("==> BƯỚC 3/4: CÀI ĐẶT vLLM TRÊN SSD COLAB")
+print("==> STEP 3/4: INSTALL vLLM ON COLAB SSD")
 print("="*60)
 !pip install -r {TARGET_DIR}/requirements-server.txt
 
-print("\n--> Đang gỡ bỏ torchaudio để tránh xung đột CUDA...")
+print("\n--> Removing torchaudio to prevent CUDA conflict...")
 !pip uninstall -y torchaudio
 
 
 
-# BƯỚC 4: THIẾT LẬP VS CODE CLI & KHỞI CHẠY TUNNEL
+# STEP 4: SETUP VS CODE CLI & LAUNCH TUNNEL
 print("\n" + "="*60)
-print("==> BƯỚC 4/4: KHỞI TẠO VS CODE TUNNEL 'colab-t4'")
+print("==> STEP 4/4: INITIALIZE VS CODE TUNNEL 'colab-t4'")
 print("="*60)
 
-# 1. Tải CLI nếu chưa có (Sử dụng Direct Link của Microsoft để tránh lỗi DNS/Redirect trên T4 GPU)
+# 1. Download CLI if missing (Use Microsoft Direct Link to avoid DNS/Redirect issues on T4 GPU)
 if os.path.exists("./code"):
     print("--> Found existing VS Code CLI, removing for fresh install...")
     !rm -rf ./code
@@ -67,16 +67,16 @@ if os.path.exists("vscode_cli.tar.gz"):
 print("--> Downloading and extracting VS Code CLI (Direct Link)...")
 !wget -O vscode_cli.tar.gz "https://update.code.visualstudio.com/latest/cli-alpine-x64/stable" && tar -xf vscode_cli.tar.gz
 
-# 2. Liên kết thư mục lưu trữ thông tin đăng nhập với Drive
+# 2. Link credential storage directory to Drive
 os.makedirs(f"{VSCODE_DRIVE_BACKUP}/.vscode-cli", exist_ok=True)
 !ln -sfn {VSCODE_DRIVE_BACKUP}/.vscode-cli /root/.vscode-cli
 
-# 3. Đăng nhập với cờ cố định là GitHub
-print("--> Kiểm tra đăng nhập GitHub:")
+# 3. Log in with GitHub provider
+print("--> Checking GitHub login:")
 !./code tunnel user login --provider github
 
-# 4. Bật Tunnel
+# 4. Start Tunnel
 print("\n" + "="*60)
-print("  ĐANG KHỞI CHẠY TUNNEL 'colab-t4'...")
+print("  LAUNCHING TUNNEL 'colab-t4'...")
 print("="*60 + "\n")
 !./code tunnel --accept-server-license-terms --name colab-t4

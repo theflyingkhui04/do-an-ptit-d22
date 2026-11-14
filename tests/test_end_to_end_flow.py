@@ -27,7 +27,8 @@ def test_e2e_cli_local_dry_run(capsys):
     captured = capsys.readouterr()
     assert "vllm serve" in captured.out
     assert "--speculative-config" in captured.out
-    assert "AdaptiveAsyncScheduler" in captured.out
+    assert "AdaptiveAsyncScheduler" not in captured.out
+    assert "--scheduler-cls" not in captured.out
 
 
 def test_e2e_cli_modal_dry_run(capsys):
@@ -171,5 +172,5 @@ def test_end_to_end_chat_session_with_client_stream(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert "FlexSDS phục vụ thành công!" in captured.out
-    assert "Thống kê suy luận" in captured.out
+    assert "Inference Telemetry" in captured.out or "Thống kê suy luận" in captured.out
     assert "SSE content chunks" in captured.out

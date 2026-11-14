@@ -89,6 +89,10 @@ L4_MODAL_PROFILE = "m3-l4-modal-v1"
 # server_env.json written by the server container and VRAM is joined afterwards
 # from the server's own NVML samples (experiments/modal_vram_join.py).
 ENVIRONMENT_PROFILES = {
+    "m4-a100-colab-v1": {
+        "gpu": "NVIDIA A100", "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130", "torch_cuda_version": "13.0", "mode": "local",
+    },
     ENVIRONMENT_PROFILE: {
         "gpu": EXPECTED_GPU,
         "vllm_version": EXPECTED_VLLM,
@@ -252,7 +256,7 @@ def environment_info(
     mem = nvmlDeviceGetMemoryInfo(handle)
 
     info = {
-        "environment_profile": ENVIRONMENT_PROFILE,
+        "environment_profile": profile,
         "gpu": name.decode() if isinstance(name, bytes) else str(name),
         "gpu_index": gpu_index,
         "gpu_memory_total_mb": round(mem.total / 1024**2, 2),
@@ -278,6 +282,10 @@ def validate_environment(env: dict, profile: str = ENVIRONMENT_PROFILE) -> list[
     mismatches: list[str] = []
     for field, expected_value in expected.items():
         actual_value = env.get(field)
+        if profile == "m4-a100-colab-v1" and field == "gpu":
+            if "NVIDIA" not in str(actual_value) or "A100" not in str(actual_value):
+                mismatches.append(f"gpu: expected NVIDIA A100, got {actual_value}")
+            continue
         if isinstance(expected_value, (tuple, list, set)):
             if actual_value not in expected_value:
                 mismatches.append(
@@ -1251,7 +1259,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--lane",
-        choices=["vanilla", "static", "adaptive", "eagle"],
+        choices=["vanilla", "static", "adaptive", "eagle", "eagle_fixed", "eagle_adaptive"],
         default="vanilla",
     )
     parser.add_argument(
