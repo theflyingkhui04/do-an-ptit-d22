@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -61,7 +62,7 @@ def serving(treatment: str, directory: Path, source_commit: str, port=8000):
     before = gpu_snapshot()
     if before["processes"]:
         raise RuntimeError("A single clean GPU is required; existing processes were not terminated")
-    command = ["vllm", "serve", *serve_args(treatment, port)]
+    command = [sys.executable, "-m", "experiments.m4_serve", *serve_args(treatment, port)]
     # Only record our explicit overrides, never the inherited secret environment.
     overrides = runtime_env(treatment, directory)
     write_new(directory / "launch.json", dict(command=command, env=overrides,
