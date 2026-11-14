@@ -196,6 +196,30 @@ def relax_text_filters(sql: str, known: dict[str, list[str]]) -> tuple[str, list
     return (tree.sql(dialect="postgres"), notes) if notes else (sql, [])
 
 
+def _vietnamese_letters() -> frozenset[str]:
+    import unicodedata
+
+    letters = set("abcdefghijklmnopqrstuvwxyzđ")  # f j w z: brand and item names (OREO, Coffee)
+    for vowel in "aăâeêioôơuưy":
+        for tone in ("", "\u0300", "\u0301", "\u0309", "\u0303", "\u0323"):
+            letters.add(unicodedata.normalize("NFC", vowel + tone))
+    return frozenset(letters | {c.upper() for c in letters})
+
+
+VIETNAMESE_LETTERS = _vietnamese_letters()
+_LETTER_RUN = re.compile(r"[^\W\d_]+")
+
+
+def foreign_words(text: str) -> list[str]:
+    """Words with a letter outside the Vietnamese alphabet. Live run 14/11: the 7B model wrote "beğen" in a short
+    answer, and Chinese in a free chat; such text is not shown as an answer and is flagged in reports."""
+    seen: list[str] = []
+    for word in _LETTER_RUN.findall(text):
+        if any(ch not in VIETNAMESE_LETTERS for ch in word) and word not in seen:
+            seen.append(word)
+    return seen
+
+
 FANOUT_VIEWS = ("v_item_facts", "v_tax_facts")
 
 
@@ -306,7 +330,7 @@ class QuestionService:
         """Node 2 only: one checked read-only SQL (one repair allowed) and its rows."""
         result: dict[str, Any] = {"question": question, "status": "error", "sql": None, "columns": [], "rows": [],
                                   "row_count": 0, "answer": None, "withheld_answer": None, "warning": None,
-                                  "error": None, "repairs": 0, "first_error": None, "calls": [], "text_rewrites": [],
+                                  "error": None, "repairs": 0, "first_error": None, "calls": [], "text_rewrites": [], "foreign_words": [],
                                   "prompt_versions": {"node2": NODE2_PROMPT_VERSION, "answer": ANSWER_PROMPT_VERSION}}
         calls = result["calls"]
         system = build_node2_prompt(self.store.categorical_values(), self._today())
@@ -356,9 +380,11 @@ class QuestionService:
         except Exception as exc:  # noqa: BLE001  (service boundary: reported, never raised to the user)
             result.update(warning="answer_failed", error=self._redact(str(exc))[:400])
             return result
-        if text and numbers_are_grounded(text, rows, question):
+        odd = foreign_words(text or "")
+        if text and not odd and numbers_are_grounded(text, rows, question):
             result["answer"] = text
         else:
-            result["warning"] = "fabricated_number" if text else "empty_answer"
+            result["warning"] = "foreign_text" if odd else "fabricated_number" if text else "empty_answer"
+            result["foreign_words"] = odd
             result["withheld_answer"] = text or None  # audit only; the web never shows it
         return result

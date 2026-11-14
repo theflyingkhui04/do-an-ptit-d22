@@ -204,3 +204,12 @@ def test_a_report_quoting_numbers_as_written_in_the_tables_passes_the_number_che
     text = "Hai hoá đơn có tổng 117.000 đồng; NHA SACH CAM PHA 75.000 đồng."
     out = service(SnapshotStore()).run_request(REQUEST, 2, replies(PLAN, text))
     assert out["number_check"] == {"numbers": 2, "ungrounded": []}
+
+
+def test_foreign_words_in_a_report_are_flagged_without_hiding_it():
+    text = "Hai hoá đơn có tổng 117.000 đồng. 城市 NHA SACH CAM PHA 75.000 đồng."
+    out = service(SnapshotStore()).run_request(REQUEST, 2, replies(PLAN, text))
+    assert out["report"]["status"] == "ok" and out["report"]["text"] == text
+    assert out["language_check"] == {"foreign_words": ["城市"]}
+    clean = service(SnapshotStore()).run_request(REQUEST, 2, replies(PLAN, REPORT))
+    assert clean["language_check"] == {"foreign_words": []}

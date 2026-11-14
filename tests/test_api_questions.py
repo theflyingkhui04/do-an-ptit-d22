@@ -11,6 +11,7 @@ from src.api.questions import (
     NO_DATA_ANSWER,
     QuestionService,
     build_node2_prompt,
+    foreign_words,
     numbers_are_grounded,
 )
 from tests.api_fakes import HEADERS, FakeCaller, FakeStore, build, endpoint
@@ -248,3 +249,21 @@ def test_a_union_is_repaired_into_one_select():
     result = service(store, sql_caller, scripted("Có 12 hoá đơn.")).answer("Từ ngày 10 đến 12/8/2020 có bao nhiêu hoá đơn?")
     assert result["repairs"] == 1 and result["first_error"].startswith("COMPOUND_SELECT")
     assert result["rows"] == [[12]] and len(store.executed) == 1
+
+
+# ---------------------------------------------------------------- 14/11: a Turkish word in a live answer ("beğen")
+def test_foreign_words_are_found_but_vietnamese_names_and_units_pass():
+    assert foreign_words("Tổng tiền là 75.000. beğen dữ liệu không đủ") == ["beğen"]
+    assert foreign_words("Tra loi: City of Angels指的是哪个城市？") == ["Angels指的是哪个城市"]
+    assert foreign_words("Cửa hàng THUC COFFEE, Banh OREO 137g, Saigon Co.op: 75.000 đ (10%) — 2020-08-16") == []
+    assert foreign_words("Đường Trần Phú, Quảng Ngãi, ỨNG DỤNG, Ỹ, ữ") == []
+
+
+def test_an_answer_with_foreign_words_is_withheld():
+    store = QAStore([(["t"], [[75000.0]])])
+    qa = service(store, scripted("SELECT SUM(total_amount_value) AS t FROM v_invoice_facts"),
+                 scripted("Tổng tiền là 75.000. beğen dữ liệu không đủ."))
+    result = qa.answer("Tổng tiền là bao nhiêu?")
+    assert result["status"] == "ok" and result["answer"] is None
+    assert result["warning"] == "foreign_text" and result["foreign_words"] == ["beğen"]
+    assert result["withheld_answer"] == "Tổng tiền là 75.000. beğen dữ liệu không đủ."

@@ -15,7 +15,13 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from src.api.questions import _NUMBER, QuestionService, _table_text, ungrounded_numbers
+from src.api.questions import (
+    _NUMBER,
+    QuestionService,
+    _table_text,
+    foreign_words,
+    ungrounded_numbers,
+)
 from src.api.report_data import build_snapshot, scope_label
 from src.api.store import Store
 from src.pipeline.node2_questions import QUESTIONS
@@ -163,7 +169,7 @@ class ReportService:
             "dashboard": {"status": "skipped", "charts": [], "error": None, "metrics": {}},
             "report": {"status": "skipped_no_data", "text": "", "error": None, "latency_ms": None,
                        "completion_tokens": None, "finish_reason": None, "metrics": {}},
-            "number_check": {"numbers": 0, "ungrounded": []},
+            "number_check": {"numbers": 0, "ungrounded": []}, "language_check": {"foreign_words": []},
             "timings_ms": {"data": data_ms, "dashboard": 0.0, "report": 0.0}}
         if count == 0:
             return out
@@ -200,6 +206,7 @@ class ReportService:
         context = " ".join([request, scope, str(count), template, *(t["title"] for t in tables)])
         out["number_check"] = {"numbers": len(_NUMBER.findall(report["text"])),
                                "ungrounded": ungrounded_numbers(report["text"], rows, context)}
+        out["language_check"] = {"foreign_words": foreign_words(report["text"])}
         return out
 
     def invoice_count(self) -> int:
@@ -234,4 +241,5 @@ class ReportService:
                 "report": {**node3.to_dict(), "text": text, "metrics": metrics},
                 "number_check": {"numbers": len(_NUMBER.findall(text)),
                                  "ungrounded": ungrounded_numbers(text, rows, context)},
+                "language_check": {"foreign_words": foreign_words(text)},
                 "timings_ms": {"node2": node2_ms, "node3": node3_ms}}
