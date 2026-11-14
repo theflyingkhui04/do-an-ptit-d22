@@ -82,6 +82,17 @@ def test_all_required_raw_contracts_pass_synthetic_fixture(diagnostic_fixture):
     assert report["ADAPTIVE_READY"] == "PASS", report["errors"]
 
 
+@pytest.mark.parametrize("task,expected", [("ta-synthetic", "PASS"), (None, "FAIL"), ("", "FAIL")])
+def test_modal_backend_requires_task_evidence(diagnostic_fixture, task, expected):
+    path = diagnostic_fixture / "environment.json"
+    environment = json.loads(path.read_text())
+    environment.update(execution_backend="modal", modal_task_id=task)
+    path.write_text(json.dumps(environment))
+    report = evaluate(diagnostic_fixture, SHA)
+    assert report["checks"]["A100_SOURCE_ENVIRONMENT"] == expected
+    assert report["ADAPTIVE_READY"] == expected
+
+
 @pytest.mark.parametrize("filename,change", [
     ("environment.json", {"gpu": "NVIDIA L4"}),
     ("environment.json", {"source_commit": "b" * 40}),

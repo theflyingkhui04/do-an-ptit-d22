@@ -17,6 +17,7 @@ import traceback
 import uuid
 
 from experiments.m4_a100_profile import hardware_gate, validate_profile_file, inspect_environment
+from experiments.m4_backend import execution_identity
 from experiments.m4_git_evidence import publish, copy_immutable, git_auth
 from experiments.m4_lossless import compare_captures
 from experiments.m4_protocol import (ROOT, WORKLOADS, build_manifest, git, sha256, source_gate,
@@ -33,12 +34,10 @@ STATES = ("PENDING", "RUNNING", "COMPLETE_VALID", "FAILED", "OOM", "TIMEOUT", "I
 def environment(source_commit):
     source_gate(source_commit)
     import platform
+    backend = execution_identity()
     env = dict(inspect_environment(), python_version=platform.python_version(),
-               source_commit=source_commit, execution_backend="google_colab",
+               source_commit=source_commit, **backend,
                timestamp_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
-    if not Path("/content").is_dir() or "google.colab" not in sys.modules and not os.environ.get("COLAB_RELEASE_TAG"):
-        # Normal subprocesses need not import google.colab; Colab sets its release tag.
-        raise ValueError("Canonical runtime must execute in Google Colab")
     hardware_gate(env)
     return env
 

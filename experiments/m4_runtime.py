@@ -42,6 +42,19 @@ def require_gpu_release(before: dict, after: dict):
         raise RuntimeError("Unexplained residual GPU memory >128 MiB; inspect lifecycle evidence")
 
 
+def stop_server(process):
+    # Let the API server close its output handler and EngineCore in order.
+    # Killing the whole group first races that shutdown and fabricates an
+    # EngineDeadError even when no inference failure occurred.
+    if process.poll() is None:
+        process.terminate()
+    try:
+        process.wait(timeout=60)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=30)
+
+
 @contextmanager
 def serving(treatment: str, directory: Path, source_commit: str, port=8000):
     directory.mkdir(parents=True, exist_ok=False)
@@ -77,12 +90,7 @@ def serving(treatment: str, directory: Path, source_commit: str, port=8000):
             yield base
         finally:
             if process is not None:
-                os.killpg(process.pid, signal.SIGTERM) if process.poll() is None else None
-                try:
-                    process.wait(timeout=60)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait(timeout=30)
+                stop_server(process)
                 # Observe worker teardown, not CUDA allocator cache in a live process.
                 after = gpu_snapshot()
                 write_new(directory / "lifecycle.json", dict(returncode=process.returncode,

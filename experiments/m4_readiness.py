@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from experiments.m4_a100_profile import hardware_gate, validate_profile_file
+from experiments.m4_backend import valid_backend_evidence
 from experiments.m4_lossless import compare_captures
 from experiments.m4_protocol import sha256
 from experiments.m4_runtime import require_gpu_release
@@ -37,7 +38,7 @@ def evaluate(directory: Path, source_commit: str) -> dict:
         env = read("environment.json")
         hardware_gate(env)
         return (bool(re.fullmatch(r"[0-9a-f]{40}", source_commit))
-                and env["source_commit"] == source_commit and env["execution_backend"] == "google_colab")
+                and env["source_commit"] == source_commit and valid_backend_evidence(env))
     check("A100_SOURCE_ENVIRONMENT", environment)
 
     def profile():
