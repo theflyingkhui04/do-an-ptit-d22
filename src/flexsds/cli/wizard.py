@@ -52,6 +52,12 @@ PLATFORM_CHOICES = [
     "Local vLLM (Self-hosted GPU)",
 ]
 
+MODAL_GPU_CHOICES = [
+    "A10G (Recommended - 24 GB VRAM)",
+    "L4 (24 GB VRAM - Capacity limited)",
+    "T4 (16 GB VRAM)",
+]
+
 
 def strip_ansi(s: str) -> str:
     """Removes ANSI escape codes to calculate visible string length."""
@@ -306,9 +312,15 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
 
     platform_choice = prompt_choice("Serving platform:", PLATFORM_CHOICES, default_idx=0)
     backend = "modal" if "Modal" in platform_choice else ("colab" if "Colab" in platform_choice else "local")
-    target_gpu = "L4"
+    target_gpu = "A10G"
     if backend == "modal":
-        target_gpu = prompt_choice("Modal GPU:", ["L4", "A10G", "T4"], default_idx=0)
+        modal_gpu_choices = [
+            "A10G (Recommended - 24 GB VRAM)",
+            "L4 (24 GB VRAM - Capacity limited)",
+            "T4 (16 GB VRAM)",
+        ]
+        chosen = prompt_choice("Modal GPU:", modal_gpu_choices, default_idx=0)
+        target_gpu = "A10G" if "A10G" in chosen else ("L4" if "L4" in chosen else "T4")
     elif backend == "colab":
         gpu_choice = prompt_choice("Colab GPU:", ["T4", "A100 / L4"], default_idx=0)
         target_gpu = "T4" if "T4" in gpu_choice else "L4"
