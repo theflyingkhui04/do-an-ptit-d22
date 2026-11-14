@@ -67,3 +67,58 @@ def test_wizard_disabled_adaptive_skips_profile_mapping():
     assert config["profile_applied"] is None
 
 
+def test_wizard_remote_serving_hardware_resolution():
+    """Kiểm tra logic phân giải đúng kiến trúc GPU đích khi chạy Modal/Colab."""
+    from flexsds.core.hardware import HardwareInfo
+    from flexsds.core.cost_model import load_profile_for_hardware
+
+    remote_sm_map = {
+        "A10G": "sm_86",
+        "L4": "sm_89",
+        "T4": "sm_75",
+        "A100": "sm_80",
+    }
+    budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0, "A100": 40000.0}
+
+    def resolve_serving_hw(backend: str, target_gpu: str, local_hw: HardwareInfo) -> HardwareInfo:
+        if backend in ("modal", "colab"):
+            target_sm = remote_sm_map.get(target_gpu, "sm_89")
+            target_vram = budgets.get(target_gpu, 22000.0)
+            return HardwareInfo(
+                device_name=f"Remote {target_gpu}",
+                sm_architecture=target_sm,
+                total_vram_mb=target_vram,
+                free_vram_mb=target_vram,
+                cuda_version="12.4",
+                is_cuda_available=True,
+                device_count=1,
+            )
+        return local_hw
+
+    cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
+
+    # Test Modal A10G
+    modal_a10g_hw = resolve_serving_hw("modal", "A10G", cpu_hw)
+    assert modal_a10g_hw.sm_architecture == "sm_86"
+    assert "A10G" in modal_a10g_hw.device_name
+    _, a10g_prof = load_profile_for_hardware(modal_a10g_hw, strict=False)
+    assert a10g_prof == "conservative_analytical_fallback"
+
+    # Test Modal L4
+    modal_l4_hw = resolve_serving_hw("modal", "L4", cpu_hw)
+    assert modal_l4_hw.sm_architecture == "sm_89"
+    _, l4_prof = load_profile_for_hardware(modal_l4_hw, strict=False)
+    assert l4_prof == "profile_sm89_l4.json"
+
+    # Test Modal T4
+    modal_t4_hw = resolve_serving_hw("modal", "T4", cpu_hw)
+    assert modal_t4_hw.sm_architecture == "sm_75"
+    _, t4_prof = load_profile_for_hardware(modal_t4_hw, strict=False)
+    assert t4_prof == "profile_sm75_t4.json"
+
+    # Test Local giữ nguyên CPU
+    local_hw = resolve_serving_hw("local", "L4", cpu_hw)
+    assert local_hw.sm_architecture == "cpu"
+
+
+

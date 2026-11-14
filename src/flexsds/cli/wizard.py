@@ -427,12 +427,41 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     )
 
     # Step 6: Profile Mapping
+    if backend in ("modal", "colab"):
+        remote_sm_map = {
+            "A10G": "sm_86",
+            "L4": "sm_89",
+            "T4": "sm_75",
+            "A100": "sm_80",
+        }
+        target_sm = remote_sm_map.get(target_gpu, "sm_89")
+        budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0, "A100": 40000.0}
+        target_vram = budgets.get(target_gpu, 22000.0)
+        serving_hw = HardwareInfo(
+            device_name=f"Remote {target_gpu}",
+            sm_architecture=target_sm,
+            total_vram_mb=target_vram,
+            free_vram_mb=target_vram,
+            cuda_version="12.4",
+            is_cuda_available=True,
+            device_count=1,
+        )
+    else:
+        serving_hw = hw_info
+
     profile_name = None
     if not enable_adaptive:
         print("\033[32m✔ HardwareAdaptive engine: Disabled (Static speculation mode)\033[0m")
     else:
-        cost_model, profile_name = load_profile_for_hardware(hw_info)
-        print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+        cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=False)
+        if profile_name == "conservative_analytical_fallback":
+            print(
+                f"\033[33m⚠ [Hardware Profile Warning] No measured profile for GPU '{target_gpu or serving_hw.device_name}' "
+                f"({serving_hw.sm_architecture}). Using conservative analytical fallback.\033[0m"
+            )
+            print("  Tip: Calibrate exact latency using: flexsds profile --benchmark (or disable adaptive to use static speculation)")
+        else:
+            print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
 
     # Save serving configuration
     config: Dict[str, Any] = {
@@ -449,9 +478,9 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         "colab_tunnel_url": colab_tunnel_url,
         "modal_deploy": modal_deploy,
         "hardware": {
-            "device_name": hw_info.device_name,
-            "sm_architecture": hw_info.sm_architecture,
-            "free_vram_mb": hw_info.free_vram_mb,
+            "device_name": serving_hw.device_name,
+            "sm_architecture": serving_hw.sm_architecture,
+            "free_vram_mb": serving_hw.free_vram_mb,
         },
     }
 
