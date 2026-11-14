@@ -455,3 +455,223 @@ whitespace checks passed. GPU numerical correctness remains untested.
 The publication gate authorizes only a new descendant of `873cf2c...` on
 `origin/fix/m4-02-06-greedy-repro`, after confirming that remote target. It does
 not authorize rewriting the original commit or starting the controlled GPU run.
+
+## Controlled trajectory evidence audit and next localization boundary
+
+This local follow-up starts at published source
+`2d212a9f7f92ded72d37179eff567df0b3a72d17`. It authorizes no commit, push, PR,
+GPU/Colab/Modal run, readiness diagnostic, sweep or production repair.
+
+Audited archive:
+`m4-02-06-decode-trajectory-20261114T011931587983Z-2d212a9f.tar.gz`.
+SHA256 exactly matches
+`31dcf2fd77cd3773e4dac2216d98908dd0a4d3dcc5508322632ffe5778256360`.
+All 18 run-manifest-listed artifacts match their hashes; no listed file is
+missing or changed. Source/instrumentation/run IDs, frozen reference input,
+runtime-source manifest, environment/configuration, raw cache trace and resets,
+worker-to-final snapshots, and cleanup/lifecycle records were checked.
+
+Packaging discrepancy: the archive also contains `colab-wrapper-status.json`,
+which is outside the runner's strict manifest inventory. It is covered by the
+externally supplied archive SHA and reports wrapper success after completion.
+Treat it as packaging metadata, not as a replacement for tensor evidence.
+Extracting all archive files into one directory would fail the existing strict
+`verify_run_manifest` inventory guard. That guard was not relaxed and the
+archive/manifest were not rewritten. The numerical audit read the original
+manifest-listed payloads directly from the hash-verified archive.
+
+Independent full-vector recomputation (152064 logits in each condition):
+
+| Boundary 549 | Sequential cold | Forced-prefill cold |
+| --- | --- | --- |
+| Raw / grammar-masked / actual token | 4164 / 4164 / 4164 | 3752 / 3752 / 3752 |
+| logit[4164] | 26.875 | 26.75 |
+| logit[3752] | 26.75 | 26.75 |
+| 4164 minus 3752 | +0.125 | 0 |
+| Cached tokens | 0 | 0 |
+| Computed / query tokens | 2070 / 1 | 2048 / 23 |
+| Actual graph mode / padded tokens | FULL / 1 | PIECEWISE / 24 |
+
+Full-vector max absolute difference is 0.15625 and mean is
+0.0381419623148336. Re-analysis exactly matches `analysis.json`:
+`H_TRAJECTORY_SUPPORTED`, `HISTORICAL_PREFIX_REPRODUCED`, generation index 549.
+Both token arrays and all three prefix hashes match the historical reference.
+Both grammar masks match; the observed backend is XGrammar and processed-token
+count is 549 in both conditions. Recorded environment drift is empty. Hooks were
+restored, engine shutdown completed, lifecycle status is COMPLETE, GPU processes
+are absent and memory returned to baseline. No numerical discrepancy was found.
+
+This is execution-history dependence under two cold conditions. It does not
+prove a cache, attention, AWQ/Marlin, graph or chunking defect.
+`ROOT_CAUSE_NOT_PROVEN`; `FULL_SWEEP_BLOCKED`.
+
+### Path map and the smallest discriminating split
+
+| Stage | Sequential | Forced prefill | Same/different by design | Previously observable? | Candidate relevance |
+| --- | --- | --- | --- | --- | --- |
+| Logical input / last input token | Original + natural reference prefix | Original + reference[:549] | Exact same 2071 IDs | Yes, actual GPU query reconstruction/hashes | Removes token-input drift |
+| Embedding | Current row with accumulated past | 23 current-chunk rows with recomputed past | Same token identity; different batch/history | No tensor capture | Fixed lookup input, upstream baseline |
+| QKV, RoPE, attention, MLP, residual, final norm | One query; accumulated KV; FULL graph | 23 queries; chunked reconstruction; PIECEWISE | Shape/history differ | Shape/config only | KV, GEMM, attention, graph, compiler candidates remain confounded |
+| Gathered final-normalized row passed to head | One valid row | One valid row selected from the 23 queries | Same logical row; values previously unknown | New capture | Split upstream state from head-output path |
+| Raw logits | 4164 wins | Exact 4164/3752 tie; 3752 wins | Numerically different | Full vectors | Preserved failure |
+| Grammar / sampler | Same effective mask; selects 4164 | Same effective mask; selects 3752 | Mask equal; decision differs | Yes | Does not explain the pre-mask difference |
+
+The chosen question is: **has the divergence already reached the exact LM-head
+input row, or does it appear between that identical input and raw head output?**
+Only one extra hidden-state row per condition is retained. Existing full logits,
+ownership, first-mismatch, prefix, cache and lifecycle evidence are reused.
+This is a staged binary localization, not a first-divergent-layer claim.
+
+Pinned vLLM 0.30.0 source establishes the measurement's producer/consumer:
+
+- `qwen2.py`: `Qwen2Attention.forward` 207–234 splits Q/K/V, applies RoPE,
+  calls attention and output projection; `Qwen2MLP.forward` 111–115 projects,
+  activates and projects again. `Qwen2DecoderLayer.forward` 290–310 carries
+  separate hidden/residual values through fused add/norm operations.
+- `Qwen2Model.forward` applies final norm at 444 and returns hidden states at
+  450. Plain layer output alone is not the residual stream; it must not be
+  compared as though it were the final normalized state.
+- `GPUModelRunner._prepare_inputs` 2244–2253 uses
+  `logits_indices = query_start_loc[1:] - 1` for Vanilla, excluding padding.
+  `execute_model` 4497–4498 gathers those hidden rows and passes them to
+  `model.compute_logits` after the model forward context has ended.
+- `Qwen2ForCausalLM.compute_logits` 511–516 calls `LogitsProcessor`.
+  `LogitsProcessor._apply_head` 136–178 invokes the observed head quantization
+  method or explicit head-dtype path; `_get_logits` 180–199 handles TP/gather
+  and vocabulary cropping. The new evidence records the actual head method and
+  dtype modifier rather than assuming an AWQ model implies an AWQ LM head.
+- `CUDAGraphWrapper.__call__` 235–363 returns the stored output after
+  `entry.cudagraph.replay()` on an existing FULL entry. Attaching ordinary
+  Python layer hooks after graph capture does not observe each decode replay.
+  Installing hooks before compilation would need separate graph/fusion review.
+  The chosen input interception is outside that replay and adds no layer hooks.
+
+Graph selection, attention query geometry, AWQ/Marlin application, sampling and
+scheduler accounting remain the reviewed paths described earlier. Added source
+files are hash-pinned in the same installed-source manifest; no version pin
+changes. CPU reference checks cannot establish GPU numerical correctness.
+
+### Direct KV comparison feasibility and why it is deferred
+
+`Attention.forward` in `vllm/model_executor/layers/attention/attention.py`
+485–577 receives post-RoPE K and projected V and routes KV update/attention
+through the pinned custom ops. `FlashAttentionImpl.do_kv_cache_update`
+1438–1472 uses `reshape_and_cache_flash` with the actual slot mapping.
+`FlashAttentionImpl.forward` 1232–1263 interprets cache layout and block table.
+The reviewed backend's raw cache layout is `[blocks, kv_heads, block_size, 2D]`;
+transpose axes 1/2 and split the last dimension to obtain K and V views indexed
+as `[block, offset, head, D]`. Other backends/layouts must not be assumed equal.
+
+For block size B, logical position p maps through the request's actual block
+table to physical slot `block_ids[p // B] * B + p % B`. Different physical
+block IDs can represent comparable logical content; equality or inequality of
+IDs establishes no numerical equality or inequality of K/V. The observed block
+size is 16. KV allocation policy and slot mapping must remain untouched.
+
+There is also a materialization asymmetry: before the final forward, sequential
+has 2070 computed tokens, whereas forced prefill has only 2048. Comparing whole
+"persistent past" at those times would compare different logical spans.
+After the final forward, read-only logical gathers could compare positions
+0..2069 in both conditions, excluding the current input token at 2070. Capture
+must occur while that request still owns its blocks, before abort/reset/reuse.
+The count scales with layers × 2070 × KV heads × head dimension × K/V × dtype,
+far beyond one hidden row, and it still would not identify the first layer.
+Python hooks inside KV/attention operations also face FULL replay bypass.
+Direct KV comparison is feasible with a reviewed backend-specific snapshot,
+but is not the lowest-complexity first split. It is deferred, not declared unsafe
+or disproven. No KV tensor is read or modified by this patch.
+
+### Opt-in hidden-row capture and decisions
+
+After a future immutable publication and run review, prepare using:
+
+```text
+python -B -m experiments.run_m4_cache_probe prepare --diagnostic-mode decode_trajectory --localization-stage lm_head_input --source-commit <reviewed-future-sha> --out <fresh-run-directory>
+```
+
+The extra stage is absent by default. It installs no additional model/graph
+hook: the existing instance-owned `compute_logits` wrapper clones its input
+before calling the original method. Only a single dense BF16 `[1, hidden]`
+gathered row and the pinned argument signature are supported. The original input,
+return value, sampler decision and runtime flags are unchanged. Each live row
+stays on GPU; the same device first-mismatch latch freezes it with its matching
+raw/masked logits. Later async work cannot replace the selected snapshot.
+
+After abort, serialize the full small row as exact original BF16 bytes and
+lossless float32-expanded values. Record stage, shape, dtype, layout/stride,
+original storage offset, logical position, generation index, source query row,
+logits row, request owner, prefix identity and observed head contract. At 549,
+the query row is 0 sequentially and 22 in the forced chunk; logits row is 0 in
+both. Never select padded row 23. Byte equality is checked on decoded complete
+payloads, not inferred from summary hashes. Max/mean absolute difference,
+selected elements and NaN/Inf counts are independently recomputed.
+
+The narrow analyzer emits:
+
+- `UPSTREAM_HIDDEN_STATE_DIVERGENCE`: input values already differ before head.
+- `LM_HEAD_OUTPUT_DIVERGENCE_WITH_IDENTICAL_INPUT`: exact input bytes match,
+  but raw output differs; focus the next review on the head-consumer path/state.
+- `HEAD_INPUT_BYTES_DIFFER_WITH_EQUAL_VALUES`: preserve bit differences such as
+  signed zero without asserting numerical equality of serialized state.
+- `NO_BOUNDARY_DIVERGENCE_REPRODUCED`: exact input and raw output agree.
+- `INCONCLUSIVE`: any provenance/stage/layout/shape/dtype/ownership/prefix guard,
+  nonfinite input, missing hook, or failure to reach the requested 549 boundary.
+
+An earlier mismatch retains the existing first-divergence evidence but cannot
+be relabeled as a generation-549 localization. Collection failure backups also
+preserve a retained hidden row when available. Offline stage analysis requires
+successful hook/engine cleanup and reuses the frozen GPU-release policy; the
+live parent already fails on teardown/release errors. No numerical tolerance,
+performance result, first-layer attribution or causal counterfactual is inferred.
+
+Current supported claim remains `H_TRAJECTORY_SUPPORTED` from the audited run.
+The hidden-input diagnostic has not run on GPU. Its implementation alone proves
+none of its future classifications. `ROOT_CAUSE_NOT_PROVEN`; `FULL_SWEEP_BLOCKED`.
+
+CPU verification commands:
+
+```powershell
+$env:PYTHONPATH="$PWD;$PWD\src"
+python -B -m pytest -q -rs -p no:cacheprovider tests/test_m4_head_input_probe.py
+python -B -m pytest -q -rs -p no:cacheprovider tests/test_m4_head_input_probe.py tests/test_m4_decode_trajectory.py tests/test_m4_cache_probe.py tests/test_m4_readiness.py tests/test_m4_lossless.py tests/test_m4_treatments.py tests/test_m4_lifecycle.py
+git diff --check
+```
+
+This phase ends locally. Review the exact diagnostic diff and CPU evidence before
+authorizing commit/push of a new immutable SHA. Do not launch the GPU run.
+
+Local localization review result: **206 passed, 4 skipped, 0 failed** in the
+final affected suite. The four existing skips require the optional pinned
+installed-source cache; no new localization test is skipped. All 30 pinned
+reference-file hashes, source parsing, tracked/new-file whitespace checks and
+exact diagnostic-file scope checks passed. No GPU or publication action occurred.
+
+### Final local CPU review
+
+The historical cache-probe full-vector audit remains blocked: its four original
+vectors are unavailable, and neither top-20 values nor saved reductions replace
+them. Later trajectory evidence is a separate run and does not complete that
+historical audit. Do not reconstruct the missing vectors.
+
+One MINOR analyzer issue was corrected: when the historical boundary flip is not
+reproduced, results now explicitly require provenance/runtime review and state
+that the preserved trajectory observation has not been falsified. Regression
+tests cover equal logits with both equal and different hidden inputs. Comparison
+output also reports numeric and byte-level differing-element counts and first
+differing indices. No unresolved BLOCKER or MAJOR was identified in CPU/static
+review; this does not establish GPU numerical correctness.
+
+After the correction, targeted head-input/trajectory tests passed **114**, with
+**0 failed, 0 skipped**. The full affected command above passed **208**, with
+**0 failed, 4 skipped**. The existing skips are treatment tests at lines 49, 70,
+77 and the lifecycle test at line 9: optional pinned installed-source cache
+unavailable; not runtime tests. All 30 pinned source references were verified
+against their preserved content. No new localization test was skipped.
+
+The initial operator constraint kept this work local. Subsequent explicit
+authorization permits one descendant commit from
+`2d212a9f7f92ded72d37179eff567df0b3a72d17` and a normal push to
+`origin/fix/m4-02-06-greedy-repro` after the final publication gates pass.
+It does not authorize a PR or GPU run. Exact-diff technical review and passing
+CPU tests are prerequisites for a separately authorized controlled run, not
+launch approval.

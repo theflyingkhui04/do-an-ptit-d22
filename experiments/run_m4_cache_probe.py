@@ -64,8 +64,12 @@ def expected_effective_config():
         cudagraph_capture_sizes=[1,2,4,8,16,24,32,40,48,56,64])
 
 
-def prepare(directory,source_commit,workload,prompt_id,index,diagnostic_mode='cache_probe'):
+def prepare(directory,source_commit,workload,prompt_id,index,diagnostic_mode='cache_probe',localization_stage=None):
     engine_config(diagnostic_mode)  # Reject unknown modes before writing artifacts.
+    if localization_stage is not None:
+        from experiments.m4_head_input_probe import HEAD_STAGE
+        if diagnostic_mode != 'decode_trajectory' or localization_stage != HEAD_STAGE:
+            raise ValueError('LM-head localization requires explicit trajectory diagnostic mode')
     if diagnostic_mode == 'decode_trajectory' and (workload,prompt_id,index) != ('W1','m0_04_001',549):
         raise ValueError('Trajectory diagnostic is scoped to W1/m0_04_001/index 549')
     case = load_input(workload,prompt_id,index)
@@ -81,6 +85,8 @@ def prepare(directory,source_commit,workload,prompt_id,index,diagnostic_mode='ca
             construction='sequential: original prompt only; forced: original prompt + reference prefix at selected boundary',
             cache_conditioning='none; verified cold reset before each condition',
             replay_limitation='Sequential execution is natural; forced prefill compares only the identical selected logical boundary.')
+        if localization_stage is not None:
+            case['localization_stage'] = localization_stage
     write_new(directory/'input.json',case)
     return case
 
@@ -343,12 +349,14 @@ def main():
     parser.add_argument('--prompt-id',default='m0_04_001')
     parser.add_argument('--generation-index',type=int,default=549)
     parser.add_argument('--diagnostic-mode',choices=['cache_probe','decode_trajectory'],default='cache_probe')
+    parser.add_argument('--localization-stage',choices=['lm_head_input'],default=None)
     args = parser.parse_args()
     source_commit = validated_source_commit(args.source_commit)
     directory = artifact_path(args.out,kind='new_directory' if args.action=='prepare' else 'directory')
     if args.action=='prepare':
         directory.mkdir()
-        case = prepare(directory,source_commit,args.workload,args.prompt_id,args.generation_index,args.diagnostic_mode)
+        case = prepare(directory,source_commit,args.workload,args.prompt_id,args.generation_index,
+            args.diagnostic_mode,args.localization_stage)
         print(json.dumps({k:case[k] for k in ('prompt_id','input_token_count','input_token_ids_sha256')}))
         return
     if args.action=='run' and {q.name for q in directory.iterdir()} != {'input.json'}:
@@ -361,7 +369,12 @@ def main():
             read = lambda name: json.loads((directory/name).read_text(encoding='utf8'))
             if read('input.json').get('diagnostic_mode') == 'decode_trajectory':
                 from experiments.m4_decode_trajectory import analyze_trajectory
-                result = analyze_trajectory(read('sequential_decode_cold.json'),
+                from experiments.m4_head_input_probe import HEAD_STAGE,analyze_head_input,require_completed_lifecycle
+                if read('input.json').get('localization_stage')==HEAD_STAGE:
+                    require_completed_lifecycle(read('hook-cleanup.json'),read('lifecycle.json'))
+                analyze = (analyze_head_input if read('input.json').get('localization_stage')==HEAD_STAGE
+                           else analyze_trajectory)
+                result = analyze(read('sequential_decode_cold.json'),
                     read('forced_prefill_cold.json'),read('input.json'),expected_source_commit=source_commit)
                 print(json.dumps(result,indent=2))
                 if result['classification']=='INCONCLUSIVE': raise SystemExit(1)

@@ -11,6 +11,7 @@ from experiments import m4_cache_probe as probe
 from experiments import m4_cache_probe_hooks as hooks
 from experiments import m4_decode_trajectory as traj
 from experiments import run_m4_cache_probe as runner
+from experiments import m4_head_input_probe as head
 
 
 @pytest.fixture(scope='module')
@@ -205,15 +206,17 @@ def test_full_vector_json_roundtrip_and_independent_reduction(case,tmp_path):
         mean_absolute_difference=sum(d)/len(d),vocabulary_size=len(d))
 
 
-@pytest.mark.parametrize('boundary_index,fail_sampling,invalid_capture',[
-    (0,False,None),(1,False,None),(548,False,None),(549,False,None),
-    (1,True,None),(1,False,'prefix'),(1,False,'nonfinite')])
-def test_hook_lifecycle_and_first_mismatch_with_async_later_forward(monkeypatch,tmp_path,boundary_index,fail_sampling,invalid_capture):
+@pytest.mark.parametrize('boundary_index,fail_sampling,invalid_capture,localize',[
+    (i,fail,bad,enabled) for enabled in (False,True) for i,fail,bad in
+    [(0,False,None),(1,False,None),(548,False,None),(549,False,None),
+     (1,True,None),(1,False,'prefix'),(1,False,'nonfinite')]]+[(1,False,'head_nonfinite',True)])
+def test_hook_lifecycle_and_first_mismatch_with_async_later_forward(monkeypatch,tmp_path,boundary_index,fail_sampling,invalid_capture,localize):
     import numpy as np
     import torch
     config=dict(diagnostic_mode='decode_trajectory',original_prompt_token_ids=[1,2],
         generated_prefix_token_ids=[10]*549,reference_next_token_id=4164,generation_index=549,
         source_commit='a'*40,cache_trace=str(tmp_path/'cache.jsonl'))
+    if localize:config['localization_stage']=head.HEAD_STAGE
     monkeypatch.setattr(traj,'verify_runtime_sources',lambda:{})
     monkeypatch.setattr(traj,'configuration',lambda:config)
     reference=[10]*549+[4164]
@@ -222,7 +225,7 @@ def test_hook_lifecycle_and_first_mismatch_with_async_later_forward(monkeypatch,
         use_async_scheduling=True
         def execute_model(self,output):
             self._determine_batch_execution_and_padding()
-            logits=self.model.compute_logits()
+            logits=self.model.compute_logits(raw_box['head_input'])
             self.execute_model_state=(output,)
             return logits
         def _determine_batch_execution_and_padding(self):
@@ -237,8 +240,9 @@ def test_hook_lifecycle_and_first_mismatch_with_async_later_forward(monkeypatch,
             return self._sample(logits,None)
     GPUModelRunner.__module__='vllm.v1.worker.gpu_model_runner'
     obj=GPUModelRunner()
-    obj.model=NS(logits_processor=NS(scale=1.,soft_cap=None,logits_as_input=False),
-        compute_logits=lambda:raw_box['raw'])
+    obj.model=NS(logits_processor=NS(scale=1.,soft_cap=None,logits_as_input=False,head_dtype=None),
+        config=NS(hidden_size=8),lm_head=NS(tp_size=1,quant_method=object()),
+        compute_logits=lambda *args:raw_box['raw'])
     obj.input_batch=NS(req_ids=['rid'],num_computed_tokens_cpu=[0])
     obj.requests={'rid':NS(prompt_token_ids=[1,2],block_ids=[[1]])}
     worker=traj.TrajectoryWorkerExtension();worker.model_runner=obj;worker.vllm_config=NS(speculative_config=None)
@@ -256,6 +260,9 @@ def test_hook_lifecycle_and_first_mismatch_with_async_later_forward(monkeypatch,
         raw=torch.zeros((1,5000));raw[0,4164]=12;raw[0,3752]=11
         if i<boundary_index:raw[0,10]=13
         raw_box['raw']=raw
+        padded_head=torch.full((len(query)+1,8),-999.,dtype=torch.bfloat16)
+        padded_head[len(query)-1].fill_(float(i%64))
+        raw_box['head_input']=padded_head[len(query)-1:len(query)]
         assert obj.execute_model(output) is raw
         words=np.full((1,157),-1,dtype=np.int32);words[0,4164//32]&=~(1<<(4164%32))
         grammar=NS(structured_output_request_ids=['rid'],grammar_bitmask=words)
@@ -272,12 +279,14 @@ def test_hook_lifecycle_and_first_mismatch_with_async_later_forward(monkeypatch,
             return
         sampled_token=int(obj.sample_tokens(grammar).sampled_token_ids)
         # Input storage and original logits may be reused by later forwards.
-        obj.input_ids.gpu.fill_(-1);raw.fill_(99.)
+        obj.input_ids.gpu.fill_(-1);raw.fill_(99.);padded_head.fill_(99.)
     if invalid_capture:
         import base64
         if invalid_capture=='prefix':worker._m4_probe['queries'][0][0]=999
-        else:worker._m4_probe['armed']['capture'].selected['raw'][3752]=float('nan')
-        with pytest.raises(RuntimeError,match='prefix differs' if invalid_capture=='prefix' else 'Nonfinite raw logits'):
+        elif invalid_capture=='nonfinite':worker._m4_probe['armed']['capture'].selected['raw'][3752]=float('nan')
+        else:worker._m4_probe['armed']['capture'].selected['head_input'][0]=float('nan')
+        match={'prefix':'prefix differs','nonfinite':'Nonfinite raw logits','head_nonfinite':'Nonfinite LM-head input'}[invalid_capture]
+        with pytest.raises(RuntimeError,match=match):
             worker.m4_trajectory_collect()
         preserved=json.loads((tmp_path/'failed-sequential_decode_cold-vectors.json').read_text())
         assert preserved['classification']=='INCONCLUSIVE' and preserved['generation_index']==boundary_index
@@ -285,6 +294,10 @@ def test_hook_lifecycle_and_first_mismatch_with_async_later_forward(monkeypatch,
         masked=np.frombuffer(base64.b64decode(preserved['masked']['values_base64']),dtype=np.float32)
         assert len(raw)==5000 and raw[4164]==12. and masked[3752]==11. and np.isneginf(masked[4164])
         if invalid_capture=='nonfinite':assert np.isnan(raw[3752])
+        if localize:
+            values=np.frombuffer(base64.b64decode(preserved['head_input']['values_base64']),dtype=np.float32)
+            assert len(values)==8
+            if invalid_capture=='head_nonfinite':assert np.isnan(values[0])
         state=worker._m4_probe;worker.m4_probe_uninstall()
         assert state=={} and calls==['restored']
         return
@@ -295,6 +308,12 @@ def test_hook_lifecycle_and_first_mismatch_with_async_later_forward(monkeypatch,
     assert result['logits']['argmax_token_id']==4164
     assert result['logits']['grammar_masked_argmax_token_id']==3752
     assert result['raw_full_logits'][4164]==12. and result['grammar_masked_full_logits'][3752]==11.
+    if localize:
+        record=result['head_input']
+        assert record['values']==[float(boundary_index%64)]*8
+        assert record['source_query_row']==(1 if boundary_index==0 else 0)
+        head.validate_head_input(record,result)
+    else:assert 'head_input' not in result
     assert len(result['raw_full_logits'])==5000
     worker.m4_probe_uninstall()
     assert calls==['restored'] and not hasattr(worker,'_m4_probe')
