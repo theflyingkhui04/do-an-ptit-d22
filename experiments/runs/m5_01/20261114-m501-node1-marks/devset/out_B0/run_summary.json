@@ -1,0 +1,55 @@
+{
+  "task": "M4-03",
+  "step": "run-node1-extractor",
+  "backend": "openai-compatible",
+  "serving_backend": "modal",
+  "hardware": "modal-A10G",
+  "lane": "vanilla",
+  "base_url": "https://nguyenduonghb940--ptit-vllm-demo-vanilla.us-east.modal.direct/v1",
+  "model": "qwen2.5-7b-vanilla",
+  "run_id": "devset_B0",
+  "schema_version": "invoice_extraction.v1",
+  "prompt_version": "node1_extractor.v2",
+  "source_policy": "restore",
+  "workload_id": "m5_01_node1_marks",
+  "dataset_version": "node1_marks.devset.B0",
+  "w1_package_sha256": "8fbfccabeda95531a3ccb546f793571da58e582be977e06f687b2191f15d8a03",
+  "artifact_hashes": {
+    "requests_B0.jsonl": "8fbfccabeda95531a3ccb546f793571da58e582be977e06f687b2191f15d8a03"
+  },
+  "request_count": 30,
+  "fully_validated_count": 30,
+  "sample_failure_count": 0,
+  "persistence_failure_count": 0,
+  "failure_counts": {},
+  "rates": {
+    "transport_success_rate": 1.0,
+    "strict_json_rate": 1.0,
+    "source_binding_rate": 1.0,
+    "schema_valid_rate": 1.0
+  },
+  "acceptance": {
+    "threshold": 0.95,
+    "pass": true,
+    "formula": "fully_validated_count / request_count"
+  },
+  "normalization_count": 14,
+  "latency_ms": {
+    "mean": 16677.737,
+    "median": 16147.759,
+    "min": 11482.338,
+    "max": 26266.291
+  },
+  "usage": {
+    "prompt_tokens": 59814,
+    "completion_tokens": 42473,
+    "total_tokens": 102287
+  },
+  "database": null,
+  "outputs": {
+    "raw_responses": "experiments/runs/m5_01/20261114-m501-node1-marks/devset/out_B0/raw_responses.jsonl",
+    "validated_outputs": "experiments/runs/m5_01/20261114-m501-node1-marks/devset/out_B0/validated_outputs.jsonl",
+    "failures": "experiments/runs/m5_01/20261114-m501-node1-marks/devset/out_B0/failures.jsonl",
+    "summary": "experiments/runs/m5_01/20261114-m501-node1-marks/devset/out_B0/summary.json"
+  }
+}

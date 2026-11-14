@@ -1,0 +1,8 @@
+{
+  "workload_id": "m5_01_node1_marks",
+  "dataset_version": "node1_marks.select.B1",
+  "package_sha256": "dd92fbe8c3ef0ddd545d86ca1d0a2da831f083f0de1564ea9b68a95257b226a1",
+  "file_hashes": {
+    "requests_B1.jsonl": "dd92fbe8c3ef0ddd545d86ca1d0a2da831f083f0de1564ea9b68a95257b226a1"
+  }
+}
