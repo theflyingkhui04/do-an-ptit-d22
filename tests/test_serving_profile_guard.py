@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import patch
 from flexsds.core.hardware import HardwareInfo
+from flexsds.core.cost_model import run_hardware_micro_benchmark, load_profile_for_hardware
 from flexsds.cli.main import main, get_serving_cost_profile
 
 
@@ -122,4 +123,32 @@ def test_serve_modal_proceeds_with_no_adaptive(capsys):
     assert ret == 0
     captured = capsys.readouterr()
     assert "Preview only; not a readiness check" in captured.out
+
+
+def test_micro_benchmark_calibrates_sm86_a10g(tmp_path, monkeypatch):
+    """Kiểm tra quá trình micro-benchmark hiệu chuẩn hồ sơ phần cứng cho sm_86 (A10G)."""
+    import flexsds.core.cost_model as cm
+    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path)
+
+    a10g_hw = HardwareInfo(
+        device_name="Remote A10G",
+        sm_architecture="sm_86",
+        total_vram_mb=22000.0,
+        free_vram_mb=22000.0,
+        cuda_version="12.4",
+        is_cuda_available=True,
+    )
+    cost_model_bench, saved_path = run_hardware_micro_benchmark(a10g_hw)
+    try:
+        assert saved_path.exists()
+        cost_model, profile_name = load_profile_for_hardware(a10g_hw, strict=True)
+        assert cost_model is not None
+        assert "sm86" in profile_name or "sm_86" in profile_name
+        c_t, c_d = cost_model.get_forward_costs(batch_size=1)
+        assert c_t == 16.5
+        assert c_d == 3.8
+    finally:
+        if saved_path.exists():
+            saved_path.unlink()
+
 

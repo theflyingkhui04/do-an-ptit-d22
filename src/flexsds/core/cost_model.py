@@ -514,6 +514,7 @@ def run_hardware_micro_benchmark(
     arch_baselines = {
         "sm_90": (8.5, 1.8),   # H100
         "sm_89": (19.0, 4.8),  # L4 / RTX 4090
+        "sm_86": (16.5, 3.8),  # A10G / RTX 3090
         "sm_80": (12.0, 2.8),  # A100
         "sm_75": (38.0, 9.5),  # T4
     }
