@@ -28,7 +28,10 @@ try:
         evaluate_serving_preflight,
         ServingBlockedError,
     )
-    from flexsds.core.cost_model import load_profile_for_hardware
+    from flexsds.core.cost_model import (
+        load_profile_for_hardware,
+        run_hardware_micro_benchmark,
+    )
     from flexsds.server.local_runner import LocalServingRunner, finish_launch
     from flexsds.server.colab_runner import ColabServingRunner
     from flexsds.server.modal_runner import ModalServingRunner
@@ -40,7 +43,10 @@ except ModuleNotFoundError:
         evaluate_serving_preflight,
         ServingBlockedError,
     )
-    from src.flexsds.core.cost_model import load_profile_for_hardware
+    from src.flexsds.core.cost_model import (
+        load_profile_for_hardware,
+        run_hardware_micro_benchmark,
+    )
     from src.flexsds.server.local_runner import LocalServingRunner, finish_launch
     from src.flexsds.server.colab_runner import ColabServingRunner
     from src.flexsds.server.modal_runner import ModalServingRunner
@@ -453,13 +459,45 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     if not enable_adaptive:
         print("\033[32m✔ HardwareAdaptive engine: Disabled (Static speculation mode)\033[0m")
     else:
-        cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=False)
-        if profile_name == "conservative_analytical_fallback":
+        cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True)
+        if cost_model is None or not profile_name or profile_name == "conservative_analytical_fallback":
             print(
-                f"\033[33m⚠ [Hardware Profile Warning] No measured profile for GPU '{target_gpu or serving_hw.device_name}' "
-                f"({serving_hw.sm_architecture}). Using conservative analytical fallback.\033[0m"
+                f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile found for GPU "
+                f"'{target_gpu or serving_hw.device_name}' ({serving_hw.sm_architecture}).\033[0m"
             )
-            print("  Tip: Calibrate exact latency using: flexsds profile --benchmark (or disable adaptive to use static speculation)")
+            print("  HardwareAdaptive requires an empirical calibration profile to dynamically optimize speculative step size k.")
+
+            missing_action = prompt_choice(
+                "Hardware profile is missing. What would you like to do?",
+                [
+                    "Calibrate GPU profile now (run micro-benchmark)",
+                    "Switch to static speculation (serve without HardwareAdaptive)",
+                    "Abort setup",
+                ],
+                default_idx=0,
+            )
+
+            if "Calibrate" in missing_action:
+                print(f"\nCalibrating hardware cost profile for {serving_hw.device_name} ({serving_hw.sm_architecture})...")
+                res = run_hardware_micro_benchmark(
+                    serving_hw,
+                    target_model=target_model,
+                    draft_model=draft_model,
+                )
+                if isinstance(res, tuple):
+                    cost_model, saved_path = res
+                else:
+                    saved_path = res
+                print(f"\033[1;32m✔ Calibrated & saved new hardware profile: {saved_path}\033[0m")
+                cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True)
+                print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+            elif "Switch to static" in missing_action:
+                enable_adaptive = False
+                profile_name = None
+                print("\033[32m✔ Switched to static speculation mode (HardwareAdaptive disabled)\033[0m")
+            else:
+                print("\n\033[1;31m✖ Serving setup aborted: Cannot enable HardwareAdaptive without a calibrated profile.\033[0m")
+                return {"action": "abort", "exit_code": 1}
         else:
             print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
 

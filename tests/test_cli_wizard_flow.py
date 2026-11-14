@@ -121,4 +121,190 @@ def test_wizard_remote_serving_hardware_resolution():
     assert local_hw.sm_architecture == "cpu"
 
 
+def test_wizard_uncalibrated_gpu_abort_action(tmp_path, monkeypatch, capsys):
+    """Khi gặp GPU chưa có profile đo đạc và chọn Abort setup, wizard phải thoát với exit code 1."""
+    monkeypatch.chdir(tmp_path)
+    from flexsds.cli.wizard import run_interactive_wizard
+    from flexsds.core.hardware import HardwareInfo
+
+    cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
+
+    def fake_prompt_choice(question, choices, default_idx=0):
+        q = question.lower()
+        if "action" in q:
+            return "Launch serving"
+        if "model configuration" in q:
+            return choices[0]
+        if "platform" in q:
+            return "Modal.com (Cloud Serverless GPU)"
+        if "modal gpu" in q:
+            return "A10G (Recommended - 24 GB VRAM)"
+        if "missing" in q:
+            return "Abort setup"
+        return choices[default_idx]
+
+    def fake_prompt_bool(question, default_val=True):
+        q = question.lower()
+        if "hardwareadaptive" in q:
+            return True
+        if "deploy" in q:
+            return False
+        return False
+
+    def fake_prompt_string(question, default_val=""):
+        return default_val
+
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_choice", fake_prompt_choice)
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_bool", fake_prompt_bool)
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_string", fake_prompt_string)
+
+    result = run_interactive_wizard(cpu_hw)
+
+    assert result == {"action": "abort", "exit_code": 1}
+    assert not (tmp_path / "serving_config.json").exists()
+
+    captured = capsys.readouterr()
+    assert "[Hardware Profile Error]" in captured.out
+    assert "Serving setup aborted" in captured.out
+
+
+def test_wizard_uncalibrated_gpu_switch_static_action(tmp_path, monkeypatch, capsys):
+    """Khi gặp GPU chưa có profile đo đạc và chọn Switch to static, wizard tắt adaptive và tiếp tục."""
+    monkeypatch.chdir(tmp_path)
+    from flexsds.cli.wizard import run_interactive_wizard
+    from flexsds.core.hardware import HardwareInfo
+
+    cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
+
+    def fake_prompt_choice(question, choices, default_idx=0):
+        q = question.lower()
+        if "action" in q:
+            return "Launch serving"
+        if "model configuration" in q:
+            return choices[0]
+        if "platform" in q:
+            return "Modal.com (Cloud Serverless GPU)"
+        if "modal gpu" in q:
+            return "A10G (Recommended - 24 GB VRAM)"
+        if "missing" in q:
+            return "Switch to static speculation (serve without HardwareAdaptive)"
+        return choices[default_idx]
+
+    def fake_prompt_bool(question, default_val=True):
+        q = question.lower()
+        if "hardwareadaptive" in q:
+            return True
+        if "deploy" in q:
+            return False
+        if "launch server" in q:
+            return False
+        return False
+
+    def fake_prompt_string(question, default_val=""):
+        return default_val
+
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_choice", fake_prompt_choice)
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_bool", fake_prompt_bool)
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_string", fake_prompt_string)
+
+    result = run_interactive_wizard(cpu_hw)
+
+    assert result["action"] == "serve"
+    assert result["enable_adaptive"] is False
+    assert result["profile_applied"] is None
+
+    cfg_file = tmp_path / "serving_config.json"
+    assert cfg_file.exists()
+    import json
+    with open(cfg_file, "r", encoding="utf-8") as f:
+        saved_data = json.load(f)
+    assert saved_data["enable_adaptive"] is False
+    assert saved_data["profile_applied"] is None
+
+    captured = capsys.readouterr()
+    assert "[Hardware Profile Error]" in captured.out
+    assert "Switched to static speculation mode" in captured.out
+
+
+def test_wizard_uncalibrated_gpu_calibrate_action(tmp_path, monkeypatch, capsys):
+    """Khi gặp GPU chưa có profile đo đạc và chọn Calibrate now, wizard chạy benchmark và nạp profile."""
+    monkeypatch.chdir(tmp_path)
+    from flexsds.cli.wizard import run_interactive_wizard
+    from flexsds.core.hardware import HardwareInfo
+    from pathlib import Path
+    from unittest.mock import MagicMock
+
+    cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
+
+    def fake_prompt_choice(question, choices, default_idx=0):
+        q = question.lower()
+        if "action" in q:
+            return "Launch serving"
+        if "model configuration" in q:
+            return choices[0]
+        if "platform" in q:
+            return "Modal.com (Cloud Serverless GPU)"
+        if "modal gpu" in q:
+            return "A10G (Recommended - 24 GB VRAM)"
+        if "missing" in q:
+            return "Calibrate GPU profile now (run micro-benchmark)"
+        return choices[default_idx]
+
+    def fake_prompt_bool(question, default_val=True):
+        q = question.lower()
+        if "hardwareadaptive" in q:
+            return True
+        if "deploy" in q:
+            return False
+        if "launch server" in q:
+            return False
+        return False
+
+    def fake_prompt_string(question, default_val=""):
+        return default_val
+
+    benchmark_called = []
+    fake_cost_model = MagicMock()
+
+    def fake_benchmark(hw, target_model=None, draft_model=None):
+        benchmark_called.append((hw.sm_architecture, target_model, draft_model))
+        return fake_cost_model, Path("/fake/path/profile_sm86_a10g.json")
+
+    call_count = {"count": 0}
+
+    def fake_load_profile(hw, strict=True):
+        call_count["count"] += 1
+        if call_count["count"] == 1:
+            return None, ""
+        return fake_cost_model, "profile_sm86_a10g.json"
+
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_choice", fake_prompt_choice)
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_bool", fake_prompt_bool)
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_string", fake_prompt_string)
+    monkeypatch.setattr("flexsds.cli.wizard.run_hardware_micro_benchmark", fake_benchmark, raising=False)
+    monkeypatch.setattr("flexsds.cli.wizard.load_profile_for_hardware", fake_load_profile)
+
+    result = run_interactive_wizard(cpu_hw)
+
+    assert len(benchmark_called) == 1
+    assert benchmark_called[0][0] == "sm_86"
+    assert result["action"] == "serve"
+    assert result["enable_adaptive"] is True
+    assert result["profile_applied"] == "profile_sm86_a10g.json"
+
+    cfg_file = tmp_path / "serving_config.json"
+    assert cfg_file.exists()
+    import json
+    with open(cfg_file, "r", encoding="utf-8") as f:
+        saved_data = json.load(f)
+    assert saved_data["enable_adaptive"] is True
+    assert saved_data["profile_applied"] == "profile_sm86_a10g.json"
+
+    captured = capsys.readouterr()
+    assert "[Hardware Profile Error]" in captured.out
+    assert "Calibrated & saved new hardware profile" in captured.out
+    assert "Linked hardware profile: profile_sm86_a10g.json" in captured.out
+
+
+
 
