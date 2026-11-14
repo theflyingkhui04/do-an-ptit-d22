@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from src.api.questions import QuestionService
 from src.api.report_data import TABLE_KEYS
-from src.api.reports import ReportService
+from src.api.reports import ReportService, vn_number
 from src.pipeline.node2_questions import QUESTIONS
 from tests.api_fakes import HEADERS, FakeCaller, FakeStore, build
 from tests.test_api_report_data import sqlite_runner
@@ -127,7 +127,8 @@ def test_request_report_reads_fixed_tables_then_plans_charts_and_writes():
     assert "Node 3" in report_call["messages"][0]["content"]
     user = report_call["messages"][1]["content"]
     assert REQUEST in user and "NHA SACH CAM PHA" in user and "2 hoá đơn có ngày lập gần nhất" in user
-    assert "117000" in user and ".0" not in user
+    # numbers are written the Vietnamese way so the model copies them instead of re-grouping digits
+    assert "117.000" in user and "117000" not in user and "117.000.0" not in user
     assert set(out["timings_ms"]) == {"data", "dashboard", "report"}
     assert out["dashboard"]["metrics"]["tpot_ms"] == 20.0 and out["report"]["metrics"]["tpot_ms"] == 20.0
 
@@ -192,3 +193,14 @@ def test_report_route_takes_a_request_and_a_scope():
         for bad in ({**body, "request": " "}, {**body, "limit": 0}, {**body, "limit": 51}, {"endpoint_id": "ep_0000000b"}):
             assert client.post("/api/reports", headers=HEADERS, json=bad).status_code == 422, bad
     assert reports.calls == [(REQUEST, 10, "static"), (REQUEST, None, "static")]
+
+
+def test_vietnamese_number_format_for_the_report_tables():
+    assert [vn_number(v) for v in (117000, 2201808, 10, 0, 63750.0, 0.5, 1234.25, None, "2020-08-12", True)] == [
+        "117.000", "2.201.808", "10", "0", "63.750", "0,5", "1.234,25", "", "2020-08-12", "True"]
+
+
+def test_a_report_quoting_numbers_as_written_in_the_tables_passes_the_number_check():
+    text = "Hai hoá đơn có tổng 117.000 đồng; NHA SACH CAM PHA 75.000 đồng."
+    out = service(SnapshotStore()).run_request(REQUEST, 2, replies(PLAN, text))
+    assert out["number_check"] == {"numbers": 2, "ungrounded": []}

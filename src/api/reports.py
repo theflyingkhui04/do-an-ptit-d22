@@ -106,9 +106,23 @@ def default_charts(tables: dict[str, dict]) -> list[dict]:
     return [c for key, kind in DEFAULT_CHARTS if (c := check_chart({"table": key, "type": kind}, tables))]
 
 
+def vn_number(value: Any) -> str:
+    """117000 -> 117.000, 0.5 -> 0,5: the way Vietnamese reports write numbers. Live run 13/11: given 63750 the
+    model wrote 637,500 while adding its own separators; numbers already written this way are copied as they are."""
+    if value is None:
+        return ""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, float) and not value.is_integer():
+        whole, _, frac = f"{value:,.2f}".rstrip("0").partition(".")
+        return whole.replace(",", ".") + ("," + frac if frac else "")
+    return f"{int(value):,}".replace(",", ".")
+
+
 def tables_text(tables: list[dict]) -> str:
-    return "\n\n".join(f"### {t['title']} (bảng {t['key']}, {len(t['rows'])} dòng)\n"
-                       f"{_table_text(t['columns'], t['rows'])}" for t in tables)
+    return "\n\n".join(
+        f"### {t['title']} (bảng {t['key']}, {len(t['rows'])} dòng)\n"
+        f"{_table_text(t['columns'], [[vn_number(v) for v in row] for row in t['rows']])}" for t in tables)
 
 
 def dashboard_message(request: str, scope: str, tables: list[dict]) -> str:
