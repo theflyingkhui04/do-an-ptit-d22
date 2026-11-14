@@ -214,6 +214,9 @@ export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints:
             )}
             {data.report.status === "ok" && (
               <div className="flex flex-wrap gap-2">
+                {(data.language_check?.foreign_words ?? []).length > 0 && (
+                  <Pill tone="warn">Chữ không phải tiếng Việt: {data.language_check!.foreign_words.join(", ")}</Pill>
+                )}
                 {data.number_check.ungrounded.length === 0 ? (
                   <Pill tone="good" icon={ShieldCheck}>{data.number_check.numbers} số trong báo cáo đều có trong bảng số liệu</Pill>
                 ) : (

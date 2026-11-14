@@ -144,6 +144,7 @@ export interface QuestionResult {
   first_error: string | null;
   calls: CallInfo[];
   text_rewrites?: { column: string; from: string; to: string }[];
+  foreign_words?: string[];
   endpoint?: { endpoint_id: string; name: string };
 }
 
@@ -185,6 +186,7 @@ export interface ReportResult {
   dashboard: { status: "ok" | "fallback" | "skipped"; charts: ChartSpec[]; error: string | null; metrics?: CallMetrics };
   report: Node3Report;
   number_check: { numbers: number; ungrounded: string[] };
+  language_check?: { foreign_words: string[] };
   timings_ms: { data: number; dashboard: number; report: number };
   endpoint: { endpoint_id: string; name: string };
 }

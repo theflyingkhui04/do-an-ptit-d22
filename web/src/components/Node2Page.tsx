@@ -86,6 +86,12 @@ function Outcome({ result }: { result: QuestionResult }) {
           <p>{result.answer}</p>
         </div>
       )}
+      {result.warning === "foreign_text" && (
+        <Notice tone="warn">
+          Câu trả lời của model lẫn chữ không phải tiếng Việt ({(result.foreign_words ?? []).join(", ")}) nên không hiện.
+          Xem bảng kết quả ở trên.
+        </Notice>
+      )}
       {result.warning === "fabricated_number" && (
         <Notice tone="warn">Câu trả lời của model có số không nằm trong kết quả SQL nên không hiện. Xem bảng kết quả ở trên.</Notice>
       )}

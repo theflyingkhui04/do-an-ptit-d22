@@ -194,6 +194,13 @@ describe("node 2", () => {
     expect(await screen.findByText(/Khớp chữ không dấu/)).toHaveTextContent("%Nhà sách Cẩm Phả% → %nha%sach%cam%pha%");
   });
 
+  it("explains why an answer with foreign words is hidden", async () => {
+    const ask = vi.fn(async () => question({ answer: null, warning: "foreign_text", foreign_words: ["beğen"] }));
+    open("node2", fakeApi({ ask }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Q1" }));
+    expect(await screen.findByText(/lẫn chữ không phải tiếng Việt/)).toHaveTextContent("beğen");
+  });
+
   it("shows a blocked query with its reason", async () => {
     const ask = vi.fn(async () => question({ status: "error", error: "JOIN_FANOUT: cộng trùng hoá đơn", rows: [], columns: [], repairs: 1 }));
     open("node2", fakeApi({ ask }));
@@ -221,6 +228,13 @@ describe("node 3", () => {
     expect(screen.getByText(/2 số trong báo cáo đều có trong bảng số liệu/)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Lấy số liệu .*Chọn biểu đồ 1,5 s, Viết báo cáo 6 s/ })).toBeInTheDocument();
     expect(screen.getByText("Số liệu đầu vào của Node 3")).toBeInTheDocument();
+  });
+
+  it("flags foreign words in the report", async () => {
+    const report = vi.fn(async () => ({ ...REPORT, language_check: { foreign_words: ["城市"] } }));
+    open("node3", fakeApi({ report }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    expect(await screen.findByText(/Chữ không phải tiếng Việt/)).toHaveTextContent("城市");
   });
 
   it("says when the model chose no usable chart and the default set is shown", async () => {
