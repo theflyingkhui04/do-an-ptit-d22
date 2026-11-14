@@ -1,5 +1,6 @@
 """Tests for Modal cloud serving runner (BYOC, ephemeral, and deploy modes)."""
 import os
+import shutil
 from unittest.mock import patch
 import pytest
 from flexsds.server.modal_runner import ModalServingRunner
@@ -81,6 +82,28 @@ def test_modal_runner_check_process_status():
     is_alive, code = runner.check_process_status(mock_stopped)
     assert is_alive is False
     assert code == 1
+
+
+def test_modal_runner_resolves_modal_binary(monkeypatch):
+    runner = ModalServingRunner()
+    config = {"serving": {"target_gpu": "A10G"}}
+
+    # Giả lập trên Windows tìm thấy modal.cmd
+    monkeypatch.setattr("shutil.which", lambda name: "C:\\Python\\Scripts\\modal.cmd" if name == "modal" else None)
+    cmd = runner.build_modal_command(config, deploy=False)
+    assert cmd[0] == "C:\\Python\\Scripts\\modal.cmd"
+    assert "serve" in cmd
+
+
+def test_modal_runner_setup_environment_uses_os_pathsep(monkeypatch):
+    runner = ModalServingRunner()
+    config = {"serving": {"target_gpu": "A10G"}}
+    monkeypatch.setenv("PYTHONPATH", "custom_path")
+    env = runner.setup_environment(config)
+    pp = env.get("PYTHONPATH", "")
+    assert len(pp) > 0
+    assert os.pathsep in pp
+    assert "custom_path" in pp
 
 
 @pytest.fixture(autouse=True)

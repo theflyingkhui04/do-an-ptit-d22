@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sys
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -41,8 +42,9 @@ class ModalServingRunner:
 
     def build_modal_command(self, config: Dict[str, Any], deploy: bool = False) -> List[str]:
         """Tạo danh sách đối số dòng lệnh gọi công cụ CLI modal tới modal_app.py."""
+        modal_bin = shutil.which("modal") or "modal"
         app_path = str(Path(__file__).parent / "modal_app.py")
-        return ["modal", "deploy" if deploy else "serve", app_path]
+        return [modal_bin, "deploy" if deploy else "serve", app_path]
 
     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
         """Forward non-secret serving settings and package paths for app construction."""
@@ -53,7 +55,8 @@ class ModalServingRunner:
         env["FLEXSDS_SERVING_CONFIG"] = json.dumps({k: cfg[k] for k in keys if k in cfg})
 
         # Inject package root and sys.path entries into PYTHONPATH so modal subprocess can import flexsds
-        pkg_root = str(Path(__file__).resolve().parents[2])
+        resolved = Path(__file__).resolve()
+        pkg_root = str(resolved.parents[2]) if len(resolved.parents) > 2 else "/root/project/src"
         existing_pp = env.get("PYTHONPATH", "")
         extra_paths = [pkg_root]
         for p in sys.path:
@@ -102,7 +105,8 @@ class ModalServingRunner:
 
     def stop(self, app_name: str = DEFAULT_APP_NAME) -> bool:
         """Dừng ứng dụng đang chạy trên hạ tầng Modal Cloud."""
-        cmd = ["modal", "app", "stop", app_name]
+        modal_bin = shutil.which("modal") or "modal"
+        cmd = [modal_bin, "app", "stop", app_name]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True)
             return res.returncode == 0
