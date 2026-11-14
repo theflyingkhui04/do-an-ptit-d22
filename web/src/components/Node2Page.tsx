@@ -44,6 +44,8 @@ export function traceOf(result: QuestionResult): TraceStep[] {
 
 function Outcome({ result }: { result: QuestionResult }) {
   const first = result.calls.find((c) => c.step === "node2");
+  const foreign = result.foreign_words ?? [];
+  const ungrounded = result.ungrounded_numbers ?? [];
   return (
     <div className="grid gap-4">
       <Trace steps={traceOf(result)} />
@@ -81,20 +83,20 @@ function Outcome({ result }: { result: QuestionResult }) {
 
       {result.status !== "error" && <ResultTable columns={result.columns} rows={result.rows} />}
       {result.answer && (
-        <div className="rounded-xl border border-line p-3.5">
-          <div className="mb-1 text-[13px] text-ink-3">Câu trả lời (chỉ dùng số có trong kết quả SQL)</div>
+        <div className="grid gap-2 rounded-xl border border-line p-3.5">
+          <div className="text-[13px] text-ink-3">Câu trả lời của model (nguyên văn)</div>
           <p>{result.answer}</p>
+          {(foreign.length > 0 || ungrounded.length > 0) ? (
+            <div className="flex flex-wrap gap-2">
+              {foreign.length > 0 && <Pill tone="warn">Chữ không phải tiếng Việt: {foreign.join(", ")}</Pill>}
+              {ungrounded.length > 0 && <Pill tone="warn">Số không có trong kết quả SQL: {ungrounded.join(", ")}</Pill>}
+            </div>
+          ) : result.status === "ok" && (
+            <div><Pill tone="good" icon={ShieldCheck}>Mọi số đều có trong kết quả SQL</Pill></div>
+          )}
         </div>
       )}
-      {result.warning === "foreign_text" && (
-        <Notice tone="warn">
-          Câu trả lời của model lẫn chữ không phải tiếng Việt ({(result.foreign_words ?? []).join(", ")}) nên không hiện.
-          Xem bảng kết quả ở trên.
-        </Notice>
-      )}
-      {result.warning === "fabricated_number" && (
-        <Notice tone="warn">Câu trả lời của model có số không nằm trong kết quả SQL nên không hiện. Xem bảng kết quả ở trên.</Notice>
-      )}
+      {result.warning === "empty_answer" && <Notice tone="warn">Model không trả về câu trả lời nào.</Notice>}
     </div>
   );
 }

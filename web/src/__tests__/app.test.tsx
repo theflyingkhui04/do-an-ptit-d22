@@ -194,11 +194,16 @@ describe("node 2", () => {
     expect(await screen.findByText(/Khớp chữ không dấu/)).toHaveTextContent("%Nhà sách Cẩm Phả% → %nha%sach%cam%pha%");
   });
 
-  it("explains why an answer with foreign words is hidden", async () => {
-    const ask = vi.fn(async () => question({ answer: null, warning: "foreign_text", foreign_words: ["beğen"] }));
+  it("shows a flawed answer as written, with its flags", async () => {
+    const ask = vi.fn(async () => question({
+      answer: "Tổng tiền là 76.000. beğen", warning: "foreign_text", foreign_words: ["beğen"], ungrounded_numbers: ["76.000"],
+    }));
     open("node2", fakeApi({ ask }));
     await userEvent.setup().click(await screen.findByRole("button", { name: "Q1" }));
-    expect(await screen.findByText(/lẫn chữ không phải tiếng Việt/)).toHaveTextContent("beğen");
+    expect(await screen.findByText("Tổng tiền là 76.000. beğen")).toBeInTheDocument();
+    expect(screen.getByText(/Chữ không phải tiếng Việt/)).toHaveTextContent("beğen");
+    expect(screen.getByText(/Số không có trong kết quả SQL/)).toHaveTextContent("76.000");
+    expect(screen.queryByText(/nên không hiện/)).not.toBeInTheDocument();
   });
 
   it("shows a blocked query with its reason", async () => {

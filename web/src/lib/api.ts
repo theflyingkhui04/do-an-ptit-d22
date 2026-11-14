@@ -145,6 +145,7 @@ export interface QuestionResult {
   calls: CallInfo[];
   text_rewrites?: { column: string; from: string; to: string }[];
   foreign_words?: string[];
+  ungrounded_numbers?: string[];
   endpoint?: { endpoint_id: string; name: string };
 }
 
