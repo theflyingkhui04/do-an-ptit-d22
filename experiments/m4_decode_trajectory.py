@@ -26,6 +26,7 @@ from experiments.m4_protocol import write_new
 from experiments.m4_treatments import TARGET, TARGET_REVISION
 from experiments.m4_head_input_probe import (HEAD_STAGE,head_contract,clone_head_input,
     serialize_head_input,analyze_head_input)
+from experiments.m4_layer_probe import LAYER_STAGE,serialize_layers,analyze_layers
 
 SCHEMA = 'm4.decode_trajectory.v1'
 VOCABULARY_SIZE = 152064  # Frozen Qwen target; matches preserved probe vectors.
@@ -42,7 +43,7 @@ def _frozen_reference():
 def validate_prepared_case(case, expected_source_commit=None):
     expected = _frozen_reference()
     if (case.get('diagnostic_mode') != 'decode_trajectory'
-            or case.get('localization_stage') not in (None,HEAD_STAGE)
+            or case.get('localization_stage') not in (None,HEAD_STAGE,LAYER_STAGE)
             or any(case.get(key) != value for key,value in expected.items())):
         raise ValueError('Prepared case differs from frozen historical trajectory')
     source = case.get('source_commit')
@@ -126,7 +127,7 @@ class FirstMismatchCapture:
         self.next_index = 0
         self.selected = None
 
-    def record(self, index, raw, masked, sampled, head_input=None):
+    def record(self, index, raw, masked, sampled, head_input=None, layer_table=None, layer_stamp=None):
         import torch
         if index != self.next_index or index > self.target:
             raise RuntimeError('Non-contiguous sequential decision indices')
@@ -139,6 +140,9 @@ class FirstMismatchCapture:
                 token=torch.full((), -1, dtype=torch.int64, device=raw.device))
             if head_input is not None:
                 self.selected['head_input'] = torch.zeros_like(head_input)
+            if layer_table is not None:
+                self.selected['layer_table'] = torch.zeros_like(layer_table)
+                self.selected['layer_stamp'] = torch.zeros_like(layer_stamp)
         s = self.selected
         if (('head_input' in s) != (head_input is not None)
                 or (head_input is not None and (head_input.shape != s['head_input'].shape
@@ -150,6 +154,13 @@ class FirstMismatchCapture:
             s[key].copy_(torch.where(take, value, s[key]))
         if head_input is not None:
             s['head_input'].copy_(torch.where(take,head_input,s['head_input']))
+        for key,value in (('layer_table',layer_table),('layer_stamp',layer_stamp)):
+            if (key in s) != (value is not None):
+                raise RuntimeError('Layer capture missing within trajectory')
+            if value is not None:
+                if value.shape != s[key].shape or value.dtype != s[key].dtype:
+                    raise RuntimeError('Layer capture shape/dtype changed within trajectory')
+                s[key].copy_(torch.where(take,value,s[key]))
 
 
 class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
@@ -172,11 +183,14 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
         if hasattr(self, '_m4_probe'):
             raise RuntimeError('Diagnostic already installed')
         stage = config.get('localization_stage')
-        if stage not in (None,HEAD_STAGE):
+        if stage not in (None,HEAD_STAGE,LAYER_STAGE):
             raise RuntimeError('Unsupported localization stage')
+        if stage == LAYER_STAGE and (not hasattr(self,'_m4_layer_runtime')
+                or not self._m4_layer_runtime.ready):
+            raise RuntimeError('Layer observer was not installed before graph capture')
         self._m4_probe = dict(armed=None, output=None, candidate=None, shape=None,
             sampling_output=None, metadata={}, queries={},localization_stage=stage,
-            head_contract=head_contract(runner) if stage == HEAD_STAGE else None)
+            head_contract=head_contract(runner) if stage in (HEAD_STAGE,LAYER_STAGE) else None)
         self._m4_hooks = _InstanceHooks()
         execute, compute = runner.execute_model, runner.model.compute_logits
         sample_tokens, sample = runner.sample_tokens, runner._sample
@@ -186,6 +200,8 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
             self._m4_probe['output'] = output
             self._m4_probe['candidate'] = None
             self._m4_probe['shape'] = None
+            if stage == LAYER_STAGE:
+                self._m4_layer_runtime.current = None
             try:
                 return execute(output, *args, **kwargs)
             finally:
@@ -203,7 +219,7 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
             head_input, layout = None, None
             s = self._m4_probe
             armed, output = s['armed'], s['output']
-            if s['localization_stage'] == HEAD_STAGE and armed is not None and output is not None:
+            if s['localization_stage'] in (HEAD_STAGE,LAYER_STAGE) and armed is not None and output is not None:
                 ids = runner.input_batch.req_ids
                 if len(ids) != 1 or runner.requests[ids[0]].prompt_token_ids != armed['prompt']:
                     raise RuntimeError('LM-head boundary request isolation mismatch')
@@ -250,6 +266,11 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
                     raise RuntimeError('Missing paired LM-head input measurement')
                 s['candidate']['head_input'] = head_input
                 s['metadata'][index]['head_input_layout'] = layout
+            elif s['localization_stage'] == LAYER_STAGE:
+                if head_input is None:
+                    raise RuntimeError('Missing final norm layer measurement')
+                table,stamp = self._m4_layer_runtime.snapshot(head_input)
+                s['candidate'].update(layer_table=table,layer_stamp=stamp)
             return tensor
 
         def sampling(grammar_output):
@@ -282,7 +303,8 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
                 armed = s['armed']
                 if armed['name'] == SEQUENTIAL:
                     armed['capture'].record(candidate['index'], candidate['raw'], masked,
-                                            result.sampled_token_ids,head_input=candidate.get('head_input'))
+                                            result.sampled_token_ids,head_input=candidate.get('head_input'),
+                                            layer_table=candidate.get('layer_table'),layer_stamp=candidate.get('layer_stamp'))
                 else:
                     if armed.get('selected') is not None:
                         raise RuntimeError('Forced boundary sampled twice')
@@ -290,6 +312,8 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
                         index=candidate['index'], token=result.sampled_token_ids.detach().clone())
                     if 'head_input' in candidate:
                         armed['selected']['head_input'] = candidate['head_input']
+                    if 'layer_table' in candidate:
+                        armed['selected'].update(layer_table=candidate['layer_table'],layer_stamp=candidate['layer_stamp'])
                 s['candidate'] = None
             return result
 
@@ -303,7 +327,15 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
             self.m4_probe_uninstall()
             raise
         return dict(installed=True, measurement_point=MEASUREMENT,
+            layer_contract=(self._m4_layer_runtime.contract if stage==LAYER_STAGE else None),
             synchronization='GPU first-mismatch latch; full-vector host transfer only after abort')
+
+    def m4_probe_uninstall(self):
+        try:
+            return super().m4_probe_uninstall()
+        finally:
+            if hasattr(self,'_m4_layer_runtime'):
+                self._m4_layer_runtime.close()
 
     def m4_trajectory_arm(self, name, prompt, reference, target):
         s = self._m4_probe
@@ -355,6 +387,8 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
                         classification='INCONCLUSIVE',raw=vector_record(selected['raw']),
                         masked=vector_record(selected['masked']),
                         head_input=(vector_record(selected['head_input']) if 'head_input' in selected else None),
+                        layer_table=(vector_record(selected['layer_table']) if 'layer_table' in selected else None),
+                        layer_stamp=(vector_record(selected['layer_stamp']) if 'layer_stamp' in selected else None),
                         query_chunks=[dict(offset=offset,token_ids=query.to(device='cpu').tolist())
                             for offset,query in sorted(state['queries'].items())]))
             raise
@@ -409,6 +443,10 @@ class TrajectoryWorkerExtension(CacheProbeWorkerExtension):
                 raise RuntimeError('LM-head input hook did not retain selected decision')
             result['head_input'] = serialize_head_input(selected['head_input'],
                 meta.pop('head_input_layout'),s['head_contract'],result)
+        elif s['localization_stage'] == LAYER_STAGE:
+            self._m4_layer_runtime.check_kv_unchanged()
+            result['layer_boundaries'] = serialize_layers(selected['layer_table'],selected['layer_stamp'],
+                self._m4_layer_runtime.contract,result)
         s.update(armed=None, candidate=None, metadata={}, queries={})
         return result
 
@@ -535,7 +573,7 @@ def validate_capture(result, case):
             or result['source_commit'] != case['source_commit']):
         raise ValueError('Instrumentation/source SHA mismatch')
     from experiments.run_m4_cache_probe import engine_config, sampling_config, expected_effective_config
-    if (result['engine_config'] != engine_config('decode_trajectory')
+    if (result['engine_config'] != engine_config('decode_trajectory',case.get('localization_stage'))
             or result['effective_config'] != expected_effective_config()
             or result['sampling_config'] != sampling_config(case['historical_request'])):
         raise ValueError('Historical engine/sampling contract differs')
@@ -667,7 +705,8 @@ def _run_conditions(llm, directory, case, params, common):
         # substitute top-N/reductions for the independently auditable vector.
         write_new(directory/f'{name.lower()}.json', result)
         results.append(result)
-    analyze = analyze_head_input if case.get('localization_stage')==HEAD_STAGE else analyze_trajectory
+    analyze = (analyze_layers if case.get('localization_stage')==LAYER_STAGE else
+               analyze_head_input if case.get('localization_stage')==HEAD_STAGE else analyze_trajectory)
     analysis = analyze(*results, case,expected_source_commit=common['source_commit'])
     write_new(directory/'analysis.json', analysis)
     if analysis['classification'] == 'INCONCLUSIVE':

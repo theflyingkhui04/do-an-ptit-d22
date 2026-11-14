@@ -26,7 +26,7 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def engine_config(diagnostic_mode='cache_probe'):
+def engine_config(diagnostic_mode='cache_probe',localization_stage=None):
     config = engine_kwargs('vanilla')
     # Pinned EngineArgs uses 8192 for LLM_CLASS but 2048 for the historical
     # A100 API server. Preserve the server's resolved budget explicitly.
@@ -40,6 +40,10 @@ def engine_config(diagnostic_mode='cache_probe'):
             worker_extension_cls='experiments.m4_decode_trajectory.TrajectoryWorkerExtension')
     elif diagnostic_mode != 'cache_probe':
         raise ValueError('Unknown diagnostic mode')
+    if localization_stage == 'layer_boundaries':
+        if diagnostic_mode != 'decode_trajectory':
+            raise ValueError('Layer localization requires explicit trajectory diagnostic mode')
+        config['worker_cls'] = 'experiments.m4_layer_probe_runtime.LayerBoundaryWorker'
     return config
 
 
@@ -65,11 +69,12 @@ def expected_effective_config():
 
 
 def prepare(directory,source_commit,workload,prompt_id,index,diagnostic_mode='cache_probe',localization_stage=None):
-    engine_config(diagnostic_mode)  # Reject unknown modes before writing artifacts.
+    engine_config(diagnostic_mode,localization_stage)  # Reject unknown modes before writing artifacts.
     if localization_stage is not None:
         from experiments.m4_head_input_probe import HEAD_STAGE
-        if diagnostic_mode != 'decode_trajectory' or localization_stage != HEAD_STAGE:
-            raise ValueError('LM-head localization requires explicit trajectory diagnostic mode')
+        from experiments.m4_layer_probe import LAYER_STAGE
+        if diagnostic_mode != 'decode_trajectory' or localization_stage not in (HEAD_STAGE,LAYER_STAGE):
+            raise ValueError('Localization requires explicit trajectory diagnostic mode')
     if diagnostic_mode == 'decode_trajectory' and (workload,prompt_id,index) != ('W1','m0_04_001',549):
         raise ValueError('Trajectory diagnostic is scoped to W1/m0_04_001/index 549')
     case = load_input(workload,prompt_id,index)
@@ -148,7 +153,10 @@ def worker(directory,source_commit):
     manifest = verify_runtime_sources()
     case = json.loads((directory/'input.json').read_text(encoding='utf8'))
     mode = case.get('diagnostic_mode','cache_probe')
-    config = engine_config(mode)
+    config = engine_config(mode,case.get('localization_stage'))
+    if case.get('localization_stage') == 'layer_boundaries':
+        from experiments.m4_layer_probe_runtime import verify_layer_sources
+        manifest = verify_layer_sources()
     if mode == 'decode_trajectory' and (case['workload'],case['prompt_id'],case['generation_index']) != ('W1','m0_04_001',549):
         raise ValueError('Trajectory diagnostic is scoped to W1/m0_04_001/index 549')
     if (case['source_commit'] != source_commit or case['instrumentation_commit'] != source_commit
@@ -300,8 +308,9 @@ def run(directory,source_commit):
         raise RuntimeError('Diagnostic requires a clean single GPU; existing jobs left untouched')
     command = [sys.executable,'-B','-m','experiments.run_m4_cache_probe','worker',
                '--out',str(directory),'--source-commit',source_commit]
-    mode = json.loads((directory/'input.json').read_text(encoding='utf8')).get('diagnostic_mode','cache_probe')
-    write_new(directory/'launch.json',dict(command=command,engine_config=engine_config(mode),
+    prepared = json.loads((directory/'input.json').read_text(encoding='utf8'))
+    mode = prepared.get('diagnostic_mode','cache_probe')
+    write_new(directory/'launch.json',dict(command=command,engine_config=engine_config(mode,prepared.get('localization_stage')),
         source_commit=source_commit,historical_source_commit=FROZEN_SOURCE,instrumentation_commit=source_commit,timestamp_utc=now()))
     status = 'FAIL'
     try:
@@ -349,7 +358,7 @@ def main():
     parser.add_argument('--prompt-id',default='m0_04_001')
     parser.add_argument('--generation-index',type=int,default=549)
     parser.add_argument('--diagnostic-mode',choices=['cache_probe','decode_trajectory'],default='cache_probe')
-    parser.add_argument('--localization-stage',choices=['lm_head_input'],default=None)
+    parser.add_argument('--localization-stage',choices=['lm_head_input','layer_boundaries'],default=None)
     args = parser.parse_args()
     source_commit = validated_source_commit(args.source_commit)
     directory = artifact_path(args.out,kind='new_directory' if args.action=='prepare' else 'directory')
@@ -370,9 +379,11 @@ def main():
             if read('input.json').get('diagnostic_mode') == 'decode_trajectory':
                 from experiments.m4_decode_trajectory import analyze_trajectory
                 from experiments.m4_head_input_probe import HEAD_STAGE,analyze_head_input,require_completed_lifecycle
-                if read('input.json').get('localization_stage')==HEAD_STAGE:
+                from experiments.m4_layer_probe import LAYER_STAGE,analyze_layers
+                if read('input.json').get('localization_stage') in (HEAD_STAGE,LAYER_STAGE):
                     require_completed_lifecycle(read('hook-cleanup.json'),read('lifecycle.json'))
-                analyze = (analyze_head_input if read('input.json').get('localization_stage')==HEAD_STAGE
+                analyze = (analyze_layers if read('input.json').get('localization_stage')==LAYER_STAGE else
+                           analyze_head_input if read('input.json').get('localization_stage')==HEAD_STAGE
                            else analyze_trajectory)
                 result = analyze(read('sequential_decode_cold.json'),
                     read('forced_prefill_cold.json'),read('input.json'),expected_source_commit=source_commit)
