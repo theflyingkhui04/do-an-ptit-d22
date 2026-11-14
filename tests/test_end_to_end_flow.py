@@ -27,7 +27,8 @@ def test_e2e_cli_local_dry_run(capsys):
     captured = capsys.readouterr()
     assert "vllm serve" in captured.out
     assert "--speculative-config" in captured.out
-    assert "AdaptiveAsyncScheduler" in captured.out
+    assert "AdaptiveAsyncScheduler" not in captured.out
+    assert "--scheduler-cls" not in captured.out
 
 
 def test_e2e_cli_modal_dry_run(capsys):

@@ -278,9 +278,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
             )
 
-        if args.target and args.draft:
-            target_model = args.target
-            draft_model = args.draft
+        raw_args = argv if argv is not None else sys.argv[1:]
+        has_explicit_platform = any(a.startswith("--backend") or a.startswith("--gpu") for a in raw_args)
+        if (args.target and args.draft) or (
+            args.dry_run
+            and has_explicit_platform
+            and not (args.target and not args.draft)
+            and not (args.draft and not args.target)
+        ):
+            target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
+            draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
 
             preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
                                                    args.backend, getattr(args, "gpu", "L4"))
