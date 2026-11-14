@@ -57,6 +57,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="flexsds",
         description="FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs",
+        epilog="Run flexsds for the wizard, or flexsds COMMAND --help for command details.",
     )
     parser.add_argument(
         "-v", "--version", action="version", version=f"flexsds {__version__}"
@@ -64,15 +65,33 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
+    examples = {
+        "detect": "flexsds detect",
+        "profile": "flexsds profile --benchmark --backend modal --gpu A10G",
+        "stop": "flexsds stop",
+        "auth": "flexsds auth status",
+        "login": "flexsds auth login --provider modal",
+        "status": "flexsds auth status",
+        "logout": "flexsds auth logout --provider modal",
+        "serve": "flexsds serve --backend modal --gpu A10G --dry-run",
+        "chat": "flexsds chat --endpoint http://localhost:8000/v1",
+        "monitor": "flexsds monitor --trace-file telemetry/serving_trace.jsonl",
+    }
+
+    def add_command(group, name, *, help):
+        return group.add_parser(name, help=help, description=help,
+                                epilog=f"Example: {examples[name]}",
+                                formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
     # Command: detect
-    subparsers.add_parser("detect", help="Detect and display hardware / GPU specs")
+    add_command(subparsers, "detect", help="Detect and display hardware / GPU specs")
 
     # Command: profile
-    profile_parser = subparsers.add_parser("profile", help="Load hardware cost profile for current GPU")
+    profile_parser = add_command(subparsers, "profile", help="Load hardware cost profile for current GPU")
     profile_parser.add_argument(
         "--benchmark",
         action="store_true",
-        help="Run micro-benchmark to measure and save profile",
+        help="Measure real model costs on CUDA and save a profile (may take minutes)",
     )
     profile_parser.add_argument(
         "--target",
@@ -93,31 +112,31 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Model identifier override for benchmarking",
     )
 
-    profile_parser.add_argument("--backend", choices=["local", "modal"], default="local")
-    profile_parser.add_argument("--gpu", choices=["A10G", "L4", "T4"], default="A10G")
+    profile_parser.add_argument("--backend", choices=["local", "modal"], default="local", help="Where to run calibration")
+    profile_parser.add_argument("--gpu", choices=["A10G", "L4", "T4"], default="A10G", help="GPU to allocate for Modal calibration")
 
     # Command: stop
-    subparsers.add_parser("stop", help="Stop running local FlexSDS server")
+    add_command(subparsers, "stop", help="Stop running local FlexSDS server")
 
     # Command: auth
-    auth_parser = subparsers.add_parser("auth", help="Manage secure credentials outside repository")
+    auth_parser = add_command(subparsers, "auth", help="Manage secure credentials outside repository")
     auth_subparsers = auth_parser.add_subparsers(dest="auth_action", help="Auth action to perform")
     
     # auth login
-    auth_login_parser = auth_subparsers.add_parser("login", help="Save API key / token securely")
+    auth_login_parser = add_command(auth_subparsers, "login", help="Save API key / token securely")
     auth_login_parser.add_argument("--provider", choices=["modal", "huggingface", "cloudflare"], default="modal", help="Target service provider")
     auth_login_parser.add_argument("--key", type=str, default=None, help="Specific credential key name")
     auth_login_parser.add_argument("--token", type=str, default=None, help="Token value (prompted securely if omitted)")
 
     # auth status
-    auth_subparsers.add_parser("status", help="Show masked status of saved credentials")
+    add_command(auth_subparsers, "status", help="Show masked status of saved credentials")
 
     # auth logout
-    auth_logout_parser = auth_subparsers.add_parser("logout", help="Delete saved credentials")
-    auth_logout_parser.add_argument("--provider", type=str, default=None, help="Target service provider to remove")
+    auth_logout_parser = add_command(auth_subparsers, "logout", help="Delete saved credentials")
+    auth_logout_parser.add_argument("--provider", type=str, default=None, help="Provider to remove; omit to remove all saved providers")
 
     # Command: serve
-    serve_parser = subparsers.add_parser("serve", help="Launch speculative serving server")
+    serve_parser = add_command(subparsers, "serve", help="Launch speculative serving server")
     serve_parser.add_argument("--target", type=str, help="Target model identifier")
     serve_parser.add_argument("--draft", type=str, help="Draft model or speculator head identifier")
     serve_parser.add_argument(
@@ -144,13 +163,13 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
 
     # Command: chat
-    chat_parser = subparsers.add_parser("chat", help="Start interactive streaming chat with served model")
+    chat_parser = add_command(subparsers, "chat", help="Start interactive streaming chat with served model")
     chat_parser.add_argument("--endpoint", type=str, default="http://localhost:8000/v1", help="API base URL")
     chat_parser.add_argument("--model", type=str, default=None, help="Served model name override")
     chat_parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature")
 
     # Command: monitor
-    monitor_parser = subparsers.add_parser("monitor", help="Live telemetry monitor for speculative decoding traces")
+    monitor_parser = add_command(subparsers, "monitor", help="Live telemetry monitor for speculative decoding traces")
     monitor_parser.add_argument("--trace-file", type=str, default="telemetry/serving_trace.jsonl", help="Path to JSONL telemetry trace")
     monitor_parser.add_argument("--refresh-rate", type=float, default=1.0, help="Telemetry poll interval in seconds")
 
@@ -246,6 +265,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 cost_model, saved_path = run_hardware_micro_benchmark(
                     hw_info=hw_info, target_model=target_model, draft_model=draft_model, backend=args.backend,
                 )
+            except KeyboardInterrupt:
+                print("Calibration cancelled.")
+                return 130
             except (RuntimeError, ValueError, OSError) as exc:
                 print(f"Calibration failed: {exc}")
                 return 1
@@ -358,7 +380,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     return LocalServingRunner().launch(cfg, port=args.port, background=args.background)
                 return ModalServingRunner().launch(cfg, deploy=args.deploy)
             try:
-                proc = tasks.run_task(task, launch)
+                proc = launch(task) if args.backend == "modal" else tasks.run_task(task, launch)
             except (ValueError, RuntimeError, OSError) as exc:
                 print(f"Serving launch failed: {exc}")
                 return 1

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -167,6 +168,56 @@ def _get_key_stroke() -> str:
     return "fallback"
 
 
+
+CHOICE_HELP = {
+    "Launch serving": "Configure models, check compatibility, and start an inference API.",
+    "Detect hardware": "Show local GPU, CUDA availability, and available memory.",
+    "Benchmark & profile GPU": "Inspect the local profile; use flexsds profile --benchmark to measure.",
+    "Default:": "Use Qwen2.5-7B AWQ with the team's EAGLE-3.1 speculator.",
+    "Custom Hugging Face model": "Enter your own target and draft model IDs or local paths.",
+    "Modal.com": "Run on a cloud GPU using your Modal account.",
+    "Google Colab": "Prepare a notebook and connect through its tunnel URL.",
+    "Local vLLM": "Run vLLM on this machine; requires a compatible CUDA GPU.",
+    "A10G": "24 GB GPU for the default AWQ target and EAGLE head.",
+    "L4": "24 GB cloud GPU; availability depends on Modal capacity.",
+    "T4": "16 GB GPU; check model memory and dtype compatibility.",
+    "A100 / L4": "Select the GPU available in your Colab runtime.",
+    "Development": "Temporary Modal service; keep this terminal open to keep it running.",
+    "Production": "Persistent Modal deployment; continues after the CLI exits.",
+    "Calibrate": "Measure model costs on the selected GPU and save a real profile.",
+    "Switch to static": "Serve with a fixed draft budget, without adaptive profile decisions.",
+    "Abort setup": "Cancel setup without launching a server.",
+}
+
+BOOL_HELP = {
+    "Enable HardwareAdaptive": (
+        "Choose draft budget K from measured costs and acceptance feedback.",
+        "Use static speculation without hardware-adaptive budget changes.",
+    ),
+    "Launch server": ("Start the configured server and verify its endpoint.", "Save configuration without starting a server."),
+    "Run server in background": ("Keep the local server running and write logs to a file.", "Stream server logs here; Ctrl-C stops the foreground process."),
+    "Configure Modal credentials": ("Save Modal credentials locally for cloud access.", "Skip credential setup; configure Modal before launching."),
+    "Open containing folder": ("Open the notebook folder in your file manager.", "Keep the notebook path visible without opening a file manager."),
+}
+
+
+def choice_description(question: str, choice: str) -> str:
+    if choice in ("Yes", "No"):
+        for prefix, descriptions in BOOL_HELP.items():
+            if question.startswith(prefix):
+                return descriptions[choice == "No"]
+        return "Continue with this setting." if choice == "Yes" else "Skip this setting."
+    for prefix, description in CHOICE_HELP.items():
+        if choice.startswith(prefix):
+            return description
+    return f"Select {choice}."
+
+
+def _menu_line(text: str) -> str:
+    # Reserve one column: terminal auto-wrap would invalidate cursor movement.
+    width = max(1, shutil.get_terminal_size((100, 24)).columns - 1)
+    return text if len(text) <= width else text[:max(0, width - 3)] + "." * min(3, width)
+
 def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> str:
     """Prompt user to select an option using arrow keys and Enter."""
     if not sys.stdin.isatty():
@@ -179,6 +230,7 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
         for i, c in enumerate(choices, 1):
             marker = " (default)" if i - 1 == default_idx else ""
             print(f"  \033[90m{i}.\033[0m {c}{marker}")
+        print(f"  Info: {choice_description(question, choices[default_idx])}")
         try:
             raw = input(f"Select [1-{len(choices)}] (default {default_idx + 1}): ").strip()
             if not raw:
@@ -202,13 +254,15 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
 
     def render(first: bool = False) -> None:
         if not first:
-            print(f"\033[{n}A", end="")
+            print(f"\033[{n+1}A", end="")
         for i, choice in enumerate(choices):
             print("\r\033[K", end="")
             if i == current:
-                print(f"  \033[1;37m> {choice}\033[0m\n", end="")
+                print(f"\033[1;37m{_menu_line('  > ' + choice)}\033[0m\n", end="")
             else:
-                print(f"    \033[90m{choice}\033[0m\n", end="")
+                print(f"\033[90m{_menu_line('    ' + choice)}\033[0m\n", end="")
+        footer = _menu_line("  Info: " + choice_description(question, choices[current]))
+        print(f"\r\033[K\033[36m{footer}\033[0m\n", end="")
         sys.stdout.flush()
 
     render(first=True)
@@ -238,10 +292,10 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
         sys.stdout.flush()
 
     # Collapse into clean single confirmed line
-    print(f"\033[{n+1}A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[current]}\033[0m\n", end="")
-    for _ in range(n):
-        print("\033[K\n", end="")
-    print(f"\033[{n}A", end="")
+    print(f"\033[{n+2}A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[current]}\033[0m\n", end="")
+    for _ in range(n+1):
+        print("\r\033[K\n", end="")
+    print(f"\033[{n+1}A", end="")
     sys.stdout.flush()
 
     return choices[current]
@@ -485,6 +539,9 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
                     cost_model, saved_path = run_hardware_micro_benchmark(
                         serving_hw, target_model=target_model, draft_model=draft_model, backend=backend,
                     )
+                except KeyboardInterrupt:
+                    print("Calibration cancelled; no server launched.")
+                    return {"action": "abort", "exit_code": 130}
                 except (RuntimeError, ValueError, OSError) as exc:
                     print(f"Calibration failed; no serving launched: {exc}")
                     return {"action": "abort", "exit_code": 1}

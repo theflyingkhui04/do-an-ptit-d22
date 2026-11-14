@@ -90,7 +90,7 @@ def test_modal_dispatch_uses_cli_when_sdk_is_in_another_pipx(monkeypatch):
         assert request['config']['target_gpu'] == 'A10G'
         from pathlib import Path
         Path(env['FLEXSDS_CALIBRATION_OUTPUT']).write_text('[{"measured":true}]')
-    monkeypatch.setattr('flexsds.server.modal_calibration.subprocess.run', run)
+    monkeypatch.setattr('flexsds.server.modal_calibration.run_logged_process', run)
     assert calibrate({'target_gpu':'A10G'}, [1]) == [{'measured':True}]
     assert seen[0][1] == 'run'
     assert seen[0][2].endswith('modal_calibration_app.py')

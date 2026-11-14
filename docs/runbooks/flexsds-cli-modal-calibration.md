@@ -66,3 +66,10 @@ Regression tests kiểm tra CPU không tạo profile measured, remote dispatch/f
 ## Bằng chứng kiểm tra ngày 15/11/2026
 
 [Verification summary](../../logs/problems/evidence/2026-11-15-modal-a10g/verification_summary.json) lưu kết quả calibration B=1/K=0..4, 275 raw records, endpoint HTTP thành công, scheduled K=0/2/3 và 24 feedback có lineage. Tổng 57 draft / 25 accepted khớp giữa worker birth records, feedback và response metrics. Các artifact này không thay thế full-grid B≤32 hoặc benchmark lossless/speedup.
+
+
+## Log Modal thu gọn
+
+Calibration và serving mặc định hiện một dòng `[x%] tác vụ đang chạy (Ctrl+O for details)`, kèm app URL. Phần trăm theo các mốc khởi động và số cell đã đo; không tăng giả theo thời gian chờ GPU/warmup.
+
+`Ctrl+O` mở toàn bộ log đã lưu và stream log mới; bấm lại để thu gọn. File đầy đủ nằm ở `~/.flexsds/logs/modal-*.log` và được in đường dẫn khi bắt đầu. Khi output không phải terminal, CLI chỉ in các mốc tiến độ và đường dẫn log. Ctrl+C hủy tác vụ và trả terminal về chế độ bình thường.

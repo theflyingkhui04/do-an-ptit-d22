@@ -6,7 +6,6 @@ import json
 import shutil
 import subprocess
 import re
-import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -91,18 +90,30 @@ class ModalServingRunner:
             return None
 
         try:
-            proc = subprocess.Popen(cmd, env=self.setup_environment(config), stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, text=True, bufsize=1)
+            from flexsds.cli.process_progress import ProcessProgress
+            output = ProcessProgress('serving')
+            proc = None
+            try:
+                proc = subprocess.Popen(cmd, env=self.setup_environment(config), stdin=subprocess.DEVNULL,
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True, errors='replace', bufsize=1)
+                output.start()
+            except BaseException:
+                if proc is not None and proc.poll() is None:
+                    proc.terminate()
+                    try: proc.wait(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        proc.kill(); proc.wait()
+                output.close()
+                raise
             endpoint = []
-            logs_done = threading.Event()
-            def forward_logs():
-                for line in proc.stdout:
-                    print(line.rstrip())
-                    match = re.search(r"https://[a-zA-Z0-9.-]+\.modal\.run", line)
-                    if match and not endpoint:
-                        endpoint.append(match.group())
-                logs_done.set()
-            threading.Thread(target=forward_logs, daemon=True).start()
+            def observe_endpoint(line):
+                match = re.search(r"https://[a-zA-Z0-9.-]+\.modal\.run", line)
+                if match and not endpoint:
+                    endpoint.append(match.group())
+            output.capture(proc, on_line=observe_endpoint, close_on_exit=not deploy)
+            proc._flexsds_output = output
+            logs_done = output.done
             def ready():
                 from flexsds.server.readiness import verify_endpoint
                 deadline = time.monotonic() + 900
@@ -113,12 +124,14 @@ class ModalServingRunner:
                     if time.monotonic() >= deadline:
                         raise RuntimeError("Timed out waiting for Modal endpoint URL")
                     time.sleep(0.2)
-                print(f"Endpoint assigned: {endpoint[0]}; checking model and inference...")
+                output.notice(f"Endpoint: {endpoint[0]}")
+                output.update('Waiting for endpoint readiness',15)
                 model = verify_endpoint(endpoint[0], process=proc, deployed=deploy,
                                         timeout=max(0.1, deadline-time.monotonic()))
-                print(f"Inference verified: {endpoint[0]}/v1 (model={model})")
-                if not deploy:
-                    print("Development mode: keep this terminal open; Ctrl-C stops the app.")
+                output.notice(f"Inference verified: {endpoint[0]}/v1 (model={model})")
+                output.update('Serving ready' if not deploy else 'Deployment verified',100)
+                if deploy:
+                    output.close()
             proc._flexsds_readiness = ready
             return proc
         except FileNotFoundError:

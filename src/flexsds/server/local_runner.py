@@ -20,7 +20,9 @@ def finish_launch(proc, background: bool = False) -> int:
     if proc is None:
         print("Launch failed; no serving readiness established.")
         return 1
-    print("Serving process started; verifying endpoint readiness...")
+    output = getattr(proc, '__dict__', {}).get('_flexsds_output')
+    if output is None:
+        print("Serving process started; verifying endpoint readiness...")
     readiness = getattr(proc, '__dict__', {}).get('_flexsds_readiness')
     try:
         if readiness is not None:
@@ -30,6 +32,10 @@ def finish_launch(proc, background: bool = False) -> int:
         code = proc.poll() if background else proc.wait()
         return code if isinstance(code, int) else 0
     except (RuntimeError, OSError, ValueError) as exc:
+        if output:
+            output.update('Serving failed')
+            output.close()
+            print(f"Full details: {output.log_path}")
         print(f"Serving readiness failed: {exc}")
         proc.terminate()
         try:
@@ -46,6 +52,9 @@ def finish_launch(proc, background: bool = False) -> int:
             proc.kill()
             proc.wait()
         return 130
+    finally:
+        if output:
+            output.close()
 
 
 class LocalServingRunner:
