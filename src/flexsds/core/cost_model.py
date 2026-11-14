@@ -397,7 +397,8 @@ def validate_measured_profile(data, hardware=None, target_model=None, draft_mode
     if hardware and meta['sm_architecture'] != hardware.sm_architecture:
         raise ValueError('Profile GPU architecture mismatch')
     if hardware and hardware.device_name.startswith('Remote '):
-        if hardware.device_name[7:] not in meta['device']:
+        from flexsds.core.hardware import matches_gpu_label
+        if not matches_gpu_label(hardware.device_name[7:], meta['device']):
             raise ValueError('Profile GPU model mismatch')
     if target_model and data['models']['target'] != target_model:
         raise ValueError('Profile target model mismatch')
@@ -430,11 +431,11 @@ def load_profile_for_hardware(
 
     def load_checked(path: Path) -> Tuple[FlexCostModel, str]:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if strict and data.get("metadata", {}).get("schema") == "flexsds-component-v1":
+        if strict and data.get("metadata", {}).get("schema") == "flexsds-component-v2":
             validate_measured_profile(data, hw_info, target_model, draft_model)
         elif strict and sm_arch != "sm_80":
             raise ValueError("Profile has no verified worker measurements; recalibrate or use static mode")
-        if sm_arch == "sm_80" and data.get("metadata", {}).get("schema") != "flexsds-component-v1":
+        if sm_arch == "sm_80" and data.get("metadata", {}).get("schema") != "flexsds-component-v2":
             meta = data.get("metadata", {})
             matrix = data.get("cost_matrix_ms", {})
 

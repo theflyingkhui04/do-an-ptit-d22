@@ -79,8 +79,6 @@ class LocalServingRunner:
         if draft_method not in {'eagle3', 'draft_model'}:
             raise ValueError('Unsupported draft method')
         is_eagle = (draft_method == "eagle3")
-        if serving_cfg.get("enable_adaptive", True) and is_eagle:
-            raise ValueError("EAGLE adaptive is unsupported; explicitly select static EAGLE")
 
         speculative_config: Dict[str, Any] = {
             "method": draft_method,
@@ -88,7 +86,7 @@ class LocalServingRunner:
             "num_speculative_tokens": 4,
             "draft_sample_method": "greedy",
         }
-        if not is_eagle:
+        if serving_cfg.get("enable_adaptive", True) or not is_eagle:
             speculative_config["num_speculative_tokens_per_batch_size"] = [[1, 32, 4]]
 
         if use_hetero:
@@ -125,10 +123,11 @@ class LocalServingRunner:
         if profile_data and serving_cfg.get('enable_adaptive', True):
             cmd.extend(['--revision', profile_data['models']['target_revision']])
             speculative_config['revision'] = profile_data['models']['draft_revision']
-        # Chỉ gắn scheduler tùy biến cho phương pháp draft_model truyền thống
-        if serving_cfg.get("enable_adaptive", True) and not is_eagle:
+        # EAGLE uses the same pinned sequential dynamic-K path as the M4 treatment.
+        if serving_cfg.get("enable_adaptive", True):
             cmd.extend([
                 "--speculative-config", json.dumps(speculative_config),
+                "--async-scheduling",
                 "--scheduler-cls", "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
                 "--distributed-executor-backend", "src.server.lineage_executor.LineageUniProcExecutor",
                 "--per-request-spec-decode-metrics", "summary",
@@ -170,8 +169,14 @@ class LocalServingRunner:
                                       draft_model=serving_cfg.get("draft_model"))
             if data.get('draft_method') != serving_cfg.get('draft_method', 'eagle3'):
                 raise ValueError('Profile draft method mismatch')
-            if data['grid']['batches'] != [1, 2, 4, 8, 16, 32]:
-                raise ValueError('Serving requires the complete batch calibration grid')
+            max_seqs = int(serving_cfg.get('max_num_seqs', 32))
+            if not 1 <= max_seqs <= 32:
+                raise ValueError('Adaptive profile supports at most 32 concurrent sequences')
+            canonical = [1, 2, 4, 8, 16, 32]
+            upper = next(b for b in canonical if b >= max_seqs)
+            required = {b for b in canonical if b <= upper}
+            if not required <= set(data['grid']['batches']):
+                raise ValueError(f'Profile batch grid does not cover max_num_seqs={max_seqs}; recalibrate')
             env["FLEXSDS_PROFILE_PATH"] = str(path.resolve())
             env["ADAPTIVE_STRICT"] = "1"
             env["VLLM_USE_V2_MODEL_RUNNER"] = "0"
@@ -181,6 +186,11 @@ class LocalServingRunner:
         env["ADAPTIVE_TELEMETRY_PATH"] = os.path.abspath(
             serving_cfg.get("telemetry_path", "telemetry/serving_trace.jsonl")
         )
+        if serving_cfg.get('enable_adaptive', True):
+            trace_dir = Path(env['ADAPTIVE_TELEMETRY_PATH']).parent
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            env['ADAPTIVE_STEP_TELEMETRY_PATH'] = str(trace_dir / 'serving_steps.jsonl')
+            env['ADAPTIVE_STARTUP_TELEMETRY_PATH'] = str(trace_dir / 'serving_lineage.jsonl')
         env["ADAPTIVE_MAX_K"] = str(serving_cfg.get("max_k", 4))
         env["ADAPTIVE_MIN_BATCH_K"] = "0"
         env["ADAPTIVE_PER_REQUEST"] = "1"
@@ -209,11 +219,11 @@ class LocalServingRunner:
             return None
 
         if config.get('serving', config).get('enable_adaptive', True):
-            from flexsds.core.hardware import detect_hardware
+            from flexsds.core.hardware import detect_hardware, matches_gpu_label
             actual = detect_hardware()
             data = json.loads(Path(config.get('serving', config)['profile_path']).read_text())
             if not actual.is_cuda_available or (actual.sm_architecture != data['metadata']['sm_architecture']
-                                               or actual.device_name != data['metadata']['device']):
+                                               or not matches_gpu_label(data['metadata']['device'], actual.device_name)):
                 raise ValueError('Profile differs from actual serving GPU')
 
         if background and os.name == "nt":

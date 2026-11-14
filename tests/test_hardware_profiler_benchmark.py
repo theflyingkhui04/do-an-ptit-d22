@@ -11,7 +11,7 @@ def observed_groups(config, batches):
     groups = []
     for k in cal.KS:
         records = [dict(k=k, batch=b, context=cal.CONTEXT, repeat=r, warmup=r < cal.WARMUP,
-                        samples=dict(target=10.+k+b, **({'draft': 2.*k} if k else {})),
+                        samples=dict(target=10.+k+b, draft=2.*max(1,k)),
                         shapes=[dict(batch=b, query=[k+1]*b, context=[cal.CONTEXT]*b)])
                    for b in batches for r in range(cal.WARMUP+cal.REPEATS)]
         groups.append(dict(device='NVIDIA A10G', sm_architecture='sm_86', records=records,
@@ -94,3 +94,33 @@ def test_modal_dispatch_uses_cli_when_sdk_is_in_another_pipx(monkeypatch):
     assert calibrate({'target_gpu':'A10G'}, [1]) == [{'measured':True}]
     assert seen[0][1] == 'run'
     assert seen[0][2].endswith('modal_calibration_app.py')
+
+
+def test_k0_includes_drafter_cache_sync_and_rejects_vanilla_only(measured_profile):
+    assert measured_profile['cost_matrix_ms']['k0_b1'] == 13.0
+    broken = copy.deepcopy(measured_profile)
+    del broken['evidence']['groups'][0]['records'][0]['samples']['draft']
+    with pytest.raises(ValueError, match='latency'):
+        cm.validate_measured_profile(broken)
+
+
+@pytest.mark.parametrize('device,expected', [('NVIDIA A10',True),('NVIDIA A10G',True),
+                                            ('NVIDIA RTX 3090',False),('NVIDIA L4',False)])
+def test_modal_a10g_cuda_alias_is_narrow(device, expected):
+    from flexsds.core.hardware import matches_gpu_label
+    assert matches_gpu_label('A10G',device) is expected
+
+
+def test_profile_roundtrip_accepts_actual_modal_a10_name(measured_profile):
+    config = measured_profile['evidence']['config']
+    groups = measured_profile['evidence']['groups']
+    for group in groups: group['device'] = 'NVIDIA A10'
+    data = cal.build_profile(config,groups,cal.BATCHES)
+    cm.validate_measured_profile(data, HardwareInfo('Remote A10G','sm_86',0,0,'',True))
+
+
+def test_raw_cuda_names_share_only_the_a10_resource_alias():
+    from flexsds.core.hardware import matches_gpu_label
+    assert matches_gpu_label('NVIDIA A10G','NVIDIA A10')
+    assert matches_gpu_label('NVIDIA A10','NVIDIA A10G')
+    assert not matches_gpu_label('NVIDIA A10G','NVIDIA RTX 3090')

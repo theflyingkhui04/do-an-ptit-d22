@@ -103,10 +103,20 @@ def test_modal_runner_setup_environment_uses_os_pathsep(monkeypatch):
     pp = env.get("PYTHONPATH", "")
     assert len(pp) > 0
     assert os.pathsep in pp
-    assert "custom_path" in pp
+    assert "custom_path" not in pp
 
 
 @pytest.fixture(autouse=True)
 def isolated_default_credentials(tmp_path, monkeypatch):
     from flexsds.core.credentials import CredentialsManager
     monkeypatch.setattr(CredentialsManager, "DEFAULT_PATH", tmp_path / "no_credentials")
+
+
+def test_modal_environment_does_not_leak_host_python_packages(monkeypatch):
+    import sys
+    from pathlib import Path
+    monkeypatch.setenv('PYTHONPATH','/host/site-packages:/host/dist-packages')
+    monkeypatch.setattr(sys,'path',[*sys.path,'/host/venv/site-packages'])
+    paths=ModalServingRunner().setup_environment({})['PYTHONPATH'].split(os.pathsep)
+    root=Path(__file__).resolve().parents[1]
+    assert paths == [str(root/'src'),str(root)]

@@ -75,3 +75,18 @@ def detect_hardware(device_index: int = 0) -> HardwareInfo:
         is_cuda_available=False,
         device_count=0,
     )
+
+
+def matches_gpu_label(label: str, device_name: str) -> bool:
+    """Match platform labels to CUDA names without treating equal SM as identity.
+
+    Modal's A10G resource reports NVIDIA A10 through CUDA. RTX 3090 shares
+    sm_86 but must never match that label.
+    """
+    actual = device_name.upper().strip().removeprefix('NVIDIA ').removeprefix('TESLA ')
+    label = label.upper().strip().removeprefix('NVIDIA ').removeprefix('TESLA ')
+    if label in {'A10', 'A10G'}:
+        return actual in {'A10', 'A10G'}
+    if label == 'A100':
+        return actual == 'A100' or actual.startswith(('A100-', 'A100 '))
+    return actual == label

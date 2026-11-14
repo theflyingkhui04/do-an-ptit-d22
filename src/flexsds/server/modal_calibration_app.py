@@ -10,14 +10,14 @@ package_root = str(parents[2]) if len(parents) > 2 else '/root/project/src'
 if package_root not in sys.path:
     sys.path.insert(0, package_root)
 import modal
+from flexsds.server.modal_image import serving_image
 
 request = json.loads(os.environ['FLEXSDS_CALIBRATION_REQUEST'])
 config = request['config']
 if config.get('target_gpu') not in {'A10G', 'L4', 'T4'}:
     raise ValueError('Unsupported calibration GPU')
 app = modal.App('flexsds-calibration')
-image = (modal.Image.debian_slim(python_version='3.11')
-         .pip_install('vllm==0.30.0', 'psutil')
+image = (serving_image()
          .env({'PYTHONPATH': '/root/project/src', 'VLLM_USE_V2_MODEL_RUNNER': '0',
                'FLEXSDS_CALIBRATION_REQUEST': json.dumps(request)}))
 if modal.is_local():

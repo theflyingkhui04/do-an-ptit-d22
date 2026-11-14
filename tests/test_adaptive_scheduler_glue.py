@@ -4,6 +4,7 @@ L2 only: the stub mirrors the v0.30.0 source contract, not an installed
 engine smoke or GPU verification. See the M4-02-04 worklog for source links.
 """
 import importlib
+import os
 import ast
 import __future__
 import json
@@ -861,6 +862,12 @@ def test_duplicate_feedback_and_retirement_exception_cleanup(scheduler_module, m
 
 
 def installed_capture():
+    external = os.environ.get('M4_VLLM_SOURCE_ROOT')
+    if external:
+        from experiments.m4_pinned_contract import verify
+        root = Path(external)
+        verify(root)
+        return root / 'vllm'
     path = PINNED_SCHEDULER.parents[6] / "m4_02_04/20261110-async-lineage-design/installed/vllm"
     if not path.is_dir():
         pytest.skip("optional pinned installed-source cache unavailable; not a runtime test")
@@ -907,7 +914,7 @@ def captured_function(path, cls, method, namespace):
 def test_actual_pinned_row_copy_binds_reorder_and_compaction(scheduler_module, monkeypatch, tmp_path):
     """Run unchanged pinned row preparation on CPU tensors, then observe it."""
     import numpy as np
-    import torch
+    torch = pytest.importorskip("torch", reason="row-copy tensor test requires CPU torch")
     capture = installed_capture()
     source = capture / "v1/worker/gpu_model_runner.py"
     namespace = {"np": np, "torch": torch, "PIN_MEMORY": False}

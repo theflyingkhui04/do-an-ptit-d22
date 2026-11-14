@@ -1,0 +1,116 @@
+{
+  "app_id": "ap-YdnYGs78ypB2cdPOuftpcG",
+  "endpoint": "https://theflyingkhui04--flexsds-serving-serve-dev.us-east.modal.run",
+  "containers": [
+    {
+      "container_id": "ta-01M7DGYCWX6P3PDTP0RQNDWKRR",
+      "app_id": "ap-YdnYGs78ypB2cdPOuftpcG",
+      "app_name": "flexsds-serving",
+      "start_time": "2026-11-15 00:19:14+07:00"
+    }
+  ],
+  "responses": [
+    {
+      "usage": {
+        "prompt_tokens": 80,
+        "total_tokens": 208,
+        "completion_tokens": 128,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "metrics": {
+        "time_to_first_token_ms": null,
+        "generation_time_ms": null,
+        "queue_time_ms": null,
+        "mean_itl_ms": null,
+        "tokens_per_second": null,
+        "speculative_decoding": {
+          "mean_acceptance_length": 1.875,
+          "draft_acceptance_rate": 0.3684210526315789,
+          "acceptance_histogram": [
+            4,
+            1,
+            3,
+            0,
+            0
+          ],
+          "num_spec_steps": 8,
+          "num_accepted_draft_tokens": 7,
+          "num_draft_tokens": 19,
+          "num_spec_tokens": 4,
+          "per_step_accepted": null,
+          "per_step_drafted": null
+        }
+      },
+      "finish_reason": "length"
+    },
+    {
+      "usage": {
+        "prompt_tokens": 48,
+        "total_tokens": 176,
+        "completion_tokens": 128,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "metrics": {
+        "time_to_first_token_ms": null,
+        "generation_time_ms": null,
+        "queue_time_ms": null,
+        "mean_itl_ms": null,
+        "tokens_per_second": null,
+        "speculative_decoding": {
+          "mean_acceptance_length": 2.125,
+          "draft_acceptance_rate": 0.47368421052631576,
+          "acceptance_histogram": [
+            3,
+            1,
+            4,
+            0,
+            0
+          ],
+          "num_spec_steps": 8,
+          "num_accepted_draft_tokens": 9,
+          "num_draft_tokens": 19,
+          "num_spec_tokens": 4,
+          "per_step_accepted": null,
+          "per_step_drafted": null
+        }
+      },
+      "finish_reason": "length"
+    },
+    {
+      "usage": {
+        "prompt_tokens": 66,
+        "total_tokens": 194,
+        "completion_tokens": 128,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "metrics": {
+        "time_to_first_token_ms": null,
+        "generation_time_ms": null,
+        "queue_time_ms": null,
+        "mean_itl_ms": null,
+        "tokens_per_second": null,
+        "speculative_decoding": {
+          "mean_acceptance_length": 2.125,
+          "draft_acceptance_rate": 0.47368421052631576,
+          "acceptance_histogram": [
+            4,
+            0,
+            3,
+            1,
+            0
+          ],
+          "num_spec_steps": 8,
+          "num_accepted_draft_tokens": 9,
+          "num_draft_tokens": 19,
+          "num_spec_tokens": 4,
+          "per_step_accepted": null,
+          "per_step_drafted": null
+        }
+      },
+      "finish_reason": "length"
+    }
+  ]
+}

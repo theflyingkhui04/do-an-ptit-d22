@@ -43,10 +43,10 @@ except ImportError:
     modal = None
 
 if modal is not None:
+    from flexsds.server.modal_image import serving_image
     app = modal.App(APP_NAME)
     image = (
-        modal.Image.debian_slim(python_version="3.11")
-        .pip_install("vllm==0.30.0", "fastapi", "psutil")
+        serving_image()
         .env({"PYTHONPATH": "/root/project:/root/project/src",
               "FLEXSDS_SERVING_CONFIG": json.dumps(SERVING_CONFIG)})
     )
@@ -80,11 +80,11 @@ if modal is not None:
             runtime_config["profile_path"] = "/root/project/hardware_profile.json"
         if runtime_config.get("enable_adaptive", True):
             import torch
-            from flexsds.core.hardware import HardwareInfo
+            from flexsds.core.hardware import HardwareInfo, matches_gpu_label
             from flexsds.core.cost_model import validate_measured_profile
             sm = 'sm_%d%d' % torch.cuda.get_device_capability(0)
             data = json.loads(Path(runtime_config['profile_path']).read_text())
-            if torch.cuda.get_device_name(0) != data['metadata']['device']:
+            if not matches_gpu_label(data['metadata']['device'], torch.cuda.get_device_name(0)):
                 raise ValueError('Profile differs from actual Modal GPU')
             hardware = HardwareInfo(device_name=f"Remote {GPU}", sm_architecture=sm,
                                     total_vram_mb=0, free_vram_mb=0, cuda_version=torch.version.cuda,

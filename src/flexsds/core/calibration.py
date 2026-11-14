@@ -16,7 +16,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-SCHEMA = 'flexsds-component-v1'
+SCHEMA = 'flexsds-component-v2'
 BATCHES = [1, 2, 4, 8, 16, 32]
 KS = [0, 1, 2, 3, 4]
 CONTEXT = 1024
@@ -34,8 +34,9 @@ def measure_cell_group(config, k, batches):
     if sm != config['sm_architecture']:
         raise RuntimeError(f"GPU mismatch: expected {config['sm_architecture']}, got {sm}")
     device = torch.cuda.get_device_name(0)
+    from flexsds.core.hardware import matches_gpu_label
     expected = config.get('target_gpu')
-    if expected and expected not in device:
+    if expected and not matches_gpu_label(expected, device):
         raise RuntimeError(f'GPU mismatch: expected {expected}, got {device}')
     if vllm.__version__ != '0.30.0':
         raise RuntimeError('Calibration requires vLLM 0.30.0')
@@ -55,9 +56,11 @@ def measure_cell_group(config, k, batches):
         cfg['quantization'] = 'awq_marlin'
     elif 'gptq' in config['target_model'].lower():
         cfg.update(quantization='gptq', dtype='float16')
-    if k:
-        cfg['speculative_config'] = dict(method=config['draft_method'], model=config['draft_model'],
-                                         num_speculative_tokens=k, draft_sample_method='greedy', revision=draft_revision)
+    # Keep the drafter loaded at K=0: EAGLE still synchronizes its KV cache.
+    cfg['speculative_config'] = dict(method=config['draft_method'], model=config['draft_model'],
+                                     num_speculative_tokens=4, draft_sample_method='greedy',
+                                     revision=draft_revision,
+                                     num_speculative_tokens_per_batch_size=[[1,32,k]])
     llm = LLM(**cfg)
     llm.collective_rpc('calibration_install')
     records = []
@@ -72,7 +75,7 @@ def measure_cell_group(config, k, batches):
             llm.wait_for_completion(use_tqdm=False)
             [result] = llm.collective_rpc('calibration_finish')
             samples = result['samples']
-            for key in (['target', 'draft'] if k else ['target']):
+            for key in ['target', 'draft']:
                 if not positive(samples.get(key)):
                     raise RuntimeError(f'No exact measured {key} sample: K={k}, B={batch}')
             records.append(dict(k=k, batch=batch, context=CONTEXT, repeat=repeat,
@@ -98,6 +101,9 @@ def build_profile(config, groups, batches):
     for k, group in zip(KS, groups):
         if group['sm_architecture'] != config['sm_architecture']:
             raise ValueError('Calibration hardware mismatch')
+        from flexsds.core.hardware import matches_gpu_label
+        if config.get('target_gpu') and not matches_gpu_label(config['target_gpu'], group['device']):
+            raise ValueError('Calibration GPU model mismatch')
         devices.add(group['device'])
         revisions.add((group.get('target_revision'), group.get('draft_revision')))
         if group.get('vllm_version') != '0.30.0':
@@ -115,10 +121,10 @@ def build_profile(config, groups, batches):
             if not any(s == dict(batch=r['batch'], query=[k+1]*r['batch'],
                                  context=[CONTEXT]*r['batch']) for s in r['shapes']):
                 raise ValueError('Missing exact observed worker shape')
-            if not all(positive(r['samples'].get(key)) for key in (['target','draft'] if k else ['target'])):
+            if not all(positive(r['samples'].get(key)) for key in ['target','draft']):
                 raise ValueError('Invalid measured latency')
         for b in batches:
-            costs = [r['samples']['target'] + (r['samples']['draft'] if k else 0)
+            costs = [r['samples']['target'] + r['samples']['draft']
                      for r in records if r['batch'] == b and not r['warmup']]
             value = statistics.median(costs)
             if not positive(value):
@@ -133,7 +139,7 @@ def build_profile(config, groups, batches):
                               device=groups[0]['device'], sm_architecture=config['sm_architecture'],
                               provenance='worker_cuda_synchronize_perf_counter', raw_sha256=digest,
                               timestamp_utc=datetime.now(timezone.utc).isoformat(),
-                              cost_semantics='eager_target_forward_plus_draft_proposal_excludes_target_logits_sampling',
+                              cost_semantics='eager_target_forward_plus_draft_proposal_including_k0_cache_sync_excludes_target_logits_sampling',
                               vllm_version='0.30.0'),
                 models=dict(target=config['target_model'], draft=config['draft_model'],
                             target_revision=groups[0]['target_revision'], draft_revision=groups[0]['draft_revision']),
@@ -147,6 +153,8 @@ def run_local_group(config, k, batches):
         output = Path(directory) / 'result.json'
         request.write_text(json.dumps(dict(config=config, k=k, batches=batches)))
         env = dict(os.environ, VLLM_USE_V2_MODEL_RUNNER='0')
+        package_root = str(Path(__file__).resolve().parents[2])
+        env['PYTHONPATH'] = package_root + os.pathsep + env.get('PYTHONPATH', '')
         try:
             subprocess.run([sys.executable, '-m', 'flexsds.core.calibration', str(request), str(output)],
                            env=env, check=True, timeout=3600)

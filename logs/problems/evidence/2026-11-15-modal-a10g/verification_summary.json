@@ -1,0 +1,98 @@
+{
+  "recorded_at_utc": "2026-11-14T17:16:38.133678+00:00",
+  "calibration_status": "VERIFIED_BATCH1",
+  "serving_status": "VERIFIED_BATCH1",
+  "gpu": "NVIDIA A10G",
+  "grid": {
+    "batches": [
+      1
+    ],
+    "candidate_budgets": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "contexts": [
+      1024
+    ]
+  },
+  "records": 275,
+  "warmup_per_cell": 5,
+  "measured_repeats_per_cell": 50,
+  "cost_matrix_ms": {
+    "k0_b1": 22.57504799996468,
+    "k1_b1": 20.64906249998444,
+    "k2_b1": 21.155815500009112,
+    "k3_b1": 23.383309500047744,
+    "k4_b1": 24.511067999924308
+  },
+  "models": {
+    "target": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "draft": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+    "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "draft_revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290"
+  },
+  "profile_raw_sha256": "14fad0209c62d5c062a1bfbb5190fe62429dfe67ec53e9d957fcba281ac368ec",
+  "profile_file_sha256": "f1ce523a07e504a9d1b94227ae712d833179c9d09cc0ba8c6ff4aaa00c5e3b82",
+  "calibration_app": "ap-qSR9FrAqq5JEK8gdMSBb6K",
+  "source_commit": "69f1f000828bf8a2ce9dd7ed26d144f3d09f5f32",
+  "source_files_sha256": {
+    "src/flexsds/core/calibration.py": "8f0ad3555ce344f9f30c6ee69ed72390fdecb2166e1338da866fc288be4ee74f",
+    "src/flexsds/core/calibration_worker.py": "ee425bde902ab6a8fa8ed26ae0c44caa8dae31a98f88fb35e4b4f856d6cfed7c",
+    "src/flexsds/core/cost_model.py": "830202e0a9b6128f02f903f01ac4edd69f27b3ea89f5ad469ec98d7fdef73e5b",
+    "src/flexsds/core/hardware.py": "738fc4b293c27cf2851e0d3b8e0ec4c10b1af7c533d9c6e963ebcecb80ac3e9b",
+    "src/flexsds/server/local_runner.py": "0e1ca3927e11625fce4ab6d16a1b7e675b92568d94d47cc0af0db82f615e2800",
+    "src/flexsds/server/modal_app.py": "b6f1c0cd8f5f158c223fe527c140d95d76d343c406ff6a3ca780a79b4090d7c5",
+    "src/flexsds/server/modal_runner.py": "7e69cc1de03ff0a03ba0409ae8175384ad460110a9b331cf96e656d63c54ae5e",
+    "src/flexsds/server/modal_image.py": "c1f9bbec0345b87b1d59df9e02506da3ee18b634bda4fa33e5ad8beb65845657",
+    "src/server/adaptive_scheduler.py": "1baca496f9dc9d9e94919d701648b61f29806270c37e2e99a50d7591ff055ba4",
+    "src/server/lineage.py": "7f41b1a437c9fc927f53dc8c9d979c38b29a26f0b485795c063bc4f65547e00f",
+    "src/server/lineage_executor.py": "087a0bec62d79955c0a5e0497587eb14566ed2012a6afa5ae08dcfb7ad537cd4",
+    "src/server/budget_planner.py": "f291c5a9e6d54b8171defd845fff1e990cd741da2056ab146da52b54bd99c33f",
+    "src/proposer/controller.py": "8740e8f347afc4c3d710123c7995defcc3cae1db050badd646716c554346b2c0",
+    "src/flexsds/server/modal_calibration_app.py": "ada99cb783585ce38c70db5d9de2c004b2b07edb2be584ed598859c4ffcf9f5a"
+  },
+  "limitations": [
+    "Only B=1 and context=1024 measured; default B<=32 grid is not validated.",
+    "Component costs exclude target logits/sampling and scheduler overhead; not an end-to-end speedup claim.",
+    "No vanilla lossless comparison or end-to-end speedup benchmark was performed."
+  ],
+  "native_verification_app": "ap-ZGbYKCtXF1LvP8BZZgkFyp",
+  "public_endpoint_status": "HEALTH_MODELS_COMPLETION_AND_3_CHAT_REQUESTS_PASSED",
+  "scheduled_k_counts": {
+    "0": 336,
+    "3": 9,
+    "2": 15
+  },
+  "actual_draft_birth_k_counts": {
+    "3": 9,
+    "2": 15
+  },
+  "feedback_records": 24,
+  "feedback_lineage_status": "attributed",
+  "drafted_tokens": 57,
+  "accepted_draft_tokens": 25,
+  "response_completion_tokens": [
+    128,
+    128,
+    128
+  ],
+  "source_working_tree_has_changes": true,
+  "artifact_sha256": {
+    "public_serving_responses.json": "d5a8967a8ee9bef624c2ebbf76554e0f71d0a669b2dfa614f77bcc40e13c757b",
+    "native_runtime_verification.json": "23e056f0659b467f93a9e5ba8a2d4d974cf1693b1f8af7d68474056dc5bd808d",
+    "measured_batch1_profile.json": "f1ce523a07e504a9d1b94227ae712d833179c9d09cc0ba8c6ff4aaa00c5e3b82"
+  },
+  "source_contract_manifests_sha256": {
+    "experiments/scalar_vllm_source_manifest.json": "06e382b70089de4178ba0d3ff33c542e16bfcb7188c8ee34d46a74ee65b3aa6c",
+    "experiments/m4_eagle_source_manifest.json": "bf22392557fc8861e098961fa0a227f4b1de41d4e22484d33d38a73c2c621a20"
+  },
+  "own_test_apps_stopped": true,
+  "cpu_regression": {
+    "passed": 354,
+    "skipped": 1,
+    "skip_reason": "CPU torch missing for tensor row-copy test"
+  }
+}

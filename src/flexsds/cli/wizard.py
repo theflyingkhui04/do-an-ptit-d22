@@ -434,13 +434,6 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         default_val=True,
     )
 
-    if enable_adaptive and report.draft_method == "eagle3":
-        print("EAGLE adaptive is not supported by this serving runtime; static EAGLE uses k=4.")
-        choice = prompt_choice("Choose supported serving mode:", ["Use static EAGLE (k=4)", "Abort setup"], default_idx=0)
-        if "Abort" in choice:
-            return {"action": "abort", "exit_code": 1}
-        enable_adaptive = False
-
     # Step 6: Profile Mapping
     if backend in ("modal", "colab"):
         remote_sm_map = {

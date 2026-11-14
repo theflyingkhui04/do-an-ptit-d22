@@ -22,11 +22,12 @@ def test_analytical_builtin_not_accepted_as_measured(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('extra', [[], ['--allow-fallback']])
-def test_eagle_adaptive_fails_explicitly(extra, capsys):
+def test_eagle_adaptive_still_requires_empirical_profile(extra, capsys, tmp_path, monkeypatch):
+    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path)
     result = main(['serve', '--backend', 'modal', '--target', 'Qwen/Qwen2.5-7B-Instruct-AWQ',
                    '--draft', 'duckhoi/qwen2.5-7b-eagle3.1-speculator', '--dry-run', *extra])
-    assert result == 2
-    assert 'EAGLE adaptive is unsupported' in capsys.readouterr().out
+    assert result == 1
+    assert "No measured latency profile" in capsys.readouterr().out
 
 
 def test_profile_benchmark_cpu_fails_without_success(capsys, monkeypatch):

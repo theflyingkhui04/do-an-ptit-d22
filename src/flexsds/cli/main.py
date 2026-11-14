@@ -301,13 +301,20 @@ def main(argv: Optional[list[str]] = None) -> int:
             else:
                 serving_hw = hw_info
 
+            target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
+            draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
+
+            preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
+                                                   args.backend, getattr(args, "gpu", "L4"))
+            print(preflight.report.summary())
+            if not preflight.is_safe:
+                print("Launch blocked: " + "; ".join(preflight.reasons))
+            if args.backend != "local":
+                print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
+            if not args.dry_run and not preflight.is_safe:
+                return 2
+
             if not args.no_adaptive:
-                target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
-                draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
-                method = check_compatibility(target_model, draft_model, serving_hw.free_vram_mb).draft_method
-                if method == "eagle3":
-                    print("EAGLE adaptive is unsupported; use --no-adaptive for static EAGLE (k=4).")
-                    return 2
                 cost_model, profile_name = load_profile_for_hardware(
                     serving_hw, strict=True, target_model=target_model, draft_model=draft_model,
                 )
@@ -325,16 +332,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 else:
                     print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
 
-            target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
-            draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
-
-            preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
-                                                   args.backend, getattr(args, "gpu", "L4"))
-            print(preflight.report.summary())
-            if not preflight.is_safe:
-                print("Launch blocked: " + "; ".join(preflight.reasons))
-            if args.backend != "local":
-                print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
             cfg = {"serving": {
                 "target_model": target_model, "draft_model": draft_model,
                 "draft_method": preflight.report.draft_method,
@@ -347,8 +344,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 print("Colab guidance only: no server or endpoint was created; supplied models are not forwarded to the notebook.")
                 print("Open notebooks/flexsds_colab_server.ipynb and configure the exact models on that runtime.")
                 return 0
-            if not args.dry_run and not preflight.is_safe:
-                return 2
             if args.dry_run:
                 print("Preview only; not a readiness check.")
                 if args.backend == "local":

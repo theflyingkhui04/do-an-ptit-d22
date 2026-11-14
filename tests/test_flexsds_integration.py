@@ -110,7 +110,7 @@ def test_wizard_safe_runner_failure_is_nonzero(machine, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(wizard, "prompt_choice", lambda q, c, **kw:
                         next((v for v in c if "Local vLLM" in v), c[0]))
-    monkeypatch.setattr(wizard, "prompt_bool", lambda q, **kw: "background" not in q)
+    monkeypatch.setattr(wizard, "prompt_bool", lambda q, **kw: "background" not in q and "hardwareadaptive" not in q.lower())
     launch = Mock(return_value=None)
     monkeypatch.setattr(LocalServingRunner, "launch", launch)
     assert cli.main([]) == 1
@@ -171,13 +171,13 @@ def test_modal_app_allocates_gpu_exposes_port_and_preserves_exact_config(monkeyp
     runner = ModalServingRunner()
     monkeypatch.setenv("FLEXSDS_SERVING_CONFIG", runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"])
     image = Mock()
-    for method in ["pip_install", "env", "add_local_dir", "add_local_file"]:
+    for method in ["pip_install", "uv_pip_install", "entrypoint", "env", "add_local_dir", "add_local_file"]:
         getattr(image, method).return_value = image
     app = Mock()
     app.function.side_effect = lambda **kw: lambda f: f
     web = Mock(side_effect=lambda *a, **kw: lambda f: f)
     fake_modal = SimpleNamespace(App=Mock(return_value=app),
-        Image=SimpleNamespace(debian_slim=Mock(return_value=image)),
+        Image=SimpleNamespace(from_registry=Mock(return_value=image)),
         Volume=SimpleNamespace(from_name=Mock(return_value="volume")), web_server=web,
         is_local=lambda: True)
     monkeypatch.setitem(sys.modules, "modal", fake_modal)

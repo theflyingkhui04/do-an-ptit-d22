@@ -16,23 +16,25 @@ FlexSDS nghiên cứu và xây dựng serving engine kết hợp **EAGLE specula
 
 Bài toán trọng tâm là giảm độ trễ decode và hạn chế negative speedup khi workload, batch hoặc phần cứng thay đổi. Các cấu hình vanilla và speculative decoding bằng draft model độc lập được dùng làm đối chứng. Ứng dụng hóa đơn tiếng Việt cung cấp workload để đánh giá engine.
 
-**Hardware-Adaptive EAGLE là mục tiêu chính của sản phẩm.** EAGLE static hiện tại là bước kiểm tra serving trong quá trình tích hợp; nó chưa hoàn thành mục tiêu adaptive của đề tài.
+**Hardware-Adaptive EAGLE là mục tiêu chính của sản phẩm.** CLI đã nối EAGLE vào đường scalar adaptive K của nhánh M4: controller → scheduler → proposer → verification feedback/lineage. Tích hợp đã qua regression CPU/source contract và functional GPU smoke test trên Modal A10G ở batch 1. So sánh lossless và hiệu năng end-to-end vẫn cần nghiệm thu riêng.
 
 ## 2. Trạng thái triển khai
 
 | Thành phần | Trạng thái và giới hạn |
 |---|---|
-| EAGLE serving qua CLI | Runner tạo cấu hình static `K=4`, hỗ trợ Local GPU và Modal. Cần xác nhận inference trên endpoint thực. |
-| Hardware-Adaptive EAGLE | **Chưa tích hợp đầy đủ vào runtime CLI.** Wizard yêu cầu chọn static hoặc abort; direct CLI từ chối EAGLE adaptive. |
-| Calibration GPU | Đã thay dữ liệu công thức bằng phép đo component trong worker vLLM, có raw samples và kiểm tra shape. Chưa xác minh end-to-end trên GPU Modal thực. |
+| EAGLE serving qua CLI | Endpoint Modal adaptive đã trả health/models/completion và ba request 128 tokens ở max_num_seqs=1. Local GPU và full capacity cần nghiệm thu riêng. |
+| Hardware-Adaptive EAGLE | Đã nối scalar dynamic K, async scheduler và paired lineage executor theo nhánh M4. Yêu cầu profile measured v2 và source vLLM 0.30.0 đúng hash; đã quan sát K=0/2/3 và feedback có lineage trên GPU ở batch 1. |
+| Calibration GPU | Đã đo thật K=0..4, batch 1, context=1024 trên Modal A10G: 275 raw records. Full grid tới batch 32 chưa được kiểm tra trong lượt này. |
 | Hardware profile | Strict gate từ chối synthetic profile cũ; profile được truyền tới container và cost consumer của scalar scheduler. |
-| Scalar scheduler `draft_model` | Có code điều chỉnh K và lineage; compatibility gate CLI hiện chỉ chấp nhận EAGLE. Nhánh này chưa tạo thành luồng Hardware-Adaptive EAGLE đã nghiệm thu. |
+| Scalar scheduler | Dùng chung cơ chế dynamic K cho sequential EAGLE và nhánh nghiên cứu `draft_model`; lịch sử các lane đối chứng giữ nguyên. |
 | Readiness | CLI kiểm tra `/health`, `/v1/models` và completion trước khi báo `Inference verified`. Tạo URL chưa chứng minh model sẵn sàng. |
 | Tree-adaptive | Hoãn theo quyết định phạm vi M4; scalar K không chứng minh cây nháp đã được thực thi. |
 
-Công việc tiếp theo là nối quyết định K, EAGLE proposer, verification feedback và lineage vào cùng runtime, sau đó kiểm chứng tính đúng đắn và hiệu năng trên GPU. Không thể hoàn thành phần này chỉ bằng cách bỏ điều kiện chặn scheduler hiện có.
+Phần cần nghiệm thu tiếp theo là calibration, chuyển K và feedback thực trên GPU, kiểm tra lossless và đo hiệu năng theo workload. `K=0` ngừng sinh token nháp nhưng EAGLE vẫn forward để đồng bộ KV cache; không coi đó là tắt hẳn drafter hoặc bảo đảm nhanh bằng vanilla.
 
 **Lossless** đề cập đến tính đúng đắn/phân phối đầu ra của speculative decoding. Nó không đồng nghĩa với bảo đảm speedup ≥1, tránh OOM tuyệt đối hoặc đạt một mức tăng tốc cố định trên mọi workload. Kết luận hiệu năng phải gắn với cấu hình và bằng chứng đo cụ thể.
+
+Bằng chứng GPU và giới hạn phép thử: [verification summary](logs/problems/evidence/2026-11-15-modal-a10g/verification_summary.json).
 
 Chi tiết: [problem log CLI/Modal](logs/problems/2026-11-14-flexsds-cli-modal-calibration-and-serving.md), [quyết định phạm vi scalar/tree](logs/problems/2026-11-12-m4-02-04-tree-adaptive-vllm-flattening-and-lineage-v02.md).
 
@@ -47,16 +49,15 @@ flexsds
 
 Package CLI không tự cài GPU runtime. Local serving/calibration cần CUDA và vLLM 0.30.0 trong môi trường chạy. Modal cần Modal CLI và credentials đã cấu hình; image GPU được khai báo trong source.
 
-### Chạy EAGLE static trên Modal A10G
+### Chạy Hardware-Adaptive EAGLE trên Modal A10G
 
 ```bash
 flexsds serve --backend modal --gpu A10G \
   --target Qwen/Qwen2.5-7B-Instruct-AWQ \
-  --draft duckhoi/qwen2.5-7b-eagle3.1-speculator \
-  --no-adaptive
+  --draft duckhoi/qwen2.5-7b-eagle3.1-speculator
 ```
 
-Đây là smoke test cho đường phục vụ EAGLE. Chờ `Inference verified` để xác nhận completion trả về. Development dùng `modal serve`: giữ terminal mở; Ctrl-C dừng app. Thêm `--deploy` để dùng persistent deployment.
+Đo profile v2 bằng lệnh bên dưới trước khi chạy; wizard có thể đề nghị calibration khi profile còn thiếu. Thêm `--no-adaptive` nếu muốn kiểm tra EAGLE static `K=4` mà không cần profile. Chờ `Inference verified` để xác nhận completion trả về. Development dùng `modal serve`: giữ terminal mở; Ctrl-C dừng app. Thêm `--deploy` để dùng persistent deployment.
 
 ### Đo hardware profile trên GPU Modal
 
@@ -68,7 +69,7 @@ flexsds profile --benchmark --backend modal --gpu A10G \
 
 Calibration cấp GPU thật, load model, chạy warmup và đo nhiều lần; có thể mất nhiều phút và sử dụng tài nguyên Modal. Kết quả lưu ở `~/.flexsds/profiles/`. Profile cũ tạo bằng công thức không được chấp nhận là empirical profile.
 
-Profile đo target forward + draft proposal ở eager mode, chưa bao gồm toàn bộ overhead serving. Đo profile EAGLE thành công không tự bật khả năng adaptive EAGLE trong CLI.
+Profile v2 đo target forward + draft proposal ở eager mode, bao gồm drafter KV-cache sync tại `K=0`, chưa bao gồm toàn bộ overhead serving. Profile synthetic cũ và profile v1 cần được đo lại; CLI pin model revisions theo profile.
 
 Hướng dẫn và giới hạn: [runbook CLI/Modal](docs/runbooks/flexsds-cli-modal-calibration.md).
 
@@ -83,7 +84,7 @@ Repo duy trì các lane đối chứng và công cụ thực nghiệm phục v�
 | `adaptive` | Nhánh scalar adaptive để đánh giá quyết định ngân sách K. |
 | `eagle` | EAGLE speculator để đo đường nháp chuyên biệt. |
 
-Tên lane là định danh của các kịch bản thực nghiệm, không chứng minh lane adaptive đã tích hợp với EAGLE trong CLI sản phẩm. Kết quả phải ghi rõ target/draft revision, GPU, quantization, K, batch/concurrency, context, workload và phiên bản runtime.
+Tên lane lịch sử được giữ nguyên. CLI adaptive EAGLE sử dụng đường tích hợp M4 `eagle_adaptive`; không đổi ý nghĩa lane `adaptive` dùng draft model độc lập. Kết quả phải ghi rõ target/draft revision, GPU, quantization, K, batch/concurrency, context, workload và phiên bản runtime.
 
 Chỉ số đánh giá gồm TTFT, TPOT, throughput, acceptance rate, VRAM và speedup so với vanilla. Phân biệt timing tại worker với timing tại client; không diễn giải khoảng cách giữa các SSE chunk thành TPOT của engine.
 

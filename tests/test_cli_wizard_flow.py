@@ -128,12 +128,6 @@ def test_wizard_uncalibrated_gpu_abort_action(tmp_path, monkeypatch, capsys):
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import HardwareInfo
 
-    from flexsds.core.compatibility import evaluate_serving_preflight as real_preflight
-    def preflight(*args, **kwargs):
-        result = real_preflight(*args, **kwargs)
-        result.report.draft_method = "draft_model"
-        return result
-    monkeypatch.setattr("flexsds.cli.wizard.evaluate_serving_preflight", preflight)
     cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
 
     def fake_prompt_choice(question, choices, default_idx=0):
@@ -181,12 +175,6 @@ def test_wizard_uncalibrated_gpu_switch_static_action(tmp_path, monkeypatch, cap
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import HardwareInfo
 
-    from flexsds.core.compatibility import evaluate_serving_preflight as real_preflight
-    def preflight(*args, **kwargs):
-        result = real_preflight(*args, **kwargs)
-        result.report.draft_method = "draft_model"
-        return result
-    monkeypatch.setattr("flexsds.cli.wizard.evaluate_serving_preflight", preflight)
     cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
 
     def fake_prompt_choice(question, choices, default_idx=0):
@@ -247,12 +235,6 @@ def test_wizard_uncalibrated_gpu_calibrate_action(tmp_path, monkeypatch, capsys)
     from pathlib import Path
     from unittest.mock import MagicMock
 
-    from flexsds.core.compatibility import evaluate_serving_preflight as real_preflight
-    def preflight(*args, **kwargs):
-        result = real_preflight(*args, **kwargs)
-        result.report.draft_method = "draft_model"
-        return result
-    monkeypatch.setattr("flexsds.cli.wizard.evaluate_serving_preflight", preflight)
     profile_fixture = tmp_path / "measured.json"
     profile_fixture.write_text("{}")
     monkeypatch.setattr("flexsds.cli.wizard.resolve_profile_path", lambda name: profile_fixture)

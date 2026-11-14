@@ -2,9 +2,11 @@
 
 - **Mã vấn đề:** `PROB-CLI-MODAL-CALIBRATION-SERVING`
 - **Ngày ghi nhận:** 14/11/2026
-- **Trạng thái:** IMPLEMENTED / PENDING GPU VERIFICATION — đã sửa trên `develop`, regression CPU đã pass; chưa xác nhận calibration/inference live trên GPU Modal.
+- **Trạng thái:** IMPLEMENTED / GPU SMOKE VERIFIED (B=1) — calibration, public endpoint và adaptive K/feedback đã kiểm chứng trên Modal A10G; grid mặc định B≤32 và đánh giá lossless/speedup còn ngoài lượt kiểm tra này.
 - **Phạm vi:** Wizard/CLI → hardware profile → Modal → vLLM serving runtime.
 - **Kịch bản tái hiện:** Laptop CPU-only, chọn Qwen2.5-7B-Instruct-AWQ + EAGLE-3.1, Modal A10G, development (`modal serve`), bật HardwareAdaptive, GPU chưa có profile, chọn calibrate rồi launch.
+
+> Các mục 1–8 ghi lại lịch sử phát hiện và sửa lỗi. Kết quả hiện hành nằm ở **mục 9** và thư mục evidence đi kèm.
 
 ## 1. Kết quả xác minh
 
@@ -128,3 +130,75 @@
 ## 6. Đồng bộ định hướng sản phẩm
 
 Tên đề tài được xác nhận: **FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs**. EAGLE static chỉ là đường kiểm tra serving tạm thời; capability gate vừa sửa không giải quyết xong mục tiêu adaptive EAGLE. Phần còn thiếu là tích hợp quyết định K, EAGLE proposer, verification feedback và lineage trên cùng runtime, rồi kiểm chứng GPU. Các lane `draft_model` là đối chứng/nghiên cứu, không thay thế mục tiêu này. README, tên package/CLI và các tài liệu giới thiệu đã được đồng bộ; không công bố tree execution hoặc bảo đảm speedup tuyệt đối khi chưa có bằng chứng.
+
+
+## 7. Tích hợp adaptive EAGLE vào CLI — cập nhật tiếp theo ngày 14/11/2026
+
+Phần này thay thế nhận định “scheduler chỉ hỗ trợ draft_model” và “EAGLE adaptive chưa được nối vào CLI” ở các lần inspect trước. Đọc thêm nhánh M4 cho thấy repo đã có `eagle_adaptive` trong `experiments/m4_treatments.py`, contract sequential dynamic K và kiểm tra source EAGLE trong lineage executor. CLI được nối vào chính đường này, không xây lại feedback engine và không bỏ kiểm tra source.
+
+### Thay đổi
+
+- Runner bật dynamic speculative lookup `[[1,32,4]]`, async scheduling, `AdaptiveAsyncScheduler` và `LineageUniProcExecutor` cho adaptive EAGLE. Static vẫn giữ K=4 và không gắn scheduler tùy biến.
+- Bỏ chặn EAGLE adaptive trong wizard/direct CLI. Thiếu profile vẫn phải calibrate, chọn static hoặc abort; synthetic profile không vượt strict gate.
+- K được controller chọn từ measured matrix, scheduler chuyển cho proposer; acceptance feedback chỉ cập nhật qua lineage hợp lệ. Cơ chế giữ producer origin của M4 được tái sử dụng, không gắn feedback vào quyết định hiện tại một cách suy đoán.
+- Bật step/startup telemetry và tạo thư mục trước launch. Giới hạn max_num_seqs ≤32, một GPU/worker, V1 runner và sequential padded EAGLE theo contract M4. Source không khớp hash phải fail trước readiness.
+- Calibration chuyển schema **flexsds-component-v2**: luôn load drafter, kể cả K=0, dùng dynamic lookup cho K=0..4 và cộng latency cache-sync của EAGLE vào cost K=0. Source vLLM cho thấy EAGLE chạy forward để đồng bộ KV trước khi trả tensor nháp rỗng; không thể dùng vanilla không drafter làm chi phí K=0 của đường này. Profile v1 phải đo lại.
+- README/runbook/đặc tả được cập nhật theo trạng thái tích hợp mới. Tree execution, lossless và speedup GPU không được suy ra từ CPU tests.
+
+### Kiểm chứng
+
+- Tải source vLLM v0.30.0 vào cache `/tmp`, kiểm tra khớp cả 19 hash của scalar/EAGLE manifests; không sửa hoặc ghi đè evidence nghiên cứu trong repo.
+- Source contract kiểm tra EAGLE dùng shared proposer, scheduler truyền dynamic K và K=0 giữ cache-sync forward.
+- Đã chạy 142 tests pass, 1 skip (thiếu CPU torch cho row-copy tensor test), gồm CLI/profile, scheduler transitions, stale/delayed feedback, startup binding và source contracts. Các test scheduler đã chạy với source cache qua `M4_VLLM_SOURCE_ROOT` thay vì bị skip vì thiếu capture cục bộ.
+- Chưa chạy calibration hoặc adaptive inference trên GPU Modal thực. `Inference verified` vẫn chỉ chứng minh completion, không chứng minh dynamic K hay hiệu năng; cần đối chiếu step/lineage telemetry và kiểm tra lossless trong lần nghiệm thu GPU.
+
+
+### Kết quả regression cuối
+
+**345 tests pass, 1 skip** trong bộ CLI/profile/calibration, M4 treatments, exact-source contract, scheduler/lineage startup, planner/controller và serving runners. Test bị skip cần CPU torch để kiểm tra tensor row-copy; không bị thay bằng mock để tuyên bố GPU coverage. `git diff --check` sạch. Preflight giờ chặn cấu hình OOM/không tương thích trước khi yêu cầu profile. Benchmark subprocess nhận package path tuyệt đối để hoạt động khi thư mục làm việc thay đổi. Chưa commit các thay đổi tích hợp này và chưa xác minh trên GPU Modal thực.
+
+
+## 8. Kiểm tra Modal thực sau lần tiếp tục
+
+- Đã kết nối Modal và khởi chạy calibration thật; không dùng profile synthetic để vượt gate.
+- Lượt đầu build layer pip riêng dừng ở tải wheel vLLM. Đã hủy app kiểm tra đó và đồng bộ recipe để dùng cache của serving; không giữ GPU song song.
+- Lượt GPU tiếp theo phát hiện resource `A10G` báo `NVIDIA A10` qua CUDA. Đã thêm alias hẹp A10/A10G trong calibration/profile validation, giữ kiến trúc sm_86 và từ chối RTX 3090 cùng SM. Có regression cho identity và profile roundtrip với tên CUDA thực.
+- Sau sửa alias, target và EAGLE head đã tới bước load trên A10; engine thất bại trong FlashInfer JIT vì image thiếu `nvcc` (`Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist`).
+- Đã thay base `debian_slim` bằng shared CUDA development recipe tương ứng nhánh M4, pin vLLM 0.30.0; calibration và serving dùng chung helper `modal_image.py`. Có regression chống mất compiler base.
+- Đang kiểm tra trước với batch 1 và đủ K=0..4, giữ nguyên warmup/repeats. Profile kiểm tra nằm trong `/tmp`, không ghi đè profile người dùng. Consumer chỉ cho phép profile này khi max_num_seqs=1; cấu hình mặc định 32 sequences vẫn yêu cầu đầy đủ các batch chuẩn.
+- Chưa có kết luận calibration/serving thành công cho tới khi lượt GPU sau sửa image hoàn tất. Các app lỗi được dừng, không deploy persistent endpoint.
+
+
+## 9. Kết quả kiểm chứng GPU thực — 15/11/2026
+
+**Kết luận:** Đã kiểm chứng calibration thật và đường serving Hardware-Adaptive EAGLE trên Modal A10G ở **batch 1, max_num_seqs=1**. Không đóng phạm vi full-grid/performance chỉ từ smoke test này.
+
+### Calibration
+
+- Profile schema v2 đo đủ K=0..4, context=1024, warmup 5 + measured repeats 50 mỗi cell: **275 raw records**.
+- JSON vượt `validate_measured_profile`; giữ đúng model revisions và raw SHA256. K=0 bao gồm cache-sync của drafter.
+- Evidence: [measured_batch1_profile.json](evidence/2026-11-15-modal-a10g/measured_batch1_profile.json). Đây là profile kiểm tra riêng; không ghi đè profile synthetic cũ trong thư mục người dùng.
+
+### Serving và adaptive feedback
+
+- Endpoint Modal công khai trả thành công `/health`, `/v1/models`, `/v1/completions` và ba request `/v1/chat/completions`, mỗi request sinh đủ **128 output tokens**.
+- Job GPU riêng dùng cùng `LocalServingRunner`, scheduler/executor và profile để trả trace trực tiếp trước khi đóng container. Cách này tránh việc Modal CLI non-PTY không trả stdout của lệnh thu file trong lượt kiểm tra hiện tại.
+- **360 scheduled-budget records:** K=0 có 336 lần, K=2 có 15 lần, K=3 có 9 lần. EAGLE không chạy K=4 cố định.
+- **24 actual draft-birth records:** K=2 có 15 lần, K=3 có 9 lần, khớp các nonzero scheduled K.
+- **24 verification feedback records**, toàn bộ `lineage_status=attributed`. Tổng **57 drafted tokens / 25 accepted draft tokens** khớp giữa feedback, actual draft rows và response metrics.
+- Startup trace xác nhận executor publication → scheduler consumption → scheduler initialization trong cùng binding; giữ nguyên source gate vLLM/EAGLE.
+- Evidence: [public_serving_responses.json](evidence/2026-11-15-modal-a10g/public_serving_responses.json), [native_runtime_verification.json](evidence/2026-11-15-modal-a10g/native_runtime_verification.json), [verification_summary.json](evidence/2026-11-15-modal-a10g/verification_summary.json).
+
+### Các sửa bổ sung từ test thực
+
+- Dùng alias A10/A10G ở cả calibration, profile loader và runtime identity check; vẫn kiểm tra SM và từ chối GPU khác như RTX 3090.
+- Dùng chung CUDA devel image có nvcc cho calibration/serving, thay base thiếu compiler khiến FlashInfer JIT thất bại.
+- Chỉ chuyển source roots qua PYTHONPATH của Modal subprocess. Không chuyển sys.path/third-party packages của Python hệ thống sang pipx Modal; đã xác minh import watcher dùng typing_extensions trong đúng Modal venv.
+- Profile batch nhỏ chỉ dùng với serving capacity được grid đo bao phủ. Không dùng profile B=1 để phục vụ cấu hình mặc định 32 sequences.
+
+### Validation và phạm vi còn lại
+
+- Regression cuối: **354 pass, 1 skip** (test tensor row-copy cần CPU torch). `git diff --check` sạch.
+- Các app kiểm tra của lượt này đã dừng, không có persistent deployment được tạo. Model cache/image cache được giữ để tái sử dụng.
+- Chưa chạy full grid B=1,2,4,8,16,32 trên GPU trong lượt này; chưa so token đầu ra với vanilla, chưa đo end-to-end speedup hoặc đưa ra bảo đảm lossless/không giảm tốc. Kết quả là functional GPU verification có phạm vi rõ ràng.
+- Chưa commit các thay đổi tích hợp.

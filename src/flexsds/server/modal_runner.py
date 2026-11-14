@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import json
 import shutil
 import subprocess
@@ -57,17 +56,10 @@ class ModalServingRunner:
         env = dict(os.environ)
         env["FLEXSDS_SERVING_CONFIG"] = json.dumps({k: cfg[k] for k in keys if k in cfg})
 
-        # Inject package root and sys.path entries into PYTHONPATH so modal subprocess can import flexsds
-        resolved = Path(__file__).resolve()
-        pkg_root = str(resolved.parents[2]) if len(resolved.parents) > 2 else "/root/project/src"
-        existing_pp = env.get("PYTHONPATH", "")
-        extra_paths = [pkg_root]
-        for p in sys.path:
-            if p and p not in extra_paths and os.path.isdir(p):
-                extra_paths.append(p)
-        if existing_pp:
-            extra_paths.append(existing_pp)
-        env["PYTHONPATH"] = os.pathsep.join(extra_paths)
+        # Modal can use another pipx interpreter; forward project source only,
+        # never the launcher's third-party packages or interpreter directories.
+        package_root = Path(__file__).resolve().parents[2]
+        env['PYTHONPATH'] = os.pathsep.join((str(package_root), str(package_root.parent)))
         return env
 
     def launch(
