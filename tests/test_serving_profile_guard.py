@@ -25,17 +25,17 @@ def test_get_serving_cost_profile_strict_and_fallback():
     assert prof_name == "conservative_analytical_fallback"
 
 
-def test_get_serving_cost_profile_cpu_fails_in_strict_mode():
-    """Kiểm tra thiết bị CPU không được tự động gán profile_sm89_l4 khi strict=True."""
-    cpu_hw = HardwareInfo(
-        device_name="Host CPU",
-        sm_architecture="cpu",
-        total_vram_mb=16384.0,
-        free_vram_mb=16384.0,
-        cuda_version="N/A",
-        is_cuda_available=False,
+def test_get_serving_cost_profile_uncalibrated_gpu_fails_in_strict_mode():
+    """Kiểm tra GPU chưa có hồ sơ thực nghiệm (như A10G sm_86) trả về (None, '') khi strict=True."""
+    a10g_hw = HardwareInfo(
+        device_name="Remote A10G",
+        sm_architecture="sm_86",
+        total_vram_mb=22000.0,
+        free_vram_mb=22000.0,
+        cuda_version="12.4",
+        is_cuda_available=True,
     )
-    cost_model, prof_name = get_serving_cost_profile(cpu_hw, allow_fallback=False)
+    cost_model, prof_name = get_serving_cost_profile(a10g_hw, allow_fallback=False)
     assert cost_model is None
     assert prof_name == ""
 
