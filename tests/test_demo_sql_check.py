@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.api.questions import SqlCheckError, check_demo_sql
+from src.api.questions import SqlCheckError, check_demo_sql, relax_text_filters
 
 
 def code_of(sql: str) -> str:
@@ -121,3 +121,51 @@ def test_invoice_level_aggregates_over_item_or_tax_joins_are_rejected(sql):
 ])
 def test_aggregates_without_fanout_stay_allowed(sql):
     assert check_demo_sql(sql)
+
+
+# ---------------------------------------------------------------- 14/11: c12 and c02/c06/c08 of canonical_questions_v1
+@pytest.mark.parametrize("op", ["UNION", "UNION ALL", "INTERSECT", "EXCEPT"])
+def test_compound_selects_go_back_for_one_select(op):
+    sql = (f"SELECT COUNT(*) AS n FROM v_invoice_facts WHERE issued_date LIKE '2020-08-10%' {op} "
+           "SELECT COUNT(*) AS n FROM v_invoice_facts WHERE issued_date LIKE '2020-08-11%'")
+    with pytest.raises(SqlCheckError) as info:
+        check_demo_sql(sql)
+    assert info.value.code == "COMPOUND_SELECT" and "BETWEEN" in str(info.value)
+
+
+KNOWN = {"seller_name": ["NHA SACH GD-TC CAM PHA", "THUC COFFEE", "MINIMART ANAN", "MINIMART"]}
+
+
+def test_text_filters_lose_their_marks_and_match_word_by_word():
+    sql, notes = relax_text_filters("SELECT SUM(total_amount_value) AS t FROM v_invoice_facts "
+                                    "WHERE seller_name ILIKE '%Nhà sách Cẩm Phả%' LIMIT 200", KNOWN)
+    assert "seller_name ILIKE '%nha%sach%cam%pha%'" in sql and sql.endswith("LIMIT 200")
+    assert notes == [{"column": "seller_name", "from": "%Nhà sách Cẩm Phả%", "to": "%nha%sach%cam%pha%"}]
+
+
+def test_a_store_name_keeps_only_the_words_found_in_a_real_name():
+    sql, notes = relax_text_filters("SELECT seller_address FROM v_invoice_facts "
+                                    "WHERE seller_name ILIKE '%Quán Thức Coffee%'", KNOWN)
+    assert "seller_name ILIKE '%thuc%coffee%'" in sql
+    assert notes[0]["to"] == "%thuc%coffee%"
+
+
+def test_item_text_has_no_known_list_and_only_loses_marks():
+    sql, _ = relax_text_filters("SELECT COUNT(*) AS n FROM v_item_facts WHERE description LIKE '%bánh%'", KNOWN)
+    assert "description ILIKE '%banh%'" in sql
+
+
+def test_equality_on_a_name_becomes_a_word_match():
+    sql, _ = relax_text_filters("SELECT COUNT(*) AS n FROM v_invoice_facts WHERE seller_name = 'Nhà sách Cẩm Phả'", KNOWN)
+    assert "seller_name ILIKE '%nha%sach%cam%pha%'" in sql
+
+
+def test_dates_numbers_and_plain_filters_are_left_untouched():
+    sql = ("SELECT COUNT(*) AS n FROM v_invoice_facts WHERE issued_date LIKE '2020-08-1%' "
+           "AND seller_name ILIKE '%minimart%' AND currency = 'VND' LIMIT 200")
+    assert relax_text_filters(sql, KNOWN) == (sql, [])
+
+
+def test_a_name_with_no_known_match_keeps_all_its_words():
+    sql, _ = relax_text_filters("SELECT COUNT(*) AS n FROM v_invoice_facts WHERE seller_name ILIKE '%Bách Hoá Xanh%'", KNOWN)
+    assert "'%bach%hoa%xanh%'" in sql

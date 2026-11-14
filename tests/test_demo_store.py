@@ -355,3 +355,16 @@ def test_postgres_store_bench_runs(pg):
     store.update_bench("bn_000000000001", "done", result={"cells": []})
     assert [r["run_id"] for r in store.list_bench()] == ["bn_000000000001"]
     assert store.get_bench("bn_missing") is None
+
+
+@needs_db
+def test_store_names_for_text_filters_come_from_the_reader(pg):
+    from psycopg.conninfo import make_conninfo
+
+    from src.api.store import PostgresStore
+
+    writer.insert_extraction(pg, payload_with_items_and_tax(), RUN, source="devset")
+    store = PostgresStore(DB_URL, make_conninfo(DB_URL, user="demo_reader"))
+    values = store.text_values()
+    assert set(values) == {"seller_name", "buyer_name"}
+    assert values["seller_name"] == [payload_with_items_and_tax()["seller"]["name"]]

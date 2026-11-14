@@ -16,6 +16,7 @@ from sqlglot import exp
 
 from src.api.store import Store
 from src.pipeline.sql_guard import clean_sql
+from src.pipeline.text_normalize import has_vietnamese_marks, strip_vietnamese_marks
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SQLITE_SCHEMA = REPO_ROOT / "src/pipeline/sqlite/schema.sql"
@@ -93,7 +94,11 @@ def check_demo_sql(raw: str) -> str:
     if len(statements) != 1:
         raise SqlCheckError("MULTIPLE_STATEMENTS", "only one statement is allowed")
     tree = statements[0]
-    if not isinstance(tree, (exp.Select, exp.Union, exp.Intersect, exp.Except)):
+    if any(isinstance(node, (exp.Union, exp.Intersect, exp.Except)) for node in tree.walk()):
+        # c12 of canonical_questions_v1: one count per day glued with UNION instead of one range count.
+        raise SqlCheckError("COMPOUND_SELECT", "Chỉ dùng đúng một câu SELECT, không UNION/INTERSECT/EXCEPT; "
+                                               "với một khoảng ngày dùng issued_date BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'")
+    if not isinstance(tree, exp.Select):
         raise SqlCheckError("NOT_SELECT", f"statement is {type(tree).__name__.upper()}")
     for node in tree.walk():
         if isinstance(node, FORBIDDEN_NODES) or (isinstance(node, exp.Select) and node.args.get("locks")):
@@ -132,6 +137,63 @@ def check_demo_sql(raw: str) -> str:
     if current is None or current > ROW_LIMIT:
         tree = tree.limit(ROW_LIMIT)
     return tree.sql(dialect="postgres")
+
+
+_WORD = re.compile(r"[a-z0-9]+")
+_LETTER = re.compile(r"[^\W\d_]")
+
+
+def _words(text: str) -> list[str]:
+    return _WORD.findall(strip_vietnamese_marks(text).lower())
+
+
+def _known_run(words: list[str], values: list[str]) -> list[str]:
+    """Longest run of consecutive words that matches (in order, ILIKE-style) at least one real value."""
+    normalized = [" ".join(_words(v)) for v in values]
+    for size in range(len(words), 0, -1):
+        for start in range(len(words) - size + 1):
+            pattern = re.compile(".*".join(re.escape(w) for w in words[start:start + size]))
+            if any(pattern.search(v) for v in normalized):
+                return words[start:start + size]
+    return words
+
+
+def relax_text_filters(sql: str, known: dict[str, list[str]]) -> tuple[str, list[dict[str, str]]]:
+    """Match text filters the way the data is stored: without Vietnamese marks, case-insensitive, word by word.
+
+    Stored text comes from unaccented OCR (``NHA SACH GD-TC CAM PHA``), while people type ``Nhà sách Cẩm Phả``;
+    c02/c06/c08 of canonical_questions_v1 returned no rows for that reason. ``col ILIKE/LIKE '<text>'`` and
+    ``col = '<text with marks>'`` become ``col ILIKE '%w1%w2%'``; for a column with ``known`` values (store
+    names) only the longest run of words found in a real value is kept (``Quán Thức Coffee`` -> ``%thuc%coffee%``).
+    Literals without letters (dates) and filters already in that form are left as they are.
+    """
+    tree = sqlglot.parse_one(sql, read="postgres")
+    notes: list[dict[str, str]] = []
+
+    def rewrite(node: exp.Expression) -> exp.Expression:
+        if not isinstance(node, (exp.Like, exp.ILike, exp.EQ)):
+            return node
+        column, literal = node.this, node.expression
+        if not (isinstance(column, exp.Column) and isinstance(literal, exp.Literal) and literal.is_string):
+            return node
+        raw = literal.this
+        values = known.get(column.name.lower()) or []
+        if not _LETTER.search(raw) or (isinstance(node, exp.EQ) and not has_vietnamese_marks(raw)
+                                       and (not values or raw in values)):
+            return node
+        words = _words(raw)
+        if not words:
+            return node
+        if values:
+            words = _known_run(words, values)
+        pattern = "%" + "%".join(words) + "%"
+        if isinstance(node, exp.ILike) and raw == pattern:
+            return node
+        notes.append({"column": column.name, "from": raw, "to": pattern})
+        return exp.ILike(this=column.copy(), expression=exp.Literal.string(pattern))
+
+    tree = tree.transform(rewrite)
+    return (tree.sql(dialect="postgres"), notes) if notes else (sql, [])
 
 
 FANOUT_VIEWS = ("v_item_facts", "v_tax_facts")
@@ -234,8 +296,9 @@ class QuestionService:
                       **metrics})
         return (response["choices"][0]["message"]["content"] or "").strip()
 
-    def _execute(self, raw_sql: str) -> tuple[str, list[str], list[list[Any]]]:
-        sql = check_demo_sql(raw_sql)
+    def _execute(self, raw_sql: str, rewrites: list[dict[str, str]]) -> tuple[str, list[str], list[list[Any]]]:
+        sql, notes = relax_text_filters(check_demo_sql(raw_sql), self.store.text_values())
+        rewrites[:] = notes
         columns, rows = self.store.run_readonly(sql)
         return sql, columns, rows
 
@@ -243,7 +306,7 @@ class QuestionService:
         """Node 2 only: one checked read-only SQL (one repair allowed) and its rows."""
         result: dict[str, Any] = {"question": question, "status": "error", "sql": None, "columns": [], "rows": [],
                                   "row_count": 0, "answer": None, "withheld_answer": None, "warning": None,
-                                  "error": None, "repairs": 0, "first_error": None, "calls": [],
+                                  "error": None, "repairs": 0, "first_error": None, "calls": [], "text_rewrites": [],
                                   "prompt_versions": {"node2": NODE2_PROMPT_VERSION, "answer": ANSWER_PROMPT_VERSION}}
         calls = result["calls"]
         system = build_node2_prompt(self.store.categorical_values(), self._today())
@@ -255,7 +318,7 @@ class QuestionService:
             result["error"] = self._redact(f"node2 call failed: {exc}")[:400]
             return result
         try:
-            sql, columns, rows = self._execute(raw_sql)
+            sql, columns, rows = self._execute(raw_sql, result["text_rewrites"])
         except Exception as first:  # noqa: BLE001  (service boundary: reported, never raised to the user)
             result["first_error"] = self._redact(str(first))[:400]
             result["repairs"] = 1
@@ -264,7 +327,7 @@ class QuestionService:
                                                              "Hãy viết lại đúng một câu SELECT, chỉ trả về SQL."}]
             try:
                 raw_sql = self._call(caller, "node2", repair, NODE2_MAX_TOKENS, calls)
-                sql, columns, rows = self._execute(raw_sql)
+                sql, columns, rows = self._execute(raw_sql, result["text_rewrites"])
             except Exception as second:  # noqa: BLE001  (service boundary: reported, never raised to the user)
                 result["sql"] = raw_sql
                 result["error"] = self._redact(str(second))[:400]

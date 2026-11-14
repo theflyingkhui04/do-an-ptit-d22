@@ -18,6 +18,7 @@ ENDPOINT_FIELDS = frozenset(ENDPOINT_COLUMNS) | {"api_key"}
 BENCH_COLUMNS = ("run_id", "kind", "status", "config", "progress", "result", "error", "created_at", "updated_at")
 CATEGORICAL = {"v_invoice_facts": ("extraction_status", "document_type", "currency", "payment_method"),
                "v_tax_facts": ("tax_name",), "v_upload_facts": ("source",)}
+TEXT_VALUE_COLUMNS = {"v_invoice_facts": ("seller_name", "buyer_name")}
 MAX_ROWS = 200
 
 
@@ -33,6 +34,7 @@ class Store(Protocol):
     def list_invoices(self, limit: int = MAX_ROWS) -> list[dict]: ...
     def get_invoice(self, invoice_id: str) -> dict | None: ...
     def categorical_values(self) -> dict[str, list[str]]: ...
+    def text_values(self) -> dict[str, list[str]]: ...
     def run_readonly(self, sql: str) -> tuple[list[str], list[list[Any]]]: ...
     def list_endpoints(self) -> list[dict]: ...
     def get_endpoint(self, endpoint_id: str, *, with_key: bool = False) -> dict | None: ...
@@ -140,6 +142,17 @@ class PostgresStore:
         keys = ("invoice_id", "payload", "source", "storage_path", "created_at", "latency_ms", "lane",
                 "model_name", "prompt_version")
         return {k: _plain(v) for k, v in zip(keys, row)}
+
+    def text_values(self) -> dict[str, list[str]]:
+        """Real names Node 2 text filters are matched against (``questions.relax_text_filters``)."""
+        values: dict[str, list[str]] = {}
+        with self._tx(read_only=True) as conn:
+            for view, columns in TEXT_VALUE_COLUMNS.items():
+                for column in columns:
+                    rows = conn.execute(f"SELECT DISTINCT {column} FROM {view} WHERE {column} IS NOT NULL "
+                                        "ORDER BY 1 LIMIT 500").fetchall()
+                    values[column] = [r[0] for r in rows]
+        return values
 
     def categorical_values(self) -> dict[str, list[str]]:
         values: dict[str, list[str]] = {}

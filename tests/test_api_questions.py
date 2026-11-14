@@ -27,6 +27,9 @@ class QAStore(FakeStore):
         self.results = list(results)
         self.executed: list[str] = []
 
+    def text_values(self):
+        return {"seller_name": ["NHA SACH GD-TC CAM PHA", "THUC COFFEE"]}
+
     def categorical_values(self):
         return {"extraction_status": ["partial"], "document_type": ["retail_receipt"], "currency": ["VND"],
                 "payment_method": [], "tax_name": ["VAT"]}
@@ -222,3 +225,26 @@ def test_question_is_sent_as_typed_and_prompt_says_data_has_no_marks():
     messages = sql_caller.calls[0]["messages"]
     assert messages[1]["content"] == "Có bao nhiêu hoá đơn Sữa tươi?"
     assert "no Vietnamese marks" in messages[0]["content"]
+
+
+def test_accented_names_in_the_sql_are_matched_against_the_unaccented_data():
+    store = QAStore([(["t"], [[75000.0]])])
+    qa = service(store, scripted("SELECT SUM(total_amount_value) AS t FROM v_invoice_facts "
+                                 "WHERE seller_name ILIKE '%Nhà sách Cẩm Phả%'"),
+                 scripted("Tổng là 75.000 đồng."))
+    result = qa.answer("Tổng tiền các hoá đơn của Nhà sách Cẩm Phả là bao nhiêu?")
+    assert "ILIKE '%nha%sach%cam%pha%'" in store.executed[0]
+    assert result["sql"] == store.executed[0] and result["status"] == "ok"
+    assert result["text_rewrites"] == [{"column": "seller_name", "from": "%Nhà sách Cẩm Phả%",
+                                        "to": "%nha%sach%cam%pha%"}]
+
+
+def test_a_union_is_repaired_into_one_select():
+    store = QAStore([(["n"], [[12]])])
+    sql_caller = scripted(
+        "SELECT COUNT(*) AS n FROM v_invoice_facts WHERE issued_date LIKE '2020-08-10%' UNION "
+        "SELECT COUNT(*) AS n FROM v_invoice_facts WHERE issued_date LIKE '2020-08-11%'",
+        "SELECT COUNT(*) AS n FROM v_invoice_facts WHERE issued_date BETWEEN '2020-08-10' AND '2020-08-12'")
+    result = service(store, sql_caller, scripted("Có 12 hoá đơn.")).answer("Từ ngày 10 đến 12/8/2020 có bao nhiêu hoá đơn?")
+    assert result["repairs"] == 1 and result["first_error"].startswith("COMPOUND_SELECT")
+    assert result["rows"] == [[12]] and len(store.executed) == 1

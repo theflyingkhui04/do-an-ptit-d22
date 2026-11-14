@@ -85,6 +85,9 @@ class FakeStore:
     def categorical_values(self):
         return {"extraction_status": ["partial"]}
 
+    def text_values(self):
+        return {}
+
     # endpoints pasted from flexsds serve (dict keeps insertion order like ORDER BY created_at)
     def list_endpoints(self) -> list[dict]:
         rows = []
