@@ -163,7 +163,7 @@ export default function AddEndpointDialog({ api, onClose, onSaved }: {
         <div className="flex items-start gap-3">
           <div className="grid gap-1">
             <h2 id="add-endpoint-title" className="text-lg font-bold">Thêm endpoint</h2>
-            <p className="text-ink-2">Dán dòng “Endpoint URL” mà lệnh <code className="font-mono">flexsds serve</code> in ra. Dán nhiều địa chỉ thì mỗi dòng một địa chỉ.</p>
+            <p className="text-ink-2">Dán địa chỉ ở dòng “API” mà lệnh <code className="font-mono">flexsds serve</code> in ra sau “Endpoint LLM created”. Dán nhiều địa chỉ thì mỗi dòng một địa chỉ.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Đóng" className="ml-auto rounded-md p-1 text-ink-3 hover:bg-sunken">
             <X aria-hidden className="size-5" />

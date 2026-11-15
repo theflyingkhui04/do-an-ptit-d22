@@ -50,7 +50,10 @@ describe("endpoints", () => {
   it("opens on the onboarding page when no endpoint has been added", async () => {
     open("", fakeApi({ endpoints: vi.fn(async () => ({ endpoints: [] })) }));
     expect(await screen.findByRole("heading", { name: "Chưa có endpoint nào" })).toBeInTheDocument();
-    expect(screen.getByText(/flexsds serve --model/)).toBeInTheDocument();
+    const sample = screen.getByTestId("serve-sample");
+    expect(sample).toHaveTextContent(/flexsds serve .*--target \S+ .*--draft \S+/);
+    expect(sample).not.toHaveTextContent("--model");
+    expect(sample).toHaveTextContent("Endpoint LLM created:");
     expect(screen.getByTestId("endpoint-summary")).toHaveTextContent("Chưa có endpoint");
   });
 

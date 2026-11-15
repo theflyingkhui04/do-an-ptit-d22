@@ -17,10 +17,17 @@ function metaLine(e: Endpoint): string {
   return parts.length ? parts.join(", ") : "Chưa rõ GPU và cách giải mã";
 }
 
+// Kept in step with the real CLI by tests/test_web_cli_sample.py (argparse of `flexsds serve`,
+// the header printed by serving_session.py and the Modal app name in modal_app.py).
+export const SERVE_SAMPLE =
+  "flexsds serve --backend modal --gpu A10G --target Qwen/Qwen2.5-7B-Instruct-AWQ --draft duckhoi/qwen2.5-7b-eagle3.1-speculator";
+export const SERVE_SAMPLE_HEADER = "Endpoint LLM created:";
+export const SERVE_SAMPLE_API = "https://…--flexsds-serving-serve.modal.run/v1";
+
 function Onboarding({ onAdd }: { onAdd: () => void }) {
   const steps = [
     { title: "Chạy flexsds serve", body: "Trên Modal, Colab hoặc GPU của máy. CLI dựng vLLM và chọn cách giải mã hợp với GPU." },
-    { title: "Copy dòng Endpoint URL", body: "Ví dụ https://…--flexsds-serve.modal.run/v1. Trên máy cá nhân, mở đường hầm cloudflared trước." },
+    { title: "Copy dòng API", body: `Khi CLI báo “${SERVE_SAMPLE_HEADER.replace(/:$/, "")}”, copy địa chỉ ở dòng API. Trên máy cá nhân, mở đường hầm cloudflared trước.` },
     { title: "Dán vào web", body: "Web tự nhận model và độ dài ngữ cảnh. Dán nhiều endpoint để so sánh với nhau." },
   ];
   return (
@@ -39,9 +46,9 @@ function Onboarding({ onAdd }: { onAdd: () => void }) {
           </li>
         ))}
       </ol>
-      <pre className="mt-4 overflow-x-auto rounded-lg bg-rail px-4 py-3 font-mono text-[13px] leading-relaxed text-rail-ink">
-        <span className="text-[#7d8a97]">$ </span>flexsds serve --model Qwen/Qwen2.5-7B-Instruct{"\n"}
-        <span className="text-[#7d8a97]">  Endpoint URL: </span><span className="text-white">https://…--flexsds-serve.modal.run/v1</span>
+      <pre data-testid="serve-sample" className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-rail px-4 py-3 font-mono text-[13px] leading-relaxed text-rail-ink">
+        <span className="text-[#7d8a97]">$ </span>{SERVE_SAMPLE}{"\n"}
+        <span className="text-[#7d8a97]">{SERVE_SAMPLE_HEADER}{"\n"}- API: </span><span className="text-white">{SERVE_SAMPLE_API}</span>
       </pre>
     </EmptyState>
   );
