@@ -43,7 +43,7 @@ def render_banner(hw_info: Optional[HardwareInfo] = None) -> str:
         "\033[1;37m  ██╔══╝  ██║     ██╔══╝   ██╔██╗ ╚════██║██║  ██║╚════██║\033[0m",
         "\033[1;37m  ██║     ███████╗███████╗██╔╝ ██╗███████║██████╔╝███████║\033[0m",
         "",
-        f"  \033[1;37mFlexSDS\033[0m \033[90m· Speculative Decoding Serving Engine · v{__version__}\033[0m",
+        f"  \033[1;37mFlexSDS\033[0m \033[90m· Hardware-Adaptive EAGLE Serving Engine · v{__version__}\033[0m",
         "  \033[90mD22 Thesis Team\033[0m",
         "  \033[90mPosts and Telecommunications Institute of Technology (PTIT)\033[0m",
         "",
@@ -71,7 +71,7 @@ def render_ascii_banner(hw_info: HardwareInfo) -> str:
         "  +---------+  |  __| | |/ _ \\ \\/ \\___ \\| | | |___) |\n"
         "               |_|    |_|\\___/_/\\_\\____/|____/|____/ \n"
         "\n"
-        f"  FlexSDS | Speculative Decoding Serving Engine | v{__version__}\n"
+        f"  FlexSDS | Hardware-Adaptive EAGLE Serving Engine | v{__version__}\n"
         "  PTIT | Posts and Telecommunications Institute of Technology | D22 Thesis Team\n"
         f"  Hardware: {hw_info.summary()}\n"
         "  Engine: HardwareAdaptive v0.2\n"

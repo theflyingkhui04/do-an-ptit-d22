@@ -15,7 +15,7 @@ def test_local_runner_build_command_eagle3_omits_incompatible_scheduler():
             "draft_method": "eagle3",
             "use_heterogeneous_vocab": True,
             "port": 8000,
-            "enable_adaptive": True,
+            "enable_adaptive": False,
         }
     }
     cmd = runner.build_command(config)
@@ -48,7 +48,7 @@ def test_local_runner_build_command_draft_model_includes_adaptive_scheduler():
 
 def test_local_runner_environment_vars():
     runner = LocalServingRunner()
-    env = runner.setup_environment({"serving": {"enable_adaptive": True}})
+    env = runner.setup_environment({"serving": {"enable_adaptive": False}})
     assert env.get("ADAPTIVE_ENABLE_VRAM_GUARD") == "1"
     assert "ADAPTIVE_TELEMETRY_PATH" in env
 
@@ -100,5 +100,5 @@ def test_local_runner_detects_port_conflict(monkeypatch):
 def test_local_runner_launch_aborts_on_port_conflict(monkeypatch):
     runner = LocalServingRunner()
     monkeypatch.setattr(runner, "check_port_available", lambda port: False)
-    proc = runner.launch({"serving": {"port": 8000}}, dry_run=False)
+    proc = runner.launch({"serving": {"port": 8000, "enable_adaptive": False}}, dry_run=False)
     assert proc is None

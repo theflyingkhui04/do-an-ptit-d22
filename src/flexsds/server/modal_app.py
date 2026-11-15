@@ -43,35 +43,57 @@ except ImportError:
     modal = None
 
 if modal is not None:
+    from flexsds.server.modal_image import serving_image
     app = modal.App(APP_NAME)
     image = (
-        modal.Image.debian_slim(python_version="3.11")
-        .pip_install("vllm==0.30.0", "fastapi", "psutil")
+        serving_image()
         .env({"PYTHONPATH": "/root/project:/root/project/src",
               "FLEXSDS_SERVING_CONFIG": json.dumps(SERVING_CONFIG)})
     )
-    src_dir = PROJECT_ROOT / "src"
-    if src_dir.exists():
-        image = image.add_local_dir(str(src_dir), remote_path="/root/project/src")
-    else:
-        flexsds_dir = resolved.parents[1] if len(resolved.parents) > 1 else Path("/root/project/src/flexsds")
-        image = image.add_local_dir(str(flexsds_dir), remote_path="/root/project/src/flexsds")
+    if modal.is_local():
+        src_dir = PROJECT_ROOT / "src"
+        if src_dir.exists():
+            image = image.add_local_dir(str(src_dir), remote_path="/root/project/src")
+        else:
+            flexsds_dir = resolved.parents[1] if len(resolved.parents) > 1 else Path("/root/project/src/flexsds")
+            image = image.add_local_dir(str(flexsds_dir), remote_path="/root/project/src/flexsds")
 
-    manifest_file = PROJECT_ROOT / "experiments/scalar_vllm_source_manifest.json"
-    if manifest_file.exists():
-        image = image.add_local_file(str(manifest_file),
-                                     remote_path="/root/project/experiments/scalar_vllm_source_manifest.json")
+        experiments_dir = PROJECT_ROOT / "experiments"
+        if experiments_dir.exists():
+            image = image.add_local_dir(str(experiments_dir), remote_path="/root/project/experiments",
+                                       ignore=["runs/**", "results/**", "__pycache__/**", "*.ipynb"])
+        selected_profile = SERVING_CONFIG.get("profile_path")
+        if selected_profile:
+            profile = Path(selected_profile)
+            if not profile.is_file():
+                raise ValueError("Selected hardware profile artifact is missing")
+            image = image.add_local_file(str(profile), remote_path="/root/project/hardware_profile.json")
 
     volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)
 
-    @app.function(image=image, gpu=GPU,
+    @app.function(image=image, gpu=GPU, max_containers=1,
                   volumes={"/root/.cache/huggingface": volume}, timeout=3600)
     @modal.web_server(PORT, startup_timeout=600)
     def serve():
+        runtime_config = dict(SERVING_CONFIG)
+        if runtime_config.get("profile_path"):
+            runtime_config["profile_path"] = "/root/project/hardware_profile.json"
+        if runtime_config.get("enable_adaptive", True):
+            import torch
+            from flexsds.core.hardware import HardwareInfo, matches_gpu_label
+            from flexsds.core.cost_model import validate_measured_profile
+            sm = 'sm_%d%d' % torch.cuda.get_device_capability(0)
+            data = json.loads(Path(runtime_config['profile_path']).read_text())
+            if not matches_gpu_label(data['metadata']['device'], torch.cuda.get_device_name(0)):
+                raise ValueError('Profile differs from actual Modal GPU')
+            hardware = HardwareInfo(device_name=f"Remote {GPU}", sm_architecture=sm,
+                                    total_vram_mb=0, free_vram_mb=0, cuda_version=torch.version.cuda,
+                                    is_cuda_available=True)
+            validate_measured_profile(data, hardware, runtime_config.get('target_model'), runtime_config.get('draft_model'))
         runner = LocalServingRunner()
         # Do not use the laptop's preflight here: the CLI evaluated the remote budget.
         # vLLM and Modal's web-server startup check remain the runtime authorities.
-        subprocess.Popen(runner.build_command(SERVING_CONFIG),
-                         env=runner.setup_environment(SERVING_CONFIG))
+        subprocess.Popen(runner.build_command(runtime_config),
+                         env=runner.setup_environment(runtime_config))
 else:
     app = None

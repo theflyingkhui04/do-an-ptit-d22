@@ -2,7 +2,11 @@
 
 > Bản thảo M3-06 (05/11/2026). Chuyển thể từ [01-gioi-thieu.md](01-gioi-thieu.md) theo dàn ý [08 §Chương 1](08-outline-quyen.md); các quyết định thiết kế dẫn chiếu [03-quyet-dinh-thiet-ke.md](03-quyet-dinh-thiet-ke.md), thuật ngữ theo [07-thuat-ngu.md](07-thuat-ngu.md). Người viết chính: Dương; hỗ trợ: Đại.
 
-**Tên đề tài.** *Giải mã suy đoán thích ứng phần cứng cho suy luận LLM tự-host trên GPU phổ thông* (*Hardware-Aware Speculative Decoding for Self-Hosted LLM Inference on Consumer GPUs*).
+**Tên đề tài.** *FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs*.
+
+**Tên tiếng Việt:** *FlexSDS: Hệ thống phục vụ giải mã suy đoán EAGLE thích ứng theo phần cứng cho mô hình ngôn ngữ lớn*.
+
+> Đồng bộ tên ngày 14/11/2026; nội dung chương là bản thảo nghiên cứu. Trạng thái triển khai xem [README](../README.md).
 
 ---
 

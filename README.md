@@ -1,181 +1,118 @@
 <div align="center">
 
-<img src="logo/flexsds_banner.gif" alt="PTIT - FlexSDS Banner" width="100%" />
+<img src="logo/flexsds_banner.gif" alt="PTIT — FlexSDS" width="100%" />
 
-# FlexSDS: Hệ thống phục vụ suy luận phỏng đoán thích ứng nhận biết phần cứng
+# FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs
 
-**Bộ công cụ phục vụ suy luận phỏng đoán thông minh cho các mô hình ngôn ngữ lớn tự lưu trữ**  
-*Hardware-Aware Adaptive Speculative Decoding Serving Toolkit for Self-Hosted LLMs*
+**Hệ thống phục vụ giải mã suy đoán EAGLE thích ứng theo phần cứng cho mô hình ngôn ngữ lớn**
 
-[![PTIT](https://img.shields.io/badge/PTIT-Đồ%20án%20tốt%20nghiệp%20D22-ED1C24?style=for-the-badge&logoColor=white)](https://portal.ptit.edu.vn/)
-[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![vLLM](https://img.shields.io/badge/vLLM-0.30.0%20Core%20V1-blue?style=for-the-badge)](https://github.com/vllm-project/vllm)
-[![Modal](https://img.shields.io/badge/Modal-GPU%20L4%20Serverless-00C7B7?style=for-the-badge)](https://modal.com)
-[![Status](https://img.shields.io/badge/Trạng%20thái-Sprint%205%20%2F%20M4%20Freeze-brightgreen?style=for-the-badge)]()
-
-<br/>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="logo/icon_dark.webp">
-  <source media="(prefers-color-scheme: light)" srcset="logo/icon_white.webp">
-  <img alt="FlexSDS Logo" src="logo/icon_dark.webp" width="90" height="90">
-</picture>
+Đồ án tốt nghiệp D22 · Học viện Công nghệ Bưu chính Viễn thông (PTIT)
 
 </div>
 
----
+## 1. Mục tiêu đề tài
 
-## 1. Tổng quan đề tài
+FlexSDS nghiên cứu và xây dựng serving engine kết hợp **EAGLE speculative decoding** với bộ điều khiển **Hardware-Adaptive**. Bộ điều khiển sử dụng chi phí nháp/xác thực đo trên GPU, tỷ lệ chấp nhận token và tình trạng bộ nhớ để lựa chọn ngân sách speculative token `K` phù hợp khi phục vụ LLM.
 
-Trong các hệ thống xử lý tài liệu tự động và chuỗi tác vụ đa bước (multi-step LLM pipeline), **độ trễ sinh từ trong pha giải mã (Decode Latency)** là nút thắt cổ chai lớn nhất và bị tích lũy lũy tiến qua từng lời gọi mô hình. Kỹ thuật suy luận phỏng đoán truyền thống (Static Speculative Decoding) sử dụng cấu hình nháp cố định thường gặp phải hai rào cản nghiêm trọng trong môi trường triển khai thực tế:
-1. **Hiện tượng tăng tốc âm (Negative Speedup):** Khi gặp các tác vụ suy luận tự do có entropy cao hoặc khi hệ thống chịu tải đồng thời lớn ($c \ge 16$), việc ép chạy mô hình nháp vô ích biến nó thành tải ký sinh, làm giảm tốc độ thực tế (chỉ đạt $0.67\times - 0.81\times$ so với suy luận tuần tự cơ sở).
-2. **Nguy cơ tràn bộ nhớ (Out-Of-Memory - OOM):** Việc đồng thời nạp cả mô hình đích, mô hình nháp và phân bổ bộ đệm KV dễ dẫn đến tràn VRAM trên các dòng GPU phổ thông (NVIDIA Tesla T4 16GB, RTX 4090 24GB).
+Bài toán trọng tâm là giảm độ trễ decode và hạn chế negative speedup khi workload, batch hoặc phần cứng thay đổi. Các cấu hình vanilla và speculative decoding bằng draft model độc lập được dùng làm đối chứng. Ứng dụng hóa đơn tiếng Việt cung cấp workload để đánh giá engine.
 
-**FlexSDS** (*Flexible Speculative Decoding Serving*) là giải pháp mã nguồn mở hoàn chỉnh do nhóm sinh viên PTIT nghiên cứu và phát triển. Hệ thống tích hợp lớp điều khiển thích ứng **TreeAdaptive**, tự động nhận diện phần cứng, nạp ma trận chi phí thực nghiệm và giải ngưỡng hòa vốn động $\alpha^*(N, B)$ theo thời gian thực để co giãn cấu trúc cây nháp hoặc ngắt về suy luận tuần tự cơ sở, **bảo đảm tăng tốc tối đa nhưng không bao giờ bị chậm hơn chế độ mặc định (Lossless Guarantee)**.
+**Hardware-Adaptive EAGLE là mục tiêu chính của sản phẩm.** CLI đã nối EAGLE vào đường scalar adaptive K của nhánh M4: controller → scheduler → proposer → verification feedback/lineage. Tích hợp đã qua regression CPU/source contract và functional GPU smoke test trên Modal A10G ở batch 1. So sánh lossless và hiệu năng end-to-end vẫn cần nghiệm thu riêng.
 
----
+## 2. Trạng thái triển khai
 
-## 2. Ứng dụng thực nghiệm: Luồng đa tác vụ trên hóa đơn bán hàng
+| Thành phần | Trạng thái và giới hạn |
+|---|---|
+| EAGLE serving qua CLI | Endpoint Modal adaptive đã trả health/models/completion và ba request 128 tokens ở max_num_seqs=1. Local GPU và full capacity cần nghiệm thu riêng. |
+| Hardware-Adaptive EAGLE | Đã nối scalar dynamic K, async scheduler và paired lineage executor theo nhánh M4. Yêu cầu profile measured v2 và source vLLM 0.30.0 đúng hash; đã quan sát K=0/2/3 và feedback có lineage trên GPU ở batch 1. |
+| Calibration GPU | Đã đo thật K=0..4, batch 1, context=1024 trên Modal A10G: 275 raw records. Full grid tới batch 32 chưa được kiểm tra trong lượt này. |
+| Hardware profile | Strict gate từ chối synthetic profile cũ; profile được truyền tới container và cost consumer của scalar scheduler. |
+| Scalar scheduler | Dùng chung cơ chế dynamic K cho sequential EAGLE và nhánh nghiên cứu `draft_model`; lịch sử các lane đối chứng giữ nguyên. |
+| Readiness | CLI kiểm tra `/health`, `/v1/models` và completion trước khi báo `Inference verified`. Tạo URL chưa chứng minh model sẵn sàng. |
+| Tree-adaptive | Hoãn theo quyết định phạm vi M4; scalar K không chứng minh cây nháp đã được thực thi. |
 
-Để kiểm chứng năng lực thích ứng trong môi trường thực tế, FlexSDS được triển khai phục vụ quy trình xử lý và phân tích hóa đơn bán hàng tiếng Việt (bộ dữ liệu MC-OCR) với 3 tác vụ đại diện:
+Phần cần nghiệm thu tiếp theo là calibration, chuyển K và feedback thực trên GPU, kiểm tra lossless và đo hiệu năng theo workload. `K=0` ngừng sinh token nháp nhưng EAGLE vẫn forward để đồng bộ KV cache; không coi đó là tắt hẳn drafter hoặc bảo đảm nhanh bằng vanilla.
 
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│             HỆ THỐNG ĐA TÁC VỤ TRÊN HÓA ĐƠN BÁN HÀNG                   │
-├────────────────────────────────────────────────────────────────────────┤
-│                      [Ảnh / Thư mục hóa đơn tải lên]                   │
-│                                     │                                  │
-│                                     ▼                                  │
-│ ┌────────────────────────────────────────────────────────────────────┐ │
-│ │ TÁC VỤ 1: TRÍCH XUẤT NỘI DUNG HÓA ĐƠN THÀNH JSON (MC-OCR W1)       │ │
-│ │ • Trích xuất 7 trường pháp lý: Người bán, MST, Ngày, Tiền, VAT...   │ │
-│ │ • Cú pháp JSON cố định, alpha > 90% -> Tăng tốc tối đa (1.35x-1.4x) │ │
-│ └──────────────────────────────────┬─────────────────────────────────┘ │
-│                                    │                                   │
-│                                    ▼                                   │
-│ ┌────────────────────────────────────────────────────────────────────┐ │
-│ │ TÁC VỤ 2: SINH MÃ SQL TRUY VẤN DỮ LIỆU HÓA ĐƠN (TEXT-TO-SQL W2)   │ │
-│ │ • Chuyển câu hỏi quản trị kinh doanh tiếng Việt sang truy vấn SQL  │ │
-│ │ • Cú pháp SQL bán cấu trúc, alpha ~ 80% -> Tăng tốc ổn định 1.3x    │ │
-│ └──────────────────────────────────┬─────────────────────────────────┘ │
-│                                    │                                   │
-│                                    ▼                                   │
-│ ┌────────────────────────────────────────────────────────────────────┐ │
-│ │ TÁC VỤ 3: HỎI ĐÁP & PHÂN TÍCH TÀI CHÍNH THÔNG MINH (INVOICE CHAT) │ │
-│ │ • Khung chat tương tác trực tiếp về các hóa đơn vừa xử lý          │ │
-│ │ • Văn bản tự do, alpha < 60% -> Tự ngắt nháp (k=0), tránh trễ âm   │ │
-│ └────────────────────────────────────────────────────────────────────┘ │
-└────────────────────────────────────────────────────────────────────────┘
-```
+**Lossless** đề cập đến tính đúng đắn/phân phối đầu ra của speculative decoding. Nó không đồng nghĩa với bảo đảm speedup ≥1, tránh OOM tuyệt đối hoặc đạt một mức tăng tốc cố định trên mọi workload. Kết luận hiệu năng phải gắn với cấu hình và bằng chứng đo cụ thể.
 
----
+Bằng chứng GPU và giới hạn phép thử: [verification summary](logs/problems/evidence/2026-11-15-modal-a10g/verification_summary.json).
 
-## 3. Các đột phá kỹ thuật nổi bật
+Chi tiết: [problem log CLI/Modal](logs/problems/2026-11-14-flexsds-cli-modal-calibration-and-serving.md), [quyết định phạm vi scalar/tree](logs/problems/2026-11-12-m4-02-04-tree-adaptive-vllm-flattening-and-lineage-v02.md).
 
-* **Lớp thích ứng nhận biết phần cứng (Hardware-Aware TreeAdaptive v0.2):** Tự động nhận diện kiến trúc GPU (`sm_89` NVIDIA L4, `sm_75` Tesla T4) và giải nghiệm phương trình hòa vốn theo thời gian thực:
-  $$\alpha^*(N, B) = \arg_\alpha \left( \frac{\mathbb{E}[\tau(N, \alpha)]}{C(N, B)} = \frac{1}{C(0, B)} \right)$$
-* **Triệt tiêu hoàn toàn hiện tượng tăng tốc âm:** Khi tỷ lệ chấp nhận thực tế $\alpha < \alpha^*$ hoặc khi bộ đệm KV vượt ngưỡng $90\%$, hệ thống lập tức ngắt suy đoán về chế độ an toàn ($N=0$), bảo đảm tốc độ luôn $\ge 1.00\times$.
-* **Bộ gác cổng an toàn tương thích (Pre-flight Guard):** Quét dung lượng VRAM thực tế, kiểm tra độ lệch từ vựng (Heterogeneous Vocabulary) giữa mô hình đích và mô hình nháp trước khi khởi động tiến trình serving.
-* **Đa nền tảng phục vụ:** Hỗ trợ khởi chạy server vLLM cục bộ (Local Dedicated Runner) hoặc triển khai tức thì lên nền tảng đám mây không máy chủ (Modal Cloud GPU L4) với chuẩn giao tiếp OpenAI API `/v1/chat/completions`.
-* **Giao diện dòng lệnh tương tác (Interactive CLI Wizard):** Menu hỏi–đáp từng bước có nhận diện thương hiệu PTIT bằng ký tự khối Unicode và mã màu ANSI TrueColor 24-bit.
-
----
-
-## 4. Bốn chế độ suy luận đối chứng (4 Serving Lanes)
-
-Hệ thống cung cấp cơ chế đo kiểm thực nghiệm chuẩn hóa giữa 4 làn phục vụ trên cùng một hạ tầng phần cứng:
-
-1. **Làn 1 (`vanilla`):** Giải mã tuần tự cơ sở của mô hình đích Qwen2.5-7B-Instruct (chuẩn đối chứng $1.00\times$).
-2. **Làn 2 (`static`):** Suy luận phỏng đoán tĩnh với mô hình nháp độc lập Qwen2.5-0.5B-Instruct ($k=3$ cố định).
-3. **Làn 3 (`adaptive`):** Suy luận phỏng đoán thích ứng động TreeAdaptive co giãn ngân sách nháp theo tải và $\alpha$.
-4. **Làn 4 (`eagle`):** Đầu nháp suy đoán chuyên biệt EAGLE-3.1 tự huấn luyện cho miền hóa đơn tiếng Việt (`duckhoi/qwen2.5-7b-eagle3.1-speculator`).
-
----
-
-## 5. Hướng dẫn cài đặt và sử dụng nhanh
-
-### 5.1. Cài đặt package
+## 3. Cài đặt và chạy thử
 
 ```bash
-# Clone kho mã nguồn từ GitHub
 git clone https://github.com/theflyingkhui04/do-an-ptit-d22.git
 cd do-an-ptit-d22
-
-# Cài đặt môi trường ở chế độ phát triển (Editable Mode)
 pip install -e .
-```
-
-### 5.2. Khởi chạy giao diện dòng lệnh tương tác (Interactive Wizard)
-
-Chỉ cần gõ lệnh `flexsds` trên terminal để khởi động trợ lý hướng dẫn từng bước:
-
-```bash
 flexsds
 ```
 
-Trợ lý sẽ tự động:
-1. Quét thông số phần cứng GPU và hiển thị banner nhận diện thương hiệu PTIT.
-2. Hướng dẫn chọn tác vụ, mô hình đích (Target), mô hình nháp (Draft).
-3. Chạy Pre-flight Guard kiểm tra an toàn VRAM và xung đột bảng từ vựng.
-4. Tự động nạp ma trận chi phí thực nghiệm và khởi chạy server phục vụ.
+Package CLI không tự cài GPU runtime. Local serving/calibration cần CUDA và vLLM 0.30.0 trong môi trường chạy. Modal cần Modal CLI và credentials đã cấu hình; image GPU được khai báo trong source.
 
-### 5.3. Sử dụng lệnh trực tiếp (Direct CLI Commands)
+### Chạy Hardware-Adaptive EAGLE trên Modal A10G
 
 ```bash
-# Quét nhanh phần cứng và trạng thái VRAM
-flexsds detect
-
-# Khởi chạy endpoint serving trên nền tảng Modal Cloud
-flexsds serve --backend modal --target Qwen/Qwen2.5-7B-Instruct-AWQ --draft Qwen/Qwen2.5-0.5B-Instruct
-
-# Khởi chạy server phục vụ cục bộ trên GPU máy chủ
-flexsds serve --backend local --port 8000 --gpu-memory-utilization 0.90
+flexsds serve --backend modal --gpu A10G \
+  --target Qwen/Qwen2.5-7B-Instruct-AWQ \
+  --draft duckhoi/qwen2.5-7b-eagle3.1-speculator
 ```
 
----
+Đo profile v2 bằng lệnh bên dưới trước khi chạy; wizard có thể đề nghị calibration khi profile còn thiếu. Thêm `--no-adaptive` nếu muốn kiểm tra EAGLE static `K=4` mà không cần profile. Chờ `Inference verified` để xác nhận completion trả về. Development dùng `modal serve`: giữ terminal mở; Ctrl-C dừng app. Thêm `--deploy` để dùng persistent deployment.
 
-## 6. Web demo và bảng đo lường metrics đối chứng
+### Đo hardware profile trên GPU Modal
 
-Hệ thống tích hợp giao diện web demo trực quan hỗ trợ:
-* Tải lên một hoặc nhiều ảnh hóa đơn (kéo thả cả thư mục hoặc chụp ảnh trực tiếp).
-* Lựa chọn 3 tác vụ xử lý độc lập: Trích xuất JSON, Sinh câu truy vấn SQL, hoặc Chat hỏi đáp tài chính.
-* **Thiết lập đa endpoint song song:** Cho phép thêm URL của nhiều server (Vanilla vs. Static vs. FlexSDS Adaptive) để chạy đồng thời cùng một dữ liệu đầu vào.
-* **Bảng so sánh metrics thời gian thực:**
-  * **TPOT (Time per Output Token - ms/token):** Đo tốc độ sinh từ thực tế của từng endpoint.
-  * **Throughput (tokens/s):** Tốc độ xả token ra màn hình.
-  * **Tỉ lệ chấp nhận nháp $\alpha$ (%):** Phản ánh đặc trưng ngữ nghĩa của tác vụ.
-  * **Trạng thái thích ứng:** Huy hiệu hiển thị quyết định co giãn cây của FlexSDS (`[Boost: k=4]`, `[Balanced: k=2]`, hoặc `[Fallback: k=0]`).
-  * **Hệ số tăng tốc (Speedup vs. Vanilla):** Trực quan hóa hiện tượng tăng tốc âm của chế độ tĩnh và khả năng duy trì tốc độ an toàn của FlexSDS.
+```bash
+flexsds profile --benchmark --backend modal --gpu A10G \
+  --target Qwen/Qwen2.5-7B-Instruct-AWQ \
+  --draft duckhoi/qwen2.5-7b-eagle3.1-speculator
+```
 
----
+Calibration cấp GPU thật, load model, chạy warmup và đo nhiều lần; có thể mất nhiều phút và sử dụng tài nguyên Modal. Kết quả lưu ở `~/.flexsds/profiles/`. Profile cũ tạo bằng công thức không được chấp nhận là empirical profile.
 
-## 7. Cấu trúc kho mã nguồn
+Profile v2 đo target forward + draft proposal ở eager mode, bao gồm drafter KV-cache sync tại `K=0`, chưa bao gồm toàn bộ overhead serving. Profile synthetic cũ và profile v1 cần được đo lại; CLI pin model revisions theo profile.
+
+Hướng dẫn và giới hạn: [runbook CLI/Modal](docs/runbooks/flexsds-cli-modal-calibration.md).
+
+## 4. Thiết kế đánh giá
+
+Repo duy trì các lane đối chứng và công cụ thực nghiệm phục vụ quá trình nghiên cứu:
+
+| Lane | Vai trò |
+|---|---|
+| `vanilla` | Target model giải mã tuần tự, làm baseline. |
+| `static` | Draft model độc lập với ngân sách nháp cố định. |
+| `adaptive` | Nhánh scalar adaptive để đánh giá quyết định ngân sách K. |
+| `eagle` | EAGLE speculator để đo đường nháp chuyên biệt. |
+
+Tên lane lịch sử được giữ nguyên. CLI adaptive EAGLE sử dụng đường tích hợp M4 `eagle_adaptive`; không đổi ý nghĩa lane `adaptive` dùng draft model độc lập. Kết quả phải ghi rõ target/draft revision, GPU, quantization, K, batch/concurrency, context, workload và phiên bản runtime.
+
+Chỉ số đánh giá gồm TTFT, TPOT, throughput, acceptance rate, VRAM và speedup so với vanilla. Phân biệt timing tại worker với timing tại client; không diễn giải khoảng cách giữa các SSE chunk thành TPOT của engine.
+
+## 5. Ứng dụng thực nghiệm: hóa đơn tiếng Việt
+
+Pipeline hóa đơn cung cấp ba nhóm workload để đánh giá engine: trích xuất thông tin thành JSON (MC-OCR), sinh truy vấn SQL và hỏi đáp/phân tích nghiệp vụ. Đây là ứng dụng minh họa cho serving engine; acceptance rate và speedup được đo theo từng chiến dịch, không mặc định theo loại tác vụ.
+
+## 6. Cấu trúc và tài liệu
 
 ```text
-do-an-ptit-d22/
-├── logo/                              # Tài nguyên hình ảnh, logo PTIT và banner GIF
-│   ├── flexsds_banner.gif             # Banner động độ phân giải cao hiển thị trên README
-│   ├── flexsds_banner_static.webp     # Banner tĩnh
-│   ├── icon_dark.webp                 # Logo biểu tượng chế độ nền tối (Dark mode)
-│   └── icon_white.webp                # Logo biểu tượng chế độ nền sáng (Light mode)
-├── pyproject.toml                     # Cấu hình package Python và entrypoint dòng lệnh flexsds
-├── src/
-│   ├── flexsds/                       # Gói mã nguồn công cụ FlexSDS
-│   │   ├── cli/                       # Giao diện CLI, Interactive Wizard và banner ANSI
-│   │   ├── core/                      # Bộ quét phần cứng, bộ gác cổng an toàn & TreeAdaptive
-│   │   ├── profiles/                  # Danh mục ma trận chi phí thực nghiệm (GPU L4 & T4)
-│   │   └── server/                    # Bộ điều phối runner (Modal serverless & Local vLLM)
-│   ├── server/                        # Bộ lập lịch thích ứng vLLM AdaptiveAsyncScheduler
-│   ├── proposer/                      # Bộ điều khiển nháp và mô hình chi phí thực nghiệm
-│   └── pipeline/                      # Đường ống xử lý hóa đơn MC-OCR (JSON, SQL, Report)
-├── experiments/                       # Bộ công cụ đo benchmark 4 làn và kịch bản thực nghiệm
-├── docs/                              # Tài liệu kỹ thuật, quy định thiết kế và outline báo cáo
-└── tests/                             # Bộ kiểm thử tự động toàn diện (unit & regression tests)
+src/flexsds/       CLI, preflight, hardware profiles, calibration và serving runners
+src/server/        Scalar scheduler, budget planner và lineage
+src/proposer/      Controller và cost consumer
+src/pipeline/      Ứng dụng hóa đơn
+experiments/       Benchmark, profiler và bằng chứng thực nghiệm
+docs/              Thiết kế, bản thảo báo cáo và runbooks
+logs/problems/     Vấn đề kỹ thuật, quyết định phạm vi và trạng thái xác minh
+tests/             Regression tests
 ```
 
----
+- [Bản đồ tài liệu](docs/README.md)
+- [Giới thiệu và câu hỏi nghiên cứu](docs/01-gioi-thieu.md)
+- [Đặc tả mục tiêu sản phẩm](docs/09-dac-ta-san-pham-flexsds.md)
+- [Công thức và chỉ số](logs/maths_expression_used.md)
 
-## 8. Đội ngũ thực hiện
+Các tài liệu chiến dịch và nhật ký cũ được giữ theo bối cảnh tại thời điểm ghi nhận; trạng thái sản phẩm hiện hành nằm ở README và runbook.
+
+## 7. Đội ngũ thực hiện
 
 Nhóm áp dụng mô hình **Ghép cặp Luân phiên 70/30 (Pair-Rotation System)**: Mỗi thành viên chủ trì (Lead) 70% mảng chuyên môn cốt lõi, đồng thời luân phiên đồng hành (Partner) 30% ở các mảng còn lại:
 
@@ -188,6 +125,6 @@ Nhóm áp dụng mô hình **Ghép cặp Luân phiên 70/30 (Pair-Rotation Syste
 
 ---
 
-## 9. Bản quyền
+## 8. Bản quyền
 
 Dự án được phát triển phục vụ đồ án tốt nghiệp đại học tại **Học viện Công nghệ Bưu chính Viễn thông (PTIT)**, niên khóa 2022–2026. Mã nguồn được phát hành theo giấy phép mã nguồn mở Apache 2.0.

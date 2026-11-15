@@ -1,0 +1,6329 @@
+{
+  "metadata": {
+    "schema": "flexsds-component-v2",
+    "measurement_status": "measured",
+    "scalar_only": true,
+    "device": "NVIDIA A10G",
+    "sm_architecture": "sm_86",
+    "provenance": "worker_cuda_synchronize_perf_counter",
+    "raw_sha256": "14fad0209c62d5c062a1bfbb5190fe62429dfe67ec53e9d957fcba281ac368ec",
+    "timestamp_utc": "2026-11-14T17:07:00.718867+00:00",
+    "cost_semantics": "eager_target_forward_plus_draft_proposal_including_k0_cache_sync_excludes_target_logits_sampling",
+    "vllm_version": "0.30.0"
+  },
+  "models": {
+    "target": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "draft": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+    "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "draft_revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290"
+  },
+  "draft_method": "eagle3",
+  "grid": {
+    "batches": [
+      1
+    ],
+    "candidate_budgets": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "contexts": [
+      1024
+    ]
+  },
+  "cost_matrix_ms": {
+    "k0_b1": 22.57504799996468,
+    "k1_b1": 20.64906249998444,
+    "k2_b1": 21.155815500009112,
+    "k3_b1": 23.383309500047744,
+    "k4_b1": 24.511067999924308
+  },
+  "evidence": {
+    "config": {
+      "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+      "draft_method": "eagle3",
+      "sm_architecture": "sm_86",
+      "target_gpu": "A10G"
+    },
+    "groups": [
+      {
+        "device": "NVIDIA A10G",
+        "sm_architecture": "sm_86",
+        "vram_total_mb": 22609.1875,
+        "torch_version": "2.13.0+cu130",
+        "cuda_version": "13.0",
+        "vllm_version": "0.30.0",
+        "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "draft_revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+        "engine_kwargs": {
+          "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+          "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+          "dtype": "bfloat16",
+          "max_model_len": 4096,
+          "max_num_seqs": 32,
+          "max_num_batched_tokens": 4096,
+          "gpu_memory_utilization": 0.85,
+          "enforce_eager": true,
+          "generation_config": "vllm",
+          "compilation_config": {
+            "mode": 0
+          },
+          "enable_prefix_caching": false,
+          "enable_chunked_prefill": false,
+          "async_scheduling": false,
+          "worker_extension_cls": "flexsds.core.calibration_worker.CalibrationWorker",
+          "quantization": "awq_marlin",
+          "speculative_config": {
+            "method": "eagle3",
+            "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "num_speculative_tokens": 4,
+            "draft_sample_method": "greedy",
+            "revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+            "num_speculative_tokens_per_batch_size": [
+              [
+                1,
+                32,
+                0
+              ]
+            ]
+          }
+        },
+        "records": [
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 0,
+            "warmup": true,
+            "samples": {
+              "target": 92.9895730000112,
+              "draft": 18.0431100000078
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 1,
+            "warmup": true,
+            "samples": {
+              "target": 19.95842100001255,
+              "draft": 2.3991820000333064
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 2,
+            "warmup": true,
+            "samples": {
+              "target": 20.103165000023182,
+              "draft": 2.5661259999765207
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 3,
+            "warmup": true,
+            "samples": {
+              "target": 20.056943999975374,
+              "draft": 2.499434000014844
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 4,
+            "warmup": true,
+            "samples": {
+              "target": 20.486124000001382,
+              "draft": 2.519653999968341
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 5,
+            "warmup": false,
+            "samples": {
+              "target": 19.968102000007093,
+              "draft": 2.3094700000001467
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 6,
+            "warmup": false,
+            "samples": {
+              "target": 19.929510999986633,
+              "draft": 2.5686359999781416
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 7,
+            "warmup": false,
+            "samples": {
+              "target": 25.228735999974106,
+              "draft": 4.800444000011339
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 8,
+            "warmup": false,
+            "samples": {
+              "target": 21.1529579999592,
+              "draft": 2.629977000026429
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 9,
+            "warmup": false,
+            "samples": {
+              "target": 20.551454999974794,
+              "draft": 2.631557000029261
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 10,
+            "warmup": false,
+            "samples": {
+              "target": 20.3991619999897,
+              "draft": 2.5421550000146453
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 11,
+            "warmup": false,
+            "samples": {
+              "target": 19.987142000047697,
+              "draft": 2.6497370000129195
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 12,
+            "warmup": false,
+            "samples": {
+              "target": 20.307308999974794,
+              "draft": 2.3664310000413025
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 13,
+            "warmup": false,
+            "samples": {
+              "target": 20.968062999997983,
+              "draft": 2.574735999985478
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 14,
+            "warmup": false,
+            "samples": {
+              "target": 20.165345999998863,
+              "draft": 2.6708780000035404
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 15,
+            "warmup": false,
+            "samples": {
+              "target": 22.941687000013644,
+              "draft": 3.090566999958355
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 16,
+            "warmup": false,
+            "samples": {
+              "target": 21.733930999971562,
+              "draft": 3.133468000044104
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 17,
+            "warmup": false,
+            "samples": {
+              "target": 22.18089999996664,
+              "draft": 2.4526030000515675
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 18,
+            "warmup": false,
+            "samples": {
+              "target": 22.12197900001911,
+              "draft": 5.8963170000083664
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 19,
+            "warmup": false,
+            "samples": {
+              "target": 21.146926999961124,
+              "draft": 2.3820410000325865
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 20,
+            "warmup": false,
+            "samples": {
+              "target": 21.593647000031524,
+              "draft": 2.768328999991354
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 21,
+            "warmup": false,
+            "samples": {
+              "target": 20.495332999985294,
+              "draft": 2.4021119999702023
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 22,
+            "warmup": false,
+            "samples": {
+              "target": 19.739017000006243,
+              "draft": 2.6781180000057248
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 23,
+            "warmup": false,
+            "samples": {
+              "target": 19.664486000010584,
+              "draft": 2.3570110000150635
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 24,
+            "warmup": false,
+            "samples": {
+              "target": 19.993693000003532,
+              "draft": 2.36427099997627
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 25,
+            "warmup": false,
+            "samples": {
+              "target": 19.89485000001423,
+              "draft": 2.3528600000304323
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 26,
+            "warmup": false,
+            "samples": {
+              "target": 20.04251400001067,
+              "draft": 2.464323000026525
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 27,
+            "warmup": false,
+            "samples": {
+              "target": 20.24155799995242,
+              "draft": 2.363612000010562
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 28,
+            "warmup": false,
+            "samples": {
+              "target": 20.544843999971363,
+              "draft": 2.5567860000137443
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 29,
+            "warmup": false,
+            "samples": {
+              "target": 20.172486999967987,
+              "draft": 2.353940999967108
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 30,
+            "warmup": false,
+            "samples": {
+              "target": 20.734168999979374,
+              "draft": 2.3559110000519468
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 31,
+            "warmup": false,
+            "samples": {
+              "target": 19.92078099999617,
+              "draft": 2.2453480000308446
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 32,
+            "warmup": false,
+            "samples": {
+              "target": 19.554263000031824,
+              "draft": 2.2253779999914514
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 33,
+            "warmup": false,
+            "samples": {
+              "target": 23.454307000008612,
+              "draft": 2.5679060000243226
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 34,
+            "warmup": false,
+            "samples": {
+              "target": 22.44631600001412,
+              "draft": 2.820140999972409
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 35,
+            "warmup": false,
+            "samples": {
+              "target": 20.048724000048423,
+              "draft": 2.2907100000111313
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 36,
+            "warmup": false,
+            "samples": {
+              "target": 19.443690999992214,
+              "draft": 2.273978999994597
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 37,
+            "warmup": false,
+            "samples": {
+              "target": 20.832711000025483,
+              "draft": 2.38893199997392
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 38,
+            "warmup": false,
+            "samples": {
+              "target": 20.09956499995269,
+              "draft": 2.500794000013684
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 39,
+            "warmup": false,
+            "samples": {
+              "target": 19.39781999999468,
+              "draft": 2.2274880000168196
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 40,
+            "warmup": false,
+            "samples": {
+              "target": 19.635585000003175,
+              "draft": 2.2516690000315975
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 41,
+            "warmup": false,
+            "samples": {
+              "target": 19.444151000016063,
+              "draft": 2.2532680000040273
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 42,
+            "warmup": false,
+            "samples": {
+              "target": 19.9450520000255,
+              "draft": 2.4035220000087065
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 43,
+            "warmup": false,
+            "samples": {
+              "target": 20.225037999978213,
+              "draft": 2.4585939999610673
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 44,
+            "warmup": false,
+            "samples": {
+              "target": 19.61578399999553,
+              "draft": 2.194247999966592
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 45,
+            "warmup": false,
+            "samples": {
+              "target": 19.62881499997593,
+              "draft": 2.3669010000162416
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 46,
+            "warmup": false,
+            "samples": {
+              "target": 20.5348839999715,
+              "draft": 2.3488109999902917
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 47,
+            "warmup": false,
+            "samples": {
+              "target": 23.252632999970047,
+              "draft": 2.916583000001083
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 48,
+            "warmup": false,
+            "samples": {
+              "target": 19.77937800000973,
+              "draft": 2.6698080000073787
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 49,
+            "warmup": false,
+            "samples": {
+              "target": 19.519392999995944,
+              "draft": 2.213687999983449
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 50,
+            "warmup": false,
+            "samples": {
+              "target": 20.25921799997832,
+              "draft": 2.29051899998467
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 51,
+            "warmup": false,
+            "samples": {
+              "target": 19.55146299997068,
+              "draft": 2.2611390000406573
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 52,
+            "warmup": false,
+            "samples": {
+              "target": 20.000172999971255,
+              "draft": 2.263077999998586
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 53,
+            "warmup": false,
+            "samples": {
+              "target": 19.894971000042005,
+              "draft": 2.3850310000170794
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 0,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 54,
+            "warmup": false,
+            "samples": {
+              "target": 19.62735500001145,
+              "draft": 2.3198700000079953
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  1
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "device": "NVIDIA A10G",
+        "sm_architecture": "sm_86",
+        "vram_total_mb": 22609.1875,
+        "torch_version": "2.13.0+cu130",
+        "cuda_version": "13.0",
+        "vllm_version": "0.30.0",
+        "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "draft_revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+        "engine_kwargs": {
+          "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+          "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+          "dtype": "bfloat16",
+          "max_model_len": 4096,
+          "max_num_seqs": 32,
+          "max_num_batched_tokens": 4096,
+          "gpu_memory_utilization": 0.85,
+          "enforce_eager": true,
+          "generation_config": "vllm",
+          "compilation_config": {
+            "mode": 0
+          },
+          "enable_prefix_caching": false,
+          "enable_chunked_prefill": false,
+          "async_scheduling": false,
+          "worker_extension_cls": "flexsds.core.calibration_worker.CalibrationWorker",
+          "quantization": "awq_marlin",
+          "speculative_config": {
+            "method": "eagle3",
+            "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "num_speculative_tokens": 4,
+            "draft_sample_method": "greedy",
+            "revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+            "num_speculative_tokens_per_batch_size": [
+              [
+                1,
+                32,
+                1
+              ]
+            ]
+          }
+        },
+        "records": [
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 0,
+            "warmup": true,
+            "samples": {
+              "target": 71.25566199999867,
+              "draft": 15.454285000032542
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 1,
+            "warmup": true,
+            "samples": {
+              "target": 18.13116200003151,
+              "draft": 2.5027039999940826
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 2,
+            "warmup": true,
+            "samples": {
+              "target": 18.87949799998978,
+              "draft": 2.461573000005046
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 3,
+            "warmup": true,
+            "samples": {
+              "target": 18.788356000015938,
+              "draft": 2.3873409999737305
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 4,
+            "warmup": true,
+            "samples": {
+              "target": 18.600773000002846,
+              "draft": 2.56250600000385
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 5,
+            "warmup": false,
+            "samples": {
+              "target": 18.666944000017338,
+              "draft": 2.557975999991413
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 6,
+            "warmup": false,
+            "samples": {
+              "target": 18.233435000013287,
+              "draft": 2.3955519999958597
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 7,
+            "warmup": false,
+            "samples": {
+              "target": 18.925158999991254,
+              "draft": 2.6829579999798625
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 8,
+            "warmup": false,
+            "samples": {
+              "target": 18.358716999955504,
+              "draft": 2.431182999998782
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 9,
+            "warmup": false,
+            "samples": {
+              "target": 18.715625000027103,
+              "draft": 2.4511530000381754
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 10,
+            "warmup": false,
+            "samples": {
+              "target": 18.534971000008227,
+              "draft": 2.4403630000051635
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 11,
+            "warmup": false,
+            "samples": {
+              "target": 18.602063000003,
+              "draft": 2.392221999969024
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 12,
+            "warmup": false,
+            "samples": {
+              "target": 18.590141999993648,
+              "draft": 2.472073999967961
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 13,
+            "warmup": false,
+            "samples": {
+              "target": 18.726444999970226,
+              "draft": 2.7325190000055954
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 14,
+            "warmup": false,
+            "samples": {
+              "target": 19.079793000003065,
+              "draft": 2.433363000022837
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 15,
+            "warmup": false,
+            "samples": {
+              "target": 19.144774000039888,
+              "draft": 2.599736000036046
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 16,
+            "warmup": false,
+            "samples": {
+              "target": 18.41398799996341,
+              "draft": 2.40637200005267
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 17,
+            "warmup": false,
+            "samples": {
+              "target": 18.456388999993578,
+              "draft": 2.3578309999834346
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 18,
+            "warmup": false,
+            "samples": {
+              "target": 18.325596000011046,
+              "draft": 2.4016720000190617
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 19,
+            "warmup": false,
+            "samples": {
+              "target": 18.229933999975856,
+              "draft": 2.622147000010955
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 20,
+            "warmup": false,
+            "samples": {
+              "target": 18.236154999954124,
+              "draft": 2.4017320000098152
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 21,
+            "warmup": false,
+            "samples": {
+              "target": 19.89455000000362,
+              "draft": 2.532843999972556
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 22,
+            "warmup": false,
+            "samples": {
+              "target": 18.612802999996347,
+              "draft": 2.4364129999980833
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 23,
+            "warmup": false,
+            "samples": {
+              "target": 19.130773999961548,
+              "draft": 2.721458999985771
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 24,
+            "warmup": false,
+            "samples": {
+              "target": 18.411178999997446,
+              "draft": 2.46768400000974
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 25,
+            "warmup": false,
+            "samples": {
+              "target": 18.761096000048383,
+              "draft": 2.4807939999504924
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 26,
+            "warmup": false,
+            "samples": {
+              "target": 18.367036999961783,
+              "draft": 2.4594239999942147
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 27,
+            "warmup": false,
+            "samples": {
+              "target": 17.873536999957196,
+              "draft": 2.458532999980889
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 28,
+            "warmup": false,
+            "samples": {
+              "target": 18.263794999995753,
+              "draft": 2.4441930000307366
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 29,
+            "warmup": false,
+            "samples": {
+              "target": 17.741074000014123,
+              "draft": 2.4117319999845677
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 30,
+            "warmup": false,
+            "samples": {
+              "target": 17.47766800002637,
+              "draft": 2.407342000026347
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 31,
+            "warmup": false,
+            "samples": {
+              "target": 18.26618600000529,
+              "draft": 2.394051999999647
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 32,
+            "warmup": false,
+            "samples": {
+              "target": 17.71954299999834,
+              "draft": 2.3130199999741308
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 33,
+            "warmup": false,
+            "samples": {
+              "target": 17.930918000047313,
+              "draft": 2.5417850000053477
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 34,
+            "warmup": false,
+            "samples": {
+              "target": 18.06343100003005,
+              "draft": 2.5363450000099874
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 35,
+            "warmup": false,
+            "samples": {
+              "target": 16.969797000001563,
+              "draft": 2.314780000006067
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 36,
+            "warmup": false,
+            "samples": {
+              "target": 16.91956599995592,
+              "draft": 2.2890300000426578
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 37,
+            "warmup": false,
+            "samples": {
+              "target": 17.653432000031444,
+              "draft": 2.549514999998337
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 38,
+            "warmup": false,
+            "samples": {
+              "target": 17.299815000001217,
+              "draft": 2.348910999955933
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 39,
+            "warmup": false,
+            "samples": {
+              "target": 17.49183900000162,
+              "draft": 2.3945419999904516
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 40,
+            "warmup": false,
+            "samples": {
+              "target": 17.169840999997632,
+              "draft": 2.3826510000048984
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 41,
+            "warmup": false,
+            "samples": {
+              "target": 18.187713999964217,
+              "draft": 2.478944000017691
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 42,
+            "warmup": false,
+            "samples": {
+              "target": 17.87269699997296,
+              "draft": 2.3660310000082063
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 43,
+            "warmup": false,
+            "samples": {
+              "target": 17.611691000013252,
+              "draft": 2.3598610000021836
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 44,
+            "warmup": false,
+            "samples": {
+              "target": 17.832836000025054,
+              "draft": 2.405681999960052
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 45,
+            "warmup": false,
+            "samples": {
+              "target": 17.680322999979126,
+              "draft": 2.3256200000218996
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 46,
+            "warmup": false,
+            "samples": {
+              "target": 18.152142000019467,
+              "draft": 2.374141000018426
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 47,
+            "warmup": false,
+            "samples": {
+              "target": 17.64702199994872,
+              "draft": 2.3264300000391813
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 48,
+            "warmup": false,
+            "samples": {
+              "target": 17.793064999978014,
+              "draft": 2.3492210000313207
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 49,
+            "warmup": false,
+            "samples": {
+              "target": 19.087143999968248,
+              "draft": 4.7317930000190245
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 50,
+            "warmup": false,
+            "samples": {
+              "target": 18.891338999992513,
+              "draft": 2.6085960000159503
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 51,
+            "warmup": false,
+            "samples": {
+              "target": 17.575690999990456,
+              "draft": 2.432472999998936
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 52,
+            "warmup": false,
+            "samples": {
+              "target": 17.999719999977515,
+              "draft": 2.4570639999978994
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 53,
+            "warmup": false,
+            "samples": {
+              "target": 17.76460399997859,
+              "draft": 2.338220000012825
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 1,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 54,
+            "warmup": false,
+            "samples": {
+              "target": 18.003740000040125,
+              "draft": 2.4485430000140695
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  2
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "device": "NVIDIA A10G",
+        "sm_architecture": "sm_86",
+        "vram_total_mb": 22609.1875,
+        "torch_version": "2.13.0+cu130",
+        "cuda_version": "13.0",
+        "vllm_version": "0.30.0",
+        "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "draft_revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+        "engine_kwargs": {
+          "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+          "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+          "dtype": "bfloat16",
+          "max_model_len": 4096,
+          "max_num_seqs": 32,
+          "max_num_batched_tokens": 4096,
+          "gpu_memory_utilization": 0.85,
+          "enforce_eager": true,
+          "generation_config": "vllm",
+          "compilation_config": {
+            "mode": 0
+          },
+          "enable_prefix_caching": false,
+          "enable_chunked_prefill": false,
+          "async_scheduling": false,
+          "worker_extension_cls": "flexsds.core.calibration_worker.CalibrationWorker",
+          "quantization": "awq_marlin",
+          "speculative_config": {
+            "method": "eagle3",
+            "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "num_speculative_tokens": 4,
+            "draft_sample_method": "greedy",
+            "revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+            "num_speculative_tokens_per_batch_size": [
+              [
+                1,
+                32,
+                2
+              ]
+            ]
+          }
+        },
+        "records": [
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 0,
+            "warmup": true,
+            "samples": {
+              "target": 17.93012100000624,
+              "draft": 3.960296999991897
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 1,
+            "warmup": true,
+            "samples": {
+              "target": 17.183315000011135,
+              "draft": 3.816132999986621
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 2,
+            "warmup": true,
+            "samples": {
+              "target": 18.866231000004063,
+              "draft": 4.127129999972112
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 3,
+            "warmup": true,
+            "samples": {
+              "target": 17.543591999981345,
+              "draft": 3.8067030000092927
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 4,
+            "warmup": true,
+            "samples": {
+              "target": 17.878520000010667,
+              "draft": 3.9435759999832953
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 5,
+            "warmup": false,
+            "samples": {
+              "target": 16.820016999986365,
+              "draft": 3.741671000000224
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 6,
+            "warmup": false,
+            "samples": {
+              "target": 17.162853999991512,
+              "draft": 3.797962999954052
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 7,
+            "warmup": false,
+            "samples": {
+              "target": 17.934021000030498,
+              "draft": 4.237041999999747
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 8,
+            "warmup": false,
+            "samples": {
+              "target": 17.545213000005333,
+              "draft": 3.824113000007401
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 9,
+            "warmup": false,
+            "samples": {
+              "target": 17.69504600002847,
+              "draft": 3.8743840000279306
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 10,
+            "warmup": false,
+            "samples": {
+              "target": 18.163705999995727,
+              "draft": 3.893604999973377
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 11,
+            "warmup": false,
+            "samples": {
+              "target": 18.82036000000653,
+              "draft": 4.067298999984814
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 12,
+            "warmup": false,
+            "samples": {
+              "target": 18.030134000014186,
+              "draft": 3.897043999984362
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 13,
+            "warmup": false,
+            "samples": {
+              "target": 16.948528999989776,
+              "draft": 3.822424000020419
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 14,
+            "warmup": false,
+            "samples": {
+              "target": 16.893218000006982,
+              "draft": 3.744202000007135
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 15,
+            "warmup": false,
+            "samples": {
+              "target": 16.999031000011655,
+              "draft": 3.7849729999948067
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 16,
+            "warmup": false,
+            "samples": {
+              "target": 16.986540999994304,
+              "draft": 3.737620999970659
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 17,
+            "warmup": false,
+            "samples": {
+              "target": 18.561083999998118,
+              "draft": 3.984497000033116
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 18,
+            "warmup": false,
+            "samples": {
+              "target": 16.745114999991983,
+              "draft": 3.790192000053594
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 19,
+            "warmup": false,
+            "samples": {
+              "target": 16.858157000001484,
+              "draft": 3.7262210000221785
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 20,
+            "warmup": false,
+            "samples": {
+              "target": 18.49661300002481,
+              "draft": 4.119049999985691
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 21,
+            "warmup": false,
+            "samples": {
+              "target": 18.423552000001564,
+              "draft": 3.944966000005934
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 22,
+            "warmup": false,
+            "samples": {
+              "target": 18.72137800000928,
+              "draft": 3.988017000040145
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 23,
+            "warmup": false,
+            "samples": {
+              "target": 17.113513000026614,
+              "draft": 3.7515420000318045
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 24,
+            "warmup": false,
+            "samples": {
+              "target": 18.011092999984157,
+              "draft": 3.973587000018597
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 25,
+            "warmup": false,
+            "samples": {
+              "target": 16.72818500003359,
+              "draft": 3.7285309999788296
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 26,
+            "warmup": false,
+            "samples": {
+              "target": 19.408042999998543,
+              "draft": 3.9260349999494792
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 27,
+            "warmup": false,
+            "samples": {
+              "target": 17.95108099997833,
+              "draft": 3.85144400001991
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 28,
+            "warmup": false,
+            "samples": {
+              "target": 16.712964000021202,
+              "draft": 3.7546309999925143
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 29,
+            "warmup": false,
+            "samples": {
+              "target": 17.318927000019357,
+              "draft": 3.799221999997826
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 30,
+            "warmup": false,
+            "samples": {
+              "target": 18.483092999986184,
+              "draft": 3.958256000032634
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 31,
+            "warmup": false,
+            "samples": {
+              "target": 17.66325500000221,
+              "draft": 3.861643999982789
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 32,
+            "warmup": false,
+            "samples": {
+              "target": 18.126284999993914,
+              "draft": 3.916975000038292
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 33,
+            "warmup": false,
+            "samples": {
+              "target": 17.08005300002924,
+              "draft": 3.738730999998552
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 34,
+            "warmup": false,
+            "samples": {
+              "target": 16.560640999955467,
+              "draft": 3.718901000013375
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 35,
+            "warmup": false,
+            "samples": {
+              "target": 16.654372999994393,
+              "draft": 3.7468219999823305
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 36,
+            "warmup": false,
+            "samples": {
+              "target": 18.74149899998656,
+              "draft": 3.92494599998372
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 37,
+            "warmup": false,
+            "samples": {
+              "target": 16.76447500000222,
+              "draft": 3.751301000022522
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 38,
+            "warmup": false,
+            "samples": {
+              "target": 16.67828299997609,
+              "draft": 3.9159749999839732
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 39,
+            "warmup": false,
+            "samples": {
+              "target": 17.893729999968855,
+              "draft": 3.842614000006961
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 40,
+            "warmup": false,
+            "samples": {
+              "target": 16.813736000017343,
+              "draft": 3.750991000003978
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 41,
+            "warmup": false,
+            "samples": {
+              "target": 16.782426000020223,
+              "draft": 3.736811999999645
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 42,
+            "warmup": false,
+            "samples": {
+              "target": 16.83167699997057,
+              "draft": 3.7226909999503732
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 43,
+            "warmup": false,
+            "samples": {
+              "target": 16.611201999978675,
+              "draft": 3.706501000010576
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 44,
+            "warmup": false,
+            "samples": {
+              "target": 16.546411000035732,
+              "draft": 3.7196609999909924
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 45,
+            "warmup": false,
+            "samples": {
+              "target": 18.393371000001935,
+              "draft": 3.893584999957511
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 46,
+            "warmup": false,
+            "samples": {
+              "target": 17.21885500001008,
+              "draft": 3.764731999979176
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 47,
+            "warmup": false,
+            "samples": {
+              "target": 17.35711800000672,
+              "draft": 3.836363999994319
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 48,
+            "warmup": false,
+            "samples": {
+              "target": 18.76637899999878,
+              "draft": 3.9774469999542816
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 49,
+            "warmup": false,
+            "samples": {
+              "target": 17.9946519999703,
+              "draft": 3.8909249999505846
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 50,
+            "warmup": false,
+            "samples": {
+              "target": 18.55019499998889,
+              "draft": 4.106879999994817
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 51,
+            "warmup": false,
+            "samples": {
+              "target": 16.898797999999715,
+              "draft": 3.727822000030301
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 52,
+            "warmup": false,
+            "samples": {
+              "target": 17.580142999975124,
+              "draft": 3.807103000042389
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 53,
+            "warmup": false,
+            "samples": {
+              "target": 18.139566000002105,
+              "draft": 3.9051150000091184
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 2,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 54,
+            "warmup": false,
+            "samples": {
+              "target": 16.6074320000007,
+              "draft": 3.724070999965079
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  3
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "device": "NVIDIA A10G",
+        "sm_architecture": "sm_86",
+        "vram_total_mb": 22609.1875,
+        "torch_version": "2.13.0+cu130",
+        "cuda_version": "13.0",
+        "vllm_version": "0.30.0",
+        "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "draft_revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+        "engine_kwargs": {
+          "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+          "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+          "dtype": "bfloat16",
+          "max_model_len": 4096,
+          "max_num_seqs": 32,
+          "max_num_batched_tokens": 4096,
+          "gpu_memory_utilization": 0.85,
+          "enforce_eager": true,
+          "generation_config": "vllm",
+          "compilation_config": {
+            "mode": 0
+          },
+          "enable_prefix_caching": false,
+          "enable_chunked_prefill": false,
+          "async_scheduling": false,
+          "worker_extension_cls": "flexsds.core.calibration_worker.CalibrationWorker",
+          "quantization": "awq_marlin",
+          "speculative_config": {
+            "method": "eagle3",
+            "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "num_speculative_tokens": 4,
+            "draft_sample_method": "greedy",
+            "revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+            "num_speculative_tokens_per_batch_size": [
+              [
+                1,
+                32,
+                3
+              ]
+            ]
+          }
+        },
+        "records": [
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 0,
+            "warmup": true,
+            "samples": {
+              "target": 18.59020500000952,
+              "draft": 5.545010999981059
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 1,
+            "warmup": true,
+            "samples": {
+              "target": 17.18634500002736,
+              "draft": 5.2304739999726735
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 2,
+            "warmup": true,
+            "samples": {
+              "target": 17.49230100006116,
+              "draft": 5.2430149999054265
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 3,
+            "warmup": true,
+            "samples": {
+              "target": 17.853279000064504,
+              "draft": 5.31609600000138
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 4,
+            "warmup": true,
+            "samples": {
+              "target": 17.97868199992081,
+              "draft": 5.328685999984373
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 5,
+            "warmup": false,
+            "samples": {
+              "target": 17.08689300005517,
+              "draft": 5.247745000019677
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 6,
+            "warmup": false,
+            "samples": {
+              "target": 17.049070999973992,
+              "draft": 5.208433000007062
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 7,
+            "warmup": false,
+            "samples": {
+              "target": 18.031222999979946,
+              "draft": 5.346406000057868
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 8,
+            "warmup": false,
+            "samples": {
+              "target": 17.854059000001143,
+              "draft": 5.3585669999165475
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 9,
+            "warmup": false,
+            "samples": {
+              "target": 17.169914999954017,
+              "draft": 5.2883749999637075
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 10,
+            "warmup": false,
+            "samples": {
+              "target": 18.121515999951043,
+              "draft": 5.460058999915418
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 11,
+            "warmup": false,
+            "samples": {
+              "target": 16.957758999978978,
+              "draft": 5.215562999978829
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 12,
+            "warmup": false,
+            "samples": {
+              "target": 18.519463999950858,
+              "draft": 5.37912699996923
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 13,
+            "warmup": false,
+            "samples": {
+              "target": 18.66422600005535,
+              "draft": 5.572831999984373
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 14,
+            "warmup": false,
+            "samples": {
+              "target": 17.616753999959656,
+              "draft": 5.2891349999981685
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 15,
+            "warmup": false,
+            "samples": {
+              "target": 18.63614600006258,
+              "draft": 5.495829999972557
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 16,
+            "warmup": false,
+            "samples": {
+              "target": 18.608466000046064,
+              "draft": 5.519729999946321
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 17,
+            "warmup": false,
+            "samples": {
+              "target": 18.81857000000764,
+              "draft": 5.533150000019305
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 18,
+            "warmup": false,
+            "samples": {
+              "target": 17.013759999940703,
+              "draft": 5.2532849999806785
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 19,
+            "warmup": false,
+            "samples": {
+              "target": 18.96411400002762,
+              "draft": 5.419168000003083
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 20,
+            "warmup": false,
+            "samples": {
+              "target": 17.063832000076218,
+              "draft": 5.256723999991664
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 21,
+            "warmup": false,
+            "samples": {
+              "target": 18.867202000024008,
+              "draft": 5.637553000042317
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 22,
+            "warmup": false,
+            "samples": {
+              "target": 20.041637000076662,
+              "draft": 5.608411999901364
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 23,
+            "warmup": false,
+            "samples": {
+              "target": 22.145023000007313,
+              "draft": 6.3994390000061685
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 24,
+            "warmup": false,
+            "samples": {
+              "target": 18.134834999955274,
+              "draft": 5.348877000074026
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 25,
+            "warmup": false,
+            "samples": {
+              "target": 18.344490000004043,
+              "draft": 5.4513389999328865
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 26,
+            "warmup": false,
+            "samples": {
+              "target": 18.919102000040766,
+              "draft": 5.444979000003514
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 27,
+            "warmup": false,
+            "samples": {
+              "target": 18.625496000026942,
+              "draft": 5.5981419999397986
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 28,
+            "warmup": false,
+            "samples": {
+              "target": 17.289557000026434,
+              "draft": 5.250474000035865
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 29,
+            "warmup": false,
+            "samples": {
+              "target": 18.697867000014412,
+              "draft": 5.428657999914321
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 30,
+            "warmup": false,
+            "samples": {
+              "target": 17.284646000007342,
+              "draft": 5.283524999981637
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 31,
+            "warmup": false,
+            "samples": {
+              "target": 18.462401999954636,
+              "draft": 5.381656999929874
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 32,
+            "warmup": false,
+            "samples": {
+              "target": 18.92057300005945,
+              "draft": 5.484240000100726
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 33,
+            "warmup": false,
+            "samples": {
+              "target": 17.919840999979897,
+              "draft": 5.41987799999788
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 34,
+            "warmup": false,
+            "samples": {
+              "target": 17.982211999992614,
+              "draft": 5.343057000004592
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 35,
+            "warmup": false,
+            "samples": {
+              "target": 18.167435999998816,
+              "draft": 5.360537000001386
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 36,
+            "warmup": false,
+            "samples": {
+              "target": 18.01290200000949,
+              "draft": 5.331035999915912
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 37,
+            "warmup": false,
+            "samples": {
+              "target": 18.00677199992151,
+              "draft": 5.365717000017867
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 38,
+            "warmup": false,
+            "samples": {
+              "target": 18.02774300006149,
+              "draft": 5.361246999996183
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 39,
+            "warmup": false,
+            "samples": {
+              "target": 18.163866000008966,
+              "draft": 5.408357999954205
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 40,
+            "warmup": false,
+            "samples": {
+              "target": 17.927130999964902,
+              "draft": 5.38262699990355
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 41,
+            "warmup": false,
+            "samples": {
+              "target": 17.99190200006251,
+              "draft": 5.3452560000550875
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 42,
+            "warmup": false,
+            "samples": {
+              "target": 17.903440999930353,
+              "draft": 5.360177000056865
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 43,
+            "warmup": false,
+            "samples": {
+              "target": 17.975141999954758,
+              "draft": 5.374836999976651
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 44,
+            "warmup": false,
+            "samples": {
+              "target": 17.629604000035215,
+              "draft": 5.292615999906047
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 45,
+            "warmup": false,
+            "samples": {
+              "target": 17.927140999972835,
+              "draft": 5.33139599997412
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 46,
+            "warmup": false,
+            "samples": {
+              "target": 18.067164000058256,
+              "draft": 5.439548000026662
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 47,
+            "warmup": false,
+            "samples": {
+              "target": 18.180535999931635,
+              "draft": 5.3734069999791245
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 48,
+            "warmup": false,
+            "samples": {
+              "target": 17.996521999975812,
+              "draft": 5.371176999915406
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 49,
+            "warmup": false,
+            "samples": {
+              "target": 17.91650000006939,
+              "draft": 5.373307000013483
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 50,
+            "warmup": false,
+            "samples": {
+              "target": 18.468133000055786,
+              "draft": 5.3665570000021035
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 51,
+            "warmup": false,
+            "samples": {
+              "target": 17.76067699995565,
+              "draft": 5.319766000070558
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 52,
+            "warmup": false,
+            "samples": {
+              "target": 18.134994999968512,
+              "draft": 5.404667999982848
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 53,
+            "warmup": false,
+            "samples": {
+              "target": 18.30464900001516,
+              "draft": 6.142894000049637
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 3,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 54,
+            "warmup": false,
+            "samples": {
+              "target": 17.964620999919134,
+              "draft": 5.362206999961927
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  4
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "device": "NVIDIA A10G",
+        "sm_architecture": "sm_86",
+        "vram_total_mb": 22609.1875,
+        "torch_version": "2.13.0+cu130",
+        "cuda_version": "13.0",
+        "vllm_version": "0.30.0",
+        "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        "draft_revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+        "engine_kwargs": {
+          "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+          "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+          "dtype": "bfloat16",
+          "max_model_len": 4096,
+          "max_num_seqs": 32,
+          "max_num_batched_tokens": 4096,
+          "gpu_memory_utilization": 0.85,
+          "enforce_eager": true,
+          "generation_config": "vllm",
+          "compilation_config": {
+            "mode": 0
+          },
+          "enable_prefix_caching": false,
+          "enable_chunked_prefill": false,
+          "async_scheduling": false,
+          "worker_extension_cls": "flexsds.core.calibration_worker.CalibrationWorker",
+          "quantization": "awq_marlin",
+          "speculative_config": {
+            "method": "eagle3",
+            "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "num_speculative_tokens": 4,
+            "draft_sample_method": "greedy",
+            "revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+            "num_speculative_tokens_per_batch_size": [
+              [
+                1,
+                32,
+                4
+              ]
+            ]
+          }
+        },
+        "records": [
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 0,
+            "warmup": true,
+            "samples": {
+              "target": 18.936728999960906,
+              "draft": 8.490669000025264
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 1,
+            "warmup": true,
+            "samples": {
+              "target": 17.069098999968446,
+              "draft": 6.7262590000609634
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 2,
+            "warmup": true,
+            "samples": {
+              "target": 17.040908000012678,
+              "draft": 6.69422900000427
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 3,
+            "warmup": true,
+            "samples": {
+              "target": 17.115329000034762,
+              "draft": 6.72469899996031
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 4,
+            "warmup": true,
+            "samples": {
+              "target": 17.561160000013842,
+              "draft": 6.767680000052678
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 5,
+            "warmup": false,
+            "samples": {
+              "target": 17.866905999994742,
+              "draft": 6.797801000061554
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 6,
+            "warmup": false,
+            "samples": {
+              "target": 17.441756000039277,
+              "draft": 6.765070000028572
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 7,
+            "warmup": false,
+            "samples": {
+              "target": 17.225951999989775,
+              "draft": 6.741469000075995
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 8,
+            "warmup": false,
+            "samples": {
+              "target": 17.27851299995109,
+              "draft": 6.710309000027337
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 9,
+            "warmup": false,
+            "samples": {
+              "target": 17.702981999946132,
+              "draft": 6.802960999948482
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 10,
+            "warmup": false,
+            "samples": {
+              "target": 17.085649000023295,
+              "draft": 6.708938000087983
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 11,
+            "warmup": false,
+            "samples": {
+              "target": 17.502897999975175,
+              "draft": 6.7428190000100585
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 12,
+            "warmup": false,
+            "samples": {
+              "target": 17.15744000000541,
+              "draft": 6.711629000051289
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 13,
+            "warmup": false,
+            "samples": {
+              "target": 17.77402400000483,
+              "draft": 6.789069999967978
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 14,
+            "warmup": false,
+            "samples": {
+              "target": 17.606300000011288,
+              "draft": 6.86390200007736
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 15,
+            "warmup": false,
+            "samples": {
+              "target": 17.115908999926432,
+              "draft": 6.738519000009546
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 16,
+            "warmup": false,
+            "samples": {
+              "target": 17.60686100010389,
+              "draft": 6.790190999936385
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 17,
+            "warmup": false,
+            "samples": {
+              "target": 17.31223299998419,
+              "draft": 6.745379999983925
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 18,
+            "warmup": false,
+            "samples": {
+              "target": 17.183460999945055,
+              "draft": 6.7046289999552755
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 19,
+            "warmup": false,
+            "samples": {
+              "target": 17.826294999963466,
+              "draft": 6.795881000016379
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 20,
+            "warmup": false,
+            "samples": {
+              "target": 17.727272999991328,
+              "draft": 6.788919999962673
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 21,
+            "warmup": false,
+            "samples": {
+              "target": 17.571360000033565,
+              "draft": 6.723839000073895
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 22,
+            "warmup": false,
+            "samples": {
+              "target": 16.976035999960004,
+              "draft": 6.7074190000084855
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 23,
+            "warmup": false,
+            "samples": {
+              "target": 17.289432999973542,
+              "draft": 6.7360699999881035
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 24,
+            "warmup": false,
+            "samples": {
+              "target": 17.217780999999377,
+              "draft": 6.74068000000716
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 25,
+            "warmup": false,
+            "samples": {
+              "target": 17.232361999958812,
+              "draft": 6.7150290000199675
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 26,
+            "warmup": false,
+            "samples": {
+              "target": 17.2097010000698,
+              "draft": 6.756480000035481
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 27,
+            "warmup": false,
+            "samples": {
+              "target": 18.027690000053553,
+              "draft": 6.790731000023698
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 28,
+            "warmup": false,
+            "samples": {
+              "target": 17.02916700003243,
+              "draft": 6.683088000045245
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 29,
+            "warmup": false,
+            "samples": {
+              "target": 18.63739300006273,
+              "draft": 6.910613999934867
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 30,
+            "warmup": false,
+            "samples": {
+              "target": 18.505911000033848,
+              "draft": 6.8709720000015295
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 31,
+            "warmup": false,
+            "samples": {
+              "target": 18.950450000033925,
+              "draft": 6.987915000081557
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 32,
+            "warmup": false,
+            "samples": {
+              "target": 18.55126099997051,
+              "draft": 6.863581999937196
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 33,
+            "warmup": false,
+            "samples": {
+              "target": 17.460636999999224,
+              "draft": 6.780690000027789
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 34,
+            "warmup": false,
+            "samples": {
+              "target": 17.790774999980385,
+              "draft": 6.858751999970991
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 35,
+            "warmup": false,
+            "samples": {
+              "target": 17.737282999974013,
+              "draft": 7.026515999996263
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 36,
+            "warmup": false,
+            "samples": {
+              "target": 18.843058000015844,
+              "draft": 6.931713999961175
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 37,
+            "warmup": false,
+            "samples": {
+              "target": 17.664351000007628,
+              "draft": 6.806120999954146
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 38,
+            "warmup": false,
+            "samples": {
+              "target": 18.1149820000428,
+              "draft": 6.868993000011869
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 39,
+            "warmup": false,
+            "samples": {
+              "target": 20.939304000080483,
+              "draft": 8.375526000008904
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 40,
+            "warmup": false,
+            "samples": {
+              "target": 17.724193000049127,
+              "draft": 6.887373000040498
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 41,
+            "warmup": false,
+            "samples": {
+              "target": 17.831724999950893,
+              "draft": 6.889851999972052
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 42,
+            "warmup": false,
+            "samples": {
+              "target": 17.92025800000374,
+              "draft": 6.86772199992447
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 43,
+            "warmup": false,
+            "samples": {
+              "target": 17.513599000039903,
+              "draft": 6.786380999983521
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 44,
+            "warmup": false,
+            "samples": {
+              "target": 18.114941999897383,
+              "draft": 6.9801140000436135
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 45,
+            "warmup": false,
+            "samples": {
+              "target": 17.298672999913833,
+              "draft": 6.762869999988652
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 46,
+            "warmup": false,
+            "samples": {
+              "target": 17.626109999923756,
+              "draft": 6.850301999975272
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 47,
+            "warmup": false,
+            "samples": {
+              "target": 17.61170100007803,
+              "draft": 6.878673000073832
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 48,
+            "warmup": false,
+            "samples": {
+              "target": 18.72859500008417,
+              "draft": 6.903293000050326
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 49,
+            "warmup": false,
+            "samples": {
+              "target": 17.7659239999457,
+              "draft": 6.775650999998106
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 50,
+            "warmup": false,
+            "samples": {
+              "target": 18.144671999948514,
+              "draft": 6.8523820000336855
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 51,
+            "warmup": false,
+            "samples": {
+              "target": 18.597793000026286,
+              "draft": 7.026695000035943
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 52,
+            "warmup": false,
+            "samples": {
+              "target": 18.4497680000959,
+              "draft": 7.178988999953617
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 53,
+            "warmup": false,
+            "samples": {
+              "target": 18.898749000072712,
+              "draft": 7.496286999980839
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          },
+          {
+            "k": 4,
+            "batch": 1,
+            "context": 1024,
+            "repeat": 54,
+            "warmup": false,
+            "samples": {
+              "target": 19.52348300005724,
+              "draft": 7.012485999894125
+            },
+            "shapes": [
+              {
+                "batch": 1,
+                "query": [
+                  5
+                ],
+                "context": [
+                  1024
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

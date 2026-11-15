@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -30,6 +31,7 @@ try:
     )
     from flexsds.core.cost_model import (
         load_profile_for_hardware,
+        resolve_profile_path,
         run_hardware_micro_benchmark,
     )
     from flexsds.server.local_runner import LocalServingRunner, finish_launch
@@ -45,6 +47,7 @@ except ModuleNotFoundError:
     )
     from src.flexsds.core.cost_model import (
         load_profile_for_hardware,
+        resolve_profile_path,
         run_hardware_micro_benchmark,
     )
     from src.flexsds.server.local_runner import LocalServingRunner, finish_launch
@@ -165,6 +168,58 @@ def _get_key_stroke() -> str:
     return "fallback"
 
 
+
+CHOICE_HELP = {
+    'Watch log': 'View live server logs. Copy the chat command into another terminal; Ctrl+O closes the log viewer.',
+    'Realtime chat with deployed LLM': 'Send messages to the verified endpoint with streaming responses. /exit returns here.',
+    "Launch serving": "Configure models, check compatibility, and start an inference API.",
+    "Detect hardware": "Show local GPU, CUDA availability, and available memory.",
+    "Benchmark & profile GPU": "Inspect the local profile; use flexsds profile --benchmark to measure.",
+    "Default:": "Use Qwen2.5-7B AWQ with the team's EAGLE-3.1 speculator.",
+    "Custom Hugging Face model": "Enter your own target and draft model IDs or local paths.",
+    "Modal.com": "Run on a cloud GPU using your Modal account.",
+    "Google Colab": "Prepare a notebook and connect through its tunnel URL.",
+    "Local vLLM": "Run vLLM on this machine; requires a compatible CUDA GPU.",
+    "A10G": "24 GB GPU for the default AWQ target and EAGLE head.",
+    "L4": "24 GB cloud GPU; availability depends on Modal capacity.",
+    "T4": "16 GB GPU; check model memory and dtype compatibility.",
+    "A100 / L4": "Select the GPU available in your Colab runtime.",
+    "Development": "Temporary Modal service; keep this terminal open to keep it running.",
+    "Production": "Persistent Modal deployment; continues after the CLI exits.",
+    "Calibrate": "Measure model costs on the selected GPU and save a real profile.",
+    "Switch to static": "Serve with a fixed draft budget, without adaptive profile decisions.",
+    "Abort setup": "Cancel setup without launching a server.",
+}
+
+BOOL_HELP = {
+    "Enable HardwareAdaptive": (
+        "Choose draft budget K from measured costs and acceptance feedback.",
+        "Use static speculation without hardware-adaptive budget changes.",
+    ),
+    "Launch server": ("Start the configured server and verify its endpoint.", "Save configuration without starting a server."),
+    "Run server in background": ("Keep the local server running and write logs to a file.", "Stream server logs here; Ctrl-C stops the foreground process."),
+    "Configure Modal credentials": ("Save Modal credentials locally for cloud access.", "Skip credential setup; configure Modal before launching."),
+    "Open containing folder": ("Open the notebook folder in your file manager.", "Keep the notebook path visible without opening a file manager."),
+}
+
+
+def choice_description(question: str, choice: str) -> str:
+    if choice in ("Yes", "No"):
+        for prefix, descriptions in BOOL_HELP.items():
+            if question.startswith(prefix):
+                return descriptions[choice == "No"]
+        return "Continue with this setting." if choice == "Yes" else "Skip this setting."
+    for prefix, description in CHOICE_HELP.items():
+        if choice.startswith(prefix):
+            return description
+    return f"Select {choice}."
+
+
+def _menu_line(text: str) -> str:
+    # Reserve one column: terminal auto-wrap would invalidate cursor movement.
+    width = max(1, shutil.get_terminal_size((100, 24)).columns - 1)
+    return text if len(text) <= width else text[:max(0, width - 3)] + "." * min(3, width)
+
 def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> str:
     """Prompt user to select an option using arrow keys and Enter."""
     if not sys.stdin.isatty():
@@ -177,6 +232,7 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
         for i, c in enumerate(choices, 1):
             marker = " (default)" if i - 1 == default_idx else ""
             print(f"  \033[90m{i}.\033[0m {c}{marker}")
+        print(f"  Info: {choice_description(question, choices[default_idx])}")
         try:
             raw = input(f"Select [1-{len(choices)}] (default {default_idx + 1}): ").strip()
             if not raw:
@@ -200,13 +256,15 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
 
     def render(first: bool = False) -> None:
         if not first:
-            print(f"\033[{n}A", end="")
+            print(f"\033[{n+1}A", end="")
         for i, choice in enumerate(choices):
             print("\r\033[K", end="")
             if i == current:
-                print(f"  \033[1;37m> {choice}\033[0m\n", end="")
+                print(f"\033[1;37m{_menu_line('  > ' + choice)}\033[0m\n", end="")
             else:
-                print(f"    \033[90m{choice}\033[0m\n", end="")
+                print(f"\033[90m{_menu_line('    ' + choice)}\033[0m\n", end="")
+        footer = _menu_line("  Info: " + choice_description(question, choices[current]))
+        print(f"\r\033[K\033[36m{footer}\033[0m\n", end="")
         sys.stdout.flush()
 
     render(first=True)
@@ -236,10 +294,10 @@ def prompt_choice(question: str, choices: list[str], default_idx: int = 0) -> st
         sys.stdout.flush()
 
     # Collapse into clean single confirmed line
-    print(f"\033[{n+1}A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[current]}\033[0m\n", end="")
-    for _ in range(n):
-        print("\033[K\n", end="")
-    print(f"\033[{n}A", end="")
+    print(f"\033[{n+2}A\r\033[K\033[32m✔\033[0m \033[1m{question}\033[0m \033[36m{choices[current]}\033[0m\n", end="")
+    for _ in range(n+1):
+        print("\r\033[K\n", end="")
+    print(f"\033[{n+1}A", end="")
     sys.stdout.flush()
 
     return choices[current]
@@ -361,7 +419,8 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             setup_now = prompt_bool("Configure Modal credentials now?", default_val=True)
             if setup_now:
                 token_id = prompt_string("Enter MODAL_TOKEN_ID (or press Enter to skip):", default_val="")
-                token_secret = prompt_string("Enter MODAL_TOKEN_SECRET (or press Enter to skip):", default_val="")
+                import getpass
+                token_secret = getpass.getpass("Enter MODAL_TOKEN_SECRET (or press Enter to skip): ")
                 if token_id and token_secret:
                     modal_runner.cred_mgr.set_credential("modal", "MODAL_TOKEN_ID", token_id.strip())
                     modal_runner.cred_mgr.set_credential("modal", "MODAL_TOKEN_SECRET", token_secret.strip())
@@ -459,7 +518,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     if not enable_adaptive:
         print("\033[32m✔ HardwareAdaptive engine: Disabled (Static speculation mode)\033[0m")
     else:
-        cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True)
+        cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True, target_model=target_model, draft_model=draft_model)
         if cost_model is None or not profile_name or profile_name == "conservative_analytical_fallback":
             print(
                 f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile found for GPU "
@@ -479,17 +538,18 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
 
             if "Calibrate" in missing_action:
                 print(f"\nCalibrating hardware cost profile for {serving_hw.device_name} ({serving_hw.sm_architecture})...")
-                res = run_hardware_micro_benchmark(
-                    serving_hw,
-                    target_model=target_model,
-                    draft_model=draft_model,
-                )
-                if isinstance(res, tuple):
-                    cost_model, saved_path = res
-                else:
-                    saved_path = res
+                try:
+                    cost_model, saved_path = run_hardware_micro_benchmark(
+                        serving_hw, target_model=target_model, draft_model=draft_model, backend=backend,
+                    )
+                except KeyboardInterrupt:
+                    print("Calibration cancelled; no server launched.")
+                    return {"action": "abort", "exit_code": 130}
+                except (RuntimeError, ValueError, OSError) as exc:
+                    print(f"Calibration failed; no serving launched: {exc}")
+                    return {"action": "abort", "exit_code": 1}
                 print(f"\033[1;32m✔ Calibrated & saved new hardware profile: {saved_path}\033[0m")
-                cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True)
+                cost_model, profile_name = load_profile_for_hardware(serving_hw, strict=True, target_model=target_model, draft_model=draft_model)
                 print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
             elif "Switch to static" in missing_action:
                 enable_adaptive = False
@@ -512,6 +572,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         "use_heterogeneous_vocab": report.use_heterogeneous_vocab,
         "enable_adaptive": enable_adaptive,
         "profile_applied": profile_name,
+        "profile_path": str(resolve_profile_path(profile_name)) if profile_name else None,
         "target_gpu": target_gpu,
         "colab_tunnel_url": colab_tunnel_url,
         "modal_deploy": modal_deploy,

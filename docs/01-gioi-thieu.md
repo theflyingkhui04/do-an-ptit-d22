@@ -4,8 +4,10 @@
 
 ## 1.1. Tên đề tài
 
-**(TV)** *Giải mã suy đoán thích ứng phần cứng cho suy luận LLM tự-host trên GPU phổ thông.*
-**(EN)** *Hardware-Aware Speculative Decoding for Self-Hosted LLM Inference on Consumer GPUs.*
+**(TV)** *FlexSDS: Hệ thống phục vụ giải mã suy đoán EAGLE thích ứng theo phần cứng cho mô hình ngôn ngữ lớn.*
+**(EN)** *FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs.*
+
+> Tên đề tài được đồng bộ ngày 14/11/2026. Các câu hỏi nghiên cứu dưới đây mô tả mục tiêu; trạng thái tích hợp CLI/runtime hiện tại xem [README](../README.md) và [runbook CLI/Modal](runbooks/flexsds-cli-modal-calibration.md).
 
 ## 1.2. Bối cảnh và động lực
 

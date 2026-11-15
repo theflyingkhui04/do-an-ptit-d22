@@ -66,6 +66,8 @@ class CredentialsManager:
             data[provider] = {}
         data[provider][key] = value
         self._save(data)
+        if provider == 'modal' and all(data[provider].get(k) for k in ('MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET')):
+            (self.path.parent / 'modal_logged_out').unlink(missing_ok=True)
 
     def get_stored_credential(self, provider: str, key: str) -> Optional[str]:
         """Retrieves stored credential exclusively from credentials file."""

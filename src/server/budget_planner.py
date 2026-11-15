@@ -235,6 +235,21 @@ class AdaptiveBudgetPlanner:
         if not isinstance(controller_kwargs, dict):
             raise ValueError("ADAPTIVE_CONTROLLER_KWARGS must be a JSON object")
 
+        profile_path = env.get("FLEXSDS_PROFILE_PATH")
+        if profile_path:
+            import hashlib
+            from pathlib import Path
+            from flexsds.core.cost_model import validate_measured_profile
+            from src.proposer.controller import EmpiricalCostProfile
+            raw = Path(profile_path).read_bytes()
+            data = validate_measured_profile(json.loads(raw))
+            matrix = {(int(key.split('_')[0][1:]), int(key.split('_')[1][1:])): value
+                      for key, value in data['cost_matrix_ms'].items()}
+            controller_kwargs['cost_profile'] = EmpiricalCostProfile(matrix=matrix)
+            controller_kwargs['candidate_budgets'] = data['grid']['candidate_budgets']
+            logger.info("Loaded empirical hardware profile %s sha256=%s", profile_path,
+                        hashlib.sha256(raw).hexdigest())
+
         if "ADAPTIVE_ENABLE_VRAM_GUARD" in env:
             controller_kwargs["enable_vram_guard"] = _env_flag(env["ADAPTIVE_ENABLE_VRAM_GUARD"])
 
