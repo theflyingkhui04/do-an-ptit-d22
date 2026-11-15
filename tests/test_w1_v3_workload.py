@@ -101,10 +101,15 @@ def test_paths_outside_the_repository_and_temp_are_refused(tmp_path):
     assert not elsewhere.exists()
 
 
-def test_default_report_is_a_fixed_path_per_dataset_version():
-    assert checker.default_report_path("w1.m5_01.v3") == Path("experiments/results/m5_01_w1_v3_check_summary.json")
-    with pytest.raises(AssertionError, match="unexpected dataset_version"):
-        checker.default_report_path("../../elsewhere")
+def test_default_report_is_the_fixed_path_for_the_dataset_version(tmp_path, monkeypatch):
+    out = build(tmp_path, ocr_rows())
+    reports = {version: tmp_path / "results" / f"{i}.json" for i, version in enumerate(w1_workload.W1_DATASET_VERSIONS)}
+    monkeypatch.setattr(checker, "DEFAULT_REPORTS", reports)  # keep the committed reports untouched
+    assert checker.main(["--w1-dir", str(out)]) == 0
+    written = [p for p in reports.values() if p.exists()]
+    assert written == [reports["w1.m5_01.v3"]]
+    report = json.loads(written[0].read_text(encoding="utf-8"))
+    assert report["dataset_version"] == "w1.m5_01.v3" and report["status"] == "PASS"
 
 
 def test_checker_rejects_marks_in_a_stripped_package(tmp_path):
