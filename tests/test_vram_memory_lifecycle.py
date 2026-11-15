@@ -119,6 +119,9 @@ def test_simulated_tensor_buffer_cleanup():
     """Verify that tensor buffers generated during dynamic draft depth k are completely freed."""
     adapter = AdaptiveProposerAdapter()
     req_id = "tensor_test"
+    # memory_allocated() is process-wide: earlier tests (e.g. the cost-model GPU probe) may keep
+    # cuBLAS workspaces alive, so this test checks only the memory it allocates itself.
+    cuda_baseline = torch.cuda.memory_allocated() if torch.cuda.is_available() else 0
 
     allocated_tensors = []
 
@@ -141,5 +144,5 @@ def test_simulated_tensor_buffer_cleanup():
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-        # Ensure no dangling CUDA memory remains allocated
-        assert torch.cuda.memory_allocated() == 0
+        # Ensure no dangling CUDA memory remains allocated by this test
+        assert torch.cuda.memory_allocated() == cuda_baseline
