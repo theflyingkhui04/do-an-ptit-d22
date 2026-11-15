@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flexsds"
-version = "0.2.1"
+version = "0.2.2"
 description = "FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs"
 authors = [
     {name = "Can Duc Khoi"},
