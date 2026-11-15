@@ -101,6 +101,12 @@ def test_paths_outside_the_repository_and_temp_are_refused(tmp_path):
     assert not elsewhere.exists()
 
 
+def test_default_report_is_a_fixed_path_per_dataset_version():
+    assert checker.default_report_path("w1.m5_01.v3") == Path("experiments/results/m5_01_w1_v3_check_summary.json")
+    with pytest.raises(AssertionError, match="unexpected dataset_version"):
+        checker.default_report_path("../../elsewhere")
+
+
 def test_checker_rejects_marks_in_a_stripped_package(tmp_path):
     with pytest.raises(AssertionError, match="Vietnamese marks"):
         checker.assert_marks_stripped([{"sample_id": "s1", "raw_text": "Tổng"}], {"mark_stripping": "strip_vietnamese_marks"})

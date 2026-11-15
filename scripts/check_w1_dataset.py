@@ -34,6 +34,16 @@ DEFAULT_REPORTS = {
     W1_V2_DATASET_VERSION: Path("experiments/results/m5_01_w1_v2_check_summary.json"),
     W1_V3_DATASET_VERSION: Path("experiments/results/m5_01_w1_v3_check_summary.json"),
 }
+
+
+def default_report_path(dataset_version: str) -> Path:
+    """Fixed report path for a version read from the package (never built from the file content)."""
+    for version, report in DEFAULT_REPORTS.items():
+        if dataset_version == version:
+            return report
+    raise AssertionError("unexpected dataset_version")
+
+
 FORBIDDEN_MODEL_FACING_KEYS = {"labels", "key_text_pairs"}
 
 
@@ -200,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         },
     }
     if not args.no_write_report:
-        report = report_arg or contained_path(DEFAULT_REPORTS[dataset_version])
+        report = report_arg or contained_path(default_report_path(dataset_version))
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
