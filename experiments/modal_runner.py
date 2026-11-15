@@ -66,19 +66,20 @@ ENABLED_LANES = set(os.environ.get("PTIT_LANES", "vanilla,static,adaptive,eagle"
 if unknown_lanes := ENABLED_LANES - lanes.LANES.keys():
     raise ValueError(f"Unknown deployment lanes: {sorted(unknown_lanes)}")
 
-image = (
+_vllm_image = (
     modal.Image.from_registry("nvidia/cuda:13.0.3-devel-ubuntu22.04", add_python="3.11")
     .entrypoint([])
     .uv_pip_install(f"vllm=={lanes.VLLM_VERSION}")
 )
 if VLLM_RUNTIME == "backport-55708":
     # SHA-256 gated before and after: a different vLLM build fails the image build.
-    image = (image
-             .add_local_file(SOURCE_ROOT / "experiments" / "vllm_runtime_patch.py",
-                             "/root/vllm_runtime_patch.py", copy=True)
-             .run_commands("python /root/vllm_runtime_patch.py"))
+    _vllm_image = (_vllm_image
+                   .add_local_file(SOURCE_ROOT / "experiments" / "vllm_runtime_patch.py",
+                                   "/root/vllm_runtime_patch.py", copy=True)
+                   .run_commands("python /root/vllm_runtime_patch.py"))
+# One assignment of the serving image: tests read its layers from this statement.
 image = (
-    image
+    _vllm_image
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "0", "PTIT_SOURCE_COMMIT": SOURCE_COMMIT,
           "PTIT_RUN_ID": RUN_ID, "PTIT_LANES": ",".join(sorted(ENABLED_LANES)),
           "PTIT_DTYPE_PROFILE": PROFILE, "PTIT_KEEP_WARM": "1" if KEEP_WARM else "0",
