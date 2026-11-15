@@ -131,7 +131,7 @@ export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints:
           className="grid gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            run();
+            void run(); // run() reports its own errors
           }}
         >
           <div className="grid gap-2">

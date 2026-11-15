@@ -138,7 +138,7 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
               className="grid gap-3"
               onSubmit={(event) => {
                 event.preventDefault();
-                ask(question);
+                void ask(question); // ask() reports its own errors
               }}
             >
               <label htmlFor="question" className="sr-only">Câu hỏi</label>
