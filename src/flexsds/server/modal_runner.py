@@ -47,6 +47,10 @@ class ModalServingRunner:
             from flexsds.server.modal_auth import prepare_modal_auth
             prepare_modal_auth(self.cred_mgr)
         env = dict(os.environ)
+        # Redirected Python output on Windows otherwise uses the ANSI code page.
+        # Modal emits Unicode status symbols, so both ends of the pipe use UTF-8.
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
         env["FLEXSDS_SERVING_CONFIG"] = json.dumps({k: cfg[k] for k in keys if k in cfg})
 
         # Modal can use another pipx interpreter; forward project source only,
@@ -90,7 +94,7 @@ class ModalServingRunner:
             try:
                 proc = subprocess.Popen(cmd, env=self.setup_environment(config), stdin=subprocess.DEVNULL,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                        text=True, errors='replace', bufsize=1)
+                                        text=True, encoding='utf-8', errors='replace', bufsize=1)
                 output.start()
             except BaseException:
                 if proc is not None and proc.poll() is None:
