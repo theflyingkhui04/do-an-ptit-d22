@@ -293,7 +293,7 @@ def run_logged_process(command, *, env, timeout, total_cells):
     reader = None
     try:
         proc = subprocess.Popen(command,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,text=True,errors='replace',bufsize=1)
+                                stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace',bufsize=1)
         progress.start()
         reader = progress.capture(proc)
         code = proc.wait(timeout=timeout)

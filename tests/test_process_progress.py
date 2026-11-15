@@ -146,3 +146,32 @@ def test_close_open_popup_restores_primary_and_keeps_capture_paused(capsys):
     assert 'only-in-popup' in text.split('\x1b[?1049l')[0]
     assert 'only-in-popup' not in text.split('\x1b[?1049l')[1]
     assert progress.closed and not progress.details
+
+
+@pytest.mark.parametrize('kind', ['serving', 'calibration'])
+def test_modal_unicode_output_survives_legacy_pipe_encoding(monkeypatch, kind):
+    """Exercise real child output and log decoding with Windows-like defaults."""
+    import locale
+    from flexsds.server.modal_runner import ModalServingRunner
+
+    monkeypatch.setenv('PYTHONIOENCODING', 'cp1252')
+    monkeypatch.setenv('PYTHONUTF8', '0')
+    monkeypatch.setattr(locale, 'getencoding', lambda: 'cp1252')
+    runner = ModalServingRunner()
+    env = runner.setup_environment({'enable_adaptive': False})
+    marker = '\u2713 Ti\u1ebfng Vi\u1ec7t \u2584'
+    script = f"import sys; assert sys.stdout.encoding == 'utf-8'; print({ascii(marker)})"
+    if kind == 'calibration':
+        pp.run_logged_process([sys.executable, '-c', script], env=env, timeout=5, total_cells=1)
+        log_path = next(pp.LOG_DIR.glob('*.log'))
+    else:
+        monkeypatch.setattr(runner, 'check_credentials', lambda: True)
+        monkeypatch.setattr(runner, 'build_modal_command',
+                            lambda *a, **kw: [sys.executable, '-c', script])
+        proc = runner.launch({'enable_adaptive': False})
+        assert proc.wait(timeout=5) == 0
+        assert proc._flexsds_output.done.wait(timeout=5)
+        log_path = proc._flexsds_output.log_path
+    assert marker in log_path.read_text(encoding='utf-8')
+    assert os.environ['PYTHONIOENCODING'] == 'cp1252'
+    assert os.environ['PYTHONUTF8'] == '0'
