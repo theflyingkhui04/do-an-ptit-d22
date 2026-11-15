@@ -212,7 +212,9 @@ def main(argv: list[str] | None = None) -> int:
             default_report = DEFAULT_REPORTS[W1_V3_DATASET_VERSION]
         report = report_arg or REPO_ROOT / default_report
         report.parent.mkdir(parents=True, exist_ok=True)
-        report.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        with open(report, "w", encoding="utf-8") as file:  # same bytes as write_text(json.dumps(...) + "\n")
+            json.dump(summary, file, ensure_ascii=False, indent=2)
+            file.write("\n")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 
