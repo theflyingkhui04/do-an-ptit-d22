@@ -3,6 +3,7 @@
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
 
+import { BrandMark } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 
 interface Props {
@@ -34,7 +35,7 @@ export default function KeyGate({ verify, onAccepted }: Props) {
     <main className="grid min-h-screen place-items-center bg-rail px-4 text-[14.5px]">
       <form onSubmit={submit} className="grid w-full max-w-sm gap-4 rounded-2xl bg-surface p-7">
         <div className="flex items-center gap-2.5">
-          <div className="grid size-9 place-items-center rounded-lg bg-brand font-bold text-white" aria-hidden>F</div>
+          <BrandMark size={36} className="ring-1 ring-line" />
           <div className="leading-tight">
             <h1 className="text-lg font-bold">FlexSDS Console</h1>
             <p className="text-[13px] text-ink-3">Đồ án tốt nghiệp D22, PTIT</p>

@@ -10,7 +10,7 @@ import Node1Page from "@/components/Node1Page";
 import Node2Page from "@/components/Node2Page";
 import Node3Page from "@/components/Node3Page";
 import ResultPage from "@/components/ResultPage";
-import { Button, cx } from "@/components/ui";
+import { BrandMark, Button, cx } from "@/components/ui";
 import { createApi, readKey, saveKey, withUnauthorizedHandler, type Api, type Endpoint } from "@/lib/api";
 
 export type PageId = "node1" | "node2" | "node3" | "result" | "endpoints";
@@ -143,7 +143,7 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
     <div className="min-h-screen text-[14.5px] leading-[1.55] lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:bg-[linear-gradient(to_right,var(--rail)_248px,transparent_248px)]">
       <nav aria-label="Điều hướng" className="flex flex-col gap-5 bg-rail px-3 py-[18px] text-rail-ink lg:sticky lg:top-0 lg:h-screen">
         <div className="flex items-center gap-2.5 px-2">
-          <div className="grid size-8 place-items-center rounded-lg bg-brand font-bold text-white" aria-hidden>F</div>
+          <BrandMark size={32} />
           <div className="leading-tight">
             <b className="block text-base text-white">FlexSDS</b>
             <span className="text-xs">Console đồ án D22, PTIT</span>

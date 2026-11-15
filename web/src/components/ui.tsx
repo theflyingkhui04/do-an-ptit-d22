@@ -1,10 +1,20 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
+import Image from "next/image";
 import type { ReactNode } from "react";
 
 import type { Endpoint } from "@/lib/api";
 import { formatCell, formatMs } from "@/lib/format";
+
+// FlexSDS white tile from logo/icon_white.webp: its bold red F stays legible at 16–36 px,
+// unlike the thin glow of the black tile. Decorative (empty alt): the name is written next to it.
+export function BrandMark({ size, className }: { size: number; className?: string }) {
+  return (
+    <Image src="/brand/flexsds-icon-light.png" alt="" width={size} height={size} unoptimized priority
+      className={cx("rounded-[13%]", className)} />
+  );
+}
 
 export function cx(...names: (string | false | null | undefined)[]): string {
   return names.filter(Boolean).join(" ");

@@ -46,6 +46,33 @@ describe("demo key gate", () => {
   });
 });
 
+describe("brand", () => {
+  const logo = (variant: "light" | "dark") => document.querySelector(`img[src*="flexsds-icon-${variant}"]`);
+
+  // The white tile's bold red F stays legible at 16–36 px; the black tile's thin glow does not.
+  it("uses the white tile on the key card (outlined on white) and on the dark side bar", async () => {
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+    const { unmount } = render(<Console makeApi={() => fakeApi()} />);
+    await screen.findByLabelText("Mật khẩu demo");
+    expect(logo("light")).toHaveAttribute("alt", "");
+    expect(logo("light")).toHaveClass("ring-1");
+    unmount();
+
+    open("", fakeApi());
+    await screen.findByRole("navigation", { name: "Điều hướng" });
+    expect(logo("light")).toHaveAttribute("alt", "");
+    expect(logo("dark")).toBeNull();
+  });
+
+  it("ships small icons, not the 1600 px source tiles", () => {
+    for (const file of ["public/brand/flexsds-icon-light.png",
+      "src/app/icon.png", "src/app/apple-icon.png", "src/app/favicon.ico"]) {
+      expect(statSync(join(process.cwd(), file)).size).toBeLessThan(20_000);
+    }
+  });
+});
+
 describe("endpoints", () => {
   it("opens on the onboarding page when no endpoint has been added", async () => {
     open("", fakeApi({ endpoints: vi.fn(async () => ({ endpoints: [] })) }));
