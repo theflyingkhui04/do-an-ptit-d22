@@ -29,6 +29,7 @@ from build_node1_requests import (  # noqa: E402
     normalize_text,
 )
 from build_w1_workload import make_provenance_row, write_manifest  # noqa: E402
+from src.pipeline.safe_paths import contained_path  # noqa: E402
 from src.pipeline.w1_workload import (  # noqa: E402
     HASH_POLICY_LF,
     W1_V2_DATASET_VERSION,
@@ -69,7 +70,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def resolve(path: Path) -> Path:
-    return path if path.is_absolute() else REPO_ROOT / path
+    """Command-line path inside the repository or the temp directory (relative = repository root)."""
+    try:
+        return contained_path(path)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
 
 
 def ocr_by_sample(ocr_rows: list[dict[str, Any]], samples: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

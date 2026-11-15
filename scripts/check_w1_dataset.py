@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.pipeline.safe_paths import contained_path  # noqa: E402
 from src.pipeline.w1_workload import (  # noqa: E402
     W1_DATASET_VERSION,
     W1_DATASET_VERSIONS,
@@ -146,10 +147,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    samples = load_jsonl(args.w1_dir / "samples.jsonl")
-    provenance = load_jsonl(args.w1_dir / "provenance.jsonl")
-    requests = load_jsonl(args.w1_dir / "node1_chat_requests.jsonl")
-    package_manifest = load_json(args.w1_dir / "package_manifest.json")
+    try:  # both paths come from the command line: repository or temp directory only
+        w1_dir = contained_path(args.w1_dir)
+        report_arg = None if args.report is None else contained_path(args.report)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+    samples = load_jsonl(w1_dir / "samples.jsonl")
+    provenance = load_jsonl(w1_dir / "provenance.jsonl")
+    requests = load_jsonl(w1_dir / "node1_chat_requests.jsonl")
+    package_manifest = load_json(w1_dir / "package_manifest.json")
 
     if len(samples) < args.min_samples:
         raise AssertionError(f"expected at least {args.min_samples} samples, found {len(samples)}")
@@ -170,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     assert_no_label_leakage(samples, requests)
     assert_marks_stripped(samples, package_manifest)
     assert_requests_match_samples(samples, requests, package_manifest.get("max_tokens"))
-    actual_hashes = assert_manifest_hashes(args.w1_dir, package_manifest)
+    actual_hashes = assert_manifest_hashes(w1_dir, package_manifest)
 
     summary = {
         "task": "M1-03" if dataset_version == W1_DATASET_VERSION else "M5-01",
@@ -194,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         },
     }
     if not args.no_write_report:
-        report = args.report or DEFAULT_REPORTS[dataset_version]
+        report = report_arg or contained_path(DEFAULT_REPORTS[dataset_version])
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))

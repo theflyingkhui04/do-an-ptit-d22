@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -88,6 +89,16 @@ def test_refuses_frozen_packages(tmp_path):
         with pytest.raises(SystemExit, match="frozen"):
             builder.main(["--ocr-jsonl", str(ocr), "--choice-report", str(choice),
                           "--output-dir", str(REPO_ROOT / "experiments/configs" / frozen), "--report-dir", str(tmp_path)])
+
+
+def test_paths_outside_the_repository_and_temp_are_refused(tmp_path):
+    elsewhere = Path(os.path.abspath(os.sep)) / "ptit-not-allowed"
+    with pytest.raises(SystemExit, match="outside the repository"):
+        builder.main(["--ocr-jsonl", str(tmp_path / "o.jsonl"), "--output-dir", str(elsewhere / "w1_v3")])
+    out = build(tmp_path, ocr_rows())
+    with pytest.raises(SystemExit, match="outside the repository"):
+        checker.main(["--w1-dir", str(out), "--report", str(elsewhere / "summary.json")])
+    assert not elsewhere.exists()
 
 
 def test_checker_rejects_marks_in_a_stripped_package(tmp_path):

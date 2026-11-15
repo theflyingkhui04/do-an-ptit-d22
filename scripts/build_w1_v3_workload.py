@@ -24,6 +24,7 @@ for path in (REPO_ROOT, Path(__file__).resolve().parent):
 
 from build_node1_requests import SCHEMA_VERSION, build_chat_request, build_node1_input_text, load_jsonl, normalize_text  # noqa: I001
 from build_w1_workload import make_provenance_row, write_manifest
+from src.pipeline.safe_paths import contained_path
 from src.pipeline.text_normalize import strip_vietnamese_marks
 from src.pipeline.w1_workload import (
     HASH_POLICY_LF,
@@ -67,7 +68,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def resolve(path: Path) -> Path:
-    return path if path.is_absolute() else REPO_ROOT / path
+    """Command-line path inside the repository or the temp directory (relative = repository root)."""
+    try:
+        return contained_path(path)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
 
 
 def ocr_by_sample(ocr_rows: list[dict[str, Any]], samples: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
