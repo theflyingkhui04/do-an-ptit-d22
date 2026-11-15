@@ -93,6 +93,21 @@ def test_shared_vocab_detection_when_same_vocab_size():
         assert report.use_heterogeneous_vocab is False
 
 
+def test_eagle3_reduced_draft_vocab_enables_heterogeneous_flag():
+    # EAGLE-3 giữ vocab_size của target nhưng chỉ dự đoán trên draft_vocab_size token (CR03, AC-06):
+    # config thật của duckhoi/qwen2.5-7b-eagle3.1-speculator có vocab_size 152064, draft_vocab_size 16000
+    target_cfg = {"architectures": ["Qwen2ForCausalLM"], "vocab_size": 152064}
+    draft_cfg = {"architectures": ["LlamaForCausalLMEagle3"], "vocab_size": 152064, "draft_vocab_size": 16000}
+
+    with patch("flexsds.core.compatibility.get_model_config", side_effect=[target_cfg, draft_cfg]):
+        report = check_compatibility(
+            target_model="Qwen/Qwen2.5-7B-Instruct-AWQ",
+            draft_model="duckhoi/qwen2.5-7b-eagle3.1-speculator",
+        )
+        assert report.draft_method == "eagle3"
+        assert report.use_heterogeneous_vocab is True
+
+
 def test_check_compatibility_offline_fallback():
     # Kiểm tra trường hợp mất mạng, fallback về heuristic dựa trên tên mô hình
     with patch("flexsds.core.compatibility.get_model_config", side_effect=NetworkOfflineError("Network unreachable")):

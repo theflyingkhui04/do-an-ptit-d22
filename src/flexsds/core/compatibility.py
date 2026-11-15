@@ -345,7 +345,8 @@ def check_compatibility(
     # 4. Vocabulary Alignment (CR03)
     # So sánh vocab_size giữa target và draft khi có cấu hình; nếu khác nhau thì bật cờ dị thể
     target_vocab = target_cfg.get("vocab_size", 0) if target_cfg else 0
-    draft_vocab = draft_cfg.get("vocab_size", 0) if draft_cfg else 0
+    # EAGLE-3 heads keep the target vocab_size but predict over draft_vocab_size tokens (AC-06)
+    draft_vocab = (draft_cfg.get("draft_vocab_size") or draft_cfg.get("vocab_size", 0)) if draft_cfg else 0
 
     if target_vocab > 0 and draft_vocab > 0:
         use_hetero_vocab = (target_vocab != draft_vocab)
