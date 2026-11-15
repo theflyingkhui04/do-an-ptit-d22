@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import urllib.error
 import urllib.request
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 
 class ColabServingRunner:
@@ -114,7 +115,6 @@ class ColabServingRunner:
     ) -> bool:
         """Updates the local Colab notebook file with the exact models and parameters configured."""
         import json
-        from pathlib import Path
 
         nb_file = self.resolve_notebook_path(notebook_path)
         if not nb_file.exists():

@@ -198,7 +198,8 @@ def test_modal_app_allocates_gpu_exposes_port_and_preserves_exact_config(monkeyp
 
 def test_imported_helpers_contain_no_embedded_credentials_or_saved_output():
     pattern = re.compile(r"(?:gh[pousr]_)[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}")
-    for path in [ROOT / "src/flexsds/server/vscode_cli.py",
+    # vscode_cli.ipy holds IPython cells (`!git`, `!pip`): not importable Python, so not a .py module
+    for path in [ROOT / "src/flexsds/server/vscode_cli.ipy",
                  ROOT / "src/flexsds/server/vscode_cli.ipynb",
                  ROOT / "logs/Khoi/M1-01/vscode_cli.ipynb"]:
         text = path.read_text(encoding="utf-8")
