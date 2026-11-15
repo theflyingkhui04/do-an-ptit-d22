@@ -264,3 +264,22 @@ def test_margin_unsupported_when_top_logprobs_missing(choice):
     lane = client(t)
     with pytest.raises(mc.LogitMarginUnsupported):
         lane.margins([{"role": "user", "content": "x"}])
+
+
+def test_app_name_selects_the_demo_application(monkeypatch):
+    monkeypatch.delenv("PTIT_MODAL_URL_ADAPTIVE", raising=False)
+    monkeypatch.delenv("PTIT_MODAL_WORKSPACE", raising=False)
+    monkeypatch.setenv("PTIT_APP_NAME", "ptit-vllm-demo")
+
+    assert mc.lane_base_url("adaptive") == "https://nguyenduonghb940--ptit-vllm-demo-adaptive.us-east.modal.direct/v1"
+
+    monkeypatch.setenv("PTIT_MODAL_URL_ADAPTIVE", "https://example.test/v1/")
+    assert mc.lane_base_url("adaptive") == "https://example.test/v1"
+
+
+def test_invalid_app_name_rejected(monkeypatch):
+    monkeypatch.delenv("PTIT_MODAL_URL_ADAPTIVE", raising=False)
+    monkeypatch.setenv("PTIT_APP_NAME", "Bad_Name")
+
+    with pytest.raises(ValueError, match="PTIT_APP_NAME"):
+        mc.lane_base_url("adaptive")

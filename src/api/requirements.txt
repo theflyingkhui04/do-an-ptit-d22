@@ -1,0 +1,11 @@
+# [M5-01 web demo] Backend on Render (Python 3.11). Pinned to the versions tested in env doan-d22 on 08/11/2026.
+# The backend never imports torch/vLLM: models run on Modal.
+fastapi==0.162.2
+uvicorn==0.54.0
+python-multipart==0.0.33
+httpx==0.28.1
+psycopg[binary]==3.3.8
+sqlglot==30.30.0
+pydantic==2.13.4
+jsonschema==4.26.0
+pillow==12.3.0

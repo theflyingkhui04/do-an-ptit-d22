@@ -13,6 +13,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.pipeline.invoice_rows import (  # noqa: E402,F401  (make_invoice_id/money_value re-exported)
+    EVIDENCE_COLUMNS,
+    INVOICE_COLUMNS,
+    ITEM_COLUMNS,
+    TAX_COLUMNS,
+    build_invoice_rows,
+    make_invoice_id,
+    money_value,
+)
 from src.pipeline.validation import (  # noqa: E402
     DEFAULT_JSON_SCHEMA_PATH,
     validate_payload,
@@ -57,18 +66,10 @@ def init_schema(conn: sqlite3.Connection, schema_path: Path) -> None:
     conn.commit()
 
 
-def money_value(data: dict, name: str, key: str) -> object:
-    return data.get(name, {}).get(key)
-
-
-def make_invoice_id(run_id: str, payload: dict) -> str:
-    source = payload.get("source", {})
-    sample_id = source.get("sample_id")
-    img_id = source.get("img_id")
-    stable_id = sample_id or img_id
-    if not stable_id:
-        raise ValueError("source.sample_id or source.img_id is required to build invoice_id")
-    return f"{run_id}:{stable_id}"
+def _insert(conn: sqlite3.Connection, table: str, columns: tuple[str, ...], row: dict) -> None:
+    placeholders = ", ".join("?" for _ in columns)
+    conn.execute(f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})",
+                 tuple(row[column] for column in columns))
 
 
 def insert_extraction(
@@ -80,13 +81,8 @@ def insert_extraction(
     latency_ms: float | None = None,
 ) -> str:
     validate_payload(payload, json_schema_path)
-    invoice_id = make_invoice_id(run_id, payload)
-    source = payload.get("source", {})
-    seller = payload.get("seller", {})
-    buyer = payload.get("buyer", {})
-    invoice = payload.get("invoice", {})
-    totals = payload.get("totals", {})
-    extraction = payload.get("extraction", {})
+    rows = build_invoice_rows(payload, run_id, latency_ms=latency_ms)
+    invoice_id = rows.invoice["invoice_id"]
 
     conn.execute(
         """
@@ -118,151 +114,13 @@ def insert_extraction(
     if replace:
         conn.execute("DELETE FROM invoices WHERE invoice_id = ?", (invoice_id,))
 
-    conn.execute(
-        """
-        INSERT INTO invoices (
-            invoice_id, run_id, schema_version, document_type,
-            sample_id, img_id, image_path, raw_text, raw_json,
-            seller_name, seller_address, seller_tax_code, seller_phone,
-            buyer_name, buyer_address, buyer_tax_code, buyer_phone,
-            invoice_number, invoice_series, issued_at, issued_date, issued_time, currency, payment_method,
-            subtotal_raw, subtotal_value, subtotal_currency,
-            discount_raw, discount_value, discount_currency,
-            vat_amount_raw, vat_amount_value, vat_amount_currency,
-            total_amount_raw, total_amount_value, total_amount_currency,
-            extraction_status, extraction_confidence, missing_fields_json, warnings_json,
-            latency_ms
-        )
-        VALUES (
-            ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?,
-            ?, ?, ?,
-            ?, ?, ?,
-            ?, ?, ?,
-            ?, ?, ?, ?,
-            ?
-        )
-        """,
-        (
-            invoice_id,
-            run_id,
-            payload["schema_version"],
-            payload["document_type"],
-            source.get("sample_id"),
-            source.get("img_id"),
-            source.get("image_path"),
-            source.get("raw_text"),
-            json.dumps(payload, ensure_ascii=False),
-            seller.get("name"),
-            seller.get("address"),
-            seller.get("tax_code"),
-            seller.get("phone"),
-            buyer.get("name"),
-            buyer.get("address"),
-            buyer.get("tax_code"),
-            buyer.get("phone"),
-            invoice.get("invoice_number"),
-            invoice.get("invoice_series"),
-            invoice.get("issued_at"),
-            invoice.get("issued_date"),
-            invoice.get("issued_time"),
-            invoice.get("currency"),
-            invoice.get("payment_method"),
-            money_value(totals, "subtotal", "raw"),
-            money_value(totals, "subtotal", "value"),
-            money_value(totals, "subtotal", "currency"),
-            money_value(totals, "discount", "raw"),
-            money_value(totals, "discount", "value"),
-            money_value(totals, "discount", "currency"),
-            money_value(totals, "vat_amount", "raw"),
-            money_value(totals, "vat_amount", "value"),
-            money_value(totals, "vat_amount", "currency"),
-            money_value(totals, "total_amount", "raw"),
-            money_value(totals, "total_amount", "value"),
-            money_value(totals, "total_amount", "currency"),
-            extraction.get("status", "failed"),
-            extraction.get("confidence"),
-            json.dumps(extraction.get("missing_fields", []), ensure_ascii=False),
-            json.dumps(extraction.get("warnings", []), ensure_ascii=False),
-            latency_ms,
-        ),
-    )
-
-    for item in payload.get("items", []):
-        quantity = item.get("quantity", {})
-        unit_price = item.get("unit_price", {})
-        line_total = item.get("line_total", {})
-        conn.execute(
-            """
-            INSERT INTO invoice_items (
-                invoice_id, line_number, description, sku,
-                quantity_raw, quantity_value, quantity_unit,
-                unit_price_raw, unit_price_value, unit_price_currency,
-                line_total_raw, line_total_value, line_total_currency,
-                vat_rate
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                invoice_id,
-                item["line_number"],
-                item.get("description"),
-                item.get("sku"),
-                quantity.get("raw"),
-                quantity.get("value"),
-                quantity.get("unit"),
-                unit_price.get("raw"),
-                unit_price.get("value"),
-                unit_price.get("currency"),
-                line_total.get("raw"),
-                line_total.get("value"),
-                line_total.get("currency"),
-                item.get("vat_rate"),
-            ),
-        )
-
-    for tax in payload.get("taxes", []):
-        taxable_amount = tax.get("taxable_amount", {})
-        tax_amount = tax.get("tax_amount", {})
-        conn.execute(
-            """
-            INSERT INTO invoice_taxes (
-                invoice_id, tax_name, tax_rate,
-                taxable_amount_raw, taxable_amount_value, taxable_amount_currency,
-                tax_amount_raw, tax_amount_value, tax_amount_currency
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                invoice_id,
-                tax.get("tax_name"),
-                tax.get("tax_rate"),
-                taxable_amount.get("raw"),
-                taxable_amount.get("value"),
-                taxable_amount.get("currency"),
-                tax_amount.get("raw"),
-                tax_amount.get("value"),
-                tax_amount.get("currency"),
-            ),
-        )
-
-    for evidence in extraction.get("field_evidence", []):
-        conn.execute(
-            """
-            INSERT INTO field_evidence (invoice_id, field_path, raw_text, source_label)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                invoice_id,
-                evidence["field_path"],
-                evidence["raw_text"],
-                evidence.get("source_label"),
-            ),
-        )
+    _insert(conn, "invoices", INVOICE_COLUMNS, rows.invoice)
+    for item in rows.items:
+        _insert(conn, "invoice_items", ITEM_COLUMNS, item)
+    for tax in rows.taxes:
+        _insert(conn, "invoice_taxes", TAX_COLUMNS, tax)
+    for evidence in rows.evidence:
+        _insert(conn, "field_evidence", EVIDENCE_COLUMNS, evidence)
 
     conn.commit()
     return invoice_id

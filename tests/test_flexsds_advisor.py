@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from flexsds import __version__
 from flexsds.cli import main as cli
 from flexsds.core.hardware import HardwareInfo
 from flexsds.core.cost_model import load_profile_for_hardware
@@ -15,8 +16,10 @@ from flexsds.server.modal_runner import ModalServingRunner
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Static EAGLE (as in test_flexsds_integration): adaptive serving needs a measured GPU
+# profile, which these command-contract checks neither have nor test.
 PAIR = ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ",
-        "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator"]
+        "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator", "--no-adaptive"]
 
 
 def invoke(args, cwd):
@@ -27,8 +30,8 @@ def invoke(args, cwd):
 
 
 @pytest.mark.parametrize("args, expected", [
-    (["--version"], "0.2.0"),
-    (["--help"], "{detect,profile,stop,auth,serve,chat,monitor}"),
+    (["--version"], __version__),
+    (["--help"], "{clear,detect,profile,stop,auth,serve,chat,monitor}"),
     (["detect"], "Hardware:"),
     (["profile"], "Linked hardware profile:"),
     (PAIR + ["--backend", "local", "--dry-run"], "Dry-run execution command:"),
@@ -117,6 +120,6 @@ def test_modal_forwards_models_port_and_gpu_in_environment():
     cfg = {"target_model": "chosen-target", "draft_model": "chosen-draft",
            "port": 9876, "target_gpu": "T4", "enable_adaptive": False}
     command = runner.build_modal_command(cfg)
-    assert command[:2] == ["modal", "serve"]
+    assert Path(command[0]).stem.lower() == "modal" and command[1] == "serve"
     assert command[2].endswith("modal_app.py")
     assert json.loads(runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"]) == cfg

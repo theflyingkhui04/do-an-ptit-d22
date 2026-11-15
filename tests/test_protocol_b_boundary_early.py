@@ -13,6 +13,7 @@ import torch
 
 import test_protocol_b_boundary as boundary_tests
 import test_protocol_b_boundary_layer1 as layer1_tests
+import m203_frozen_sources as frozen
 from experiments.protocol_b import EvidenceError, fingerprint, file_sha
 from experiments import protocol_b_boundary as boundary
 from experiments import protocol_b_boundary_observer as observer
@@ -321,7 +322,7 @@ class ObservationAndSourceContracts(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         raw = subprocess.check_output(["git", "-c", f"safe.directory={root.as_posix()}", "show",
                                        boundary.CHECKPOINT + ":src/server/adaptive_scheduler.py"], cwd=root)
-        patched = (root / "src/server/adaptive_scheduler.py").read_bytes()
+        patched = frozen.frozen_bytes("src/server/adaptive_scheduler.py")  # the scheduler M2-03 ran
         sources.validate_scheduler_observation(raw, patched)
         for bad in (patched.replace(b"self._plan.batch_k", b"self.num_spec_tokens"),
                     patched.replace(b'"early_schedule"', b'"different_event"')):

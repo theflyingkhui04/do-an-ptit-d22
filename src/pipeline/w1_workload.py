@@ -10,6 +10,14 @@ from typing import Any, Iterable
 
 W1_WORKLOAD_ID = "w1_node1_invoice_extraction"
 W1_DATASET_VERSION = "w1.m1_03.v1"
+# [M5-01] Full-receipt OCR text instead of the four labelled MC-OCR lines.
+W1_V2_DATASET_VERSION = "w1.m5_01.v2"
+W1_V2_PROMPT_VERSION = "node1_extractor.v2"
+# [M5-01 canonical flow] library OCR (PaddleOCR det + VietOCR), Vietnamese marks removed.
+W1_V3_DATASET_VERSION = "w1.m5_01.v3"
+W1_DATASET_VERSIONS = (W1_DATASET_VERSION, W1_V2_DATASET_VERSION, W1_V3_DATASET_VERSION)
+# Every artifact is hashed after normalizing line endings to LF.
+HASH_POLICY_LF = "lf-canonical"
 
 # W1 v1 was frozen from artifacts produced/checked out with mixed newline
 # representations. Preserve that frozen identity explicitly so the same
@@ -82,6 +90,23 @@ def w1_v1_artifact_sha256(name: str, path: Path) -> str:
         raise ValueError(f"Unknown W1 v1 artifact: {name}") from exc
 
     return canonical_text_file_sha256(path, line_ending=line_ending)
+
+
+def artifact_sha256(name: str, path: Path, hash_policy: str | None) -> str:
+    """Hash a W1 package artifact with the package's declared policy.
+
+    A manifest without ``hash_policy`` is a frozen W1 v1 package.
+    """
+    if hash_policy is None:
+        return w1_v1_artifact_sha256(name, path)
+    if hash_policy == HASH_POLICY_LF:
+        return canonical_text_file_sha256(path, line_ending="\n")
+    raise ValueError(f"Unknown W1 hash_policy: {hash_policy!r}")
+
+
+def compose_node1_prompt_v2(v1_prompt: str, full_receipt_rules: str) -> str:
+    """Prompt node1_extractor.v2 = the frozen v1 prompt + the full-receipt rules."""
+    return v1_prompt.strip() + "\n\n" + full_receipt_rules.strip()
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:

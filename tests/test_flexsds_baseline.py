@@ -17,8 +17,13 @@ except ModuleNotFoundError:
 
 
 def test_flexsds_version():
-    """Verifies package version format."""
-    assert __version__ == "0.2.0"
+    """The package version matches pyproject.toml, the one place a release bumps it."""
+    from pathlib import Path
+
+    import tomllib
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    assert __version__ == tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
 
 
 def test_banner_rendering():

@@ -1,0 +1,57 @@
+{
+  "task": "M4-03",
+  "step": "run-node1-extractor",
+  "backend": "openai-compatible",
+  "serving_backend": "modal",
+  "hardware": "modal-A10G",
+  "lane": "vanilla",
+  "base_url": "https://nguyenduonghb940--ptit-vllm-demo-vanilla.us-east.modal.direct/v1",
+  "model": "qwen2.5-7b-vanilla",
+  "run_id": "select_B2",
+  "schema_version": "invoice_extraction.v1",
+  "prompt_version": "node1_extractor.v3",
+  "source_policy": "restore",
+  "workload_id": "m5_01_node1_marks",
+  "dataset_version": "node1_marks.select.B2",
+  "w1_package_sha256": "a6d2fad70c4fe2c2bac874009ee25dd5dc514d41a5af40ebb4bc826e14107b45",
+  "artifact_hashes": {
+    "requests_B2.jsonl": "a6d2fad70c4fe2c2bac874009ee25dd5dc514d41a5af40ebb4bc826e14107b45"
+  },
+  "request_count": 60,
+  "fully_validated_count": 54,
+  "sample_failure_count": 6,
+  "persistence_failure_count": 0,
+  "failure_counts": {
+    "SCHEMA_VALIDATION_ERROR": 6
+  },
+  "rates": {
+    "transport_success_rate": 1.0,
+    "strict_json_rate": 1.0,
+    "source_binding_rate": 1.0,
+    "schema_valid_rate": 0.9
+  },
+  "acceptance": {
+    "threshold": 0.95,
+    "pass": false,
+    "formula": "fully_validated_count / request_count"
+  },
+  "normalization_count": 113,
+  "latency_ms": {
+    "mean": 17115.683,
+    "median": 16316.426,
+    "min": 7268.988,
+    "max": 28883.603
+  },
+  "usage": {
+    "prompt_tokens": 130591,
+    "completion_tokens": 82916,
+    "total_tokens": 213507
+  },
+  "database": null,
+  "outputs": {
+    "raw_responses": "experiments/runs/m5_01/20261114-m501-node1-marks/select/out_B2/raw_responses.jsonl",
+    "validated_outputs": "experiments/runs/m5_01/20261114-m501-node1-marks/select/out_B2/validated_outputs.jsonl",
+    "failures": "experiments/runs/m5_01/20261114-m501-node1-marks/select/out_B2/failures.jsonl",
+    "summary": "experiments/runs/m5_01/20261114-m501-node1-marks/select/out_B2/summary.json"
+  }
+}

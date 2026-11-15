@@ -34,11 +34,14 @@ from src.pipeline.entity_eval import (  # noqa: E402
     FieldScore,
     score_sample,
 )
+from src.pipeline.item_consistency import summarize_items  # noqa: E402
 
 # Command-line paths must stay inside the repository.
 ALLOWED_ROOT = REPO_ROOT
 DEFAULT_LABELS = Path("data/processed/m0_04_mcocr_devset/samples.jsonl")
 DEFAULT_OUTPUT_PREFIX = Path("experiments/results/m4_03_entity_match")
+DEFAULT_TASK = "M4-03"
+DEFAULT_TITLE = "M4-03 — So khớp thực thể Node 1 giữa các làn"
 TEXT_FIELDS = ("SELLER", "ADDRESS")
 RATE_DIGITS = 6
 FLOAT_EPSILON = 1e-9
@@ -58,6 +61,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-prefix", type=Path, default=DEFAULT_OUTPUT_PREFIX)
     parser.add_argument("--baseline", default="vanilla_r1")
     parser.add_argument("--control", default="vanilla_r2")
+    parser.add_argument("--task", default=DEFAULT_TASK)
+    parser.add_argument("--title", default=DEFAULT_TITLE)
+    parser.add_argument("--strip-marks", action="store_true",
+                        help="[M5-01 canonical flow] remove Vietnamese marks from labels and values before comparing")
     return parser.parse_args(argv)
 
 
@@ -101,11 +108,11 @@ def _field_summary(field: str, count: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def summarize_run(labels: dict[str, list[dict]], outputs: dict[str, dict]) -> dict[str, Any]:
+def summarize_run(labels: dict[str, list[dict]], outputs: dict[str, dict], strip_marks: bool = False) -> dict[str, Any]:
     counts = {field: {"scored": 0, "matched": 0, "blank": 0, "unscored": 0, "f1_sum": 0.0} for field in FIELDS}
     mismatches: list[dict[str, Any]] = []
     for sample_id, pairs in labels.items():
-        for field, score in score_sample(outputs.get(sample_id), pairs).items():
+        for field, score in score_sample(outputs.get(sample_id), pairs, strip_marks=strip_marks).items():
             if score.status == NO_LABEL:
                 continue
             _record(counts[field], score)
@@ -127,6 +134,7 @@ def summarize_run(labels: dict[str, list[dict]], outputs: dict[str, dict]) -> di
         "missing_samples": missing,
         "fields": {field: _field_summary(field, count) for field, count in counts.items()},
         "mismatches": mismatches,
+        "items": summarize_items({sample_id: outputs.get(sample_id) for sample_id in labels}),
     }
 
 
@@ -197,9 +205,36 @@ def _mismatch_lines(label: str, mismatches: list[dict[str, Any]]) -> list[str]:
     return [*lines, ""]
 
 
+def _ratio(numerator: int, denominator: int) -> str:
+    return f"{numerator}/{denominator}" if denominator else "—"
+
+
+def _item_lines(runs: dict[str, dict[str, Any]]) -> list[str]:
+    if not any(run["items"]["item_rows"] for run in runs.values()):
+        return []
+    lines = [
+        "",
+        "## Mặt hàng (kiểm tra số học)",
+        "",
+        "Không có nhãn mặt hàng: chỉ kiểm SL × đơn giá = thành tiền (dung sai max(1 VND, 0,5%)) "
+        "và tổng thành tiền = tổng tiền / tạm tính / tổng tiền + giảm giá (±1 VND). Tên hàng chưa được chấm.",
+        "",
+        "| Lần chạy | Hoá đơn có mặt hàng | Dòng mặt hàng | Dòng khớp SL×ĐG | Hoá đơn khớp tổng |",
+        "|---|---|---|---|---|",
+    ]
+    for label, run in runs.items():
+        items = run["items"]
+        lines.append(
+            f"| {label} | {items['invoices_with_items']} | {items['item_rows']} "
+            f"| {_ratio(items['lines_consistent'], items['lines_checked'])} "
+            f"| {_ratio(items['invoices_consistent'], items['invoices_checked'])} |"
+        )
+    return lines
+
+
 def render_markdown(result: dict[str, Any]) -> str:
     lines = [
-        "# M4-03 — So khớp thực thể Node 1 giữa các làn",
+        f"# {result.get('title', DEFAULT_TITLE)}",
         "",
         f"Nhãn: `{result['labels']}` · {result['sample_count']} mẫu. Ô bảng: số khớp/số mẫu chấm (tỉ lệ).",
         "",
@@ -214,6 +249,8 @@ def render_markdown(result: dict[str, Any]) -> str:
 
     if result["comparison"]:
         lines += _comparison_lines(result["comparison"])
+
+    lines += _item_lines(result["runs"])
 
     missing = {label: run["missing_samples"] for label, run in result["runs"].items() if run["missing_samples"]}
     if missing:
@@ -235,11 +272,13 @@ def main(argv: list[str] | None = None) -> int:
         label: {row["sample_id"]: row["payload"] for row in read_jsonl(path)}
         for label, path in args.runs
     }
-    runs = {label: summarize_run(labels, rows) for label, rows in outputs.items()}
+    runs = {label: summarize_run(labels, rows, args.strip_marks) for label, rows in outputs.items()}
     result = {
-        "task": "M4-03",
+        "task": args.task,
+        "title": args.title,
         "labels": args.labels.as_posix(),
         "sample_count": len(labels),
+        "strip_marks": args.strip_marks,
         "inputs": {label: path.as_posix() for label, path in args.runs},
         "runs": runs,
         "comparison": compare_runs(runs, args.baseline, args.control),
@@ -249,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     output_prefix.with_suffix(".md").write_text(render_markdown(result), encoding="utf-8")
-    print(f"[M4-03] wrote {output_prefix}.json and .md")
+    print(f"[{args.task}] wrote {output_prefix}.json and .md")
     return 0
 
 

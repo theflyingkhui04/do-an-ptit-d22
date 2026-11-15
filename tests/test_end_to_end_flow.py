@@ -1,6 +1,8 @@
 """End-to-End integration tests for FlexSDS CLI across all 3 platforms and end-to-end user workflows."""
 import json
 import os
+import re
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 from flexsds.cli.main import main
@@ -21,6 +23,7 @@ def test_e2e_cli_local_dry_run(capsys):
         "--port", "8000",
         "--dry-run",
         "--allow-fallback",
+        "--no-adaptive",  # adaptive needs a measured GPU profile; these check the command shape
     ]
     ret = main(test_args)
     assert ret == 0
@@ -39,11 +42,13 @@ def test_e2e_cli_modal_dry_run(capsys):
         "--backend", "modal",
         "--dry-run",
         "--allow-fallback",
+        "--no-adaptive",  # adaptive needs a measured GPU profile; these check the command shape
     ]
     ret = main(test_args)
     assert ret == 0
     captured = capsys.readouterr()
-    assert "modal serve" in captured.out
+    # The runner launches the resolved binary (shutil.which), e.g. ...\Scripts\modal.EXE on Windows
+    assert re.search(r"modal(\.exe|\.cmd)?\s+serve\b", captured.out, re.IGNORECASE)
     assert "modal_app.py" in captured.out
 
 
@@ -56,11 +61,12 @@ def test_e2e_cli_modal_deploy_dry_run(capsys):
         "--deploy",
         "--dry-run",
         "--allow-fallback",
+        "--no-adaptive",  # adaptive needs a measured GPU profile; these check the command shape
     ]
     ret = main(test_args)
     assert ret == 0
     captured = capsys.readouterr()
-    assert "modal deploy" in captured.out
+    assert re.search(r"modal(\.exe|\.cmd)?\s+deploy\b", captured.out, re.IGNORECASE)
     assert "modal_app.py" in captured.out
 
 
@@ -72,6 +78,7 @@ def test_e2e_cli_colab_dry_run(capsys):
         "--backend", "colab",
         "--dry-run",
         "--allow-fallback",
+        "--no-adaptive",  # adaptive needs a measured GPU profile; these check the command shape
     ]
     ret = main(test_args)
     assert ret == 0
@@ -151,7 +158,7 @@ def test_end_to_end_auth_and_modal_runner(tmp_path, monkeypatch):
         }
     }
     cmd = runner.build_modal_command(cfg, deploy=False)
-    assert "modal" in cmd
+    assert Path(cmd[0]).stem.lower() == "modal"
     assert "modal_app.py" in cmd[2]
     assert json.loads(runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"])["target_gpu"] == "A10G"
 

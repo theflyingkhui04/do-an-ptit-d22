@@ -28,8 +28,11 @@ def plan(campaign_id: str, sha: str) -> dict:
                        "workload": workload, "concurrency": c} for lane, workload, c in GRID]}
 
 
-def save_plan(record: dict) -> Path:
-    out = ROOT / "experiments/runs/m3_05" / record["campaign_id"]
+PLAN_ROOT = Path("experiments/runs/m3_05")
+
+
+def save_plan(record: dict, plan_root: Path = PLAN_ROOT) -> Path:
+    out = ROOT / plan_root / record["campaign_id"]
     out.mkdir(parents=True, exist_ok=True)
     path = out / "plan.json"
     content = (json.dumps(record, indent=2) + "\n").encode()
@@ -78,13 +81,15 @@ def stop() -> None:
             command("modal", "app", "stop", app["app_id"], "-y")
 
 
-def drive(record: dict, retry_failed: bool = False) -> None:
+def drive(record: dict, retry_failed: bool = False, *, plan_root: Path = PLAN_ROOT,
+          extra_env: dict[str, str] | None = None) -> None:
+    """``plan_root``/``extra_env`` let a later campaign ([M5-01]) reuse this controller."""
     import os
     from experiments import modal_runner as runner
 
     if runner._committed_bench_source() != record["commit"]:
         raise ValueError("Checkout must match the reviewed campaign SHA")
-    save_plan(record)
+    save_plan(record, plan_root)
     for cell in record["cells"]:
         if selected_attempt(record, cell):
             print(f"COLLECTED {cell['key']}; skipping", flush=True)
@@ -107,7 +112,7 @@ def drive(record: dict, retry_failed: bool = False) -> None:
             run_id = (f"{record['campaign_id']}-{cell['lane']}-{cell['workload']}"
                       f"-c{cell['concurrency']}-a{number:03}")
             stop()  # confirmed stop, before deploying a new cell's server
-            env = {**os.environ, "PTIT_RUN_ID": run_id, "PTIT_LANES": cell["lane"],
+            env = {**os.environ, **(extra_env or {}), "PTIT_RUN_ID": run_id, "PTIT_LANES": cell["lane"],
                    "PTIT_KEEP_WARM": "0", "PTIT_SCALEDOWN_SECONDS": "60"}
             command("modal", "deploy", "-m", "experiments.modal_runner", env=env)
             runner.bench_submit(lane=cell["lane"], workload=cell["workload"],

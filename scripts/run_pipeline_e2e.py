@@ -48,8 +48,10 @@ from src.pipeline.text_to_sql import (  # noqa: E402
 )
 
 NODE1_SCRIPT = REPO_ROOT / "scripts/run_node1_extractor.py"
-NODE1_REQUESTS = "experiments/configs/w1/node1_chat_requests.jsonl"
-NODE1_PACKAGE_MANIFEST = "experiments/configs/w1/package_manifest.json"
+# [M5-01] --node1-package-dir experiments/configs/w1_v2 runs Node 1 on full-receipt OCR text.
+NODE1_PACKAGE_DIR = "experiments/configs/w1"
+NODE1_REQUESTS_FILE = "node1_chat_requests.jsonl"
+NODE1_MANIFEST_FILE = "package_manifest.json"
 API_KEY_ENV = "PIPELINE_LLM_API_KEY"
 DB_NAME = "invoices.sqlite"
 # A run_id becomes a directory name under --output-root, so it must not
@@ -84,7 +86,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ready-timeout", type=float, default=1200.0)
     parser.add_argument("--skip-node1", action="store_true", help="Reuse --db instead of running Node 1.")
     parser.add_argument("--db", type=Path, help="Existing SQLite database (required with --skip-node1).")
+    parser.add_argument("--node1-package-dir", default=NODE1_PACKAGE_DIR,
+                        help="Repo-relative W1 package for Node 1 (default: W1 v1; W1_v2: experiments/configs/w1_v2).")
     args = parser.parse_args(argv)
+    package_dir = REPO_ROOT / args.node1_package_dir
+    if not all((package_dir / name).is_file() for name in (NODE1_REQUESTS_FILE, NODE1_MANIFEST_FILE)):
+        parser.error(f"--node1-package-dir {args.node1_package_dir} has no {NODE1_REQUESTS_FILE}/{NODE1_MANIFEST_FILE}")
     if args.skip_node1 and args.db is None:
         parser.error("--skip-node1 requires --db")
     if not RUN_ID_RE.fullmatch(args.run_id) or ".." in args.run_id:
@@ -112,8 +119,8 @@ def run_node1(args: argparse.Namespace, run_dir: Path, base_url: str, model: str
     cmd = [
         sys.executable,
         str(NODE1_SCRIPT),
-        "--requests", NODE1_REQUESTS,
-        "--package-manifest", NODE1_PACKAGE_MANIFEST,
+        "--requests", f"{args.node1_package_dir.rstrip('/')}/{NODE1_REQUESTS_FILE}",
+        "--package-manifest", f"{args.node1_package_dir.rstrip('/')}/{NODE1_MANIFEST_FILE}",
         "--base-url", base_url,
         "--model", model,
         "--run-id", args.run_id,
@@ -241,6 +248,7 @@ def main(
         "model": model,
         "base_url": base_url,
         "hardware": args.hardware,
+        "node1_package_dir": args.node1_package_dir,
         "git_sha": git_sha(),
         "started_at": started_at,
         "finished_at": _now(),

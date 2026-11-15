@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+/* FlexSDS console. Neutrals lean slightly blue; lane colours are the three slots validated with the
+   dataviz palette checker on both themes (light: #2a78d6 #eb6834 #1baf7a, dark: #3987e5 #d95926 #199e70);
+   the baseline endpoint is grey. Status colours are reserved for good / warning / bad. */
+:root {
+  --ground: #f3f5f8;
+  --surface: #ffffff;
+  --sunken: #f0f3f6;
+  --ink: #16212c;
+  --ink-2: #475563;
+  --ink-3: #6b7987;
+  --line: #dfe4ea;
+  --rail: #0f1a24;
+  --rail-ink: #c5ced8;
+  --rail-active: #1f2f3d;
+  --brand: #c8102e;
+  --focus: #2a78d6;
+  --good: #0a7f0a;
+  --good-tint: #e7f4e7;
+  --warn: #9a5b00;
+  --warn-tint: #fdf2dc;
+  --bad: #b42318;
+  --bad-tint: #fcebea;
+  --lane-ref: #6b7987;
+  --lane-1: #2a78d6;
+  --lane-2: #eb6834;
+  --lane-3: #1baf7a;
+  /* pipeline steps are a sequence: one violet hue, dark to light for Node 1, 2, 3; non-model steps grey */
+  --step-1: #4b3aa0;
+  --step-2: #6d58c8;
+  --step-3: #8f7ad9;
+  --step-io: #9aa6b2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #0e141a;
+    --surface: #151d25;
+    --sunken: #1b242e;
+    --ink: #e6ebf0;
+    --ink-2: #b3bdc7;
+    --ink-3: #8b97a3;
+    --line: #27313b;
+    --rail: #0a1016;
+    --rail-active: #18222c;
+    --good: #45c25f;
+    --good-tint: #12261a;
+    --warn: #f0b44f;
+    --warn-tint: #2d2312;
+    --bad: #f2786d;
+    --bad-tint: #2e1716;
+    --lane-ref: #8b97a3;
+    --lane-1: #3987e5;
+    --lane-2: #d95926;
+    --lane-3: #199e70;
+    --step-1: #9d8be3;
+    --step-2: #7d69d0;
+    --step-3: #604db6;
+    --step-io: #5d6976;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-rail: var(--rail);
+  --color-rail-ink: var(--rail-ink);
+  --color-rail-active: var(--rail-active);
+  --color-brand: var(--brand);
+  --color-good: var(--good);
+  --color-good-tint: var(--good-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-bad: var(--bad);
+  --color-bad-tint: var(--bad-tint);
+  --color-lane-ref: var(--lane-ref);
+  --color-lane-1: var(--lane-1);
+  --color-lane-2: var(--lane-2);
+  --color-lane-3: var(--lane-3);
+  --color-step-1: var(--step-1);
+  --color-step-2: var(--step-2);
+  --color-step-3: var(--step-3);
+  --color-step-io: var(--step-io);
+  --font-sans: var(--font-sans-vi);
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans-vi), "Segoe UI", system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

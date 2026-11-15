@@ -1,0 +1,27 @@
+{
+ "checked_at_utc": "2026-11-11T14:58:56+00:00",
+ "url": "https://nguyenduonghb940--ptit-ocr-lib-ocr.us-east.modal.direct",
+ "sample_id": "m0_04_001",
+ "health_incl_cold_start_s": 1.2,
+ "first_read_s": 14.1,
+ "warm_read_s": 13.3,
+ "server_latency_ms": [
+  12760.7,
+  12474.2
+ ],
+ "boxes": 38,
+ "engine": "A",
+ "versions": {
+  "paddleocr": "3.7.0",
+  "paddlepaddle": "3.3.1",
+  "vietocr": "0.3.13",
+  "detector": "PP-OCRv5_server_det",
+  "mkldnn": false,
+  "weights_url": "https://vocr.vn/data/vietocr/vgg_transformer.pth",
+  "weights_sha256": "380512193a8b6cbf6fad80deacdc9b6939d10d473d199892fc6408d13775ea59"
+ },
+ "has_vietnamese_marks": false,
+ "same_text_twice": true,
+ "equals_batch_engine_a_after_stripping": true,
+ "chars": 481
+}

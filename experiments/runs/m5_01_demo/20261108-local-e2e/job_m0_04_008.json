@@ -1,0 +1,289 @@
+{
+  "job_id": "up_d9a6e34b15f8",
+  "status": "done",
+  "error": null,
+  "result": {
+    "gpu": "A10G",
+    "ocr": {
+      "text": "CỬA HÀNG NAM OÁNH\nThôn Phú Thụy, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội\n0869322496 - 02438765210\nHÓA ĐƠN BÁN HÀNG\nSố: SON55296\nNgày: 11-08-2020\nSL\nĐơn giá\nThanh tiền\nĐường tinh luyện xuất khẩu 1kg\n30\n14,000\n420,000\nĐường vàng xuất khẩu 1kg\n30\n14,000\n420,000\nCộng tiền hàng\n840,000\nCám ơn quý khách. Hẹn gặp lại!",
+      "model": "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+      "scale": 2.0,
+      "revision": "536a35794df8831aa814970ee8f89eff577e7718",
+      "finish_reason": "stop",
+      "original_size": [
+        768,
+        1024
+      ],
+      "prompt_tokens": 4106,
+      "prompt_version": "receipt_ocr_full.v1",
+      "completion_tokens": 188
+    },
+    "lanes": {
+      "vanilla": {
+        "lane": "vanilla",
+        "error": null,
+        "model": "qwen2.5-7b-vanilla",
+        "valid": true,
+        "tpot_ms": 11.167547169826785,
+        "ttft_ms": 1140.0000000139698,
+        "latency_ms": 15937.000000034459,
+        "spec_decode": null,
+        "equal_fields": 54,
+        "total_fields": 54,
+        "finish_reason": "stop",
+        "prompt_tokens": 1870,
+        "differing_fields": [],
+        "completion_tokens": 1326,
+        "output_tokens_per_s": 83.2026102777896,
+        "speedup_tpot_vs_vanilla": 1.0,
+        "speedup_latency_vs_vanilla": 1.0
+      },
+      "adaptive": {
+        "lane": "adaptive",
+        "error": null,
+        "model": "qwen2.5-7b-adaptive",
+        "valid": true,
+        "tpot_ms": 8.183396226410174,
+        "ttft_ms": 1250.0,
+        "latency_ms": 12092.99999999348,
+        "spec_decode": {
+          "speculative_decoding": {
+            "num_spec_steps": 296,
+            "num_spec_tokens": 4,
+            "num_draft_tokens": 1073,
+            "acceptance_histogram": [
+              11,
+              10,
+              30,
+              43,
+              202
+            ],
+            "draft_acceptance_rate": 0.9384902143522833,
+            "mean_acceptance_length": 4.402027027027027,
+            "num_accepted_draft_tokens": 1007
+          }
+        },
+        "equal_fields": 54,
+        "total_fields": 54,
+        "finish_reason": "stop",
+        "prompt_tokens": 1870,
+        "differing_fields": [],
+        "completion_tokens": 1326,
+        "output_tokens_per_s": 109.65021086584923,
+        "speedup_tpot_vs_vanilla": 1.3646592271538676,
+        "speedup_latency_vs_vanilla": 1.3178698420609485
+      }
+    },
+    "invoice": {
+      "buyer": {
+        "name": null,
+        "phone": null,
+        "address": null,
+        "tax_code": null
+      },
+      "items": [
+        {
+          "sku": null,
+          "quantity": {
+            "raw": "30",
+            "unit": "kg",
+            "value": 30
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "420,000",
+            "value": 420000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "14,000",
+            "value": 14000,
+            "currency": "VND"
+          },
+          "description": "Đường tinh luyện xuất khẩu 1kg",
+          "line_number": 1
+        },
+        {
+          "sku": null,
+          "quantity": {
+            "raw": "30",
+            "unit": "kg",
+            "value": 30
+          },
+          "vat_rate": null,
+          "line_total": {
+            "raw": "420,000",
+            "value": 420000,
+            "currency": "VND"
+          },
+          "unit_price": {
+            "raw": "14,000",
+            "value": 14000,
+            "currency": "VND"
+          },
+          "description": "Đường vàng xuất khẩu 1kg",
+          "line_number": 2
+        }
+      ],
+      "taxes": [],
+      "seller": {
+        "name": "CỬA HÀNG NAM OÁNH",
+        "phone": "0869322496 - 02438765210",
+        "address": "Thôn Phú Thụy, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+        "tax_code": null
+      },
+      "source": {
+        "img_id": "up_d9a6e34b15f8",
+        "raw_text": "CỬA HÀNG NAM OÁNH\nThôn Phú Thụy, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội\n0869322496 - 02438765210\nHÓA ĐƠN BÁN HÀNG\nSố: SON55296\nNgày: 11-08-2020\nSL\nĐơn giá\nThanh tiền\nĐường tinh luyện xuất khẩu 1kg\n30\n14,000\n420,000\nĐường vàng xuất khẩu 1kg\n30\n14,000\n420,000\nCộng tiền hàng\n840,000\nCám ơn quý khách. Hẹn gặp lại!",
+        "sample_id": "up_d9a6e34b15f8",
+        "image_path": "uploads/up_d9a6e34b15f8.jpg"
+      },
+      "totals": {
+        "discount": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "subtotal": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "vat_amount": {
+          "raw": null,
+          "value": null,
+          "currency": "VND"
+        },
+        "total_amount": {
+          "raw": "840,000",
+          "value": 840000,
+          "currency": "VND"
+        }
+      },
+      "invoice": {
+        "currency": "VND",
+        "issued_at": null,
+        "issued_date": "2020-08-11",
+        "issued_time": null,
+        "invoice_number": "SON55296",
+        "invoice_series": null,
+        "payment_method": null
+      },
+      "extraction": {
+        "status": "partial",
+        "warnings": [],
+        "confidence": null,
+        "field_evidence": [
+          {
+            "raw_text": "CỬA HÀNG NAM OÁNH",
+            "field_path": "seller.name",
+            "source_label": null
+          },
+          {
+            "raw_text": "SON55296",
+            "field_path": "invoice.invoice_number",
+            "source_label": null
+          },
+          {
+            "raw_text": "11-08-2020",
+            "field_path": "invoice.issued_date",
+            "source_label": null
+          },
+          {
+            "raw_text": "1",
+            "field_path": "items.line_number",
+            "source_label": null
+          },
+          {
+            "raw_text": "Đường tinh luyện xuất khẩu 1kg",
+            "field_path": "items.description",
+            "source_label": null
+          },
+          {
+            "raw_text": "30",
+            "field_path": "items.quantity",
+            "source_label": null
+          },
+          {
+            "raw_text": "14,000",
+            "field_path": "items.unit_price",
+            "source_label": null
+          },
+          {
+            "raw_text": "420,000",
+            "field_path": "items.line_total",
+            "source_label": null
+          },
+          {
+            "raw_text": "2",
+            "field_path": "items.line_number",
+            "source_label": null
+          },
+          {
+            "raw_text": "Đường vàng xuất khẩu 1kg",
+            "field_path": "items.description",
+            "source_label": null
+          },
+          {
+            "raw_text": "30",
+            "field_path": "items.quantity",
+            "source_label": null
+          },
+          {
+            "raw_text": "14,000",
+            "field_path": "items.unit_price",
+            "source_label": null
+          },
+          {
+            "raw_text": "420,000",
+            "field_path": "items.line_total",
+            "source_label": null
+          }
+        ],
+        "missing_fields": [
+          "buyer.name",
+          "buyer.address",
+          "buyer.tax_code",
+          "buyer.phone",
+          "seller.tax_code",
+          "invoice.invoice_series",
+          "invoice.payment_method",
+          "totals.subtotal",
+          "totals.discount",
+          "totals.vat_amount"
+        ]
+      },
+      "document_type": "retail_receipt",
+      "schema_version": "invoice_extraction.v1"
+    },
+    "lane_map": {
+      "node1": "adaptive",
+      "node2": "static",
+      "answer": "static",
+      "report": "eagle"
+    },
+    "grounding": {
+      "checked_fields": 13,
+      "grounded_fields": 13,
+      "ungrounded_fields": []
+    },
+    "invoice_id": "up_d9a6e34b15f8:up_d9a6e34b15f8",
+    "item_check": {
+      "lines": [
+        true,
+        true
+      ],
+      "invoice_sum": true
+    },
+    "timings_ms": {
+      "ocr": 6663.882800028659,
+      "node1": 15982.715699938126
+    },
+    "stored_lane": "adaptive",
+    "storage_path": "uploads/up_d9a6e34b15f8.jpg",
+    "stored_from_fallback": false
+  },
+  "invoice_id": "up_d9a6e34b15f8:up_d9a6e34b15f8",
+  "created_at": "2026-11-08T20:25:55.332591+07:00",
+  "updated_at": "2026-11-08T20:26:18.292998+07:00"
+}

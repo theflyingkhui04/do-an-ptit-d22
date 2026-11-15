@@ -1,0 +1,62 @@
+{
+  "task": "M4-03",
+  "step": "run-node1-extractor",
+  "backend": "openai-compatible",
+  "serving_backend": "modal",
+  "hardware": null,
+  "lane": "vanilla",
+  "base_url": "https://nguyenduonghb940--ptit-vllm-vanilla.us-east.modal.direct/v1",
+  "model": "qwen2.5-7b-vanilla",
+  "run_id": "20261108-m501-e2e-a10g-w1v2-vanilla",
+  "schema_version": "invoice_extraction.v1",
+  "prompt_version": "node1_extractor.v2",
+  "workload_id": "w1_node1_invoice_extraction",
+  "dataset_version": "w1.m5_01.v2",
+  "w1_package_sha256": "cd048f71ba2a94db732a1a61d9d4e1105419998c8db48bb45efa5bf66001a41a",
+  "artifact_hashes": {
+    "samples_jsonl": "a373b5cd718100e12b83238eb436fe1395fbd34e557c5cf50b5fd565ed9033ea",
+    "provenance_jsonl": "2d469f84721654ce2ca771fddafde30a92928e99b30041efcc15deaa3273036d",
+    "manifest_csv": "bb4020798074f93aa43c17b6b67523c2923c1705be56ab65cff99f843b83a425",
+    "node1_inputs_jsonl": "00b5d1cecadc8d89c6ba230ae2b8857687eaf0a864abe2dfa0b54c0d4a1a9f3b",
+    "node1_chat_requests_jsonl": "ba45ff610467c234e8ba9a2c544e7cb9baa1638d8b34229f3901fb3ed03f2bc4",
+    "system_prompt": "4609cddd127fc429aa19d73f824751f43b30353eab95bd3b2a2f98b10587a13a",
+    "json_schema": "0baf01bb2d98ae40aa09e7595e5c9f440e0d8bec0b9ccddd80be9a4a76b60eb7"
+  },
+  "request_count": 30,
+  "fully_validated_count": 29,
+  "sample_failure_count": 1,
+  "persistence_failure_count": 0,
+  "failure_counts": {
+    "SOURCE_BINDING_ERROR": 1
+  },
+  "rates": {
+    "transport_success_rate": 1.0,
+    "strict_json_rate": 1.0,
+    "source_binding_rate": 0.966667,
+    "schema_valid_rate": 0.966667
+  },
+  "acceptance": {
+    "threshold": 0.95,
+    "pass": true,
+    "formula": "fully_validated_count / request_count"
+  },
+  "normalization_count": 28,
+  "latency_ms": {
+    "mean": 16581.96,
+    "median": 15898.541,
+    "min": 11119.213,
+    "max": 24465.352
+  },
+  "usage": {
+    "prompt_tokens": 59886,
+    "completion_tokens": 42319,
+    "total_tokens": 102205
+  },
+  "database": "D:/do-an-ptit-d22/experiments/runs/m5_01/20261108-m501-e2e-a10g-w1v2-vanilla-vanilla/invoices.sqlite",
+  "outputs": {
+    "raw_responses": "D:/do-an-ptit-d22/experiments/runs/m5_01/20261108-m501-e2e-a10g-w1v2-vanilla-vanilla/node1/raw_responses.jsonl",
+    "validated_outputs": "D:/do-an-ptit-d22/experiments/runs/m5_01/20261108-m501-e2e-a10g-w1v2-vanilla-vanilla/node1/validated_outputs.jsonl",
+    "failures": "D:/do-an-ptit-d22/experiments/runs/m5_01/20261108-m501-e2e-a10g-w1v2-vanilla-vanilla/node1/failures.jsonl",
+    "summary": "D:/do-an-ptit-d22/experiments/runs/m5_01/20261108-m501-e2e-a10g-w1v2-vanilla-vanilla/node1/summary.json"
+  }
+}

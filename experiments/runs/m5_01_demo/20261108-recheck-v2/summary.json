@@ -1,0 +1,503 @@
+{
+  "checked_at_utc": "2026-11-08T14:06:34+00:00",
+  "node2_prompt": "node2_text_to_sql_demo.v2",
+  "today_vietnam": "2026-11-08",
+  "synthetic_upload_rows": 3,
+  "questions_15": {
+    "questions": 15,
+    "correct": 15,
+    "fabricated_answers": 0,
+    "answers_withheld": 2,
+    "executed_writes": 0,
+    "repairs": 0
+  },
+  "extra": [
+    {
+      "id": "u1",
+      "question": "Có bao nhiêu hoá đơn được tải lên hôm nay?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "answer_withheld": false,
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT COUNT(*) AS so_hoa_don FROM v_upload_facts WHERE source = 'upload' AND uploaded_date = '2026-11-08' LIMIT 200",
+      "reference_rows": [
+        [
+          3
+        ]
+      ],
+      "rows": [
+        [
+          3
+        ]
+      ],
+      "answer": "Có 3 hoá đơn được tải lên hôm nay.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "lane": "static",
+          "wall_ms": 1199.9267999781296,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1202.999999979511,
+          "ttft_ms": 905.9999999590218,
+          "tpot_ms": 8.485714286299688,
+          "prompt_tokens": 982,
+          "completion_tokens": 36,
+          "output_tokens_per_s": 29.92518703292863,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.7,
+              "draft_acceptance_rate": 0.9,
+              "acceptance_histogram": [
+                0,
+                1,
+                1,
+                8
+              ],
+              "num_spec_steps": 10,
+              "num_accepted_draft_tokens": 27,
+              "num_draft_tokens": 30,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "lane": "static",
+          "wall_ms": 977.8397000627592,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 969.0000000409782,
+          "ttft_ms": 859.9999999860302,
+          "tpot_ms": 8.384615388842157,
+          "prompt_tokens": 238,
+          "completion_tokens": 14,
+          "output_tokens_per_s": 14.447884416313675,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 4.0,
+              "draft_acceptance_rate": 1.0,
+              "acceptance_histogram": [
+                0,
+                0,
+                0,
+                4
+              ],
+              "num_spec_steps": 4,
+              "num_accepted_draft_tokens": 12,
+              "num_draft_tokens": 12,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ],
+      "reference_sql": "SELECT COUNT(*) FROM v_upload_facts WHERE source = 'upload' AND uploaded_date = '2026-11-08'",
+      "withheld_answer": null
+    },
+    {
+      "id": "u2",
+      "question": "Liệt kê người bán của các hoá đơn vừa tải lên.",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": false,
+      "fabricated_answer": false,
+      "answer_withheld": false,
+      "executed_write": false,
+      "repairs": 1,
+      "first_error": "PARSE_ERROR: Expecting ). Line 1, Col: 71.",
+      "sql": "SELECT DISTINCT seller_name FROM v_invoice_facts JOIN v_upload_facts ON v_invoice_facts.invoice_id = v_upload_facts.invoice_id WHERE v_upload_facts.source = 'upload' AND CAST(COALESCE(v_upload_facts.uploaded_at, '2026-11-08') AS DATE) = '2026-11-08' LIMIT 200",
+      "reference_rows": [
+        [
+          "MINIMART ANAN"
+        ],
+        [
+          "MINIMART ANAN"
+        ],
+        [
+          "MINIMART ANAN"
+        ]
+      ],
+      "rows": [
+        [
+          "MINIMART ANAN"
+        ]
+      ],
+      "answer": "Dữ liệu chỉ có 1 người bán là MINIMART ANAN.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "lane": "static",
+          "wall_ms": 1379.929200047627,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1375.0,
+          "ttft_ms": 827.9999999795109,
+          "tpot_ms": 9.76785714322302,
+          "prompt_tokens": 981,
+          "completion_tokens": 57,
+          "output_tokens_per_s": 41.45454545454545,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.0526315789473686,
+              "draft_acceptance_rate": 0.6842105263157895,
+              "acceptance_histogram": [
+                5,
+                1,
+                1,
+                12
+              ],
+              "num_spec_steps": 19,
+              "num_accepted_draft_tokens": 39,
+              "num_draft_tokens": 57,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "node2",
+          "lane": "static",
+          "wall_ms": 1500.6554001010954,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1500.0,
+          "ttft_ms": 875.0,
+          "tpot_ms": 8.223684210526315,
+          "prompt_tokens": 1084,
+          "completion_tokens": 77,
+          "output_tokens_per_s": 51.333333333333336,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.761904761904762,
+              "draft_acceptance_rate": 0.9206349206349206,
+              "acceptance_histogram": [
+                1,
+                1,
+                0,
+                19
+              ],
+              "num_spec_steps": 21,
+              "num_accepted_draft_tokens": 58,
+              "num_draft_tokens": 63,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "lane": "static",
+          "wall_ms": 1111.6166000720114,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1109.9999999860302,
+          "ttft_ms": 859.9999999860302,
+          "tpot_ms": 15.625,
+          "prompt_tokens": 240,
+          "completion_tokens": 17,
+          "output_tokens_per_s": 15.315315315508066,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 2.833333333333333,
+              "draft_acceptance_rate": 0.6111111111111112,
+              "acceptance_histogram": [
+                1,
+                1,
+                2,
+                2
+              ],
+              "num_spec_steps": 6,
+              "num_accepted_draft_tokens": 11,
+              "num_draft_tokens": 18,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ],
+      "reference_sql": "SELECT f.seller_name FROM v_invoice_facts AS f JOIN v_upload_facts AS u ON u.invoice_id = f.invoice_id WHERE u.source = 'upload'",
+      "withheld_answer": null
+    },
+    {
+      "id": "u3",
+      "question": "Tổng tiền các hoá đơn tải lên hôm nay là bao nhiêu?",
+      "expected_status": "ok",
+      "status": "error",
+      "correct": false,
+      "fabricated_answer": false,
+      "answer_withheld": false,
+      "executed_write": false,
+      "repairs": 1,
+      "first_error": "UNKNOWN_COLUMN: source",
+      "sql": "SELECT SUM(total_amount_value) AS tong_tien FROM v_upload_facts WHERE source = 'upload' AND uploaded_date = '2026-11-08'",
+      "reference_rows": [
+        [
+          300510.0
+        ]
+      ],
+      "rows": [],
+      "answer": null,
+      "error": "UNKNOWN_COLUMN: total_amount_value",
+      "calls": [
+        {
+          "step": "node2",
+          "lane": "static",
+          "wall_ms": 1175.0746000325307,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1172.000000020489,
+          "ttft_ms": 859.000000054948,
+          "tpot_ms": 8.459459458528137,
+          "prompt_tokens": 985,
+          "completion_tokens": 38,
+          "output_tokens_per_s": 32.42320819055945,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.6363636363636362,
+              "draft_acceptance_rate": 0.8787878787878788,
+              "acceptance_histogram": [
+                0,
+                2,
+                0,
+                9
+              ],
+              "num_spec_steps": 11,
+              "num_accepted_draft_tokens": 29,
+              "num_draft_tokens": 33,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "node2",
+          "lane": "static",
+          "wall_ms": 1158.568499959074,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1155.9999999590218,
+          "ttft_ms": 875.0,
+          "tpot_ms": 7.594594593487076,
+          "prompt_tokens": 1057,
+          "completion_tokens": 38,
+          "output_tokens_per_s": 32.87197231950435,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.8,
+              "draft_acceptance_rate": 0.9333333333333333,
+              "acceptance_histogram": [
+                0,
+                1,
+                0,
+                9
+              ],
+              "num_spec_steps": 10,
+              "num_accepted_draft_tokens": 28,
+              "num_draft_tokens": 30,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ],
+      "reference_sql": "SELECT SUM(f.total_amount_value) FROM v_invoice_facts AS f JOIN v_upload_facts AS u ON u.invoice_id = f.invoice_id WHERE u.source = 'upload' AND u.uploaded_date = '2026-11-08'",
+      "withheld_answer": null
+    },
+    {
+      "id": "a1",
+      "question": "Có bao nhiêu hoá đơn của MINIMART ANAN trong tháng 8 năm 2020 có tổng tiền trên 100.000 đồng?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": true,
+      "fabricated_answer": false,
+      "answer_withheld": false,
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE seller_name ILIKE '%MINIMART ANAN%' AND issued_date LIKE '2020-08-%' AND total_amount_value > 100000 LIMIT 200",
+      "reference_rows": [
+        [
+          18
+        ]
+      ],
+      "rows": [
+        [
+          18
+        ]
+      ],
+      "answer": "Có 18 hoá đơn của MINIMART ANAN trong tháng 8 năm 2020 có tổng tiền trên 100.000 đồng.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "lane": "static",
+          "wall_ms": 1302.5232000509277,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1296.9999999040738,
+          "ttft_ms": 875.0,
+          "tpot_ms": 8.274509802040662,
+          "prompt_tokens": 1005,
+          "completion_tokens": 52,
+          "output_tokens_per_s": 40.09252120574088,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.466666666666667,
+              "draft_acceptance_rate": 0.8222222222222222,
+              "acceptance_histogram": [
+                0,
+                4,
+                0,
+                11
+              ],
+              "num_spec_steps": 15,
+              "num_accepted_draft_tokens": 37,
+              "num_draft_tokens": 45,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "lane": "static",
+          "wall_ms": 1235.6281999964267,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1234.000000054948,
+          "ttft_ms": 890.0000000139698,
+          "tpot_ms": 9.297297298404816,
+          "prompt_tokens": 262,
+          "completion_tokens": 38,
+          "output_tokens_per_s": 30.794165314674167,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.3333333333333335,
+              "draft_acceptance_rate": 0.7777777777777778,
+              "acceptance_histogram": [
+                2,
+                1,
+                0,
+                9
+              ],
+              "num_spec_steps": 12,
+              "num_accepted_draft_tokens": 28,
+              "num_draft_tokens": 36,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ],
+      "reference_sql": "SELECT COUNT(*) FROM v_invoice_facts WHERE seller_name ILIKE '%MINIMART ANAN%' AND issued_date LIKE '2020-08-%' AND total_amount_value > 100000",
+      "withheld_answer": null
+    },
+    {
+      "id": "a2",
+      "question": "Tổng tiền các hoá đơn của MINIMART ANAN ngày 12/08/2020 là bao nhiêu?",
+      "expected_status": "ok",
+      "status": "ok",
+      "correct": false,
+      "fabricated_answer": false,
+      "answer_withheld": false,
+      "executed_write": false,
+      "repairs": 0,
+      "first_error": null,
+      "sql": "SELECT SUM(vi.total_amount_value) AS tong_tien FROM v_invoice_facts AS vi JOIN v_item_facts AS fi ON vi.invoice_id = fi.invoice_id WHERE vi.seller_name ILIKE '%MINIMART ANAN%' AND vi.issued_date LIKE '2020-08-12%' LIMIT 200",
+      "reference_rows": [
+        [
+          1193274.0
+        ]
+      ],
+      "rows": [
+        [
+          3626802.0
+        ]
+      ],
+      "answer": "Tổng tiền các hoá đơn của MINIMART ANAN ngày 12/08/2020 là 3.626.802.",
+      "error": null,
+      "calls": [
+        {
+          "step": "node2",
+          "lane": "static",
+          "wall_ms": 1505.077900015749,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1500.0,
+          "ttft_ms": 859.9999999860302,
+          "tpot_ms": 10.000000000218279,
+          "prompt_tokens": 998,
+          "completion_tokens": 65,
+          "output_tokens_per_s": 43.333333333333336,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.0454545454545454,
+              "draft_acceptance_rate": 0.6818181818181818,
+              "acceptance_histogram": [
+                4,
+                4,
+                1,
+                13
+              ],
+              "num_spec_steps": 22,
+              "num_accepted_draft_tokens": 45,
+              "num_draft_tokens": 66,
+              "num_spec_tokens": 3
+            }
+          }
+        },
+        {
+          "step": "answer",
+          "lane": "static",
+          "wall_ms": 1213.612399995327,
+          "model": "qwen2.5-7b-static-draft",
+          "latency_ms": 1204.0000000270084,
+          "ttft_ms": 891.0000000614673,
+          "tpot_ms": 8.459459458528137,
+          "prompt_tokens": 261,
+          "completion_tokens": 38,
+          "output_tokens_per_s": 31.561461793311942,
+          "finish_reason": "stop",
+          "spec_decode": {
+            "speculative_decoding": {
+              "mean_acceptance_length": 3.7,
+              "draft_acceptance_rate": 0.9,
+              "acceptance_histogram": [
+                1,
+                0,
+                0,
+                9
+              ],
+              "num_spec_steps": 10,
+              "num_accepted_draft_tokens": 27,
+              "num_draft_tokens": 30,
+              "num_spec_tokens": 3
+            }
+          }
+        }
+      ],
+      "reference_sql": "SELECT SUM(total_amount_value) FROM v_invoice_facts WHERE seller_name ILIKE '%MINIMART ANAN%' AND issued_date = '2020-08-12'",
+      "withheld_answer": null
+    }
+  ],
+  "extra_correct": 2,
+  "withheld_in_15": [
+    {
+      "id": "q08",
+      "rows": [
+        [
+          178903.35714285713
+        ]
+      ],
+      "withheld_answer": "Tổng tiền trung bình mỗi hoá đơn là 178.903.357.142.857.13."
+    },
+    {
+      "id": "q15",
+      "rows": [
+        [
+          null
+        ]
+      ],
+      "withheld_answer": "Mã số thuế của người mua là 0123456789."
+    }
+  ]
+}
