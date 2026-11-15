@@ -270,8 +270,9 @@ WORKLOAD_SERVING: dict[str, dict[str, Any]] = {
 def workload_serving(workload: str) -> dict[str, Any]:
     """Server context, harness request timeout and required runtime for a workload."""
     workload_file(workload)
-    return {"max_model_len": DEFAULT_MAX_MODEL_LEN, "timeout_s": None, "vllm_runtime": None,
-            **WORKLOAD_SERVING.get(workload, {})}
+    serving: dict[str, Any] = {"max_model_len": DEFAULT_MAX_MODEL_LEN, "timeout_s": None, "vllm_runtime": None}
+    serving.update(WORKLOAD_SERVING.get(workload, {}))  # W1_V2/W1_V3 set a timeout; W1-W3 keep None
+    return serving
 
 
 def server_artifact_dir(lane: str, run_id: str) -> str:
