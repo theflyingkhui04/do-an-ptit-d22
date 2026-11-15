@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from flexsds import __version__
 from flexsds.cli import main as cli
 from flexsds.core.hardware import HardwareInfo
 from flexsds.core.cost_model import load_profile_for_hardware
@@ -29,7 +30,7 @@ def invoke(args, cwd):
 
 
 @pytest.mark.parametrize("args, expected", [
-    (["--version"], "0.2.0"),
+    (["--version"], __version__),
     (["--help"], "{clear,detect,profile,stop,auth,serve,chat,monitor}"),
     (["detect"], "Hardware:"),
     (["profile"], "Linked hardware profile:"),

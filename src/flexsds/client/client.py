@@ -6,6 +6,10 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, Iterator, List, Optional
 
+from .. import __version__
+
+USER_AGENT = f"FlexSDS-Client/{__version__}"
+
 
 class EndpointUnreachableError(Exception):
     """Raised when the serving endpoint cannot be reached."""
@@ -35,7 +39,7 @@ class FlexSDSClient:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "FlexSDS-Client/0.2.0",
+            "User-Agent": USER_AGENT,
         }
         if self.api_key and self.api_key != "EMPTY":
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -56,7 +60,7 @@ class FlexSDSClient:
         # Thử endpoint root health
         try:
             root_url = self.base_url.rsplit("/v1", 1)[0]
-            req = urllib.request.Request(f"{root_url}/health", headers={"User-Agent": "FlexSDS-Client/0.2.0"})
+            req = urllib.request.Request(f"{root_url}/health", headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return resp.status == 200
         except Exception:
