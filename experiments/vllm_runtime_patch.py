@@ -90,8 +90,10 @@ def file_sha256(path: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
-    path = Path(args[0]) if args else installed_outputs_path()
-    status = patch_file(path)
+    if args:  # never open a path from the command line; tests call patch_file() directly
+        raise SystemExit("vllm_runtime_patch takes no arguments: it patches the installed vllm/outputs.py")
+    path = installed_outputs_path()
+    status = patch_file(path, stock_sha256=STOCK_OUTPUTS_SHA256, patched_sha256=PATCHED_OUTPUTS_SHA256)
     print(f"[vllm_runtime_patch] {status}: {path} sha256={file_sha256(path)} ({RUNTIME_LABEL})", flush=True)
     return 0
 

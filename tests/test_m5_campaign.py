@@ -88,6 +88,19 @@ def test_wrong_expected_patched_hash_fails_closed(tmp_path):
     assert target.read_bytes() == SNIPPET.encode()
 
 
+def test_patch_script_only_patches_the_installed_vllm(tmp_path, monkeypatch):
+    target = tmp_path / "outputs.py"
+    target.write_bytes(SNIPPET.encode())
+    with pytest.raises(SystemExit, match="no arguments"):
+        patch.main([str(target)])  # a path from the command line is never opened
+    assert target.read_bytes() == SNIPPET.encode()
+    monkeypatch.setattr(patch, "installed_outputs_path", lambda: target)
+    monkeypatch.setattr(patch, "STOCK_OUTPUTS_SHA256", sha(SNIPPET))
+    monkeypatch.setattr(patch, "PATCHED_OUTPUTS_SHA256", sha(patch.apply_backport_55708(SNIPPET)))
+    assert patch.main([]) == 0
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == sha(patch.apply_backport_55708(SNIPPET))
+
+
 # --------------------------------------------------------------------------
 # Serving requirements per workload
 # --------------------------------------------------------------------------
