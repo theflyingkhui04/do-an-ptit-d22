@@ -389,25 +389,53 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         gpu_choice = prompt_choice("Colab GPU:", ["T4", "A100 / L4"], default_idx=0)
         target_gpu = "T4" if "T4" in gpu_choice else "L4"
     preflight = evaluate_serving_preflight(target_model, draft_model, hw_info, backend, target_gpu)
+    if preflight.report.identified_method == "eagle" and preflight.report.checkpoint_verified:
+        from flexsds.core.compatibility import select_report_eagle_version
+        selected = prompt_choice("EAGLE version (shared checkpoint; select decoding version):",
+                                 ["EAGLE-1", "EAGLE-2"], default_idx=0)
+        preflight.report = select_report_eagle_version(preflight.report, selected.removeprefix("EAGLE-"))
     print(preflight.report.summary())
-    preflight.require_safe()
     report = preflight.report
 
     # Compatibility Report Box (dynamically auto-resizes)
     status_color = "\033[32m" if not report.oom_risk else "\033[31m"
-    status_text = "OK" if not report.oom_risk else "OOM RISK"
-    vram_detail = f"(~{report.total_vram_needed_mb/1024:.1f} GB needed / {report.free_vram_mb/1024:.1f} GB free)"
-    vocab_text = "Shared" if not report.use_heterogeneous_vocab else "Heterogeneous"
+    status_text = ("OK" if not report.oom_risk else "OOM RISK") if report.total_vram_needed_mb else "Not evaluated"
+    vram_detail = f"(~{report.total_vram_needed_mb/1024:.1f} GiB / {report.free_vram_mb/1024:.1f} GiB budget)"
+    vocab_text = report.vocabulary_status.split(" (")[0]
 
     box_items = [
         ("VRAM Status", f"{status_text}  {vram_detail}", status_color),
-        ("Speculation", report.draft_method, "\033[36m"),
+        ("Weights", f"Target {report.target_vram_est_mb/1024:.2f} + draft {report.draft_vram_est_mb/1024:.2f} GiB", "\033[36m"),
+        ("KV capacity", f"{report.kv_cache_min_mb/1024:.2f} GiB", "\033[36m"),
+        ("Runtime reserve", f"{report.runtime_overhead_mb/1024:.2f} GiB (estimated)", "\033[36m"),
+        ("Speculation", report.method_label, "\033[36m"),
+        ("Architecture", report.method_family, "\033[36m"),
+        ("Runtime policy", report.runtime_policy, "\033[36m"),
+        ("Method support", "Supported" if report.method_supported else "Not supported yet / unverified", "\033[36m"),
         ("Vocabulary", vocab_text, "\033[32m"),
     ]
+    if not report.total_vram_needed_mb:
+        box_items = [("Speculation", report.method_label, "\033[33m"),
+                     ("Architecture", report.method_family, "\033[33m"),
+                     ("Method support", "Supported" if report.method_supported else "Not supported yet / unverified", "\033[33m"),
+                     ("Vocabulary", report.vocabulary_status, "\033[33m"),
+                     ("VRAM Status", "Not evaluated", "\033[33m")]
+    import textwrap
     for warn in report.warnings:
-        box_items.append(("Warning", warn, "\033[33m"))
+        for i, line in enumerate(textwrap.wrap(warn, width=64)):
+            box_items.append(("Warning" if i == 0 else "", line, "\033[33m"))
 
-    print("\n" + render_box("Compatibility Report", box_items))
+    for suggestion in report.recommendations:
+        for i, line in enumerate(textwrap.wrap(suggestion, width=64)):
+            box_items.append(("Suggestion" if i == 0 else "", line, "\033[36m"))
+    box_items.append(("Detection", report.detection_evidence, "\033[36m"))
+    value_width = max(24, min(64, shutil.get_terminal_size((100, 24)).columns - 23))
+    wrapped_items = []
+    for label, value, color in box_items:
+        for i, line in enumerate(textwrap.wrap(value, width=value_width) or [""]):
+            wrapped_items.append((label if i == 0 else "", line, color))
+    print("\n" + render_box("Compatibility Report", wrapped_items))
+    preflight.require_safe()
 
     colab_tunnel_url = ""
     modal_deploy = False
@@ -442,6 +470,9 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             "target_model": target_model,
             "draft_model": draft_model,
             "draft_method": report.draft_method,
+            "eagle_version": report.eagle_version.removeprefix("EAGLE-"),
+            "target_revision": report.target_revision,
+            "draft_revision": report.draft_revision,
             "enable_adaptive": True,
         }, notebook_path=str(nb_path))
 
@@ -569,6 +600,9 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         "target_model": target_model,
         "draft_model": draft_model,
         "draft_method": report.draft_method,
+        "eagle_version": report.eagle_version.removeprefix("EAGLE-"),
+        "target_revision": report.target_revision,
+        "draft_revision": report.draft_revision,
         "use_heterogeneous_vocab": report.use_heterogeneous_vocab,
         "enable_adaptive": enable_adaptive,
         "profile_applied": profile_name,

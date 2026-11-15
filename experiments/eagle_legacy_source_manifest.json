@@ -1,0 +1,21 @@
+{
+  "vllm": "0.30.0",
+  "source_url": "https://github.com/vllm-project/vllm/tree/v0.30.0",
+  "files": [
+    {
+      "path": "vllm/model_executor/models/llama_eagle.py",
+      "bytes": 6807,
+      "sha256": "49c83179be429b6b2bc5ec196a16b8341b742fb3f1eb9029f7eb182e5e5a58db"
+    },
+    {
+      "path": "vllm/v1/spec_decode/llm_base_proposer.py",
+      "bytes": 84767,
+      "sha256": "5bd11c41f0a8cf1272b5880d9878043f876bee6c7e04fb781e613f92930b15ab"
+    },
+    {
+      "path": "vllm/transformers_utils/configs/eagle.py",
+      "bytes": 3530,
+      "sha256": "a150d5347cf7c7b53ce8d7e6711c2e85656df1ceeef28c921f90b52946b7203a"
+    }
+  ]
+}

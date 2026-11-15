@@ -41,7 +41,7 @@ class ModalServingRunner:
         """Forward non-secret serving settings and package paths for app construction."""
         cfg = config.get("serving", config)
         keys = ("target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
-                "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
+                "target_revision", "draft_revision", "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
         if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
             # Calibration also uses this method without the serving launch preflight.
             from flexsds.server.modal_auth import prepare_modal_auth

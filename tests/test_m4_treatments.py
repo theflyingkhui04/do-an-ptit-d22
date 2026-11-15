@@ -46,18 +46,20 @@ def test_historical_lane_meanings_unchanged():
     assert not set(m4.TREATMENTS[1:]) & set(LANES)
 
 
-def test_eagle_executor_contract(scheduler_module, monkeypatch):
+@pytest.mark.parametrize("method", ["eagle", "eagle3"])
+def test_eagle_executor_contract(scheduler_module, monkeypatch, method):
     import ast
     from experiments.m4_protocol import ROOT
     calls = []
     tree = ast.parse((ROOT / "src/server/lineage_executor.py").read_text())
     node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "validate_speculator_contract")
-    scope = {"verify_eagle_sources": lambda: calls.append("source-verified")}
+    scope = {"verify_eagle_sources": lambda: calls.append("source-verified"),
+             "verify_legacy_eagle_sources": lambda: calls.append("legacy-source-verified")}
     exec(compile(ast.Module(body=[node], type_ignores=[]), "executor-contract", "exec"), scope)
-    spec = SimpleNamespace(method="eagle3", parallel_drafting=False,
+    spec = SimpleNamespace(method=method, parallel_drafting=False,
                            num_speculative_tokens_per_batch_size=[[1, 32, 4]])
     scope["validate_speculator_contract"](spec)
-    assert calls == ["source-verified"]
+    assert calls == (["source-verified", "legacy-source-verified"] if method == "eagle" else ["source-verified"])
     spec.parallel_drafting = True
     with pytest.raises(RuntimeError):
         scope["validate_speculator_contract"](spec)

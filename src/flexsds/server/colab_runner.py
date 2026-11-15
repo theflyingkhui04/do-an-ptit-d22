@@ -147,7 +147,7 @@ class ColabServingRunner:
                         elif line.startswith("DRAFT_MODEL ="):
                             new_lines.append(f'DRAFT_MODEL = "{draft}"  #@param {{type:"string"}}\n')
                         elif line.startswith("DRAFT_METHOD ="):
-                            new_lines.append(f'DRAFT_METHOD = "{method}"  #@param ["eagle3", "draft_model"]\n')
+                            new_lines.append(f'DRAFT_METHOD = "{method}"  #@param ["eagle", "eagle3", "draft_model"]\n')
                         elif line.startswith("QUANTIZATION ="):
                             new_lines.append(f'QUANTIZATION = "{quant}"  #@param ["awq", "gptq", "none"]\n')
                         elif line.startswith("ENABLE_ADAPTIVE ="):

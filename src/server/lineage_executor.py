@@ -36,12 +36,22 @@ def verify_eagle_sources():
             raise RuntimeError(f"Unsupported EAGLE lineage source: {record['path']}")
 
 
+def verify_legacy_eagle_sources():
+    root = Path(vllm.__file__).resolve().parent.parent
+    manifest = Path(__file__).resolve().parents[2] / "experiments/eagle_legacy_source_manifest.json"
+    for record in json.loads(manifest.read_text())["files"]:
+        if hashlib.sha256((root / record["path"]).read_bytes()).hexdigest() != record["sha256"]:
+            raise RuntimeError(f"Unsupported legacy EAGLE source: {record['path']}")
+
+
 def validate_speculator_contract(spec):
     """The EAGLE extension is narrower than arbitrary vLLM speculation support."""
-    if spec is None or spec.method not in ("draft_model", "eagle3"):
-        raise RuntimeError("Async lineage requires draft_model or eagle3")
-    if spec.method == "eagle3":
+    if spec is None or spec.method not in ("draft_model", "eagle", "eagle3"):
+        raise RuntimeError("Async lineage requires draft_model, eagle or eagle3")
+    if spec.method in ("eagle", "eagle3"):
         verify_eagle_sources()
+        if spec.method == "eagle":
+            verify_legacy_eagle_sources()
         if (getattr(spec, "parallel_drafting", False)
                 or not getattr(spec, "num_speculative_tokens_per_batch_size", None)):
             raise RuntimeError("EAGLE lineage requires sequential dynamic-K drafting")

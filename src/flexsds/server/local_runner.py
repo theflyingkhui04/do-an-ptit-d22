@@ -70,7 +70,7 @@ class LocalServingRunner:
         target_model = serving_cfg.get("target_model", "Qwen/Qwen2.5-7B-Instruct-AWQ")
         draft_model = serving_cfg.get("draft_model", "duckhoi/qwen2.5-7b-eagle3.1-speculator")
         draft_method = serving_cfg.get("draft_method", "eagle3")
-        use_hetero = serving_cfg.get("use_heterogeneous_vocab", True)
+        use_hetero = serving_cfg.get("use_heterogeneous_vocab", False)
 
         effective_port = port if port is not None else serving_cfg.get("port", 8000)
         target_lower = target_model.lower()
@@ -89,9 +89,9 @@ class LocalServingRunner:
         profile_data = None
         if serving_cfg.get('profile_path'):
             profile_data = json.loads(Path(serving_cfg['profile_path']).read_text())
-        if draft_method not in {'eagle3', 'draft_model'}:
+        if draft_method not in {'eagle', 'eagle3', 'draft_model'}:
             raise ValueError('Unsupported draft method')
-        is_eagle = (draft_method == "eagle3")
+        is_eagle = draft_method in {"eagle", "eagle3"}
 
         speculative_config: Dict[str, Any] = {
             "method": draft_method,
@@ -133,8 +133,20 @@ class LocalServingRunner:
         if quantization != "none":
             cmd.extend(["--quantization", quantization])
 
+        target_revision = serving_cfg.get('target_revision')
+        draft_revision = serving_cfg.get('draft_revision')
+        if target_revision and target_revision != 'local':
+            cmd.extend(['--revision', target_revision])
+        if draft_revision and draft_revision != 'local':
+            speculative_config['revision'] = draft_revision
         if profile_data and serving_cfg.get('enable_adaptive', True):
-            cmd.extend(['--revision', profile_data['models']['target_revision']])
+            if target_revision and target_revision != 'local':
+                if target_revision != profile_data['models']['target_revision']:
+                    raise ValueError('Inspected target revision does not match the measured profile; recalibrate')
+            else:
+                cmd.extend(['--revision', profile_data['models']['target_revision']])
+            if draft_revision and draft_revision != 'local' and draft_revision != profile_data['models']['draft_revision']:
+                raise ValueError('Inspected draft revision does not match the measured profile; recalibrate')
             speculative_config['revision'] = profile_data['models']['draft_revision']
         # EAGLE uses the same pinned sequential dynamic-K path as the M4 treatment.
         if serving_cfg.get("enable_adaptive", True):
