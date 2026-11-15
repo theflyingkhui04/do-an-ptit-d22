@@ -1,11 +1,11 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import Console from "@/components/Console";
-import { ApiError, type Api, type BenchRun, type Job } from "@/lib/api";
+import { ApiError, type Api, type BenchRun, type DetectResult, type Endpoint, type Job } from "@/lib/api";
 
 import { BASE, CHAIN, ENDPOINTS, FAST, REPORT, doneJob, endpoint, fakeApi, jpegFile, question, run, speedRun } from "./fakes";
 
@@ -85,13 +85,12 @@ describe("endpoints", () => {
   });
 
   it("detects pasted addresses, explains the tunnel for a local one and saves the usable ones", async () => {
-    const detectEndpoints = vi.fn(async () => ({
-      results: [
-        { input: "https://acct--flexsds-serve.modal.run/v1", url: "https://acct--flexsds-serve.modal.run/v1", ok: true, code: null, message: null, platform: "modal" as const, model_id: "Qwen/Qwen2.5-7B-Instruct", max_model_len: 8192 },
-        { input: "http://127.0.0.1:8000/v1", url: "http://127.0.0.1:8000/v1", ok: false, code: "needs_tunnel", platform: "local" as const, model_id: null, max_model_len: null,
-          message: "Đây là địa chỉ trên máy của bạn; chạy lệnh `cloudflared tunnel --url http://127.0.0.1:8000` rồi dán lại." },
-      ],
-    }));
+    const found: Record<string, DetectResult> = {
+      "https://acct--flexsds-serve.modal.run/v1": { input: "https://acct--flexsds-serve.modal.run/v1", url: "https://acct--flexsds-serve.modal.run/v1", ok: true, code: null, message: null, platform: "modal", model_id: "Qwen/Qwen2.5-7B-Instruct", max_model_len: 8192 },
+      "http://127.0.0.1:8000/v1": { input: "http://127.0.0.1:8000/v1", url: "http://127.0.0.1:8000/v1", ok: false, code: "needs_tunnel", platform: "local", model_id: null, max_model_len: null,
+        message: "Đây là địa chỉ trên máy của bạn; chạy lệnh `cloudflared tunnel --url http://127.0.0.1:8000` rồi dán lại." },
+    };
+    const detectEndpoints = vi.fn(async (urls: string[]) => ({ results: urls.map((u) => found[u]) }));
     const added = endpoint("ep_0000000c", "Qwen/Qwen2.5-7B-Instruct");
     const addEndpoints = vi.fn(async () => ({
       results: [{ input: added.base_url, url: added.base_url, ok: true, code: null, message: null, platform: "modal" as const, model_id: added.model_id, max_model_len: 8192 }],
@@ -108,12 +107,102 @@ describe("endpoints", () => {
     expect(await within(dialog).findByText("Cần mở đường hầm")).toBeInTheDocument();
     expect(within(dialog).getByText("cloudflared tunnel --url http://127.0.0.1:8000")).toBeInTheDocument();
     expect(within(dialog).getByText("Qwen/Qwen2.5-7B-Instruct")).toBeInTheDocument();
-    expect(detectEndpoints).toHaveBeenCalledWith(["https://acct--flexsds-serve.modal.run/v1", "http://127.0.0.1:8000/v1"], "tok.secret");
+    // Each address is checked on its own, so one slow GPU does not hold back the others.
+    expect(detectEndpoints).toHaveBeenCalledTimes(2);
+    expect(detectEndpoints).toHaveBeenCalledWith(["https://acct--flexsds-serve.modal.run/v1"], "tok.secret");
+    expect(detectEndpoints).toHaveBeenCalledWith(["http://127.0.0.1:8000/v1"], "tok.secret");
 
     await user.click(within(dialog).getByRole("button", { name: "Thêm 1 endpoint" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(addEndpoints).toHaveBeenCalledWith(["https://acct--flexsds-serve.modal.run/v1"], "tok.secret", undefined);
     expect(api.endpoints).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows each address while it is checked, its own result as soon as it answers, and a hint for slow GPUs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const a = "https://acct--a.modal.run/v1";
+      const b = "https://acct--b.modal.run/v1";
+      const answer: Record<string, (value: { results: DetectResult[] }) => void> = {};
+      const detectEndpoints = vi.fn((urls: string[]) => new Promise<{ results: DetectResult[] }>((resolve) => {
+        answer[urls[0]] = resolve;
+      }));
+      open("endpoints", fakeApi({ detectEndpoints }));
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click((await screen.findAllByRole("button", { name: "Thêm endpoint" }))[0]);
+      const dialog = screen.getByRole("dialog", { name: "Thêm endpoint" });
+      await user.type(within(dialog).getByLabelText("Endpoint URL"), `${a}\n${b}`);
+      await user.click(within(dialog).getByRole("button", { name: "Kiểm tra" }));
+
+      const button = within(dialog).getByRole("button", { name: /Đang kiểm tra/ });
+      expect(button).toHaveAttribute("aria-busy", "true");
+      expect(within(button).getByTestId("spinner")).toBeInTheDocument();
+      expect(within(dialog).getAllByTestId("check-running")).toHaveLength(2);
+      expect(within(dialog).queryByText(/đang ngủ/)).toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(11_000);
+      });
+      expect(button).toHaveTextContent(/1[01] s/);
+      expect(within(dialog).getByText(/đang ngủ/)).toBeInTheDocument();
+
+      await act(async () => {
+        answer[a]({ results: [{ input: a, url: a, ok: true, code: null, message: null, platform: "modal", model_id: "Qwen/Qwen2.5-7B-Instruct-AWQ", max_model_len: 8192 }] });
+      });
+      expect(within(dialog).getByText("Qwen/Qwen2.5-7B-Instruct-AWQ")).toBeInTheDocument();
+      expect(within(dialog).getAllByTestId("check-running")).toHaveLength(1); // b is still waking up
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks a row while it is checked, then says when and how fast it answered", async () => {
+    let finish: (value: Endpoint) => void = () => undefined;
+    const checkEndpoint = vi.fn(() => new Promise<Endpoint>((resolve) => {
+      finish = resolve;
+    }));
+    open("endpoints", fakeApi({ checkEndpoint }));
+    const user = userEvent.setup();
+    const recheck = (await screen.findAllByRole("button", { name: "Kiểm tra lại" }))[0];
+    await user.click(recheck);
+    const row = recheck.closest("tr") as HTMLElement;
+    expect(within(row).getByText(/Đang kiểm tra ·/)).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /Kiểm tra lại|Đang kiểm tra/ })).toHaveAttribute("aria-busy", "true");
+    expect(within(screen.getByTestId("endpoint-summary")).getByTestId("spinner")).toBeInTheDocument();
+
+    await act(async () => finish(ENDPOINTS[0]));
+    expect(await within(row).findByText(/Vừa kiểm tra/)).toBeInTheDocument();
+    expect(within(row).queryByText(/Đang kiểm tra ·/)).toBeNull();
+    expect(within(screen.getByTestId("endpoint-summary")).queryByTestId("spinner")).toBeNull();
+  });
+
+  it("checks every endpoint at once and reloads the list once", async () => {
+    const answers: Array<() => void> = [];
+    const checkEndpoint = vi.fn((id: string) => new Promise<Endpoint>((resolve) => {
+      answers.push(() => resolve(ENDPOINTS.find((e) => e.endpoint_id === id)!));
+    }));
+    const api = fakeApi({ checkEndpoint });
+    open("endpoints", api);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Kiểm tra tất cả" }));
+    expect(checkEndpoint).toHaveBeenCalledTimes(ENDPOINTS.length); // all started before any answered
+    expect(screen.getAllByText(/Đang kiểm tra ·/)).toHaveLength(ENDPOINTS.length);
+
+    await act(async () => answers.forEach((answerNow) => answerNow()));
+    await waitFor(() => expect(screen.getAllByText(/Vừa kiểm tra/)).toHaveLength(ENDPOINTS.length));
+    expect(api.endpoints).toHaveBeenCalledTimes(2); // first load + one reload
+  });
+
+  it("keeps a failed check on its row instead of a page-wide error", async () => {
+    const checkEndpoint = vi.fn(async () => {
+      throw new Error("Không gọi được máy chủ");
+    });
+    open("endpoints", fakeApi({ checkEndpoint }));
+    const user = userEvent.setup();
+    const recheck = (await screen.findAllByRole("button", { name: "Kiểm tra lại" }))[0];
+    await user.click(recheck);
+    const row = recheck.closest("tr") as HTMLElement;
+    expect(await within(row).findByText(/Không gọi được máy chủ/)).toBeInTheDocument();
   });
 
   it("sets the baseline, checks on demand and asks before deleting", async () => {

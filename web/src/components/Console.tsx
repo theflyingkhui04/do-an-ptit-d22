@@ -10,7 +10,7 @@ import Node1Page from "@/components/Node1Page";
 import Node2Page from "@/components/Node2Page";
 import Node3Page from "@/components/Node3Page";
 import ResultPage from "@/components/ResultPage";
-import { BrandMark, Button, cx } from "@/components/ui";
+import { BrandMark, Button, Spinner, cx } from "@/components/ui";
 import { createApi, readKey, saveKey, withUnauthorizedHandler, type Api, type Endpoint } from "@/lib/api";
 
 export type PageId = "node1" | "node2" | "node3" | "result" | "endpoints";
@@ -94,6 +94,7 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
   const [loadError, setLoadError] = useState<string | null>(null);
   const [page, setPage] = useState<PageId | null>(null);
   const [adding, setAdding] = useState(false);
+  const [checking, setChecking] = useState(0);
 
   const reload = useCallback(async () => {
     try {
@@ -213,7 +214,9 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
                 className="inline-flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5 text-[13.5px] hover:bg-sunken"
                 data-testid="endpoint-summary"
               >
-                <Activity aria-hidden className={cx("size-4", running > 0 ? "text-good" : "text-ink-3")} />
+                {checking > 0
+                  ? <Spinner className="text-ink-3" />
+                  : <Activity aria-hidden className={cx("size-4", running > 0 ? "text-good" : "text-ink-3")} />}
                 {list.length === 0 ? "Chưa có endpoint" : `${running}/${list.length} endpoint đang chạy`}
               </button>
             )}
@@ -228,7 +231,7 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
             </div>
           )}
           {endpoints && page === "endpoints" && (
-            <EndpointsPage api={api} endpoints={list} onChange={reload} onAdd={() => setAdding(true)} />
+            <EndpointsPage api={api} endpoints={list} onChange={reload} onAdd={() => setAdding(true)} onCheckingChange={setChecking} />
           )}
           {endpoints && page === "node1" && <Node1Page api={api} endpoints={list} pollMs={pollMs} go={go} />}
           {endpoints && page === "node2" && <Node2Page api={api} endpoints={list} go={go} />}

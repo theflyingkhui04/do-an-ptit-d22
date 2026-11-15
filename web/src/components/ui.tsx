@@ -1,8 +1,8 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
+import { Loader2, type LucideIcon } from "lucide-react";
 import Image from "next/image";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import type { Endpoint } from "@/lib/api";
 import { formatCell, formatMs } from "@/lib/format";
@@ -59,9 +59,35 @@ export function Pill({ tone = "idle", icon: Icon, children }: { tone?: Tone; ico
   );
 }
 
-export function Button({ variant = "primary", icon: Icon, children, className, ...props }: {
+// Turning loader for work in progress. The global prefers-reduced-motion rule in globals.css stops it.
+export function Spinner({ className }: { className?: string }) {
+  return <Loader2 aria-hidden data-testid="spinner" className={cx("size-4 shrink-0 animate-spin", className)} />;
+}
+
+/** Current time, refreshed every second while `active`: drives the "· 12 s" waiting counters. */
+export function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return now;
+}
+
+export function secondsSince(start: number, now: number): number {
+  return Math.max(0, Math.floor((now - start) / 1000));
+}
+
+export function clockTime(date: Date): string {
+  return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+}
+
+export function Button({ variant = "primary", icon: Icon, loading = false, children, className, ...props }: {
   variant?: "primary" | "ghost" | "danger";
   icon?: LucideIcon;
+  // Shows a spinner in place of the icon and tells assistive tech the action is running.
+  loading?: boolean;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const look = {
     primary: "bg-ink text-surface hover:opacity-90",
@@ -71,10 +97,11 @@ export function Button({ variant = "primary", icon: Icon, children, className, .
   return (
     <button
       type="button"
+      aria-busy={loading || undefined}
       {...props}
-      className={cx("inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50", look, className)}
+      className={cx("inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50", loading && "disabled:cursor-progress", look, className)}
     >
-      {Icon && <Icon aria-hidden className="size-4" />}
+      {loading ? <Spinner /> : Icon && <Icon aria-hidden className="size-4" />}
       {children}
     </button>
   );

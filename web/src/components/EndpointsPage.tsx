@@ -1,11 +1,26 @@
 "use client";
 
 import { Check, Pencil, Plus, RefreshCw, Server, Terminal, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { PLATFORM_LABELS } from "@/components/AddEndpointDialog";
-import { Button, Dot, EmptyState, Notice, PageHead, Panel, Pill, baseModel, endpointColors } from "@/components/ui";
+import { Button, Dot, EmptyState, Notice, PageHead, Panel, Pill, baseModel, clockTime, cx, endpointColors, secondsSince, useNow } from "@/components/ui";
 import type { Api, Endpoint } from "@/lib/api";
+import { formatMs } from "@/lib/format";
+
+// What the last check of a row found, kept on the row (not as a page-wide error).
+interface CheckOutcome {
+  at: Date;
+  ms: number;
+  ok: boolean;
+  message: string | null;
+}
+
+function without<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
 
 function metaLine(e: Endpoint): string {
   const m = e.meta ?? {};
@@ -89,17 +104,78 @@ function NameCell({ endpoint, color, onRename }: { endpoint: Endpoint; color: st
   );
 }
 
-export default function EndpointsPage({ api, endpoints, onChange, onAdd }: {
+function StatusCell({ endpoint, checkingFor, outcome }: {
+  endpoint: Endpoint;
+  checkingFor: number | null; // seconds this check has been waiting, or null when idle
+  outcome?: CheckOutcome;
+}) {
+  if (checkingFor !== null) {
+    return (
+      <Pill tone="idle">
+        <span aria-hidden className="size-2 animate-pulse rounded-full bg-ink-3" />
+        Đang kiểm tra · {checkingFor} s
+      </Pill>
+    );
+  }
+  const repeated = outcome?.message && outcome.message === endpoint.status_message;
+  return (
+    <>
+      {endpoint.status === "ok" ? <Pill tone="good">Đang chạy</Pill> : <Pill tone="bad">Đã dừng</Pill>}
+      {endpoint.status === "down" && endpoint.status_message && <div className="mt-1 max-w-[220px] text-[12px] text-ink-3">{endpoint.status_message}</div>}
+      {outcome && (
+        <div className={cx("mt-1 max-w-[240px] animate-fade-in text-[12px]", outcome.ok ? "text-ink-3" : "text-bad")}>
+          Vừa kiểm tra <span className="whitespace-nowrap">{clockTime(outcome.at)} · {formatMs(outcome.ms)}</span>
+          {!outcome.ok && outcome.message && !repeated ? `: ${outcome.message}` : ""}
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheckingChange }: {
   api: Api;
   endpoints: Endpoint[];
   onChange: () => Promise<unknown>;
   onAdd: () => void;
+  // How many checks are running, for the spinner in the top bar.
+  onCheckingChange?: (count: number) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [checking, setChecking] = useState<Record<string, number>>({});
+  const [outcome, setOutcome] = useState<Record<string, CheckOutcome>>({});
+  const [flash, setFlash] = useState<Record<string, "good" | "bad">>({});
+  const running = Object.keys(checking).length;
+  const now = useNow(running > 0);
+
+  useEffect(() => {
+    onCheckingChange?.(running);
+  }, [running, onCheckingChange]);
+  useEffect(() => () => onCheckingChange?.(0), [onCheckingChange]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const colors = endpointColors(endpoints);
   const models = new Set(endpoints.map(baseModel));
+
+  async function checkOne(id: string) {
+    const started = Date.now();
+    setChecking((current) => ({ ...current, [id]: started }));
+    let found: CheckOutcome;
+    try {
+      const checked = await api.checkEndpoint(id);
+      found = { at: new Date(), ms: Date.now() - started, ok: checked.status === "ok", message: checked.status === "ok" ? null : checked.status_message };
+    } catch (exc) {
+      found = { at: new Date(), ms: Date.now() - started, ok: false, message: (exc as Error).message };
+    }
+    setOutcome((current) => ({ ...current, [id]: found }));
+    setFlash((current) => ({ ...current, [id]: found.ok ? "good" : "bad" }));
+    setChecking((current) => without(current, id));
+  }
+
+  // Checks run side by side; the list is reloaded once, after the last one answers.
+  async function check(ids: string[]) {
+    await Promise.all(ids.map(checkOne));
+    await onChange();
+  }
 
   async function act(id: string, action: () => Promise<unknown>) {
     setBusy(id);
@@ -118,7 +194,20 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd }: {
     <>
       <PageHead
         title="Endpoint"
-        actions={endpoints.length > 0 && <Button icon={Plus} variant="ghost" onClick={onAdd}>Thêm endpoint</Button>}
+        actions={endpoints.length > 0 && (
+          <>
+            <Button
+              variant="ghost"
+              icon={RefreshCw}
+              loading={running > 0}
+              disabled={running > 0 || busy !== null}
+              onClick={() => void check(endpoints.map((e) => e.endpoint_id))}
+            >
+              {running > 0 ? `Đang kiểm tra ${running} endpoint` : "Kiểm tra tất cả"}
+            </Button>
+            <Button icon={Plus} variant="ghost" onClick={onAdd}>Thêm endpoint</Button>
+          </>
+        )}
       >
         Các endpoint chuẩn OpenAI do CLI FlexSDS tạo ra. Endpoint mốc là chuẩn để tính “nhanh gấp mấy lần” ở mọi trang.
       </PageHead>
@@ -146,7 +235,12 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd }: {
               </thead>
               <tbody>
                 {endpoints.map((e) => (
-                  <tr key={e.endpoint_id} className="border-b border-line last:border-0 align-top">
+                  <tr
+                    key={e.endpoint_id}
+                    className={cx("border-b border-line last:border-0 align-top",
+                      flash[e.endpoint_id] === "good" && "animate-row-good", flash[e.endpoint_id] === "bad" && "animate-row-bad")}
+                    onAnimationEnd={() => setFlash((current) => without(current, e.endpoint_id))}
+                  >
                     <td className="px-[18px] py-3">
                       <NameCell
                         endpoint={e}
@@ -164,8 +258,11 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd }: {
                       <div className="text-[12.5px] text-ink-3">{metaLine(e)}</div>
                     </td>
                     <td className="px-3 py-3">
-                      {e.status === "ok" ? <Pill tone="good">Đang chạy</Pill> : <Pill tone="bad">Đã dừng</Pill>}
-                      {e.status === "down" && e.status_message && <div className="mt-1 max-w-[220px] text-[12px] text-ink-3">{e.status_message}</div>}
+                      <StatusCell
+                        endpoint={e}
+                        checkingFor={checking[e.endpoint_id] === undefined ? null : secondsSince(checking[e.endpoint_id], now)}
+                        outcome={outcome[e.endpoint_id]}
+                      />
                     </td>
                     <td className="px-3 py-3">
                       <label className="inline-flex cursor-pointer items-center gap-2">
@@ -195,12 +292,19 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd }: {
                             <Button
                               variant="ghost"
                               icon={RefreshCw}
-                              disabled={busy !== null}
-                              onClick={() => act(e.endpoint_id, () => api.checkEndpoint(e.endpoint_id))}
+                              loading={checking[e.endpoint_id] !== undefined}
+                              disabled={checking[e.endpoint_id] !== undefined || busy !== null}
+                              onClick={() => void check([e.endpoint_id])}
                             >
-                              {busy === e.endpoint_id ? "Đang kiểm tra…" : "Kiểm tra lại"}
+                              {checking[e.endpoint_id] === undefined ? "Kiểm tra lại" : "Đang kiểm tra"}
                             </Button>
-                            <Button variant="danger" icon={Trash2} aria-label={`Xoá ${e.name}`} onClick={() => setConfirmDelete(e.endpoint_id)} />
+                            <Button
+                              variant="danger"
+                              icon={Trash2}
+                              aria-label={`Xoá ${e.name}`}
+                              disabled={checking[e.endpoint_id] !== undefined}
+                              onClick={() => setConfirmDelete(e.endpoint_id)}
+                            />
                           </>
                         )}
                       </div>

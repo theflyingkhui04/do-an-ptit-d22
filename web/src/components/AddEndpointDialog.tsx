@@ -3,8 +3,9 @@
 import { CheckCircle2, Copy, FileJson, Plug, SearchCheck, X, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Button, Notice } from "@/components/ui";
+import { Button, Notice, Spinner, secondsSince, useNow } from "@/components/ui";
 import type { Api, DetectResult } from "@/lib/api";
+import { formatMs } from "@/lib/format";
 
 export const PLATFORM_LABELS: Record<string, string> = {
   modal: "Modal",
@@ -13,7 +14,17 @@ export const PLATFORM_LABELS: Record<string, string> = {
   local: "Máy cá nhân",
 };
 
-const EXAMPLE = "https://<tài-khoản>--flexsds-serve.modal.run/v1";
+const EXAMPLE = "https://<tài-khoản>--flexsds-serving-serve.modal.run/v1";
+// After this long a check is most likely waiting for a sleeping GPU to start.
+export const SLOW_HINT_S = 10;
+
+// One pasted address: checked on its own so a slow GPU does not hold back the others.
+interface Check {
+  input: string;
+  done: boolean;
+  ms?: number;
+  result?: DetectResult;
+}
 
 function CopyLine({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -38,10 +49,26 @@ function CopyLine({ text }: { text: string }) {
   );
 }
 
-function ResultRow({ result }: { result: DetectResult }) {
+function Took({ ms }: { ms?: number }) {
+  return ms === undefined ? null : <span className="num ml-auto shrink-0 pl-2 text-[12px] text-ink-3">{formatMs(ms)}</span>;
+}
+
+function RunningRow({ input }: { input: string }) {
+  return (
+    <li data-testid="check-running" className="flex animate-fade-in items-start gap-2.5 rounded-lg border border-dashed border-line px-3 py-2.5">
+      <Spinner className="mt-0.5 text-ink-3" />
+      <div className="grid min-w-0 gap-0.5">
+        <span className="truncate font-mono text-[13px]">{input}</span>
+        <span className="text-[13px] text-ink-3">Đang hỏi /v1/models…</span>
+      </div>
+    </li>
+  );
+}
+
+function ResultRow({ result, ms }: { result: DetectResult; ms?: number }) {
   if (result.ok) {
     return (
-      <li className="flex items-start gap-2.5 rounded-lg border border-line px-3 py-2.5">
+      <li className="flex animate-fade-in items-start gap-2.5 rounded-lg border border-line px-3 py-2.5">
         <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-good" />
         <div className="grid min-w-0 gap-0.5">
           <span className="truncate font-mono text-[13px]">{result.url}</span>
@@ -50,12 +77,13 @@ function ResultRow({ result }: { result: DetectResult }) {
             {result.max_model_len ? `, ngữ cảnh ${result.max_model_len.toLocaleString("vi-VN")} token` : ""}
           </span>
         </div>
+        <Took ms={ms} />
       </li>
     );
   }
   const command = result.code === "needs_tunnel" ? /`([^`]+)`/.exec(result.message ?? "")?.[1] : undefined;
   return (
-    <li className="flex items-start gap-2.5 rounded-lg border border-line px-3 py-2.5">
+    <li className="flex animate-fade-in items-start gap-2.5 rounded-lg border border-line px-3 py-2.5">
       {command ? (
         <Plug aria-hidden className="mt-0.5 size-4 shrink-0 text-warn" />
       ) : (
@@ -76,8 +104,13 @@ function ResultRow({ result }: { result: DetectResult }) {
           <span className="text-[13px] text-bad">{result.message}</span>
         )}
       </div>
+      <Took ms={ms} />
     </li>
   );
+}
+
+function failed(input: string, message: string): DetectResult {
+  return { input, url: null, ok: false, code: "request_failed", message, platform: null, model_id: null, max_model_len: null };
 }
 
 export default function AddEndpointDialog({ api, onClose, onSaved }: {
@@ -89,7 +122,8 @@ export default function AddEndpointDialog({ api, onClose, onSaved }: {
   const [key, setKey] = useState("");
   const [config, setConfig] = useState<{ name: string; value: unknown } | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [results, setResults] = useState<DetectResult[] | null>(null);
+  const [checks, setChecks] = useState<Check[] | null>(null);
+  const [startedAt, setStartedAt] = useState(0);
   const [busy, setBusy] = useState<"detect" | "add" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState<number | null>(null);
@@ -105,20 +139,31 @@ export default function AddEndpointDialog({ api, onClose, onSaved }: {
   }, [onClose]);
 
   const urls = text.split(/\s+/).map((u) => u.trim()).filter(Boolean);
-  const usable = (results ?? []).filter((r) => r.ok);
+  const checking = checks?.some((c) => !c.done) ?? false;
+  const now = useNow(checking);
+  const waited = checking ? secondsSince(startedAt, now) : 0;
+  const usable = (checks ?? []).flatMap((c) => (c.done && c.result?.ok ? [c.result] : []));
 
   async function detect() {
+    const started = Date.now();
+    const apiKey = key.trim() || undefined;
     setBusy("detect");
     setError(null);
     setSavedCount(null);
-    try {
-      const { results: found } = await api.detectEndpoints(urls, key.trim() || undefined);
-      setResults(found);
-    } catch (exc) {
-      setError((exc as Error).message);
-    } finally {
-      setBusy(null);
-    }
+    setStartedAt(started);
+    setChecks(urls.map((input) => ({ input, done: false })));
+    const finish = (index: number, result: DetectResult) =>
+      setChecks((current) => current && current.map((c, i) => (i === index ? { ...c, done: true, ms: Date.now() - started, result } : c)));
+    await Promise.all(urls.map(async (input, index) => {
+      try {
+        const { results: found } = await api.detectEndpoints([input], apiKey);
+        const result = found.find((r) => r.input === input) ?? found[0];
+        finish(index, result ?? failed(input, "Máy chủ không trả kết quả cho địa chỉ này."));
+      } catch (exc) {
+        finish(index, failed(input, (exc as Error).message));
+      }
+    }));
+    setBusy(null);
   }
 
   async function add() {
@@ -130,7 +175,7 @@ export default function AddEndpointDialog({ api, onClose, onSaved }: {
         key.trim() || undefined,
         config?.value,
       );
-      setResults(checked);
+      setChecks(checked.map((result) => ({ input: result.input, done: true, result })));
       setSavedCount(saved.length);
       await onSaved();
       if (checked.every((r) => r.ok)) onClose();
@@ -179,7 +224,7 @@ export default function AddEndpointDialog({ api, onClose, onSaved }: {
             value={text}
             onChange={(e) => {
               setText(e.target.value);
-              setResults(null);
+              setChecks(null);
             }}
             placeholder={EXAMPLE}
             className="rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[13px]"
@@ -212,23 +257,31 @@ export default function AddEndpointDialog({ api, onClose, onSaved }: {
           </div>
         </div>
 
-        {results && results.length > 0 && (
-          <ul className="grid gap-2" aria-label="Kết quả kiểm tra">
-            {results.map((r, i) => <ResultRow key={`${r.input}-${i}`} result={r} />)}
+        {checks && checks.length > 0 && (
+          <ul className="grid gap-2" aria-label="Kết quả kiểm tra" aria-live="polite">
+            {checks.map((c, i) => (c.done && c.result
+              ? <ResultRow key={`${c.input}-${i}`} result={c.result} ms={c.ms} />
+              : <RunningRow key={`${c.input}-${i}`} input={c.input} />))}
           </ul>
+        )}
+        {checking && waited >= SLOW_HINT_S && (
+          <Notice tone="info">
+            GPU trên Modal đang ngủ có thể cần vài phút để khởi động. Mỗi lần kiểm tra, web chờ tối đa khoảng 1 phút;
+            nếu báo chưa sẵn sàng, đợi 1–2 phút rồi bấm Kiểm tra lại.
+          </Notice>
         )}
         {savedCount !== null && <Notice tone="info">Đã lưu {savedCount} endpoint.</Notice>}
         {error && <Notice tone="bad">{error}</Notice>}
 
         <div className="flex flex-wrap justify-end gap-2.5">
           <Button variant="ghost" onClick={onClose}>Huỷ</Button>
-          {usable.length > 0 && savedCount === null ? (
-            <Button icon={CheckCircle2} disabled={busy !== null} onClick={add}>
+          {!checking && usable.length > 0 && savedCount === null ? (
+            <Button icon={CheckCircle2} loading={busy === "add"} disabled={busy !== null} onClick={add}>
               {busy === "add" ? "Đang lưu…" : `Thêm ${usable.length} endpoint`}
             </Button>
           ) : (
-            <Button icon={SearchCheck} disabled={busy !== null || urls.length === 0} onClick={detect}>
-              {busy === "detect" ? "Đang kiểm tra…" : "Kiểm tra"}
+            <Button icon={SearchCheck} loading={checking} disabled={busy !== null || urls.length === 0} onClick={detect}>
+              {checking ? `Đang kiểm tra · ${waited} s` : "Kiểm tra"}
             </Button>
           )}
         </div>
