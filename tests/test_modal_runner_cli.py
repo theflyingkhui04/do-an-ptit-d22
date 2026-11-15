@@ -11,7 +11,7 @@ def test_modal_runner_build_command_ephemeral_and_deploy():
     runner = ModalServingRunner()
     config = {"serving": {"target_gpu": "L4", "port": 8000}}
     cmd_run = runner.build_modal_command(config, deploy=False)
-    assert os.path.basename(cmd_run[0]) == "modal"
+    assert Path(cmd_run[0]).stem.lower() == "modal"  # bare name or the resolved binary (modal.EXE on Windows)
     assert "serve" in cmd_run
 
     cmd_deploy = runner.build_modal_command(config, deploy=True)
@@ -111,6 +111,9 @@ def test_modal_runner_setup_environment_uses_os_pathsep(monkeypatch):
 def isolated_default_credentials(tmp_path, monkeypatch):
     from flexsds.core.credentials import CredentialsManager
     monkeypatch.setattr(CredentialsManager, "DEFAULT_PATH", tmp_path / "no_credentials")
+    # modal_auth reads the developer's real ~/.modal.toml through pathlib, which the
+    # os.path.exists patch below does not cover; point it at a missing file instead.
+    monkeypatch.setenv("MODAL_CONFIG_PATH", str(tmp_path / "no_modal.toml"))
 
 
 def test_modal_environment_does_not_leak_host_python_packages(monkeypatch):

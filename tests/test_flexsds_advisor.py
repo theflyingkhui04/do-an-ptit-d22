@@ -15,8 +15,10 @@ from flexsds.server.modal_runner import ModalServingRunner
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Static EAGLE (as in test_flexsds_integration): adaptive serving needs a measured GPU
+# profile, which these command-contract checks neither have nor test.
 PAIR = ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ",
-        "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator"]
+        "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator", "--no-adaptive"]
 
 
 def invoke(args, cwd):
@@ -28,12 +30,10 @@ def invoke(args, cwd):
 
 @pytest.mark.parametrize("args, expected", [
     (["--version"], "0.2.0"),
-    (["--help"], "{detect,profile,stop,auth,serve,chat,monitor}"),
+    (["--help"], "{clear,detect,profile,stop,auth,serve,chat,monitor}"),
     (["detect"], "Hardware:"),
     (["profile"], "Linked hardware profile:"),
-    # Local serving profiles the host GPU; an uncalibrated GPU must fail closed (CR01),
-    # so the contract check opts into the documented conservative fallback.
-    (PAIR + ["--backend", "local", "--dry-run", "--allow-fallback"], "Dry-run execution command:"),
+    (PAIR + ["--backend", "local", "--dry-run"], "Dry-run execution command:"),
     (PAIR + ["--backend", "modal", "--dry-run"], "Dry-run command"),
 ])
 def test_real_safe_cli(args, expected, tmp_path):

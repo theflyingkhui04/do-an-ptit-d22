@@ -23,6 +23,7 @@ def test_e2e_cli_local_dry_run(capsys):
         "--port", "8000",
         "--dry-run",
         "--allow-fallback",
+        "--no-adaptive",  # adaptive needs a measured GPU profile; these check the command shape
     ]
     ret = main(test_args)
     assert ret == 0
@@ -41,6 +42,7 @@ def test_e2e_cli_modal_dry_run(capsys):
         "--backend", "modal",
         "--dry-run",
         "--allow-fallback",
+        "--no-adaptive",  # adaptive needs a measured GPU profile; these check the command shape
     ]
     ret = main(test_args)
     assert ret == 0
@@ -59,6 +61,7 @@ def test_e2e_cli_modal_deploy_dry_run(capsys):
         "--deploy",
         "--dry-run",
         "--allow-fallback",
+        "--no-adaptive",  # adaptive needs a measured GPU profile; these check the command shape
     ]
     ret = main(test_args)
     assert ret == 0
@@ -75,6 +78,7 @@ def test_e2e_cli_colab_dry_run(capsys):
         "--backend", "colab",
         "--dry-run",
         "--allow-fallback",
+        "--no-adaptive",  # adaptive needs a measured GPU profile; these check the command shape
     ]
     ret = main(test_args)
     assert ret == 0
