@@ -31,7 +31,9 @@ def invoke(args, cwd):
     (["--help"], "{detect,profile,stop,auth,serve,chat,monitor}"),
     (["detect"], "Hardware:"),
     (["profile"], "Linked hardware profile:"),
-    (PAIR + ["--backend", "local", "--dry-run"], "Dry-run execution command:"),
+    # Local serving profiles the host GPU; an uncalibrated GPU must fail closed (CR01),
+    # so the contract check opts into the documented conservative fallback.
+    (PAIR + ["--backend", "local", "--dry-run", "--allow-fallback"], "Dry-run execution command:"),
     (PAIR + ["--backend", "modal", "--dry-run"], "Dry-run command"),
 ])
 def test_real_safe_cli(args, expected, tmp_path):
@@ -117,6 +119,6 @@ def test_modal_forwards_models_port_and_gpu_in_environment():
     cfg = {"target_model": "chosen-target", "draft_model": "chosen-draft",
            "port": 9876, "target_gpu": "T4", "enable_adaptive": False}
     command = runner.build_modal_command(cfg)
-    assert command[:2] == ["modal", "serve"]
+    assert Path(command[0]).stem.lower() == "modal" and command[1] == "serve"
     assert command[2].endswith("modal_app.py")
     assert json.loads(runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"]) == cfg

@@ -1,6 +1,7 @@
 """Tests for Modal cloud serving runner (BYOC, ephemeral, and deploy modes)."""
 import os
 import shutil
+from pathlib import Path
 from unittest.mock import patch
 import pytest
 from flexsds.server.modal_runner import ModalServingRunner
@@ -45,7 +46,7 @@ def test_modal_runner_build_command_uses_standalone_app():
     runner = ModalServingRunner()
     cfg = {"serving": {"target_gpu": "A10G"}}
     cmd = runner.build_modal_command(cfg, deploy=False)
-    assert "modal" in cmd
+    assert Path(cmd[0]).stem.lower() == "modal"  # bare name or the resolved binary
     assert "serve" in cmd
     assert any("modal_app.py" in arg for arg in cmd)
     assert '"target_gpu": "A10G"' in runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"]
