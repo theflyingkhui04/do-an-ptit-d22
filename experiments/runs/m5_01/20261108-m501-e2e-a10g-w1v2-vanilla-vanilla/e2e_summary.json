@@ -1,0 +1,57 @@
+{
+  "task": "M3-06",
+  "run_id": "20261108-m501-e2e-a10g-w1v2-vanilla",
+  "lane": "vanilla",
+  "model": "qwen2.5-7b-vanilla",
+  "base_url": "https://nguyenduonghb940--ptit-vllm-vanilla.us-east.modal.direct/v1",
+  "hardware": "modal-A10G",
+  "node1_package_dir": "experiments/configs/w1_v2",
+  "git_sha": "d708119",
+  "started_at": "2026-11-08T04:34:19+00:00",
+  "finished_at": "2026-11-08T04:42:56+00:00",
+  "e2e_wall_ms": 516484.218,
+  "invoice_count": 29,
+  "node1": {
+    "returncode": 0,
+    "request_count": 30,
+    "fully_validated_count": 29,
+    "rates": {
+      "transport_success_rate": 1.0,
+      "strict_json_rate": 1.0,
+      "source_binding_rate": 0.966667,
+      "schema_valid_rate": 0.966667
+    },
+    "latency_ms": {
+      "mean": 16581.96,
+      "median": 15898.541,
+      "min": 11119.213,
+      "max": 24465.352
+    }
+  },
+  "node2": {
+    "requests": 6,
+    "status_counts": {
+      "empty": 1,
+      "ok": 5
+    },
+    "latency_ms": {
+      "p50": 1166.533,
+      "p95": 1429.913,
+      "sum": 7476.926
+    },
+    "prompt_tokens": 2034,
+    "completion_tokens": 178
+  },
+  "node3": {
+    "status": "ok",
+    "latency_ms": 5403.993,
+    "prompt_tokens": 1007,
+    "completion_tokens": 393,
+    "finish_reason": "stop"
+  },
+  "prompt_hashes": {
+    "w2_system_prompt": "40a0bff9f8a9701e992efeac38f60d48094bc5376649990ba5b22975e413605b",
+    "w3_system_prompt": "fee80fb2e4e1499f264ed8545337a0eda19a55c901c1ad461b32542a3fb85bd7",
+    "node3_user_template": "6259426aebf66cf7b58fb62cd4a40e26879ad21a75d32bfcbaca2275bc79ff2d"
+  }
+}

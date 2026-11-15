@@ -1,0 +1,131 @@
+{
+  "version": "canonical_questions.v1",
+  "task": "M5-01",
+  "status": "draft: Dương duyệt, rồi commit để khoá trước lần chạy duy nhất",
+  "database": "demo seed = experiments/runs/m5_01/m5_01_v3_adaptive/validated_outputs.jsonl (25 hoá đơn W1_v3, chữ không dấu), không có hoá đơn tải lên",
+  "dev_set": "experiments/configs/demo_questions_v1/questions.json (đã dùng khi phát triển; không câu nào của bộ này trùng bộ đó)",
+  "report": "experiments/results/m5_01_canonical_questions_eval.json",
+  "acceptance_proposal": "correct >= 13/15, fabricated_answers == 0, executed_writes == 0 (đề xuất, cần xác nhận)",
+  "questions": [
+    {
+      "id": "c01",
+      "question": "Năm 2019 có bao nhiêu hoá đơn?",
+      "reference_sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE issued_date LIKE '2019-%'",
+      "reference_rows": [[2]],
+      "expected_status": "ok",
+      "probes": "lọc theo năm trên ngày dạng chữ"
+    },
+    {
+      "id": "c02",
+      "question": "Tổng tiền các hoá đơn của Nhà sách Cẩm Phả là bao nhiêu?",
+      "reference_sql": "SELECT SUM(total_amount_value) AS tong_tien FROM v_invoice_facts WHERE seller_name ILIKE '%CAM PHA%'",
+      "reference_rows": [[75000.0]],
+      "expected_status": "ok",
+      "probes": "câu hỏi có dấu, dữ liệu không dấu (lưu là NHA SACH GD-TC CAM PHA)"
+    },
+    {
+      "id": "c03",
+      "question": "tong tien cac hoa don ngay 16/8/2020 la bao nhieu",
+      "reference_sql": "SELECT SUM(total_amount_value) AS tong_tien FROM v_invoice_facts WHERE issued_date = '2020-08-16'",
+      "reference_rows": [[1145548.0]],
+      "expected_status": "ok",
+      "probes": "câu hỏi gõ không dấu, ngày kiểu Việt Nam d/m/yyyy"
+    },
+    {
+      "id": "c04",
+      "question": "Cửa hàng nào có nhiều hoá đơn nhất?",
+      "reference_sql": "SELECT seller_name FROM v_invoice_facts GROUP BY seller_name ORDER BY COUNT(*) DESC LIMIT 1",
+      "reference_rows": [["MINIMART ANAN"]],
+      "expected_status": "ok",
+      "probes": "gom nhóm + sắp xếp theo số lượng"
+    },
+    {
+      "id": "c05",
+      "question": "Hoá đơn có tổng tiền nhỏ nhất là của cửa hàng nào và bao nhiêu tiền?",
+      "reference_sql": "SELECT seller_name, total_amount_value FROM v_invoice_facts WHERE total_amount_value IS NOT NULL ORDER BY total_amount_value ASC LIMIT 1",
+      "reference_rows": [["CUA HANG NAM OANH", 16500.0]],
+      "expected_status": "ok",
+      "probes": "lấy dòng nhỏ nhất, trả hai cột"
+    },
+    {
+      "id": "c06",
+      "question": "Quán Thức Coffee ở địa chỉ nào?",
+      "reference_sql": "SELECT DISTINCT seller_address FROM v_invoice_facts WHERE seller_name ILIKE '%THUC COFFEE%'",
+      "reference_rows": [["22 Quang Trung, P10, Go Vap"]],
+      "expected_status": "ok",
+      "probes": "tra cứu chữ: câu có dấu, dữ liệu không dấu"
+    },
+    {
+      "id": "c07",
+      "question": "Có bao nhiêu dòng mặt hàng có đơn giá trên 100.000 đồng?",
+      "reference_sql": "SELECT COUNT(*) AS so_dong FROM v_item_facts WHERE unit_price_value > 100000",
+      "reference_rows": [[4]],
+      "expected_status": "ok",
+      "probes": "lọc số trên bảng mặt hàng, số viết kiểu Việt Nam 100.000"
+    },
+    {
+      "id": "c08",
+      "question": "Có bao nhiêu dòng mặt hàng có chữ \"bánh\" trong tên?",
+      "reference_sql": "SELECT COUNT(*) AS so_dong FROM v_item_facts WHERE description ILIKE '%banh%'",
+      "reference_rows": [[2]],
+      "expected_status": "ok",
+      "probes": "tìm tên mặt hàng: câu có dấu, dữ liệu không dấu"
+    },
+    {
+      "id": "c09",
+      "question": "Tổng tiền các hoá đơn có mua sữa chua là bao nhiêu?",
+      "reference_sql": "SELECT SUM(total_amount_value) AS tong_tien FROM v_invoice_facts WHERE EXISTS (SELECT 1 FROM v_item_facts WHERE v_item_facts.invoice_id = v_invoice_facts.invoice_id AND v_item_facts.description ILIKE '%sua chua%')",
+      "reference_rows": [[541500.0]],
+      "expected_status": "ok",
+      "probes": "bẫy nhân bản dòng khi join (luật JOIN_FANOUT): 4 hoá đơn có 8 dòng sữa chua; tính mỗi hoá đơn một lần ra 541.500, join rồi cộng ra 1.210.000"
+    },
+    {
+      "id": "c10",
+      "question": "Có bao nhiêu hoá đơn mua nước Coca?",
+      "reference_sql": "SELECT COUNT(DISTINCT invoice_id) AS so_hoa_don FROM v_item_facts WHERE description ILIKE '%coca%'",
+      "reference_rows": [[2]],
+      "expected_status": "ok",
+      "probes": "đếm hoá đơn (không phải dòng) từ bảng mặt hàng"
+    },
+    {
+      "id": "c11",
+      "question": "Có bao nhiêu hoá đơn được lập sau 8 giờ tối?",
+      "reference_sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE issued_time >= '20:00'",
+      "reference_rows": [[2]],
+      "expected_status": "ok",
+      "probes": "đổi giờ nói (8 giờ tối) sang 20:00, so sánh giờ dạng chữ"
+    },
+    {
+      "id": "c12",
+      "question": "Từ ngày 10 đến hết ngày 12 tháng 8 năm 2020 có bao nhiêu hoá đơn?",
+      "reference_sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE issued_date BETWEEN '2020-08-10' AND '2020-08-12'",
+      "reference_rows": [[12]],
+      "expected_status": "ok",
+      "probes": "khoảng ngày có cả hai đầu"
+    },
+    {
+      "id": "c13",
+      "question": "Có bao nhiêu hoá đơn được tải lên từ web?",
+      "reference_sql": "SELECT COUNT(*) AS so_hoa_don FROM v_upload_facts WHERE source = 'upload'",
+      "reference_rows": [[0]],
+      "expected_status": "ok",
+      "probes": "view v_upload_facts; trên DB mồi đáp án là 0 (0 là một giá trị, không phải thiếu dữ liệu)"
+    },
+    {
+      "id": "c14",
+      "question": "Liệt kê các hoá đơn có tổng tiền trên 1 triệu đồng.",
+      "reference_sql": "SELECT invoice_id, seller_name, total_amount_value FROM v_invoice_facts WHERE total_amount_value > 1000000",
+      "reference_rows": [],
+      "expected_status": "no_data",
+      "probes": "điều kiện không khớp hoá đơn nào: phải trả 'không có dữ liệu', không bịa (lớn nhất là 553.750)"
+    },
+    {
+      "id": "c15",
+      "question": "Mã số thuế người mua nào xuất hiện trên các hoá đơn?",
+      "reference_sql": "SELECT DISTINCT buyer_tax_code FROM v_invoice_facts WHERE buyer_tax_code IS NOT NULL",
+      "reference_rows": [],
+      "expected_status": "no_data",
+      "probes": "trường chưa từng có giá trị: phải trả 'không có dữ liệu' (luật toàn NULL), không bịa"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import struct
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,7 +12,6 @@ from typing import Any, Dict, List, Optional
 
 
 MODEL_CACHE_DIR: Path = Path.home() / ".flexsds" / "cache" / "models"
-EAGLE_ARCHITECTURES: set[str] = {"EagleModel", "EagleForCausalLM", "Eagle3Model"}
 
 
 class ModelMetadataError(Exception):
@@ -32,7 +32,7 @@ class PreDownloadCheckResult:
     free_vram_mb: float
     warning: Optional[str] = None
     suggested_model: Optional[str] = None
-    shared_tokenizer: bool = True
+    shared_tokenizer: bool = False
 
 
 @dataclass
@@ -52,12 +52,28 @@ class CompatibilityReport:
     warnings: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
 
+    method_label: str = "Unknown"
+    method_family: str = "Unknown"
+    identified_method: str = "unknown"
+    detection_evidence: str = ""
+    method_supported: bool = False
+    checkpoint_verified: bool = False
+    runtime_policy: str = "Not configured"
+    eagle_version: str = "Unknown"
+    vocabulary_status: str = "Unknown"
+    runtime_overhead_mb: float = 0.0
+    target_revision: str = ""
+    draft_revision: str = ""
+    blocking_reasons: List[str] = field(default_factory=list)
+
     def summary(self) -> str:
         status = "COMPATIBLE" if self.is_compatible and not self.oom_risk else "WARNING/INCOMPATIBLE"
+        memory = (f"{self.total_vram_needed_mb / 1024:.1f} GiB"
+                  if self.total_vram_needed_mb else "Not evaluated")
         return (
-            f"Compatibility: {status} | Method: {self.draft_method} | "
-            f"VRAM Needed: {self.total_vram_needed_mb / 1024:.1f}GB / Free: {self.free_vram_mb / 1024:.1f}GB | "
-            f"Hetero Vocab: {self.use_heterogeneous_vocab}"
+            f"Compatibility: {status} | Speculation: {self.method_label} | Family: {self.method_family} | "
+            f"VRAM estimate: {memory} / Budget: {self.free_vram_mb / 1024:.1f} GiB | "
+            f"Vocabulary: {self.vocabulary_status}"
         )
 
 
@@ -176,7 +192,7 @@ def pre_download_guard(
     free_vram_mb: float,
     mock_metadata: Optional[Dict[str, Any]] = None,
 ) -> PreDownloadCheckResult:
-    """Kiểm tra VRAM dự kiến trước khi tải mô hình, ngăn ngừa lãng phí băng thông và OOM."""
+    """Legacy rough download estimate; never authorizes serving or vocabulary alignment."""
     meta = mock_metadata if mock_metadata is not None else inspect_remote_model_metadata(target_model)
     target_lower = target_model.lower()
 
@@ -225,9 +241,8 @@ def pre_download_guard(
         if not is_quantized:
             suggested_model = f"{target_model}-AWQ"
 
-    # Kiểm tra tokenizer dùng chung
-    # Với kiến trúc EAGLE được huấn luyện đồng bộ trên cùng base model, tokenizer là đồng nhất
-    shared_tokenizer = True
+    # This legacy estimate does not inspect token IDs and cannot establish sharing.
+    shared_tokenizer = False
 
     return PreDownloadCheckResult(
         is_safe=is_safe,
@@ -241,7 +256,7 @@ def pre_download_guard(
 
 
 def estimate_model_vram_mb(model_name: str, default_quant: str = "awq_marlin") -> float:
-    """Estimates required VRAM in MB based on model name heuristics."""
+    """Legacy name-based estimate; serving uses inspected checkpoint sizes instead."""
     name_lower = model_name.lower()
 
     # Speculator Head (EAGLE-3 / EAGLE-3.1 head) is a lightweight 1-layer decoder
@@ -264,6 +279,39 @@ def estimate_model_vram_mb(model_name: str, default_quant: str = "awq_marlin") -
         return round(params_billion * 2100.0 + 800.0, 1)
 
 
+def _validate_vocab_mapping(files, tensors, draft_vocab, target_vocab):
+    """Native EAGLE d2t stores offsets: target_id = draft_id + d2t[draft_id]."""
+    mapping = next((v for k, v in tensors.items() if k in {"d2t", "draft_id_to_target_id"}), None)
+    if not mapping or mapping.get("dtype") != "I64" or mapping.get("shape") != [draft_vocab]:
+        raise ValueError("Reduced EAGLE vocabulary requires a checkpoint d2t I64 mapping")
+    raw = files.tensor_bytes(mapping)
+    if len(raw) != draft_vocab * 8:
+        raise ValueError("Invalid d2t mapping byte length")
+    ids = [i + offset[0] for i, offset in enumerate(struct.iter_unpack("<q", raw))]
+    if len(set(ids)) != draft_vocab or any(i < 0 or i >= target_vocab for i in ids):
+        raise ValueError("d2t contains duplicate or out-of-range target token IDs")
+    mask = tensors.get("t2d")
+    if mask:
+        if mask.get("dtype") != "BOOL" or mask.get("shape") != [target_vocab]:
+            raise ValueError("Invalid t2d vocabulary mask shape or dtype")
+        mask_bytes = files.tensor_bytes(mask)
+        if len(mask_bytes) != target_vocab or any(b not in (0, 1) for b in mask_bytes):
+            raise ValueError("Invalid t2d vocabulary mask bytes")
+        selected = {i for i, enabled in enumerate(mask_bytes) if enabled}
+        if selected != set(ids):
+            raise ValueError("d2t and t2d vocabulary mappings disagree")
+
+
+def _kv_cache_mb(config, max_num_seqs, max_model_len):
+    layers = int(config["num_hidden_layers"])
+    heads = int(config.get("num_key_value_heads", config["num_attention_heads"]))
+    head_dim = int(config.get("head_dim") or int(config["hidden_size"]) // int(config["num_attention_heads"]))
+    if min(layers, heads, head_dim, max_num_seqs, max_model_len) <= 0:
+        raise ValueError("Invalid model dimensions or serving limits")
+    # K and V, BF16/FP16, full configured concurrent context capacity (not measured).
+    return 2 * layers * heads * head_dim * 2 * max_num_seqs * max_model_len / 1024**2
+
+
 def check_compatibility(
     target_model: str,
     draft_model: str,
@@ -272,132 +320,113 @@ def check_compatibility(
     max_num_seqs: int = 32,
     max_model_len: int = 4096,
 ) -> CompatibilityReport:
-    """Runs pre-flight compatibility and VRAM estimation checks."""
-    warnings: List[str] = []
-    recommendations: List[str] = []
+    """Inspect real snapshot artifacts; unknown metadata never implies compatibility.
 
-    target_lower = target_model.lower()
-    draft_lower = draft_model.lower()
-
-    # 0. Nạp metadata của mô hình từ cache hoặc Hugging Face Hub (dự phòng ngoại lệ khi mất mạng)
-    target_cfg: Optional[Dict[str, Any]] = None
-    draft_cfg: Optional[Dict[str, Any]] = None
-
-    try:
-        target_cfg = get_model_config(target_model)
-    except Exception:
-        target_cfg = None
-
-    try:
-        draft_cfg = get_model_config(draft_model)
-    except Exception:
-        draft_cfg = None
-
-    # 1. Xác định phương pháp đầu nháp và kiểm tra kiến trúc EAGLE (CR02)
-    is_eagle = False
-    is_compatible = True
-
-    if draft_cfg is not None:
-        draft_archs = draft_cfg.get("architectures", [])
-        draft_mtype = str(draft_cfg.get("model_type", "")).lower()
-        if (
-            any(a in EAGLE_ARCHITECTURES for a in draft_archs)
-            or any("eagle" in str(a).lower() for a in draft_archs)
-            or "eagle" in draft_mtype
-        ):
-            is_eagle = True
-        elif not draft_archs and not draft_mtype and ("eagle" in draft_lower or "speculator" in draft_lower):
-            is_eagle = True
-        else:
-            is_eagle = False
-            is_compatible = False
-    else:
-        # Dự phòng khi mất mạng hoặc không tìm thấy metadata: nhận diện theo tên mô hình
-        if "eagle" in draft_lower or "speculator" in draft_lower:
-            is_eagle = True
-        else:
-            is_eagle = False
-            is_compatible = False
-
-    draft_method = "eagle3" if is_eagle else "draft_model"
-
-    # 2. Estimate VRAM Consumption
-    target_vram = estimate_model_vram_mb(target_model, default_quant=target_quant)
-    draft_vram = estimate_model_vram_mb(draft_model, default_quant="fp16")
-    
-    # KV cache minimum allocation for serving concurrency
-    # Rough estimate: 2 * num_layers * hidden_size * kv_heads * seq_len * num_seqs * dtype_size
-    kv_cache_min = min(3500.0, max(1500.0, max_num_seqs * max_model_len * 0.02))
-    
-    total_needed = target_vram + draft_vram + kv_cache_min
-
-    # 3. Check VRAM headroom and OOM risk
-    oom_risk = total_needed > (free_vram_mb * 0.95)
-    if oom_risk:
-        shortfall = total_needed - free_vram_mb
-        warnings.append(
-            f"VRAM shortfall detected: Required ~{total_needed/1024:.1f} GB, but only {free_vram_mb/1024:.1f} GB free."
-        )
-        recommendations.append(
-            "Use an AWQ/GPTQ 4-bit quantized target model or reduce --max-num-seqs to free KV cache."
-        )
-
-    # 4. Vocabulary Alignment (CR03)
-    # So sánh vocab_size giữa target và draft khi có cấu hình; nếu khác nhau thì bật cờ dị thể
-    target_vocab = target_cfg.get("vocab_size", 0) if target_cfg else 0
-    draft_vocab = draft_cfg.get("vocab_size", 0) if draft_cfg else 0
-
-    if target_vocab > 0 and draft_vocab > 0:
-        use_hetero_vocab = (target_vocab != draft_vocab)
-    else:
-        target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
-        draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
-        use_hetero_vocab = (target_family != draft_family) or is_eagle or ("0.5b" in draft_lower)
-
-    if use_hetero_vocab:
-        recommendations.append(
-            "Heterogeneous vocabulary flag enabled (--use-heterogeneous-vocab) for safe draft alignment."
-        )
-
-    # 5. Architecture Family compatibility
-    if not is_compatible:
-        warnings.append(
-            f"Current FlexSDS release supports EAGLE speculator architectures. Draft model '{draft_model}' is not supported."
-        )
-    else:
-        target_family = "qwen" if "qwen" in target_lower else ("llama" if "llama" in target_lower else "other")
-        draft_family = "qwen" if "qwen" in draft_lower else ("llama" if "llama" in draft_lower else "other")
-        if target_family != "other" and draft_family != "other" and target_family != draft_family:
-            is_compatible = False
-            warnings.append(
-                f"Cross-family pairing ({target_family} target with {draft_family} draft) may exhibit low acceptance rate."
-            )
-
-    # 6. Cảnh báo dự phòng ngoại tuyến nếu không nạp được metadata từ mạng hay cache
-    if target_cfg is None:
-        warnings.append(
-            f"Unable to load configuration metadata for target model '{target_model}' (network offline or cache missing). Falling back to heuristic defaults."
-        )
-    if draft_cfg is None:
-        warnings.append(
-            f"Unable to load configuration metadata for draft model '{draft_model}' (network offline or cache missing). Falling back to heuristic defaults."
-        )
-
-    return CompatibilityReport(
-        target_model=target_model,
-        draft_model=draft_model,
-        draft_method=draft_method,
-        use_heterogeneous_vocab=use_hetero_vocab,
-        target_vram_est_mb=target_vram,
-        draft_vram_est_mb=draft_vram,
-        kv_cache_min_mb=kv_cache_min,
-        total_vram_needed_mb=total_needed,
-        free_vram_mb=free_vram_mb,
-        oom_risk=oom_risk,
-        is_compatible=is_compatible,
-        warnings=warnings,
-        recommendations=recommendations,
+    Weight storage sizes and configured KV capacity inform an estimate. GPU
+    allocation, kernels and a successful inference still require runtime checks.
+    target_quant is retained for API compatibility; the checkpoint determines size.
+    """
+    from flexsds.core.model_inspection import ModelFiles
+    report = CompatibilityReport(
+        target_model, draft_model, "unsupported", False,
+        0.0, 0.0, 0.0, 0.0, free_vram_mb, False, False,
     )
+    def block(message):
+        report.blocking_reasons.append(message)
+        report.warnings.append(message)
+
+    try:
+        draft = ModelFiles(draft_model)
+        draft_cfg = draft.config()
+        report.draft_revision = draft.revision
+        from flexsds.core.speculative_method import detect_method, needs_checkpoint, method_support
+        detection = detect_method(draft_cfg)
+        tensors = draft.tensor_headers() if needs_checkpoint(draft_cfg, detection) else {}
+        if needs_checkpoint(draft_cfg, detection):
+            detection = detect_method(draft_cfg, tensors)
+        report.checkpoint_verified = detection.verified
+        report.method_label = detection.label
+        report.method_family = detection.family_label
+        report.identified_method = detection.method
+        report.detection_evidence = detection.evidence
+        report.eagle_version = detection.label if detection.family == "feature_ar" else "Non-EAGLE"
+        supported, reason = method_support(detection, draft_cfg)
+        if not supported:
+            block(reason)
+            return report
+        report.method_supported = True
+        report.draft_method = detection.backend_method
+        report.runtime_policy = "Sequential EAGLE drafting (vLLM method=" + report.draft_method + ")"
+        if report.draft_method == "eagle":
+            report.warnings.append("EAGLE-1/2 share a checkpoint format. The vLLM eagle path uses sequential "
+                                   "drafting; checkpoint recognition does not enable EAGLE-2 confidence-adaptive trees.")
+    except (OSError, ValueError, KeyError, TypeError, struct.error) as exc:
+        block(f"Cannot verify draft metadata/checkpoint: {exc}")
+        return report
+
+    try:
+        target = ModelFiles(target_model)
+        target_cfg = target.config()
+        report.target_revision = target.revision
+        target_bases = target.base_models(target_cfg) | {target_model}
+        draft_bases = draft.base_models(draft_cfg)
+        if not draft_bases or not (target_bases & draft_bases):
+            block("Cannot verify trained target/draft pairing: draft base_model metadata must identify "
+                  "the target or the target's declared base model.")
+        if target_cfg.get("hidden_size") != (draft_cfg.get("target_hidden_size") or draft_cfg.get("hidden_size")):
+            block("Target hidden size does not match the EAGLE feature input dimension")
+
+        target_vocab = int(target_cfg["vocab_size"])
+        draft_input_vocab = int(draft_cfg["vocab_size"])
+        draft_output_vocab = int(draft_cfg.get("draft_vocab_size", draft_input_vocab))
+        if target_vocab != draft_input_vocab:
+            block("Not supported yet: different target/draft input vocabularies; "
+                  "a heterogeneous-vocab flag cannot align arbitrary tokenizers")
+            report.vocabulary_status = "Mismatch"
+        else:
+            if 'tokenizer.json' in draft.files():
+                shared = target.tokenizer_signature() == draft.tokenizer_signature()
+                evidence = "tokenizer artifacts verified"
+            elif target_bases & draft_bases:
+                # Heads commonly omit a tokenizer and inherit the trained target's.
+                base_id = next(iter(target_bases & draft_bases))
+                base = target if base_id == target_model else ModelFiles(base_id)
+                shared = target.tokenizer_signature() == base.tokenizer_signature()
+                evidence = "inherited base tokenizer verified"
+            else:
+                shared, evidence = False, "no tokenizer evidence"
+            if not shared:
+                report.vocabulary_status = "Mismatch / unverified"
+                block("Not supported yet: tokenizer token IDs or processing differ, or cannot be verified. "
+                      "Equal vocab_size does not establish a shared vocabulary.")
+            elif draft_output_vocab == target_vocab:
+                report.vocabulary_status = f"Shared ({evidence})"
+            elif 0 < draft_output_vocab < target_vocab:
+                if report.draft_method != "eagle3":
+                    raise ValueError("Reduced output vocabulary mapping requires the EAGLE-3/3.1 loader")
+                _validate_vocab_mapping(draft, tensors, draft_output_vocab, target_vocab)
+                report.vocabulary_status = f"Reduced {draft_output_vocab}/{target_vocab} (native d2t verified; {evidence})"
+                report.recommendations.append("Use the checkpoint's native EAGLE d2t mapping; no generic tokenizer conversion is needed.")
+            else:
+                block("Invalid EAGLE draft output vocabulary size")
+
+        report.target_vram_est_mb = target.weight_bytes() / 1024**2
+        report.draft_vram_est_mb = draft.weight_bytes() / 1024**2
+        report.kv_cache_min_mb = (_kv_cache_mb(target_cfg, max_num_seqs, max_model_len)
+                                  + _kv_cache_mb(draft_cfg, max_num_seqs, max_model_len))
+        weights = report.target_vram_est_mb + report.draft_vram_est_mb
+        report.runtime_overhead_mb = 1024.0 + weights * 0.10
+        report.total_vram_needed_mb = weights + report.kv_cache_min_mb + report.runtime_overhead_mb
+        report.oom_risk = report.total_vram_needed_mb > free_vram_mb * 0.95
+        report.warnings.append("VRAM is an estimate from checkpoint storage + full configured KV capacity "
+                               f"(B={max_num_seqs}, context={max_model_len}) + 10% weights/1 GiB runtime reserve; "
+                               "actual GPU memory and inference are not verified by preflight.")
+        if report.oom_risk:
+            report.recommendations.append("Reduce max_num_seqs/max_model_len or use a compatible quantized target checkpoint.")
+    except (OSError, ValueError, KeyError, TypeError, struct.error) as exc:
+        block(f"Cannot verify model pairing, vocabulary or VRAM metadata: {exc}")
+    report.is_compatible = not report.blocking_reasons
+    return report
 
 
 class ServingBlockedError(RuntimeError):
@@ -421,7 +450,7 @@ class ServingPreflight:
 
 def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
                                backend: str = "local", target_gpu: str = "L4") -> ServingPreflight:
-    """One preflight policy shared by flag mode and wizard; no network/weights.
+    """One metadata preflight policy shared by flag mode and wizard; no full weights.
 
     Remote GPU budgets are conservative estimates, never local free VRAM or a
     measurement of the eventual container. Runtime memory fit remains unproven.
@@ -429,14 +458,29 @@ def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
     budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0}
     available = hw_info.free_vram_mb if backend == "local" else budgets.get(target_gpu, 0.0)
     report = check_compatibility(target_model, draft_model, free_vram_mb=available)
-    download = pre_download_guard(target_model, draft_model, available, mock_metadata={})
-    reasons = []
+    # One estimate and one policy; do not run a second name-based VRAM guard.
+    download = PreDownloadCheckResult(
+        is_safe=report.is_compatible and not report.oom_risk,
+        vram_needed_mb=report.total_vram_needed_mb, free_vram_mb=available,
+        shared_tokenizer=report.vocabulary_status.startswith(("Shared", "Reduced")),
+    )
+    reasons = list(report.blocking_reasons)
     if report.oom_risk:
         reasons.append("estimated VRAM exceeds 95% of the available memory budget")
-    if not report.is_compatible:
+    if not report.is_compatible and not reasons:
         reasons.append("incompatible target/draft configuration")
-    if not download.is_safe:
-        reasons.append(download.warning or "pre-download check is unsafe")
+
     if backend == "local" and not hw_info.is_cuda_available:
         reasons.append("CUDA GPU unavailable; system RAM is not serving VRAM")
     return ServingPreflight(report, download, reasons)
+
+
+def select_report_eagle_version(report, version):
+    """Set the displayed version while preserving all pairing and VRAM decisions."""
+    from dataclasses import replace
+    from flexsds.core.speculative_method import MethodDetection, select_eagle_version
+    detection = MethodDetection(report.identified_method, report.method_label, 'feature_ar',
+                                report.detection_evidence, verified=report.checkpoint_verified)
+    selected = select_eagle_version(detection, version)
+    return replace(report, identified_method=selected.method, method_label=selected.label,
+                   eagle_version=selected.label, detection_evidence=selected.evidence)

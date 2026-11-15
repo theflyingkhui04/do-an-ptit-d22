@@ -1,0 +1,44 @@
+{
+  "task": "M5-01",
+  "step": "ocr-devset",
+  "run_id": "20261108-m501-ocr-a10g",
+  "started_at_utc": "2026-11-08T02:58:10.337018+00:00",
+  "samples_jsonl": "data\\processed\\m0_04_mcocr_devset\\samples.jsonl",
+  "images": 30,
+  "finish_reasons": {
+    "stop": 30
+  },
+  "errors": 0,
+  "ocr_model": "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+  "ocr_revision": "536a35794df8831aa814970ee8f89eff577e7718",
+  "ocr_prompt_version": "receipt_ocr_full.v1",
+  "ocr_prompt_sha256": "418b437a9bdf383b80efec6d15f3650b71f0ab7b2f996728f29ced8199668a68",
+  "server": {
+    "gpu": "NVIDIA A10",
+    "vllm_version": "0.30.0",
+    "vllm_args": [
+      "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+      "--revision",
+      "536a35794df8831aa814970ee8f89eff577e7718",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8000",
+      "--served-model-name",
+      "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+      "--max-model-len",
+      "8192",
+      "--gpu-memory-utilization",
+      "0.90",
+      "--limit-mm-per-prompt",
+      "{\"image\": 1, \"video\": 0}",
+      "--mm-processor-kwargs",
+      "{\"max_pixels\": 3300000}"
+    ],
+    "startup_seconds": 205.0,
+    "wall_seconds": 66.3,
+    "concurrency": 8
+  },
+  "source_commit": "f7253125361635d6e5184b76c39ea248f2323fc0",
+  "source_dirty": true
+}

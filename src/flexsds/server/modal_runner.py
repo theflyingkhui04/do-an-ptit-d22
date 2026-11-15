@@ -41,12 +41,16 @@ class ModalServingRunner:
         """Forward non-secret serving settings and package paths for app construction."""
         cfg = config.get("serving", config)
         keys = ("target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
-                "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
+                "target_revision", "draft_revision", "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
         if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
             # Calibration also uses this method without the serving launch preflight.
             from flexsds.server.modal_auth import prepare_modal_auth
             prepare_modal_auth(self.cred_mgr)
         env = dict(os.environ)
+        # Redirected Python output on Windows otherwise uses the ANSI code page.
+        # Modal emits Unicode status symbols, so both ends of the pipe use UTF-8.
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
         env["FLEXSDS_SERVING_CONFIG"] = json.dumps({k: cfg[k] for k in keys if k in cfg})
 
         # Modal can use another pipx interpreter; forward project source only,
@@ -90,7 +94,7 @@ class ModalServingRunner:
             try:
                 proc = subprocess.Popen(cmd, env=self.setup_environment(config), stdin=subprocess.DEVNULL,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                        text=True, errors='replace', bufsize=1)
+                                        text=True, encoding='utf-8', errors='replace', bufsize=1)
                 output.start()
             except BaseException:
                 if proc is not None and proc.poll() is None:

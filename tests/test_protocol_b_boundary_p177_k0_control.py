@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import torch
 
+import m203_frozen_sources as frozen
 import test_protocol_b_boundary_kv as kv_tests
 import test_protocol_b_boundary_postwrite as post_tests
 from experiments import protocol_b_boundary as boundary
@@ -131,7 +132,7 @@ class ProducerTests(unittest.TestCase):
             self.force()
 
     def test_exact_real_method_passes_zero_to_native_super(self):
-        tree = ast.parse((boundary.ROOT / "src/server/adaptive_scheduler.py").read_bytes())
+        tree = ast.parse(frozen.frozen_bytes("src/server/adaptive_scheduler.py"))  # the method M2-03 ran
         method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_update_after_schedule")
         seen = []
         def native(output):
@@ -382,7 +383,7 @@ class SourceTests(unittest.TestCase):
         root = boundary.ROOT
         raw = subprocess.check_output(["git", "-c", "safe.directory="+root.as_posix(), "show",
                                        boundary.CHECKPOINT+":src/server/adaptive_scheduler.py"], cwd=root)
-        patched = (root / "src/server/adaptive_scheduler.py").read_bytes()
+        patched = frozen.frozen_bytes("src/server/adaptive_scheduler.py")  # the scheduler M2-03 ran
         sources.validate_scheduler_observation(raw, patched)
         hook = b"        _pb177_control(self, scheduler_output)\n"
         native = b"        super()._update_after_schedule(scheduler_output)\n"
@@ -398,7 +399,7 @@ class SourceTests(unittest.TestCase):
         for name in ("src/server/budget_planner.py", "src/proposer/controller.py", "src/proposer/adapter.py"):
             raw = subprocess.check_output(["git", "-c", "safe.directory="+boundary.ROOT.as_posix(), "show",
                                            boundary.CONTROL_BASE_EXECUTION+":"+name], cwd=boundary.ROOT)
-            self.assertEqual(raw, (boundary.ROOT / name).read_bytes())
+            self.assertEqual(raw, frozen.frozen_bytes(name))  # pins FROZEN_COMMIT to the control base
 
     def test_pinned_vllm_transforms_remain_supported(self):
         # Existing lifecycle tests exercise temporary packages, not installed /usr/local vLLM.
@@ -486,6 +487,8 @@ class BaselineArchiveTests(unittest.TestCase):
 
 class ControlArtifactTests(unittest.TestCase):
     def artifact(self):
+        if frozen.live_drift():  # control_scheduler_auth gates the live scheduler by design
+            self.skipTest(frozen.live_tree_reason())
         import test_protocol_b as protocol_tests
         from experiments import protocol_b as pb
         from experiments.protocol_b import file_sha

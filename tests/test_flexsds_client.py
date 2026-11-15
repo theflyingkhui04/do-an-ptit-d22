@@ -55,3 +55,16 @@ def test_client_url_normalization():
 
     c4 = FlexSDSClient(base_url="https://know-gap-detroit-autos.trycloudflare.com/v1/")
     assert c4.base_url == "https://know-gap-detroit-autos.trycloudflare.com/v1"
+
+
+def test_user_agent_carries_the_package_version(monkeypatch):
+    from flexsds import __version__
+    sent = []
+
+    def capture(req, timeout=None):
+        sent.append(req.get_header("User-agent"))
+        raise OSError("no network in tests")
+
+    monkeypatch.setattr("urllib.request.urlopen", capture)
+    assert FlexSDSClient(base_url="http://127.0.0.1:59999/v1").check_health() is False
+    assert sent == [f"FlexSDS-Client/{__version__}"] * 2  # /v1/models, then root /health

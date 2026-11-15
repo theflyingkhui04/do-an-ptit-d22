@@ -1,0 +1,330 @@
+{
+  "run": "20261108-local-e2e",
+  "started_utc": "2026-11-08T13:18:27+00:00",
+  "backend": "local TestClient + src.api.main.build_app",
+  "database": "local PostgreSQL 17 (disposable)",
+  "models": "Modal ptit-ocr-serve + ptit-vllm-demo (A10G, ctx 8192)",
+  "warmup_s": 191.2,
+  "warmup_states": {
+    "adaptive": "ready",
+    "ocr": "ready",
+    "vanilla": "ready",
+    "static": "ready",
+    "database": "ready"
+  },
+  "questions": {
+    "questions": 15,
+    "correct": 15,
+    "fabricated_answers": 0,
+    "answers_withheld": 2,
+    "executed_writes": 0,
+    "repairs": 0
+  },
+  "uploads": [
+    {
+      "label": "m0_04_001",
+      "devset": true,
+      "image": "mcocr_public_145013tlipr.jpg",
+      "compare": "vanilla",
+      "status": "done",
+      "error": null,
+      "wall_s": 22.6,
+      "timings_ms": {
+        "ocr": 7261.673199944198,
+        "node1": 15005.25279995054
+      },
+      "stored_lane": "adaptive",
+      "stored_from_fallback": false,
+      "lanes": {
+        "vanilla": {
+          "valid": true,
+          "latency_ms": 14234.99999998603,
+          "ttft_ms": 1782.0000000065193,
+          "tpot_ms": 10.971806167382828,
+          "output_tokens_per_s": 79.80330172118826,
+          "speedup_tpot_vs_vanilla": 1.0,
+          "equal_fields": 41,
+          "total_fields": 41,
+          "differing_fields": [],
+          "error": null
+        },
+        "adaptive": {
+          "valid": true,
+          "latency_ms": 14922.00000002049,
+          "ttft_ms": 2532.0000000065193,
+          "tpot_ms": 10.916299559483674,
+          "output_tokens_per_s": 76.12920520027075,
+          "speedup_tpot_vs_vanilla": 1.0050847457599248,
+          "equal_fields": 41,
+          "total_fields": 41,
+          "differing_fields": [],
+          "error": null
+        }
+      },
+      "items": 1,
+      "ungrounded_fields": 0,
+      "item_check": {
+        "lines": [
+          true
+        ],
+        "invoice_sum": true
+      }
+    },
+    {
+      "label": "m0_04_030",
+      "devset": true,
+      "image": "mcocr_public_145014orisb.jpg",
+      "compare": "all",
+      "status": "done",
+      "error": null,
+      "wall_s": 196.9,
+      "timings_ms": {
+        "ocr": 9483.049900038168,
+        "node1": 186862.09459998645
+      },
+      "stored_lane": "adaptive",
+      "stored_from_fallback": false,
+      "lanes": {
+        "eagle": {
+          "valid": true,
+          "latency_ms": 186812.00000003446,
+          "ttft_ms": 167984.00000005495,
+          "tpot_ms": 8.500225733625062,
+          "output_tokens_per_s": 11.862193006871031,
+          "speedup_tpot_vs_vanilla": 1.3053962184046457,
+          "equal_fields": 132,
+          "total_fields": 132,
+          "differing_fields": [],
+          "error": null
+        },
+        "static": {
+          "valid": true,
+          "latency_ms": 21031.000000075437,
+          "ttft_ms": 2515.00000001397,
+          "tpot_ms": 8.359367945851679,
+          "output_tokens_per_s": 105.36826589282732,
+          "speedup_tpot_vs_vanilla": 1.3273925253842263,
+          "equal_fields": 132,
+          "total_fields": 132,
+          "differing_fields": [],
+          "error": null
+        },
+        "vanilla": {
+          "valid": true,
+          "latency_ms": 25531.000000075437,
+          "ttft_ms": 952.9999999795109,
+          "tpot_ms": 11.096162528260011,
+          "output_tokens_per_s": 86.79644353897037,
+          "speedup_tpot_vs_vanilla": 1.0,
+          "equal_fields": 132,
+          "total_fields": 132,
+          "differing_fields": [],
+          "error": null
+        },
+        "adaptive": {
+          "valid": true,
+          "latency_ms": 19217.99999999348,
+          "ttft_ms": 1250.0,
+          "tpot_ms": 8.111963882615568,
+          "output_tokens_per_s": 115.30856488712413,
+          "speedup_tpot_vs_vanilla": 1.3678762244047662,
+          "equal_fields": 132,
+          "total_fields": 132,
+          "differing_fields": [],
+          "error": null
+        }
+      },
+      "items": 8,
+      "ungrounded_fields": 0,
+      "item_check": {
+        "lines": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "invoice_sum": true
+      }
+    },
+    {
+      "label": "m0_04_008",
+      "devset": true,
+      "image": "mcocr_public_145013jyzhp.jpg",
+      "compare": "vanilla",
+      "status": "done",
+      "error": null,
+      "wall_s": 23.0,
+      "timings_ms": {
+        "ocr": 6663.882800028659,
+        "node1": 15982.715699938126
+      },
+      "stored_lane": "adaptive",
+      "stored_from_fallback": false,
+      "lanes": {
+        "vanilla": {
+          "valid": true,
+          "latency_ms": 15937.000000034459,
+          "ttft_ms": 1140.0000000139698,
+          "tpot_ms": 11.167547169826785,
+          "output_tokens_per_s": 83.2026102777896,
+          "speedup_tpot_vs_vanilla": 1.0,
+          "equal_fields": 54,
+          "total_fields": 54,
+          "differing_fields": [],
+          "error": null
+        },
+        "adaptive": {
+          "valid": true,
+          "latency_ms": 12092.99999999348,
+          "ttft_ms": 1250.0,
+          "tpot_ms": 8.183396226410174,
+          "output_tokens_per_s": 109.65021086584923,
+          "speedup_tpot_vs_vanilla": 1.3646592271538676,
+          "equal_fields": 54,
+          "total_fields": 54,
+          "differing_fields": [],
+          "error": null
+        }
+      },
+      "items": 2,
+      "ungrounded_fields": 0,
+      "item_check": {
+        "lines": [
+          true,
+          true
+        ],
+        "invoice_sum": true
+      }
+    },
+    {
+      "label": "val_1",
+      "devset": false,
+      "image": "mc_ocr_2021 val (not committed)",
+      "compare": "vanilla",
+      "status": "done",
+      "error": "",
+      "wall_s": 19.2,
+      "timings_ms": {
+        "ocr": 6266.706900089048,
+        "node1": 12543.283800012432
+      },
+      "stored_lane": "adaptive",
+      "stored_from_fallback": false,
+      "lanes": {
+        "vanilla": {
+          "valid": true,
+          "latency_ms": 12515.999999945052,
+          "ttft_ms": 968.9999999245629,
+          "tpot_ms": 11.070949185062789,
+          "output_tokens_per_s": 83.41323106460398,
+          "speedup_tpot_vs_vanilla": 1.0,
+          "equal_fields": 41,
+          "total_fields": 41,
+          "differing_fields": [],
+          "error": null
+        },
+        "adaptive": {
+          "valid": true,
+          "latency_ms": 10125.0,
+          "ttft_ms": 1187.999999965541,
+          "tpot_ms": 8.38367729834377,
+          "output_tokens_per_s": 105.38271604938272,
+          "speedup_tpot_vs_vanilla": 1.320536178944996,
+          "equal_fields": 41,
+          "total_fields": 41,
+          "differing_fields": [],
+          "error": null
+        }
+      },
+      "items": 1,
+      "ungrounded_fields": 0,
+      "item_check": {
+        "lines": [
+          true
+        ],
+        "invoice_sum": true
+      }
+    },
+    {
+      "label": "val_2",
+      "devset": false,
+      "image": "mc_ocr_2021 val (not committed)",
+      "compare": "vanilla",
+      "status": "done",
+      "error": "",
+      "wall_s": 14.6,
+      "timings_ms": {
+        "ocr": 4941.416300018318,
+        "node1": 9262.834499939345
+      },
+      "stored_lane": "adaptive",
+      "stored_from_fallback": false,
+      "lanes": {
+        "vanilla": {
+          "valid": true,
+          "latency_ms": 9233.999999938533,
+          "ttft_ms": 1000.0,
+          "tpot_ms": 10.949468085024645,
+          "output_tokens_per_s": 81.54645873998402,
+          "speedup_tpot_vs_vanilla": 1.0,
+          "equal_fields": 29,
+          "total_fields": 29,
+          "differing_fields": [],
+          "error": null
+        },
+        "adaptive": {
+          "valid": true,
+          "latency_ms": 7233.999999938533,
+          "ttft_ms": 983.9999999385327,
+          "tpot_ms": 8.311170212765957,
+          "output_tokens_per_s": 104.09178877611255,
+          "speedup_tpot_vs_vanilla": 1.3174399999901654,
+          "equal_fields": 29,
+          "total_fields": 29,
+          "differing_fields": [],
+          "error": null
+        }
+      },
+      "items": 0,
+      "ungrounded_fields": 1,
+      "item_check": {
+        "lines": [],
+        "invoice_sum": null
+      }
+    }
+  ],
+  "questions_after_upload": [
+    {
+      "question": "Có bao nhiêu hoá đơn được tải lên hôm nay?",
+      "status": "ok",
+      "sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts WHERE CAST(issued_date AS DATE) = CAST(CURRENT_DATE AS DATE) LIMIT 200",
+      "rows": [
+        [
+          0
+        ]
+      ],
+      "answer": "Hôm nay không có hoá đơn nào được tải lên.",
+      "warning": null,
+      "error": null
+    },
+    {
+      "question": "Có tất cả bao nhiêu hoá đơn?",
+      "status": "ok",
+      "sql": "SELECT COUNT(*) AS so_hoa_don FROM v_invoice_facts LIMIT 200",
+      "rows": [
+        [
+          34
+        ]
+      ],
+      "answer": "Có tất cả 34 hoá đơn.",
+      "warning": null,
+      "error": null
+    }
+  ],
+  "invoices_in_db_after": 34,
+  "finished_utc": "2026-11-08T13:26:57+00:00"
+}

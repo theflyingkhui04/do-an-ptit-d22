@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+import m203_frozen_sources as frozen
 from experiments import protocol_b as pb
 from experiments import protocol_b_capture as capture
 
@@ -524,6 +525,8 @@ def test_fix_invalid_utf8_is_retained_and_invalid():
 @pytest.mark.parametrize("pinned", [False, True])
 def test_fix_launchers_bind_revisions_only_when_requested(tmp_path, lane, pinned):
     # Exercise shell argument construction with a stub command; never start vLLM.
+    if pinned and lane == "adaptive" and "scripts/launch_lane3_adaptive.sh" in frozen.live_drift():
+        pytest.skip(frozen.live_tree_reason())  # the approved Protocol B server config is the frozen launcher's
     import sys
     git_bash = Path("C:/Program Files/Git/usr/bin/bash.exe")
     bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")

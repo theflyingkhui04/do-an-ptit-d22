@@ -26,6 +26,7 @@ def present_session(proc, output, *, endpoint, model, config, deploy):
             print(f'Chat in another terminal:\n  {command}')
             if deploy:
                 # The deploy command exits after publishing; follow the persistent app separately.
+                import os
                 import shutil
                 import subprocess
                 cmd = [shutil.which('modal') or 'modal', 'app', 'logs',
@@ -34,9 +35,11 @@ def present_session(proc, output, *, endpoint, model, config, deploy):
                 watcher = ProcessProgress('serving')
                 child = None
                 try:
-                    child = subprocess.Popen([*cmd, '--follow'], stdin=subprocess.DEVNULL,
+                    child = subprocess.Popen([*cmd, '--follow'],
+                                             env=dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1'),
+                                             stdin=subprocess.DEVNULL,
                                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                             text=True, errors='replace', bufsize=1)
+                                             text=True, encoding='utf-8', errors='replace', bufsize=1)
                     watcher.start()
                     reader = watcher.capture(child)
                     watcher.toggle_details()

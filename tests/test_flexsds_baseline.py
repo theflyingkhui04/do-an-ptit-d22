@@ -17,8 +17,13 @@ except ModuleNotFoundError:
 
 
 def test_flexsds_version():
-    """Verifies package version format."""
-    assert __version__ == "0.2.0"
+    """The package version matches pyproject.toml, the one place a release bumps it."""
+    from pathlib import Path
+
+    import tomllib
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    assert __version__ == tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
 
 
 def test_banner_rendering():
@@ -56,7 +61,8 @@ def test_compatibility_guard_eagle_pairing():
         free_vram_mb=23000.0,
     )
     assert report.draft_method == "eagle3"
-    assert report.use_heterogeneous_vocab is True
+    assert report.use_heterogeneous_vocab is False
+    assert "d2t verified" in report.vocabulary_status
     assert report.oom_risk is False
     assert report.is_compatible is True
 
@@ -65,13 +71,13 @@ def test_compatibility_guard_oom_detection():
     """Verifies detection of VRAM pressure when free memory is insufficient."""
     report = check_compatibility(
         target_model="Qwen/Qwen2.5-7B-Instruct",  # FP16 ~15GB
-        draft_model="Qwen/Qwen2.5-0.5B-Instruct",
+        draft_model="duckhoi/qwen2.5-7b-eagle3.1-speculator",
         free_vram_mb=8000.0,  # Only 8GB free -> OOM risk
         target_quant="fp16",
     )
     assert report.oom_risk is True
     assert len(report.warnings) > 0
-    assert "VRAM shortfall" in report.warnings[0]
+    assert report.total_vram_needed_mb > report.free_vram_mb
 
 
 def test_cost_profile_loader_sm89():

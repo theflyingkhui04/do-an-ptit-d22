@@ -41,8 +41,8 @@ def measure_cell_group(config, k, batches):
     if vllm.__version__ != '0.30.0':
         raise RuntimeError('Calibration requires vLLM 0.30.0')
     from huggingface_hub import HfApi
-    target_revision = HfApi().model_info(config['target_model']).sha
-    draft_revision = HfApi().model_info(config['draft_model']).sha
+    target_revision = config.get('target_revision') or HfApi().model_info(config['target_model']).sha
+    draft_revision = config.get('draft_revision') or HfApi().model_info(config['draft_model']).sha
     from vllm import LLM, SamplingParams
     from vllm.inputs import TokensPrompt
     cfg = dict(model=config['target_model'], revision=target_revision, dtype='bfloat16', max_model_len=4096,

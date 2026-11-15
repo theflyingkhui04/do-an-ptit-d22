@@ -68,6 +68,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     examples = {
         "clear": "flexsds clear modal",
         "detect": "flexsds detect",
+        "inspect": "flexsds inspect duckhoi/qwen2.5-7b-eagle3.1-speculator",
         "profile": "flexsds profile --benchmark --backend modal --gpu A10G",
         "stop": "flexsds stop",
         "auth": "flexsds auth status",
@@ -89,6 +90,12 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
     # Command: detect
     add_command(subparsers, "detect", help="Detect and display hardware / GPU specs")
+
+    # Method inspection is independent of serving capability and GPU hardware.
+    inspect_parser = add_command(subparsers, "inspect", help="Identify a speculative method from model artifacts")
+    inspect_parser.add_argument("model", nargs="?", help="Hugging Face model ID or local model directory")
+    inspect_parser.add_argument("--eagle-version", choices=["1", "2", "3", "3.1"], help="Resolve the version of a shared EAGLE checkpoint")
+    inspect_parser.add_argument("--method", help="Inspect an explicitly selected inference policy, e.g. ngram or jacobi")
 
     # Command: profile
     profile_parser = add_command(subparsers, "profile", help="Load hardware cost profile for current GPU")
@@ -166,6 +173,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--dry-run", action="store_true", help="Print execution command without launching"
     )
 
+    serve_parser.add_argument("--eagle-version", choices=["1", "2", "3", "3.1"], help="Explicit EAGLE version; required for shared legacy checkpoints")
+
     # Command: chat
     chat_parser = add_command(subparsers, "chat", help="Start interactive streaming chat with served model")
     chat_parser.add_argument("--endpoint", type=str, default="http://localhost:8000/v1", help="API base URL")
@@ -196,6 +205,35 @@ def get_serving_cost_profile(
 def main(argv: Optional[list[str]] = None) -> int:
     """Main entry point for FlexSDS command-line interface."""
     args = parse_args(argv)
+    if args.command == "inspect":
+        from flexsds.core.speculative_method import detect_method, inspect_method, method_support
+        if bool(args.model) == bool(args.method):
+            print("Provide a model ID/path or --method, exactly one.")
+            return 2
+        try:
+            if args.model:
+                detection, inspected_config = inspect_method(args.model, with_config=True, eagle_version=args.eagle_version)
+            else:
+                detection, inspected_config = detect_method({"speculative_method": args.method}), {}
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f"Method identification failed: {exc}")
+            return 2
+        if detection.method == 'eagle':
+            print("EAGLE version selection required: use --eagle-version 1 or --eagle-version 2")
+            return 2
+        print(f"Architecture: {detection.family_label}")
+        print(f"Speculative method: {detection.label}")
+        print(f"Evidence: {detection.evidence}")
+        if args.model:
+            supported, support_reason = method_support(detection, inspected_config)
+        else:
+            supported, support_reason = False, "Method policy only; no checkpoint inspected"
+        print("FlexSDS checkpoint support: " + ("Supported (pairing/VRAM checks required)" if supported else "Not supported yet / unverified"))
+        if supported:
+            print(f"Backend method: {detection.backend_method} (sequential drafting)")
+        if support_reason:
+            print(support_reason)
+        return 2 if detection.issue or detection.method == 'unknown' or detection.family == 'unknown' else 0
     if args.command == "serve" and not 1 <= args.port <= 65535:
         print("Invalid port: expected 1..65535")
         return 2
@@ -347,12 +385,24 @@ def main(argv: Optional[list[str]] = None) -> int:
 
             preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
                                                    args.backend, getattr(args, "gpu", "L4"))
+            if args.eagle_version:
+                from flexsds.core.compatibility import select_report_eagle_version
+                try:
+                    preflight.report = select_report_eagle_version(preflight.report, args.eagle_version)
+                except ValueError as exc:
+                    print(str(exc))
+                    return 2
+            elif preflight.report.identified_method == "eagle":
+                print("EAGLE version selection required: use --eagle-version 1 or --eagle-version 2")
+                return 2
             print(preflight.report.summary())
+            for detail in preflight.report.warnings + preflight.report.recommendations:
+                print(detail)
             if not preflight.is_safe:
                 print("Launch blocked: " + "; ".join(preflight.reasons))
             if args.backend != "local":
                 print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
-            if not args.dry_run and not preflight.is_safe:
+            if (not args.dry_run and not preflight.is_safe) or preflight.report.draft_method == "unsupported":
                 return 2
 
             if not args.no_adaptive:
@@ -376,6 +426,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             cfg = {"serving": {
                 "target_model": target_model, "draft_model": draft_model,
                 "draft_method": preflight.report.draft_method,
+                "eagle_version": preflight.report.eagle_version.removeprefix("EAGLE-"),
+                "target_revision": preflight.report.target_revision,
+                "draft_revision": preflight.report.draft_revision,
                 "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
                 "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
                 "enable_adaptive": not args.no_adaptive,

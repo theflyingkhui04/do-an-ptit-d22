@@ -359,7 +359,7 @@ functions=[n for n in tree.body if isinstance(n,ast.FunctionDef)]
 for node in functions: node.decorator_list=[]
 handle=SimpleNamespace(get=lambda: json.loads(bundle.read_text(encoding="utf-8")))
 modal=SimpleNamespace(FunctionCall=SimpleNamespace(from_id=lambda call_id: handle))
-lanes=SimpleNamespace(LANES={"eagle":None},BENCH_WORKLOADS={"W1":None})
+lanes=SimpleNamespace(LANES={"eagle":None},BENCH_WORKLOADS={"W1":None},ALL_WORKLOADS={"W1":None})
 ns=dict(json=json,os=os,re=re,sys=sys,Path=Path,datetime=datetime,timezone=timezone,
         REPO_ROOT=root,SERVER_ENV_FILE="server_env.json",RAW_FILE="raw.jsonl",modal=modal,lanes=lanes)
 exec(compile(ast.Module(body=functions,type_ignores=[]),"modal_runner.py","exec"),ns)

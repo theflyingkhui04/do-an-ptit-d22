@@ -31,7 +31,7 @@ def machine(monkeypatch):
 
 
 @pytest.mark.parametrize("backend", ["local", "modal"])
-@pytest.mark.parametrize("failure", ["oom", "incompatible", "download"])
+@pytest.mark.parametrize("failure", ["oom", "incompatible", "metadata"])
 def test_unsafe_real_serve_never_reaches_runner(machine, monkeypatch, backend, failure):
     if failure == "oom":
         args = ["serve", "--target", "Qwen/Qwen2.5-72B-Instruct", "--draft", PAIR[4]]
@@ -45,8 +45,10 @@ def test_unsafe_real_serve_never_reaches_runner(machine, monkeypatch, backend, f
                 return report
             monkeypatch.setattr(compat, "check_compatibility", incompatible)
         else:
-            monkeypatch.setattr(compat, "pre_download_guard", lambda *a, **kw:
-                                compat.PreDownloadCheckResult(False, 99999, 23000))
+            from flexsds.core.model_inspection import ModelFiles, InspectionError
+            def unavailable(*a, **kw):
+                raise InspectionError("Missing model metadata")
+            monkeypatch.setattr(ModelFiles, 'config', unavailable)
     local = Mock(side_effect=AssertionError("unsafe local launch"))
     modal = Mock(side_effect=AssertionError("unsafe deployment"))
     monkeypatch.setattr(LocalServingRunner, "launch", local)
@@ -81,16 +83,18 @@ def test_safe_dispatch_propagates_launch_result(machine, monkeypatch, backend, o
     launch.assert_called_once()
 
 
-@pytest.mark.parametrize("failure", ["oom", "download", "incompatible"])
+@pytest.mark.parametrize("failure", ["oom", "metadata", "incompatible"])
 def test_wizard_guard_blocks_before_config_write_and_launch(machine, monkeypatch, tmp_path, failure):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(wizard, "prompt_choice", lambda q, c, **kw:
                         next((v for v in c if "Local vLLM" in v), c[0]))
     if failure == "oom":
         machine.free_vram_mb = 1
-    elif failure == "download":
-        monkeypatch.setattr(compat, "pre_download_guard", lambda *a, **kw:
-                            compat.PreDownloadCheckResult(False, 99999, 23000))
+    elif failure == "metadata":
+        from flexsds.core.model_inspection import ModelFiles, InspectionError
+        def unavailable(*a, **kw):
+            raise InspectionError("Missing model metadata")
+        monkeypatch.setattr(ModelFiles, 'config', unavailable)
     else:
         original = compat.check_compatibility
         def incompatible(*a, **kw):
@@ -199,7 +203,8 @@ def test_modal_app_allocates_gpu_exposes_port_and_preserves_exact_config(monkeyp
 
 def test_imported_helpers_contain_no_embedded_credentials_or_saved_output():
     pattern = re.compile(r"(?:gh[pousr]_)[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}")
-    for path in [ROOT / "src/flexsds/server/vscode_cli.py",
+    # vscode_cli.ipy holds IPython cells (`!git`, `!pip`): not importable Python, so not a .py module
+    for path in [ROOT / "src/flexsds/server/vscode_cli.ipy",
                  ROOT / "src/flexsds/server/vscode_cli.ipynb",
                  ROOT / "logs/Khoi/M1-01/vscode_cli.ipynb"]:
         text = path.read_text(encoding="utf-8")

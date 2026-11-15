@@ -155,8 +155,27 @@ def _lines(pairs: list[dict[str, str]], label: str) -> list[str]:
     return [pair["text"] for pair in pairs if pair.get("label") == label and pair.get("text")]
 
 
-def score_sample(payload: dict[str, Any] | None, pairs: list[dict[str, str]]) -> dict[str, FieldScore]:
-    """Score one sample; ``payload=None`` means the run has no valid JSON for it."""
+def _strip_strings(value: Any) -> Any:
+    from src.pipeline.text_normalize import strip_vietnamese_marks
+
+    if isinstance(value, str):
+        return strip_vietnamese_marks(value)
+    if isinstance(value, dict):
+        return {k: _strip_strings(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_strings(v) for v in value]
+    return value
+
+
+def score_sample(payload: dict[str, Any] | None, pairs: list[dict[str, str]], *,
+                 strip_marks: bool = False) -> dict[str, FieldScore]:
+    """Score one sample; ``payload=None`` means the run has no valid JSON for it.
+
+    ``strip_marks`` ([M5-01 canonical flow]) removes Vietnamese marks from labels and values first.
+    """
+    if strip_marks:
+        payload = _strip_strings(payload)
+        pairs = _strip_strings(pairs)
     data = payload or {}
     seller = data.get("seller") or {}
     invoice = data.get("invoice") or {}

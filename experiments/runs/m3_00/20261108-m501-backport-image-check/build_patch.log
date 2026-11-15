@@ -1,0 +1,1 @@
+[vllm_runtime_patch] patched: /usr/local/lib/python3.11/site-packages/vllm/outputs.py sha256=8f58684245f17007863382ffa9de115d371738ae28731b0c876196eb3b3fea47 (vllm-0.30.0-plus-backport-55708)

@@ -1,0 +1,519 @@
+{
+  "task": "M5-01",
+  "step": "ocr-preprocess-choice",
+  "run_id": "20261114-m501-ocr-preprocess",
+  "started_at_utc": "2026-11-14T11:34:00+00:00",
+  "design": "openspec m5-01-canonical-flow §7 (local), approved by Dương 14/11",
+  "rule": "most MC-OCR label lines found with their marks (whitespace collapsed, case-sensitive: label_coverage of the 08/11 run); tie -> most found after stripping marks; tie -> lower median latency; median latency above 2 x P0 cannot win; a full tie keeps P0",
+  "configs": {
+    "P0": {
+      "page": null,
+      "enhance": false,
+      "crop": "axis",
+      "beam": false
+    },
+    "P1": {
+      "page": null,
+      "enhance": false,
+      "crop": "strip",
+      "beam": false
+    },
+    "P2": {
+      "page": null,
+      "enhance": false,
+      "crop": "strip",
+      "beam": true
+    },
+    "P3a": {
+      "page": "level",
+      "enhance": false,
+      "crop": "strip",
+      "beam": true
+    },
+    "P3b": {
+      "page": "unwarp",
+      "enhance": false,
+      "crop": "strip",
+      "beam": true
+    },
+    "P4a": {
+      "page": "level",
+      "enhance": true,
+      "crop": "strip",
+      "beam": true
+    },
+    "P4b": {
+      "page": "unwarp",
+      "enhance": true,
+      "crop": "strip",
+      "beam": true
+    }
+  },
+  "selection": {
+    "seed": 20261114,
+    "bands": {
+      "q>=0.8": [
+        0.8,
+        1.01
+      ],
+      "0.5<=q<0.8": [
+        0.5,
+        0.8
+      ]
+    },
+    "per_band": 30,
+    "img_ids": [
+      "mcocr_public_145013bdnvs.jpg",
+      "mcocr_public_145013cixex.jpg",
+      "mcocr_public_145013moepq.jpg",
+      "mcocr_public_145013nnxlz.jpg",
+      "mcocr_public_145013onyrj.jpg",
+      "mcocr_public_145013pqnzb.jpg",
+      "mcocr_public_145013qqkij.jpg",
+      "mcocr_public_145013uomce.jpg",
+      "mcocr_public_145013wjlkq.jpg",
+      "mcocr_public_145014atzjl.jpg",
+      "mcocr_public_145014dkivp.jpg",
+      "mcocr_public_145014hdevu.jpg",
+      "mcocr_public_145014hngaw.jpg",
+      "mcocr_public_145014kfgle.jpg",
+      "mcocr_public_145014kplqb.jpg",
+      "mcocr_public_145014mntfs.jpg",
+      "mcocr_public_145014ojudj.jpg",
+      "mcocr_public_145014oqflg.jpg",
+      "mcocr_public_145014pkgap.jpg",
+      "mcocr_public_145014qmchf.jpg",
+      "mcocr_public_145014qrfai.jpg",
+      "mcocr_public_145014tihfn.jpg",
+      "mcocr_public_145014ukewl.jpg",
+      "mcocr_public_145014uwjom.jpg",
+      "mcocr_public_145014xfcbh.jpg",
+      "mcocr_public_145014xtcll.jpg",
+      "mcocr_public_145014zcoyr.jpg",
+      "mcocr_public_145014zjcdx.jpg",
+      "mcocr_public_145014zoebw.jpg",
+      "mcocr_public_145014zwyas.jpg",
+      "mcocr_public_145013bpcpt.jpg",
+      "mcocr_public_145013dsaix.jpg",
+      "mcocr_public_145013dxngu.jpg",
+      "mcocr_public_145013ipoka.jpg",
+      "mcocr_public_145013jjaqc.jpg",
+      "mcocr_public_145013kaedt.jpg",
+      "mcocr_public_145013kwwha.jpg",
+      "mcocr_public_145013lxunp.jpg",
+      "mcocr_public_145013ngzwi.jpg",
+      "mcocr_public_145013njeuf.jpg",
+      "mcocr_public_145013rttzk.jpg",
+      "mcocr_public_145014bdeah.jpg",
+      "mcocr_public_145014cftxo.jpg",
+      "mcocr_public_145014dkmtx.jpg",
+      "mcocr_public_145014ekpfi.jpg",
+      "mcocr_public_145014fdlxd.jpg",
+      "mcocr_public_145014hrvjc.jpg",
+      "mcocr_public_145014hwaqw.jpg",
+      "mcocr_public_145014jqtcw.jpg",
+      "mcocr_public_145014jxscx.jpg",
+      "mcocr_public_145014keyfh.jpg",
+      "mcocr_public_145014ltwth.jpg",
+      "mcocr_public_145014mikss.jpg",
+      "mcocr_public_145014paioy.jpg",
+      "mcocr_public_145014sncle.jpg",
+      "mcocr_public_145014ttaic.jpg",
+      "mcocr_public_145014upass.jpg",
+      "mcocr_public_145014vjcbu.jpg",
+      "mcocr_public_145014xpucl.jpg",
+      "mcocr_public_145014zoocd.jpg"
+    ]
+  },
+  "scores_selection": {
+    "P0": {
+      "exact": 150,
+      "stripped": 177,
+      "total": 332,
+      "by_label_exact": {
+        "SELLER": {
+          "total": 64,
+          "found": 38
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 22
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 22
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 68
+        }
+      },
+      "by_label_stripped": {
+        "SELLER": {
+          "total": 64,
+          "found": 39
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 38
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 23
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 77
+        }
+      },
+      "median_latency_ms": 10259.4,
+      "foreign_words": 0,
+      "foreign_examples": [],
+      "errors": 0
+    },
+    "P1": {
+      "exact": 146,
+      "stripped": 178,
+      "total": 332,
+      "by_label_exact": {
+        "SELLER": {
+          "total": 64,
+          "found": 37
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 20
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 21
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 68
+        }
+      },
+      "by_label_stripped": {
+        "SELLER": {
+          "total": 64,
+          "found": 39
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 38
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 22
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 79
+        }
+      },
+      "median_latency_ms": 10036.05,
+      "foreign_words": 0,
+      "foreign_examples": [],
+      "errors": 0
+    },
+    "P2": {
+      "exact": 146,
+      "stripped": 176,
+      "total": 332,
+      "by_label_exact": {
+        "SELLER": {
+          "total": 64,
+          "found": 37
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 20
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 21
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 68
+        }
+      },
+      "by_label_stripped": {
+        "SELLER": {
+          "total": 64,
+          "found": 38
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 38
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 22
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 78
+        }
+      },
+      "median_latency_ms": 14419.8,
+      "foreign_words": 0,
+      "foreign_examples": [],
+      "errors": 0
+    },
+    "P3a": {
+      "exact": 145,
+      "stripped": 177,
+      "total": 332,
+      "by_label_exact": {
+        "SELLER": {
+          "total": 64,
+          "found": 37
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 21
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 19
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 68
+        }
+      },
+      "by_label_stripped": {
+        "SELLER": {
+          "total": 64,
+          "found": 38
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 41
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 20
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 78
+        }
+      },
+      "median_latency_ms": 17391.25,
+      "foreign_words": 0,
+      "foreign_examples": [],
+      "errors": 0
+    },
+    "P3b": {
+      "exact": 149,
+      "stripped": 173,
+      "total": 332,
+      "by_label_exact": {
+        "SELLER": {
+          "total": 64,
+          "found": 35
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 23
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 22
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 69
+        }
+      },
+      "by_label_stripped": {
+        "SELLER": {
+          "total": 64,
+          "found": 36
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 39
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 23
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 75
+        }
+      },
+      "median_latency_ms": 15518.3,
+      "foreign_words": 0,
+      "foreign_examples": [],
+      "errors": 0
+    },
+    "P4a": {
+      "exact": 127,
+      "stripped": 166,
+      "total": 332,
+      "by_label_exact": {
+        "SELLER": {
+          "total": 64,
+          "found": 34
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 17
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 13
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 63
+        }
+      },
+      "by_label_stripped": {
+        "SELLER": {
+          "total": 64,
+          "found": 36
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 40
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 14
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 76
+        }
+      },
+      "median_latency_ms": 20318.15,
+      "foreign_words": 0,
+      "foreign_examples": [],
+      "errors": 0
+    },
+    "P4b": {
+      "exact": 138,
+      "stripped": 169,
+      "total": 332,
+      "by_label_exact": {
+        "SELLER": {
+          "total": 64,
+          "found": 34
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 23
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 18
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 63
+        }
+      },
+      "by_label_stripped": {
+        "SELLER": {
+          "total": 64,
+          "found": 36
+        },
+        "ADDRESS": {
+          "total": 86,
+          "found": 39
+        },
+        "TIMESTAMPS": {
+          "total": 68,
+          "found": 18
+        },
+        "TOTAL_COST": {
+          "total": 114,
+          "found": 76
+        }
+      },
+      "median_latency_ms": 15346.599999999999,
+      "foreign_words": 0,
+      "foreign_examples": [],
+      "errors": 0
+    }
+  },
+  "decision": {
+    "chosen": "P0",
+    "too_slow": [],
+    "latency_limit_ms": 20518.8
+  },
+  "versions": {
+    "paddlepaddle": "3.3.1",
+    "paddleocr": "3.7.0",
+    "vietocr": "0.3.13",
+    "torch": "2.5.1+cpu",
+    "opencv": "4.10.0",
+    "detector": "PP-OCRv5_server_det",
+    "unwarp_model": "UVDoc",
+    "mkldnn": false,
+    "weights_url": "https://vocr.vn/data/vietocr/vgg_transformer.pth",
+    "weights_sha256": "380512193a8b6cbf6fad80deacdc9b6939d10d473d199892fc6408d13775ea59"
+  },
+  "source_commit": "e7f57f7590b70c8f012ff6833839150ef3d66bb2",
+  "worktree_dirty": true,
+  "script_sha256": "7ab4d321a03a69f7cce1b4e92fdbe5ba9f819ff08d99c1489a7a35ef322c4bcb",
+  "module_sha256": "fe236cddff97e324871692a71bc9cedf78ba499be46bfc97d69628da2f955a57",
+  "scores_devset": {
+    "P0": {
+      "exact": 110,
+      "stripped": 125,
+      "total": 160,
+      "by_label_exact": {
+        "SELLER": {
+          "total": 31,
+          "found": 26
+        },
+        "ADDRESS": {
+          "total": 34,
+          "found": 19
+        },
+        "TIMESTAMPS": {
+          "total": 36,
+          "found": 15
+        },
+        "TOTAL_COST": {
+          "total": 59,
+          "found": 50
+        }
+      },
+      "by_label_stripped": {
+        "SELLER": {
+          "total": 31,
+          "found": 28
+        },
+        "ADDRESS": {
+          "total": 34,
+          "found": 26
+        },
+        "TIMESTAMPS": {
+          "total": 36,
+          "found": 16
+        },
+        "TOTAL_COST": {
+          "total": 59,
+          "found": 55
+        }
+      },
+      "median_latency_ms": 11444.5,
+      "foreign_words": 0,
+      "foreign_examples": [],
+      "errors": 0
+    }
+  },
+  "devset_provenance": {
+    "source_commit": "e7f57f7590b70c8f012ff6833839150ef3d66bb2",
+    "worktree_dirty": true,
+    "script_sha256": "7ab4d321a03a69f7cce1b4e92fdbe5ba9f819ff08d99c1489a7a35ef322c4bcb",
+    "module_sha256": "fe236cddff97e324871692a71bc9cedf78ba499be46bfc97d69628da2f955a57"
+  }
+}

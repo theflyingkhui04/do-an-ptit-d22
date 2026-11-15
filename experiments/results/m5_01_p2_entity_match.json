@@ -1,0 +1,1359 @@
+{
+  "task": "M5-01",
+  "title": "M5-01 — So khớp thực thể Node 1 trên W1_v2 (OCR cả tờ, prompt lượt 2) giữa các làn",
+  "labels": "data/processed/m0_04_mcocr_devset/samples.jsonl",
+  "sample_count": 30,
+  "inputs": {
+    "vanilla_r1": "experiments/runs/m5_01/m5_01_p2_vanilla_r1/validated_outputs.jsonl",
+    "vanilla_r2": "experiments/runs/m5_01/m5_01_p2_vanilla_r2/validated_outputs.jsonl",
+    "static": "experiments/runs/m5_01/m5_01_p2_static/validated_outputs.jsonl",
+    "adaptive": "experiments/runs/m5_01/m5_01_p2_adaptive/validated_outputs.jsonl",
+    "eagle": "experiments/runs/m5_01/m5_01_p2_eagle/validated_outputs.jsonl"
+  },
+  "runs": {
+    "vanilla_r1": {
+      "valid_json_rate": 0.966667,
+      "missing_samples": [
+        "m0_04_021"
+      ],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 23,
+          "match_rate": 0.766667,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.907051
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 20,
+          "match_rate": 0.666667,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.905976
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 25,
+          "match_rate": 0.833333,
+          "blank": 4,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_001",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Suli Phu Thi Gia Lam",
+          "f1": 0.3333333333333333
+        },
+        {
+          "sample_id": "m0_04_002",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_006",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 840,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_013",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_013",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 92,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_015",
+          "field": "TOTAL_COST",
+          "status": "mismatch",
+          "gold": "335,500 Tổng cộng",
+          "predicted": 350000,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_017",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_018",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 21.04.2019 Giờ vào: 10.30 Giờ ra: 10.31",
+          "predicted": "2019-04-21 None",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_019",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_020",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 09/08/2020 - 09:26",
+          "predicted": "2020-08-09 09:28",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "SELLER",
+          "status": "blank",
+          "gold": "NHÀ SÁCH GD-TC CẨM PHẢ",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TIMESTAMPS",
+          "status": "blank",
+          "gold": "Thời gian: 21:43:39 - 14/08/2020",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Tổng số thanh toán: 75.000đ",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 150,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_023",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_024",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phù Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Thôn Phú Thuỵ, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "predicted": "Thôn Phú Thụy, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "f1": 0.9166666666666666
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Saigon Co.op",
+          "f1": 0.4615384615384615
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Tang 1,SH42 - Toa K3, Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "predicted": "Co.op Food HN THE K-PARK, Tang 1,SH42 - Toa K3,Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "f1": 0.9292929292929293
+        },
+        {
+          "sample_id": "m0_04_030",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        }
+      ],
+      "items": {
+        "invoices": 29,
+        "invoices_with_items": 29,
+        "item_rows": 84,
+        "lines_checked": 84,
+        "lines_consistent": 83,
+        "invoices_checked": 29,
+        "invoices_consistent": 28,
+        "mismatches": [
+          {
+            "sample_id": "m0_04_005",
+            "kind": "line",
+            "line_number": 1,
+            "expected": 3855.0,
+            "actual": 185040.0
+          },
+          {
+            "sample_id": "m0_04_015",
+            "kind": "sum",
+            "line_number": null,
+            "expected": 350000.0,
+            "actual": 335500.0
+          }
+        ]
+      }
+    },
+    "vanilla_r2": {
+      "valid_json_rate": 0.966667,
+      "missing_samples": [
+        "m0_04_021"
+      ],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 23,
+          "match_rate": 0.766667,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.919118
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 21,
+          "match_rate": 0.7,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.908333
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 25,
+          "match_rate": 0.833333,
+          "blank": 4,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_001",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Suli Phu Thi Gia Lam",
+          "f1": 0.3333333333333333
+        },
+        {
+          "sample_id": "m0_04_002",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_006",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 840,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_013",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_013",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 92,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_015",
+          "field": "TOTAL_COST",
+          "status": "mismatch",
+          "gold": "335,500 Tổng cộng",
+          "predicted": 350000,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_017",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_018",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 21.04.2019 Giờ vào: 10.30 Giờ ra: 10.31",
+          "predicted": "2019-04-21 None",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_019",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_020",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 09/08/2020 - 09:26",
+          "predicted": "2020-08-09 09:28",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "SELLER",
+          "status": "blank",
+          "gold": "NHÀ SÁCH GD-TC CẨM PHẢ",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TIMESTAMPS",
+          "status": "blank",
+          "gold": "Thời gian: 21:43:39 - 14/08/2020",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Tổng số thanh toán: 75.000đ",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 150,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_023",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_024",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phù Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Thôn Phú Thuỵ, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "predicted": "Thôn Phú Thụy, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "f1": 0.9166666666666666
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Co.op Food HN THE K-PARK",
+          "f1": 0.8235294117647058
+        },
+        {
+          "sample_id": "m0_04_030",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        }
+      ],
+      "items": {
+        "invoices": 29,
+        "invoices_with_items": 29,
+        "item_rows": 84,
+        "lines_checked": 84,
+        "lines_consistent": 83,
+        "invoices_checked": 29,
+        "invoices_consistent": 28,
+        "mismatches": [
+          {
+            "sample_id": "m0_04_005",
+            "kind": "line",
+            "line_number": 1,
+            "expected": 3855.0,
+            "actual": 185040.0
+          },
+          {
+            "sample_id": "m0_04_015",
+            "kind": "sum",
+            "line_number": null,
+            "expected": 350000.0,
+            "actual": 335500.0
+          }
+        ]
+      }
+    },
+    "static": {
+      "valid_json_rate": 0.966667,
+      "missing_samples": [
+        "m0_04_021"
+      ],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 23,
+          "match_rate": 0.766667,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.907051
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 20,
+          "match_rate": 0.666667,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.905976
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 25,
+          "match_rate": 0.833333,
+          "blank": 4,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_001",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Suli Phu Thi Gia Lam",
+          "f1": 0.3333333333333333
+        },
+        {
+          "sample_id": "m0_04_002",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_006",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 840,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_013",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_013",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 92,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_015",
+          "field": "TOTAL_COST",
+          "status": "mismatch",
+          "gold": "335,500 Tổng cộng",
+          "predicted": 350000,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_017",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_018",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 21.04.2019 Giờ vào: 10.30 Giờ ra: 10.31",
+          "predicted": "2019-04-21 None",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_019",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_020",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 09/08/2020 - 09:26",
+          "predicted": "2020-08-09 09:28",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "SELLER",
+          "status": "blank",
+          "gold": "NHÀ SÁCH GD-TC CẨM PHẢ",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TIMESTAMPS",
+          "status": "blank",
+          "gold": "Thời gian: 21:43:39 - 14/08/2020",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Tổng số thanh toán: 75.000đ",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 150,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_023",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_024",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phù Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Thôn Phú Thuỵ, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "predicted": "Thôn Phú Thụy, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "f1": 0.9166666666666666
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Saigon Co.op",
+          "f1": 0.4615384615384615
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Tang 1,SH42 - Toa K3, Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "predicted": "Co.op Food HN THE K-PARK, Tang 1,SH42 - Toa K3,Cong trinh chung cu ket hop dich vu tren o dat H-CT2 thuoc Du an Dau tu xay dung Khu nha o Hi Brand tai Khu do thi moi Van Phu, P. Phu La, Q. Ha Dong, Tp Ha Noi",
+          "f1": 0.9292929292929293
+        },
+        {
+          "sample_id": "m0_04_030",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        }
+      ],
+      "items": {
+        "invoices": 29,
+        "invoices_with_items": 29,
+        "item_rows": 84,
+        "lines_checked": 84,
+        "lines_consistent": 83,
+        "invoices_checked": 29,
+        "invoices_consistent": 28,
+        "mismatches": [
+          {
+            "sample_id": "m0_04_005",
+            "kind": "line",
+            "line_number": 1,
+            "expected": 3855.0,
+            "actual": 185040.0
+          },
+          {
+            "sample_id": "m0_04_015",
+            "kind": "sum",
+            "line_number": null,
+            "expected": 350000.0,
+            "actual": 335500.0
+          }
+        ]
+      }
+    },
+    "adaptive": {
+      "valid_json_rate": 0.966667,
+      "missing_samples": [
+        "m0_04_021"
+      ],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 23,
+          "match_rate": 0.766667,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.919118
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 21,
+          "match_rate": 0.7,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.908333
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 26,
+          "match_rate": 0.866667,
+          "blank": 3,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_001",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Suli Phu Thi Gia Lam",
+          "f1": 0.3333333333333333
+        },
+        {
+          "sample_id": "m0_04_002",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_006",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 840,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_013",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_015",
+          "field": "TOTAL_COST",
+          "status": "mismatch",
+          "gold": "335,500 Tổng cộng",
+          "predicted": 350000,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_017",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_018",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 21.04.2019 Giờ vào: 10.30 Giờ ra: 10.31",
+          "predicted": "2019-04-21 None",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_019",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_020",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 09/08/2020 - 09:26",
+          "predicted": "2020-08-09 09:28",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "SELLER",
+          "status": "blank",
+          "gold": "NHÀ SÁCH GD-TC CẨM PHẢ",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TIMESTAMPS",
+          "status": "blank",
+          "gold": "Thời gian: 21:43:39 - 14/08/2020",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Tổng số thanh toán: 75.000đ",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 150,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_023",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_024",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phù Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Thôn Phú Thuỵ, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "predicted": "Thôn Phú Thụy, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "f1": 0.9166666666666666
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Co.op Food HN THE K-PARK",
+          "f1": 0.8235294117647058
+        },
+        {
+          "sample_id": "m0_04_030",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        }
+      ],
+      "items": {
+        "invoices": 29,
+        "invoices_with_items": 29,
+        "item_rows": 84,
+        "lines_checked": 84,
+        "lines_consistent": 84,
+        "invoices_checked": 29,
+        "invoices_consistent": 28,
+        "mismatches": [
+          {
+            "sample_id": "m0_04_015",
+            "kind": "sum",
+            "line_number": null,
+            "expected": 350000.0,
+            "actual": 335500.0
+          }
+        ]
+      }
+    },
+    "eagle": {
+      "valid_json_rate": 0.966667,
+      "missing_samples": [
+        "m0_04_021"
+      ],
+      "fields": {
+        "SELLER": {
+          "scored": 30,
+          "matched": 23,
+          "match_rate": 0.766667,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.919118
+        },
+        "ADDRESS": {
+          "scored": 30,
+          "matched": 21,
+          "match_rate": 0.7,
+          "blank": 1,
+          "unscored": 0,
+          "mean_f1": 0.908333
+        },
+        "TIMESTAMPS": {
+          "scored": 30,
+          "matched": 27,
+          "match_rate": 0.9,
+          "blank": 1,
+          "unscored": 0
+        },
+        "TOTAL_COST": {
+          "scored": 30,
+          "matched": 26,
+          "match_rate": 0.866667,
+          "blank": 3,
+          "unscored": 0
+        }
+      },
+      "mismatches": [
+        {
+          "sample_id": "m0_04_001",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Suli Phu Thi Gia Lam",
+          "f1": 0.3333333333333333
+        },
+        {
+          "sample_id": "m0_04_002",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_006",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_008",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 840,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_013",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_015",
+          "field": "TOTAL_COST",
+          "status": "mismatch",
+          "gold": "335,500 Tổng cộng",
+          "predicted": 350000,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_017",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_018",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 21.04.2019 Giờ vào: 10.30 Giờ ra: 10.31",
+          "predicted": "2019-04-21 None",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_019",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sùi Phú Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_020",
+          "field": "TIMESTAMPS",
+          "status": "mismatch",
+          "gold": "Ngày: 09/08/2020 - 09:26",
+          "predicted": "2020-08-09 09:28",
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "SELLER",
+          "status": "blank",
+          "gold": "NHÀ SÁCH GD-TC CẨM PHẢ",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "ADDRESS",
+          "status": "blank",
+          "gold": "ĐC: 212 Đường Trần Phú-Cẩm Phả",
+          "predicted": null,
+          "f1": 0.0
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TIMESTAMPS",
+          "status": "blank",
+          "gold": "Thời gian: 21:43:39 - 14/08/2020",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_021",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Tổng số thanh toán: 75.000đ",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_022",
+          "field": "TOTAL_COST",
+          "status": "blank",
+          "gold": "Cộng tiền hàng 150,000",
+          "predicted": null,
+          "f1": null
+        },
+        {
+          "sample_id": "m0_04_023",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_024",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phù Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "CỬA HÀNG NĂM OÁNH",
+          "predicted": "CỬA HÀNG NAM OÁNH",
+          "f1": 0.75
+        },
+        {
+          "sample_id": "m0_04_025",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Thôn Phú Thuỵ, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "predicted": "Thôn Phú Thụy, Xã Phú Thị, Huyện Gia Lâm, TP Hà Nội",
+          "f1": 0.9166666666666666
+        },
+        {
+          "sample_id": "m0_04_027",
+          "field": "SELLER",
+          "status": "mismatch",
+          "gold": "Saigon Co.op Co.op Food HN THE K-PARK",
+          "predicted": "Co.op Food HN THE K-PARK",
+          "f1": 0.8235294117647058
+        },
+        {
+          "sample_id": "m0_04_030",
+          "field": "ADDRESS",
+          "status": "mismatch",
+          "gold": "Chợ Sủi Phú Thị Gia Lâm",
+          "predicted": "Chợ Sủi Phu Thị Gia Lâm",
+          "f1": 0.8333333333333334
+        }
+      ],
+      "items": {
+        "invoices": 29,
+        "invoices_with_items": 29,
+        "item_rows": 84,
+        "lines_checked": 84,
+        "lines_consistent": 83,
+        "invoices_checked": 29,
+        "invoices_consistent": 28,
+        "mismatches": [
+          {
+            "sample_id": "m0_04_005",
+            "kind": "line",
+            "line_number": 1,
+            "expected": 3855.0,
+            "actual": 185040.0
+          },
+          {
+            "sample_id": "m0_04_015",
+            "kind": "sum",
+            "line_number": null,
+            "expected": 350000.0,
+            "actual": 335500.0
+          }
+        ]
+      }
+    }
+  },
+  "comparison": {
+    "baseline": "vanilla_r1",
+    "control": "vanilla_r2",
+    "noise": {
+      "SELLER": 0.0,
+      "ADDRESS": 0.033333,
+      "TIMESTAMPS": 0.0,
+      "TOTAL_COST": 0.0
+    },
+    "lanes": {
+      "static": {
+        "SELLER": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "ADDRESS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TIMESTAMPS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TOTAL_COST": {
+          "delta": 0.0,
+          "within_noise": true
+        }
+      },
+      "adaptive": {
+        "SELLER": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "ADDRESS": {
+          "delta": 0.033333,
+          "within_noise": true
+        },
+        "TIMESTAMPS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TOTAL_COST": {
+          "delta": 0.033334,
+          "within_noise": false
+        }
+      },
+      "eagle": {
+        "SELLER": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "ADDRESS": {
+          "delta": 0.033333,
+          "within_noise": true
+        },
+        "TIMESTAMPS": {
+          "delta": 0.0,
+          "within_noise": true
+        },
+        "TOTAL_COST": {
+          "delta": 0.033334,
+          "within_noise": false
+        }
+      }
+    }
+  }
+}

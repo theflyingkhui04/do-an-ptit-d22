@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import urllib.error
 import urllib.request
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 
 class ColabServingRunner:
@@ -114,7 +115,6 @@ class ColabServingRunner:
     ) -> bool:
         """Updates the local Colab notebook file with the exact models and parameters configured."""
         import json
-        from pathlib import Path
 
         nb_file = self.resolve_notebook_path(notebook_path)
         if not nb_file.exists():
@@ -147,7 +147,7 @@ class ColabServingRunner:
                         elif line.startswith("DRAFT_MODEL ="):
                             new_lines.append(f'DRAFT_MODEL = "{draft}"  #@param {{type:"string"}}\n')
                         elif line.startswith("DRAFT_METHOD ="):
-                            new_lines.append(f'DRAFT_METHOD = "{method}"  #@param ["eagle3", "draft_model"]\n')
+                            new_lines.append(f'DRAFT_METHOD = "{method}"  #@param ["eagle", "eagle3", "draft_model"]\n')
                         elif line.startswith("QUANTIZATION ="):
                             new_lines.append(f'QUANTIZATION = "{quant}"  #@param ["awq", "gptq", "none"]\n')
                         elif line.startswith("ENABLE_ADAPTIVE ="):

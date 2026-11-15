@@ -577,9 +577,17 @@ def run_hardware_micro_benchmark(
         raise ValueError("Invalid calibration batch grid")
     if backend == "local" and hw_info.device_name.startswith("Remote "):
         raise ValueError("Remote GPU calibration requires backend='modal'")
+    if backend == "local" and not hw_info.is_cuda_available:
+        raise RuntimeError("Calibration requires a real CUDA GPU; use --backend modal --gpu A10G")
+    report = check_compatibility(target_model, draft_model, hw_info.free_vram_mb)
+    if report.draft_method == "unsupported" or not report.is_compatible:
+        raise ValueError("Calibration blocked: " + "; ".join(report.blocking_reasons))
     config = dict(target_model=target_model, draft_model=draft_model,
-                  draft_method=check_compatibility(target_model, draft_model, hw_info.free_vram_mb).draft_method,
-                  sm_architecture=hw_info.sm_architecture)
+                  draft_method=report.draft_method, sm_architecture=hw_info.sm_architecture)
+    for key in ('target_revision', 'draft_revision'):
+        revision = getattr(report, key, None)
+        if revision and revision != 'local':
+            config[key] = revision
     if backend == "modal":
         from flexsds.server.modal_runner import ModalServingRunner
         from flexsds.server.modal_calibration import calibrate
@@ -588,8 +596,6 @@ def run_hardware_micro_benchmark(
         config['target_gpu'] = hw_info.device_name.removeprefix('Remote ')
         groups = calibrate(config, batches)
     elif backend == "local":
-        if not hw_info.is_cuda_available:
-            raise RuntimeError("Calibration requires a real CUDA GPU; use --backend modal --gpu A10G")
         groups = [run_local_group(config, k, batches) for k in KS]
     else:
         raise ValueError("Calibration supports local CUDA or Modal, not Colab guidance")

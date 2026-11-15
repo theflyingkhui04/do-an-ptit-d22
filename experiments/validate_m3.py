@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from experiments import aggregate_results as agg, modal_lanes as lanes
+from experiments import vllm_runtime_patch as runtime_patch
 from experiments.bench_source import snapshot
 from experiments.workload_adapter import load_workload_rows, verify_workload_integrity
 
@@ -22,7 +23,8 @@ def validate_cell(out: Path) -> dict:
         if meta.get(key) != receipt.get(key) or receipt.get(key) is None:
             raise ValueError(f"Receipt/collected identity mismatch: {key}")
     lane, cell = receipt["lane"], receipt["cell"]
-    if (lane not in lanes.LANES or cell["workload"] not in lanes.BENCH_WORKLOADS
+    # [M5-01] W1_V2 is accepted with its own serving contract (lanes.workload_serving).
+    if (lane not in lanes.LANES or cell["workload"] not in lanes.ALL_WORKLOADS
             or cell["concurrency"] not in (1, 2, 4, 8, 16, 32)
             or cell["repeats"] != 5 or cell["num_requests"] != 32):
         raise ValueError("Noncanonical M3 cell")
@@ -38,8 +40,14 @@ def validate_cell(out: Path) -> dict:
                 "served_model_name": lanes.LANES[lane].served_model_name, "vllm_version": "0.30.0"}
     if any(server.get(k) != v for k, v in expected.items()) or not server.get("instance_id"):
         raise ValueError("Server source/model/instance identity mismatch")
-    if server.get("vllm_args") != lanes.build_vllm_args(lane, profile="l4-bf16"):
+    serving = lanes.workload_serving(cell["workload"])
+    if server.get("vllm_args") != lanes.build_vllm_args(
+            lane, profile="l4-bf16", max_model_len=serving["max_model_len"]):
         raise ValueError("Frozen server arguments mismatch")
+    if serving["vllm_runtime"] == "backport-55708" and (
+            server.get("runtime_variant") != runtime_patch.RUNTIME_LABEL
+            or server.get("vllm_outputs_sha256") != runtime_patch.PATCHED_OUTPUTS_SHA256):
+        raise ValueError("Patched vLLM runtime (backport #55708) required for this workload")
     if meta.get("endpoint_model_ids") != [lanes.LANES[lane].served_model_name]:
         raise ValueError("Missing endpoint model verification")
     raw = agg._load_jsonl(out / "raw.jsonl")
@@ -53,7 +61,7 @@ def validate_cell(out: Path) -> dict:
         raise ValueError("Missing or duplicate request identities")
     packed, sha = snapshot(ROOT, receipt["commit"])
     try:
-        path = Path(packed.name) / lanes.BENCH_WORKLOADS[cell["workload"]]
+        path = Path(packed.name) / lanes.workload_file(cell["workload"])
         integrity = verify_workload_integrity(path)
         corpus = load_workload_rows(path)
     finally:

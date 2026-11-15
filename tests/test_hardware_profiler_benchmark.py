@@ -27,7 +27,7 @@ def measured_profile():
 
 
 def test_cpu_cannot_create_empirical_profile(tmp_path, monkeypatch):
-    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model'})())
+    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model', 'is_compatible': True, 'blocking_reasons': []})())
     cpu = HardwareInfo('CPU', 'cpu', 0, 0, 'N/A', False)
     with pytest.raises(RuntimeError, match='real CUDA'):
         cm.run_hardware_micro_benchmark(cpu, target_dir=tmp_path)
@@ -44,7 +44,7 @@ def test_remote_gpu_cannot_be_calibrated_on_laptop(tmp_path):
 def test_modal_dispatch_and_roundtrip(tmp_path, monkeypatch):
     from flexsds.server import modal_calibration
     monkeypatch.setattr('flexsds.server.modal_runner.ModalServingRunner.check_credentials', lambda self: True)
-    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model'})())
+    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model', 'is_compatible': True, 'blocking_reasons': []})())
     calls = []
     def remote(config, batches):
         calls.append((config, batches))
@@ -73,7 +73,7 @@ def test_corrupt_or_incomplete_profile_rejected(measured_profile, damage):
 
 def test_failed_modal_calibration_does_not_write_profile(tmp_path, monkeypatch):
     monkeypatch.setattr('flexsds.server.modal_runner.ModalServingRunner.check_credentials', lambda self: True)
-    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model'})())
+    monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: type('R', (), {'draft_method': 'draft_model', 'is_compatible': True, 'blocking_reasons': []})())
     def fail(*args): raise RuntimeError('GPU OOM')
     monkeypatch.setattr('flexsds.server.modal_calibration.calibrate', fail)
     with pytest.raises(RuntimeError, match='OOM'):
