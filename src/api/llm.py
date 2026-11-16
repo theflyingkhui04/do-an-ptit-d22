@@ -4,6 +4,10 @@
 dict, so ``Node1Extractor`` and ``src/pipeline/ocr.run_ocr`` use it unchanged,
 while the stream gives the time to first token. Errors are
 ``OpenAICompatibleError`` subclasses whose message never contains the token.
+
+An optional ``progress`` hook (set by the Node 1 job, design D13) receives plain dicts: ``waiting`` before each
+retry of a cold endpoint, ``first_token``, and ``receiving`` with the characters received so far (at most every
+``PROGRESS_EVERY_S`` seconds, plus once at the end). A failing hook never breaks the call.
 """
 
 from __future__ import annotations
@@ -16,6 +20,8 @@ from typing import Any, Callable
 import httpx
 
 from src.pipeline.openai_compatible import OpenAICompatibleError
+
+PROGRESS_EVERY_S = 2.0
 
 
 class LLMError(OpenAICompatibleError):
@@ -64,6 +70,15 @@ class LaneCaller:
         self._clock = clock
         self._sleep = sleep
         self.last_metrics: CallMetrics | None = None
+        self.progress: Callable[[dict[str, Any]], None] | None = None
+
+    def _report(self, kind: str, **fields: Any) -> None:
+        if self.progress is None:
+            return
+        try:
+            self.progress({"kind": kind, **fields})
+        except Exception:  # the console is only an observer; never let it break a model call
+            pass
 
     def _error(self, message: str) -> LLMError:
         text = f"{self.lane}: {message}"
@@ -76,6 +91,7 @@ class LaneCaller:
             headers["Authorization"] = f"Bearer {self._token}"
         url = f"{self.base_url}/chat/completions"
         start = self._clock()
+        tries = 0
         while True:
             streaming = False
             try:
@@ -94,15 +110,22 @@ class LaneCaller:
                 # Before any response a cold-starting Modal server may refuse or reset the connection.
                 if self._clock() - start >= self.ready_timeout_s:
                     raise self._error(f"cannot reach {url}: {type(exc).__name__}") from exc
+                reason = type(exc).__name__
             else:
                 if self._clock() - start >= self.ready_timeout_s:
                     raise self._error(f"not ready after {self.ready_timeout_s:.0f} s (HTTP 503)")
+                reason = "HTTP 503"
+            tries += 1
+            self._report("waiting", tries=tries, waited_s=self._clock() - start, reason=reason,
+                         retry_in_s=self.poll_s, ready_timeout_s=self.ready_timeout_s)
             self._sleep(self.poll_s)
 
     def _consume(self, response: httpx.Response, start: float) -> dict[str, Any]:
         parts: list[str] = []
         finish_reason = usage = spec = None
         ttft = None
+        chars = 0
+        reported_at: float | None = None
         for line in response.iter_lines():
             if not line.startswith("data:"):
                 continue
@@ -116,15 +139,24 @@ class LaneCaller:
             for choice in chunk.get("choices") or []:
                 content = (choice.get("delta") or {}).get("content")
                 if content:
+                    now = self._clock()
                     if ttft is None:
-                        ttft = self._clock() - start
+                        ttft = now - start
+                        reported_at = now
+                        self._report("first_token", ttft_s=ttft)
                     parts.append(content)
+                    chars += len(content)
+                    if reported_at is not None and now - reported_at >= PROGRESS_EVERY_S:
+                        reported_at = now
+                        self._report("receiving", chars=chars, elapsed_s=now - start)
                 if choice.get("finish_reason"):
                     finish_reason = choice["finish_reason"]
             if chunk.get("usage"):
                 usage = chunk["usage"]
                 spec = chunk.get("metrics")
         total = self._clock() - start
+        if chars:
+            self._report("receiving", chars=chars, elapsed_s=total)
         completion = (usage or {}).get("completion_tokens")
         tpot = None
         if ttft is not None and completion and completion > 1:

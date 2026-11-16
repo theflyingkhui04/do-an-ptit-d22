@@ -242,7 +242,8 @@ def create_app(settings: Settings, deps: Deps) -> FastAPI:
         row = deps.store.get_job(job_id) if JOB_ID_RE.fullmatch(job_id) else None
         if row is None:
             raise HTTPException(404, "Không tìm thấy job")
-        return row
+        # The console measures "last signal x s ago" against this clock, not the viewer's (design D13).
+        return {**row, "server_time": time.time()}
 
     @app.get("/api/invoices", dependencies=[Depends(require_key)])
     def invoices(limit: int = 200) -> dict[str, Any]:

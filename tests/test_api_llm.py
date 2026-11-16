@@ -150,3 +150,44 @@ def test_endpoint_without_a_key_sends_no_authorization_and_errors_stay_readable(
     with pytest.raises(LLMError) as info:
         no_key.chat_completions({"messages": []})
     assert seen == [None] and "***" not in str(info.value) and "HTTP 500" in str(info.value)
+
+
+class Steps:
+    """Clock that moves one second per reading."""
+
+    def __init__(self) -> None:
+        self.now = -1.0
+
+    def __call__(self) -> float:
+        self.now += 1.0
+        return self.now
+
+
+def test_progress_reports_waits_then_the_first_token_and_the_characters_received():
+    answers = iter([httpx.Response(503), httpx.Response(503), httpx.Response(200, content=sse(
+        {"choices": [{"delta": {"content": "ab"}}]},
+        {"choices": [{"delta": {"content": "cde"}}]},
+        {"choices": [{"delta": {"content": "fg"}, "finish_reason": "stop"}]},
+        {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 3}}))])
+    events: list[dict] = []
+    lane = caller(lambda request: next(answers), clock=Steps())
+    lane.progress = events.append
+    lane.chat_completions({"messages": [], "max_tokens": 8})
+
+    kinds = [e["kind"] for e in events]
+    assert kinds[:3] == ["waiting", "waiting", "first_token"] and kinds[-1] == "receiving"
+    assert [e["tries"] for e in events[:2]] == [1, 2]
+    assert events[0]["reason"] == "HTTP 503" and events[1]["waited_s"] > events[0]["waited_s"]
+    assert events[2]["ttft_s"] > 0
+    assert events[-1]["chars"] == 7  # the final count is always reported, whatever the throttle
+
+
+def test_a_failing_progress_hook_never_breaks_the_call():
+    def boom(event: dict) -> None:
+        raise RuntimeError("ui gone")
+
+    lane = caller(lambda r: httpx.Response(200, content=sse(
+        {"choices": [{"delta": {"content": "x"}, "finish_reason": "stop"}]},
+        {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1}})))
+    lane.progress = boom
+    assert lane.chat_completions({"messages": []})["choices"][0]["message"]["content"] == "x"

@@ -90,3 +90,13 @@ def test_server_contract_matches_the_frozen_choice():
     assert f'DET_MODEL = "{choice["versions"]["detector"]}"' in source
     for name in ("paddlepaddle", "paddleocr", "vietocr"):
         assert f'_VERSION = "{choice["versions"][name]}"' in source
+
+
+def test_progress_reports_each_wait_for_a_cold_ocr_server():
+    answers = iter([httpx.Response(503), httpx.Response(503),
+                    httpx.Response(200, json={"text": "A", "boxes": 1, "latency_ms": 1.0, "engine": "A"})])
+    events: list[dict] = []
+    reader = client(lambda request: next(answers))
+    reader.progress = events.append
+    reader.read(b"x")
+    assert [(e["kind"], e["tries"], e["reason"]) for e in events] == [("waiting", 1, "HTTP 503"), ("waiting", 2, "HTTP 503")]
