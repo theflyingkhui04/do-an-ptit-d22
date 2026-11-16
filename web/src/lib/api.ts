@@ -92,6 +92,19 @@ export interface RunReport {
   total_fields: number | null;
   differing_fields: string[];
   source_restored?: string[];
+  // This endpoint's own extraction (null when it failed), shown column by column (design D13).
+  payload?: InvoicePayload | null;
+}
+
+// One line of a job's live log. `src` is "system", "ocr" or an endpoint id; `t` is server epoch seconds.
+// A line with a `key` is a counter the backend updates in place; `data` holds the numbers behind it.
+export interface JobEvent {
+  t: number;
+  src: string;
+  level: "info" | "ok" | "warn" | "error";
+  msg: string;
+  key?: string;
+  data?: Record<string, number | null | undefined>;
 }
 
 export interface JobResult {
@@ -107,6 +120,7 @@ export interface JobResult {
   item_check?: { lines: (boolean | null)[]; invoice_sum: boolean | null };
   invoice_id?: string;
   timings_ms?: Record<string, number>;
+  events?: JobEvent[];
 }
 
 export type JobStatus = "queued" | "ocr" | "node1" | "saving" | "done" | "failed" | "interrupted";
@@ -117,6 +131,8 @@ export interface Job {
   error: string | null;
   result: JobResult;
   invoice_id: string | null;
+  // Server clock at the response, so "last signal x s ago" does not depend on the viewer's clock.
+  server_time?: number;
 }
 
 export interface CallInfo {

@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 import Console from "@/components/Console";
 import { ApiError, type Api, type BenchRun, type DetectResult, type Endpoint, type Job } from "@/lib/api";
 
-import { BASE, CHAIN, ENDPOINTS, FAST, REPORT, doneJob, endpoint, fakeApi, jpegFile, question, run, speedRun } from "./fakes";
+import { BASE, CHAIN, ENDPOINTS, FAST, INVOICE, REPORT, doneJob, endpoint, fakeApi, jobEvents, jpegFile, question, run, speedRun } from "./fakes";
+import { leafFields } from "@/lib/fields";
 
 function open(page: string, api: Api) {
   window.sessionStorage.setItem("ptit-demo-key", "good-key-123");
@@ -238,32 +239,101 @@ describe("endpoints", () => {
 });
 
 describe("node 1", () => {
-  it("runs the chosen endpoint with the baseline and compares them", async () => {
-    const queued: Job = { ...doneJob(), status: "node1", invoice_id: null, result: {} };
-    const job = vi.fn().mockResolvedValueOnce(queued).mockResolvedValueOnce(doneJob());
+  async function runNode1(job: ReturnType<typeof vi.fn>) {
     const api = fakeApi({ job });
     open("node1", api);
     const user = userEvent.setup();
     await user.upload(await screen.findByLabelText("Ảnh hoá đơn"), jpegFile());
     await user.click(screen.getByRole("button", { name: "Chạy Node 1" }));
-    expect(await screen.findByTestId(`run-${FAST}`)).toHaveTextContent("Giống mốc 40/40 trường");
+    return { api, user };
+  }
+
+  it("shows each endpoint's output side by side, the comparison under the table and the saved invoice", async () => {
+    const queued: Job = { ...doneJob(), status: "node1", invoice_id: null, result: {} };
+    const job = vi.fn().mockResolvedValueOnce(queued).mockResolvedValueOnce(doneJob());
+    const { api } = await runNode1(job);
+    const table = await screen.findByRole("table", { name: "So sánh với mốc" });
     expect(api.upload).toHaveBeenCalledWith(expect.any(File), [FAST]);
     expect(job).toHaveBeenCalledTimes(2);
-    expect(screen.getByTestId(`run-${FAST}`)).toHaveTextContent("1,43×");
-    expect(screen.getByRole("img", { name: /OCR 9 s, Node 1 13 s/ })).toBeInTheDocument();
+
+    const base = within(table).getByTestId(`run-${BASE}`);
+    const fast = within(table).getByTestId(`run-${FAST}`);
+    expect(base).toHaveTextContent("vanilla");
+    expect(base).toHaveTextContent("mốc");
+    expect(fast).toHaveTextContent("TTFT 300 ms");
+    expect(fast).toHaveTextContent("TPOT 14 ms");
+    const seller = within(table).getByRole("rowheader", { name: "Người bán" }).closest("tr") as HTMLElement;
+    expect(within(seller).getAllByText("MINIMART ANAN")).toHaveLength(2); // both columns show their full output
+
+    const conclusion = screen.getByTestId(`conclusion-${FAST}`);
+    expect(conclusion).toHaveTextContent("Giống mốc");
+    expect(conclusion).toHaveTextContent("40/40 trường");
+    expect(conclusion).toHaveTextContent("Nhanh hơn mốc");
+    expect(conclusion).toHaveTextContent("1,43×");
+    expect(screen.getByRole("list", { name: "Các bước" })).toHaveTextContent(/OCR.*9 s.*Node 1.*13 s/);
     expect(within(screen.getByRole("table", { name: "Bảng mặt hàng" })).getByText("Sữa tươi")).toBeInTheDocument();
     expect(screen.getByText("Tổng các dòng lệch tổng hoá đơn")).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Văn bản OCR" }));
-    expect(screen.getByLabelText("Văn bản OCR")).toHaveTextContent("MINIMART ANAN");
     expect(api.invoices).toHaveBeenCalledTimes(2);
   });
 
+  it("opens on the main fields and can show every field, grouped", async () => {
+    const { user } = await runNode1(vi.fn(async () => doneJob()));
+    const table = await screen.findByRole("table", { name: "So sánh với mốc" });
+    expect(within(table).queryByRole("rowheader", { name: "Mã hàng" })).toBeNull();
+    const total = leafFields(INVOICE).length;
+    await user.click(screen.getAllByRole("button", { name: `Xem đủ ${total} trường` })[0]);
+    expect(within(table).getByRole("columnheader", { name: "Dòng hàng 1" })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: "Mã hàng" })).toBeInTheDocument();
+    expect(within(table).getAllByRole("rowheader")).toHaveLength(total);
+    await user.click(screen.getByRole("button", { name: "Trường chính" }));
+    expect(within(table).queryByRole("rowheader", { name: "Mã hàng" })).toBeNull();
+  });
+
+  it("keeps the log closed until asked, then opens the part that was clicked", async () => {
+    const { user } = await runNode1(vi.fn(async () => doneJob()));
+    await screen.findByRole("table", { name: "So sánh với mốc" });
+    expect(screen.queryByRole("dialog", { name: "Log lượt chạy" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Xem log" }));
+    let drawer = screen.getByRole("dialog", { name: "Log lượt chạy" });
+    expect(within(drawer).getByText("Hoàn tất sau 22,7 s")).toBeVisible();
+    expect(within(drawer).getByRole("button", { name: /^Tất cả/ })).toHaveAttribute("aria-pressed", "true");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Log lượt chạy" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Xem log adaptive" }));
+    drawer = screen.getByRole("dialog", { name: "Log lượt chạy" });
+    expect(within(drawer).getByRole("button", { name: /^adaptive/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(drawer).getByText("Token đầu tiên sau 0,3 s, endpoint đang trả lời")).toBeVisible();
+    expect(within(drawer).getByText("Đọc xong 3 dòng chữ trong 9,0 s; đã bỏ dấu tiếng Việt")).not.toBeVisible();
+  });
+
+  it("flags a part that has had no signal for a minute", async () => {
+    const running: Job = { ...doneJob(), status: "node1", invoice_id: null, server_time: 200,
+      result: { ...doneJob().result, runs: undefined, invoice: undefined, stored_endpoint: undefined,
+        events: jobEvents().slice(0, 5).map((e) => ({ ...e, t: e.t <= 109.2 ? e.t : 110 })) } };
+    const { user } = await runNode1(vi.fn(async () => running));
+    const fast = await screen.findByTestId(`run-${FAST}`);
+    expect(fast).toHaveTextContent("Không có tín hiệu 1 phút 30 s");
+    await user.click(screen.getByRole("button", { name: "Xem log adaptive" }));
+    // vanilla went quiet too; with the drawer on adaptive only adaptive's warning is shown
+    const quiet = within(screen.getByRole("dialog", { name: "Log lượt chạy" })).getAllByText(/Chưa có tín hiệu trong 1 phút 30 s/);
+    expect(quiet.filter((line) => !(line.closest("li") as HTMLElement).hidden)).toHaveLength(1);
+  });
+
+  it("keeps asking when the backend cannot be reached and says so in the log", async () => {
+    const job = vi.fn().mockRejectedValueOnce(new Error("Failed to fetch")).mockResolvedValue(doneJob());
+    const { user } = await runNode1(job);
+    await screen.findByRole("table", { name: "So sánh với mốc" });
+    await waitFor(() => expect(screen.getByTestId(`conclusion-${FAST}`)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Xem log" }));
+    const drawer = screen.getByRole("dialog", { name: "Log lượt chạy" });
+    expect(within(drawer).getByText(/Không gọi được backend, đã thử 1 lần/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Đã kết nối lại backend/)).toBeInTheDocument();
+  });
+
   it("notes when the system put back a source value the model copied wrong", async () => {
-    const job = vi.fn(async () => doneJob({ runs: { [FAST]: run(FAST, "adaptive", { source_restored: ["image_path"] }), [BASE]: run(BASE, "vanilla") } }));
-    open("node1", fakeApi({ job }));
-    const user = userEvent.setup();
-    await user.upload(await screen.findByLabelText("Ảnh hoá đơn"), jpegFile());
-    await user.click(screen.getByRole("button", { name: "Chạy Node 1" }));
+    await runNode1(vi.fn(async () => doneJob({ runs: { [FAST]: run(FAST, "adaptive", { source_restored: ["image_path"] }), [BASE]: run(BASE, "vanilla") } })));
     expect(await screen.findByTestId(`run-${FAST}`)).toHaveTextContent("Hệ thống điền lại nguồn: image_path");
     expect(screen.getByTestId(`run-${BASE}`)).not.toHaveTextContent("điền lại nguồn");
   });

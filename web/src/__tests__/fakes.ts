@@ -7,6 +7,7 @@ import {
   type Endpoint,
   type InvoicePayload,
   type Job,
+  type JobEvent,
   type QuestionResult,
   type ReportResult,
   type RunReport,
@@ -84,8 +85,27 @@ export function run(id: string, name: string, extra: Partial<RunReport> = {}): R
     equal_fields: baseline ? null : 40,
     total_fields: baseline ? null : 40,
     differing_fields: [],
+    payload: INVOICE,
     ...extra,
   };
+}
+
+// The live log of a finished job, as the backend writes it (design D13); times are server epoch seconds.
+export function jobEvents(): JobEvent[] {
+  return [
+    { t: 100, src: "system", level: "info", msg: "Nhận ảnh JPG (1 KB); chạy Node 1 trên 2 endpoint" },
+    { t: 100.2, src: "ocr", level: "info", msg: "Gửi ảnh tới máy OCR (PaddleOCR tách dòng, VietOCR đọc chữ)" },
+    { t: 109.2, src: "ocr", level: "ok", msg: "Đọc xong 3 dòng chữ trong 9,0 s; đã bỏ dấu tiếng Việt" },
+    { t: 109.3, src: FAST, level: "info", msg: "Gửi yêu cầu Node 1 (prompt node1_extractor.v2, trả về tối đa 3.072 token)" },
+    { t: 109.3, src: BASE, level: "info", msg: "Gửi yêu cầu Node 1 (prompt node1_extractor.v2, trả về tối đa 3.072 token)" },
+    { t: 109.6, src: FAST, level: "ok", msg: "Token đầu tiên sau 0,3 s, endpoint đang trả lời", data: { ttft_s: 0.3 } },
+    { t: 121.4, src: FAST, level: "ok", msg: "Xong: 900 token, TPOT 14 ms, JSON hợp lệ", data: { tokens: 900, tpot_ms: 14 } },
+    { t: 122.2, src: BASE, level: "ok", msg: "Xong: 900 token, TPOT 20 ms, JSON hợp lệ", data: { tokens: 900, tpot_ms: 20 } },
+    { t: 122.3, src: "system", level: "ok", msg: "adaptive so với mốc vanilla: 40/40 trường giống, nhanh hơn 1,43× theo TPOT" },
+    { t: 122.4, src: "system", level: "info", msg: "Lưu hoá đơn vào cơ sở dữ liệu từ adaptive" },
+    { t: 122.6, src: "system", level: "ok", msg: "Đã lưu hoá đơn, mã up_0123456789ab:up_0123456789ab" },
+    { t: 122.7, src: "system", level: "ok", msg: "Hoàn tất sau 22,7 s" },
+  ];
 }
 
 export function doneJob(extra: Partial<Job["result"]> = {}): Job {
@@ -94,7 +114,13 @@ export function doneJob(extra: Partial<Job["result"]> = {}): Job {
     status: "done",
     error: null,
     invoice_id: "up_0123456789ab:up_0123456789ab",
+    server_time: 123,
     result: {
+      endpoints: [
+        { endpoint_id: FAST, name: "adaptive", model_id: "Qwen/Qwen2.5-7B-Instruct" },
+        { endpoint_id: BASE, name: "vanilla", model_id: "Qwen/Qwen2.5-7B-Instruct" },
+      ],
+      events: jobEvents(),
       primary: FAST,
       baseline: BASE,
       ocr: { text: "MINIMART ANAN\nTong tien\n42,000", kind: "library", engine: "A", marks_stripped: true },
