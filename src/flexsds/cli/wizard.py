@@ -174,7 +174,7 @@ CHOICE_HELP = {
     'Realtime chat with deployed LLM': 'Send messages to the verified endpoint with streaming responses. /exit returns here.',
     "Launch serving": "Configure models, check compatibility, and start an inference API.",
     "Detect hardware": "Show local GPU, CUDA availability, and available memory.",
-    "Benchmark & profile GPU": "Inspect the local profile; use flexsds profile --benchmark to measure.",
+    "Measure & available profile GPU": "List available profiles and measure GPU costs in Fast or Full mode.",
     "Default:": "Use Qwen2.5-7B AWQ with the team's EAGLE-3.1 speculator.",
     "Custom Hugging Face model": "Enter your own target and draft model IDs or local paths.",
     "Modal.com": "Run on a cloud GPU using your Modal account.",
@@ -331,6 +331,96 @@ def prompt_bool(question: str, default_val: bool = True) -> bool:
     return selected == "Yes"
 
 
+def prompt_positive_int(question, default):
+    while True:
+        value = prompt_string(question, default_val=str(default))
+        try:
+            number = int(value)
+            if number > 0:
+                return number
+        except ValueError:
+            pass
+        print("Please enter a positive integer.")
+
+
+def prompt_measurement_mode():
+    choice = prompt_choice("Measurement mode:", ["Fast measure", "Full measure"], default_idx=0)
+    return "fast" if choice == "Fast measure" else "full"
+
+
+def run_profile_wizard(hw_info):
+    from flexsds.core.cost_model import PROFILES_DIR, USER_PROFILES_DIR
+    import textwrap
+
+    print("\nAvailable GPU profiles:")
+    rows = []
+    has_legacy = False
+    for directory, origin in ((PROFILES_DIR, "bundled"), (USER_PROFILES_DIR, "local")):
+        for path in sorted(directory.glob("profile_*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                meta, models = data.get("metadata", {}), data.get("models", {})
+                measured = meta.get("schema") == "flexsds-component-v2"
+                has_legacy |= not measured
+                rows.append([origin, str(meta.get("device", "unknown")),
+                             "measured" if measured else "legacy",
+                             str(meta.get("measurement_mode", "full" if measured else "unknown")),
+                             path.name, str(models.get("target", "?")), str(models.get("draft", "?"))])
+            except (OSError, ValueError):
+                rows.append([origin, "?", "unreadable", "?", path.name, "?", "?"])
+    if rows:
+        headers = ["Source", "GPU", "Status", "Mode", "Profile", "Target", "Draft"]
+        widths = [max(len(row[i]) for row in [headers] + rows) for i in range(len(headers))]
+        terminal_width = max(60, shutil.get_terminal_size((120, 24)).columns)
+        while sum(widths) + 3 * len(widths) + 1 > terminal_width and max(widths) > 4:
+            column = max(range(len(widths)), key=lambda i: widths[i])
+            widths[column] -= 1
+        border = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
+
+        def print_row(row):
+            cells = [textwrap.wrap(cell, width=width, replace_whitespace=True) or [""]
+                     for cell, width in zip(row, widths)]
+            for line in range(max(map(len, cells))):
+                print("| " + " | ".join((cell[line] if line < len(cell) else "").ljust(width)
+                                         for cell, width in zip(cells, widths)) + " |")
+
+        print(border)
+        print_row(headers)
+        print(border)
+        for row in rows:
+            print_row(row)
+            print(border)
+        if has_legacy:
+            print("Legacy profiles require measurement for adaptive serving.")
+    else:
+        print("  No GPU profiles available.")
+    platform = prompt_choice("Measurement platform:", ["Modal", "Local CUDA (including Colab runtime)"], default_idx=0)
+    backend = "modal" if platform == "Modal" else "local"
+    hardware = hw_info
+    if backend == "modal":
+        gpu = prompt_choice("Modal GPU:", ["A10G", "L4", "T4"], default_idx=0)
+        hardware = HardwareInfo(f"Remote {gpu}", {"A10G": "sm_86", "L4": "sm_89", "T4": "sm_75"}[gpu], 0, 0, "unknown", True)
+    target = prompt_string("Target model ID or path:", "Qwen/Qwen2.5-7B-Instruct-AWQ")
+    draft = prompt_string("Draft speculator ID or path:", "duckhoi/qwen2.5-7b-eagle3.1-speculator")
+    model, name = load_profile_for_hardware(hardware, strict=True, target_model=target, draft_model=draft)
+    if model is not None and name:
+        print(f"Compatible profile already exists: {name}")
+        if prompt_choice("Profile action:", ["Use existing profile", "Measure again"], default_idx=0) == "Use existing profile":
+            return {"action": "profile", "profile_applied": name}
+    mode = prompt_measurement_mode()
+    try:
+        _, path = run_hardware_micro_benchmark(hardware, target_model=target, draft_model=draft,
+                                               backend=backend, measurement_mode=mode)
+    except KeyboardInterrupt:
+        print("Measurement cancelled.")
+        return {"action": "abort", "exit_code": 130}
+    except (RuntimeError, ValueError, OSError) as exc:
+        print(f"Measurement failed: {exc}")
+        return {"action": "abort", "exit_code": 1}
+    print(f"Measured and saved GPU profile: {path}")
+    return {"action": "profile", "profile_path": str(path)}
+
+
 def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     """Guides the user through setting up and launching FlexSDS serving."""
     print("\n\033[1;37m--- FlexSDS Serving Wizard ---\033[0m")
@@ -338,7 +428,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     # Step 1: Select Action
     action = prompt_choice(
         "Select action:",
-        ["Launch serving", "Detect hardware", "Benchmark & profile GPU"],
+        ["Launch serving", "Detect hardware", "Measure & available profile GPU"],
         default_idx=0,
     )
 
@@ -346,10 +436,8 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         print(f"\n\033[32m✔ Hardware specs: {hw_info.summary()}\033[0m")
         return {"action": "detect"}
 
-    if action == "Benchmark & profile GPU":
-        cost_model, profile_name = load_profile_for_hardware(hw_info)
-        print(f"\n\033[32m✔ Hardware profile loaded: {profile_name}\033[0m")
-        return {"action": "profile"}
+    if action == "Measure & available profile GPU":
+        return run_profile_wizard(hw_info)
 
     # Step 2: Target & Draft Model Configuration
     model_mode = prompt_choice(
@@ -388,54 +476,75 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     elif backend == "colab":
         gpu_choice = prompt_choice("Colab GPU:", ["T4", "A100 / L4"], default_idx=0)
         target_gpu = "T4" if "T4" in gpu_choice else "L4"
-    preflight = evaluate_serving_preflight(target_model, draft_model, hw_info, backend, target_gpu)
-    if preflight.report.identified_method == "eagle" and preflight.report.checkpoint_verified:
-        from flexsds.core.compatibility import select_report_eagle_version
-        selected = prompt_choice("EAGLE version (shared checkpoint; select decoding version):",
-                                 ["EAGLE-1", "EAGLE-2"], default_idx=0)
-        preflight.report = select_report_eagle_version(preflight.report, selected.removeprefix("EAGLE-"))
-    print(preflight.report.summary())
-    report = preflight.report
+    max_num_seqs = prompt_positive_int("Maximum concurrent sequences (batch):", 32)
+    max_model_len = prompt_positive_int("Maximum context length:", 4096)
+    allow_oom_risk = False
+    while True:
+        preflight = evaluate_serving_preflight(target_model, draft_model, hw_info, backend, target_gpu,
+                                                   max_num_seqs=max_num_seqs, max_model_len=max_model_len)
+        if preflight.report.identified_method == "eagle" and preflight.report.checkpoint_verified:
+            from flexsds.core.compatibility import select_report_eagle_version
+            selected = prompt_choice("EAGLE version (shared checkpoint; select decoding version):",
+                                     ["EAGLE-1", "EAGLE-2"], default_idx=0)
+            preflight.report = select_report_eagle_version(preflight.report, selected.removeprefix("EAGLE-"))
+        print(preflight.report.summary())
+        report = preflight.report
 
-    # Compatibility Report Box (dynamically auto-resizes)
-    status_color = "\033[32m" if not report.oom_risk else "\033[31m"
-    status_text = ("OK" if not report.oom_risk else "OOM RISK") if report.total_vram_needed_mb else "Not evaluated"
-    vram_detail = f"(~{report.total_vram_needed_mb/1024:.1f} GiB / {report.free_vram_mb/1024:.1f} GiB budget)"
-    vocab_text = report.vocabulary_status.split(" (")[0]
+        # Compatibility Report Box (dynamically auto-resizes)
+        status_color = "\033[32m" if not report.oom_risk else "\033[33m"
+        status_text = ("OK" if not report.oom_risk else "OOM RISK") if report.total_vram_needed_mb else "Not evaluated"
+        vram_detail = f"(~{report.total_vram_needed_mb/1024:.1f} GiB / {report.free_vram_mb/1024:.1f} GiB budget)"
+        vocab_text = report.vocabulary_status.split(" (")[0]
 
-    box_items = [
-        ("VRAM Status", f"{status_text}  {vram_detail}", status_color),
-        ("Weights", f"Target {report.target_vram_est_mb/1024:.2f} + draft {report.draft_vram_est_mb/1024:.2f} GiB", "\033[36m"),
-        ("KV capacity", f"{report.kv_cache_min_mb/1024:.2f} GiB", "\033[36m"),
-        ("Runtime reserve", f"{report.runtime_overhead_mb/1024:.2f} GiB (estimated)", "\033[36m"),
-        ("Speculation", report.method_label, "\033[36m"),
-        ("Architecture", report.method_family, "\033[36m"),
-        ("Runtime policy", report.runtime_policy, "\033[36m"),
-        ("Method support", "Supported" if report.method_supported else "Not supported yet / unverified", "\033[36m"),
-        ("Vocabulary", vocab_text, "\033[32m"),
-    ]
-    if not report.total_vram_needed_mb:
-        box_items = [("Speculation", report.method_label, "\033[33m"),
-                     ("Architecture", report.method_family, "\033[33m"),
-                     ("Method support", "Supported" if report.method_supported else "Not supported yet / unverified", "\033[33m"),
-                     ("Vocabulary", report.vocabulary_status, "\033[33m"),
-                     ("VRAM Status", "Not evaluated", "\033[33m")]
-    import textwrap
-    for warn in report.warnings:
-        for i, line in enumerate(textwrap.wrap(warn, width=64)):
-            box_items.append(("Warning" if i == 0 else "", line, "\033[33m"))
+        box_items = [
+            ("VRAM Status", f"{status_text}  {vram_detail}", status_color),
+            ("Serving limits", f"batch={max_num_seqs}, context={max_model_len}", "\033[36m"),
+            ("Weights", f"Target {report.target_vram_est_mb/1024:.2f} + draft {report.draft_vram_est_mb/1024:.2f} GiB", "\033[36m"),
+            ("KV capacity", f"{report.kv_cache_min_mb/1024:.2f} GiB", "\033[36m"),
+            ("Runtime reserve", f"{report.runtime_overhead_mb/1024:.2f} GiB (estimated)", "\033[36m"),
+            ("Speculation", report.method_label, "\033[36m"),
+            ("Architecture", report.method_family, "\033[36m"),
+            ("Runtime policy", report.runtime_policy, "\033[36m"),
+            ("Method support", "Supported" if report.method_supported else "Not supported yet / unverified", "\033[36m"),
+            ("Vocabulary", vocab_text, "\033[32m"),
+        ]
+        if not report.total_vram_needed_mb:
+            box_items = [("Speculation", report.method_label, "\033[33m"),
+                         ("Architecture", report.method_family, "\033[33m"),
+                         ("Method support", "Supported" if report.method_supported else "Not supported yet / unverified", "\033[33m"),
+                         ("Vocabulary", report.vocabulary_status, "\033[33m"),
+                         ("VRAM Status", "Not evaluated", "\033[33m")]
+        import textwrap
+        for warn in report.warnings:
+            for i, line in enumerate(textwrap.wrap(warn, width=64)):
+                box_items.append(("Warning" if i == 0 else "", line, "\033[33m"))
 
-    for suggestion in report.recommendations:
-        for i, line in enumerate(textwrap.wrap(suggestion, width=64)):
-            box_items.append(("Suggestion" if i == 0 else "", line, "\033[36m"))
-    box_items.append(("Detection", report.detection_evidence, "\033[36m"))
-    value_width = max(24, min(64, shutil.get_terminal_size((100, 24)).columns - 23))
-    wrapped_items = []
-    for label, value, color in box_items:
-        for i, line in enumerate(textwrap.wrap(value, width=value_width) or [""]):
-            wrapped_items.append((label if i == 0 else "", line, color))
-    print("\n" + render_box("Compatibility Report", wrapped_items))
-    preflight.require_safe()
+        for suggestion in report.recommendations:
+            for i, line in enumerate(textwrap.wrap(suggestion, width=64)):
+                box_items.append(("Suggestion" if i == 0 else "", line, "\033[36m"))
+        box_items.append(("Detection", report.detection_evidence, "\033[36m"))
+        value_width = max(24, min(64, shutil.get_terminal_size((100, 24)).columns - 23))
+        wrapped_items = []
+        for label, value, color in box_items:
+            for i, line in enumerate(textwrap.wrap(value, width=value_width) or [""]):
+                wrapped_items.append((label if i == 0 else "", line, color))
+        print("\n" + render_box("Compatibility Report", wrapped_items))
+        # Pairing, checkpoint, vocabulary and CUDA failures cannot be overridden.
+        preflight.require_safe(allow_oom_risk=True)
+        if not report.oom_risk:
+            break
+        print(f"Estimated VRAM exceeds the budget at batch={max_num_seqs}, context={max_model_len}.")
+        print("Smaller workloads may still fit. Runtime memory fit is unverified.")
+        risk_action = prompt_choice("VRAM risk action:",
+            ["Adjust batch/context (recommended)", "Continue with current settings", "Cancel"], default_idx=0)
+        if risk_action == "Continue with current settings":
+            allow_oom_risk = True
+            break
+        if risk_action == "Cancel" or not sys.stdin.isatty():
+            print("Serving setup cancelled; no server launched.")
+            return {"action": "abort", "exit_code": 1}
+        max_num_seqs = prompt_positive_int("Maximum concurrent sequences (batch):", max(1, max_num_seqs // 2))
+        max_model_len = prompt_positive_int("Maximum context length:", max_model_len)
 
     colab_tunnel_url = ""
     modal_deploy = False
@@ -474,6 +583,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             "target_revision": report.target_revision,
             "draft_revision": report.draft_revision,
             "enable_adaptive": True,
+            "max_num_seqs": max_num_seqs, "max_model_len": max_model_len,
         }, notebook_path=str(nb_path))
 
         instructions = colab_runner.get_colab_instructions(target_gpu=target_gpu)
@@ -572,6 +682,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
                 try:
                     cost_model, saved_path = run_hardware_micro_benchmark(
                         serving_hw, target_model=target_model, draft_model=draft_model, backend=backend,
+                        measurement_mode=prompt_measurement_mode(),
                     )
                 except KeyboardInterrupt:
                     print("Calibration cancelled; no server launched.")
@@ -605,6 +716,8 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         "draft_revision": report.draft_revision,
         "use_heterogeneous_vocab": report.use_heterogeneous_vocab,
         "enable_adaptive": enable_adaptive,
+        "max_num_seqs": max_num_seqs, "max_model_len": max_model_len,
+        "allow_oom_risk": allow_oom_risk,
         "profile_applied": profile_name,
         "profile_path": str(resolve_profile_path(profile_name)) if profile_name else None,
         "target_gpu": target_gpu,

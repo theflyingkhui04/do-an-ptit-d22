@@ -443,21 +443,34 @@ class ServingPreflight:
     def is_safe(self) -> bool:
         return not self.reasons
 
-    def require_safe(self) -> None:
-        if not self.is_safe:
-            raise ServingBlockedError("Launch blocked: " + "; ".join(self.reasons))
+    def require_safe(self, allow_oom_risk: bool = False) -> None:
+        reasons = self.launch_reasons(allow_oom_risk)
+        if reasons:
+            raise ServingBlockedError("Launch blocked: " + "; ".join(reasons))
+
+    def launch_reasons(self, allow_oom_risk: bool = False) -> List[str]:
+        # The memory estimate is the only overrideable preflight condition.
+        return [reason for reason in self.reasons
+                if not (allow_oom_risk and reason == OOM_ESTIMATE_REASON)]
+
+
+OOM_ESTIMATE_REASON = "estimated VRAM exceeds 95% of the available memory budget"
 
 
 def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
-                               backend: str = "local", target_gpu: str = "L4") -> ServingPreflight:
+                               backend: str = "local", target_gpu: str = "L4",
+                               max_num_seqs: int = 32, max_model_len: int = 4096) -> ServingPreflight:
     """One metadata preflight policy shared by flag mode and wizard; no full weights.
 
     Remote GPU budgets are conservative estimates, never local free VRAM or a
     measurement of the eventual container. Runtime memory fit remains unproven.
     """
+    if any(type(value) is not int or value <= 0 for value in (max_num_seqs, max_model_len)):
+        raise ValueError("Serving batch/context limits must be positive integers")
     budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0}
     available = hw_info.free_vram_mb if backend == "local" else budgets.get(target_gpu, 0.0)
-    report = check_compatibility(target_model, draft_model, free_vram_mb=available)
+    report = check_compatibility(target_model, draft_model, free_vram_mb=available,
+                                 max_num_seqs=max_num_seqs, max_model_len=max_model_len)
     # One estimate and one policy; do not run a second name-based VRAM guard.
     download = PreDownloadCheckResult(
         is_safe=report.is_compatible and not report.oom_risk,
@@ -465,10 +478,10 @@ def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
         shared_tokenizer=report.vocabulary_status.startswith(("Shared", "Reduced")),
     )
     reasons = list(report.blocking_reasons)
-    if report.oom_risk:
-        reasons.append("estimated VRAM exceeds 95% of the available memory budget")
     if not report.is_compatible and not reasons:
         reasons.append("incompatible target/draft configuration")
+    if report.oom_risk:
+        reasons.append(OOM_ESTIMATE_REASON)
 
     if backend == "local" and not hw_info.is_cuda_available:
         reasons.append("CUDA GPU unavailable; system RAM is not serving VRAM")

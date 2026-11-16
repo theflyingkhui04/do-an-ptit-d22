@@ -8,6 +8,7 @@ from flexsds.cli.main import main
 
 def test_synthetic_a10g_rejected_without_deleting(tmp_path, monkeypatch):
     monkeypatch.setattr(cm, 'USER_PROFILES_DIR', tmp_path)
+    monkeypatch.setattr(cm, 'PROFILES_DIR', tmp_path / 'bundled')
     path = cm.save_hardware_profile(dict(metadata=dict(provenance='micro_benchmark_calibrated'),
                                         forward_target={'1':16.5}, forward_draft={'1':3.8}), 'sm_86')
     hw = HardwareInfo('Remote A10G','sm_86',22000,22000,'',True)

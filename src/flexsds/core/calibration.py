@@ -24,8 +24,16 @@ WARMUP = 5
 REPEATS = 50
 
 
+def measurement_settings(config):
+    mode = config.get('measurement_mode', 'full')
+    if mode not in ('fast', 'full'):
+        raise ValueError('Measurement mode must be fast or full')
+    return (2, 5) if mode == 'fast' else (WARMUP, REPEATS)
+
+
 def measure_cell_group(config, k, batches):
     """Runs only inside an isolated CUDA process (local or Modal)."""
+    warmup, repeats = measurement_settings(config)
     import torch
     import vllm
     if not torch.cuda.is_available():
@@ -67,7 +75,7 @@ def measure_cell_group(config, k, batches):
     for batch in batches:
         prompts = [TokensPrompt(prompt_token_ids=[1000 + (i+j) % 28000 for j in range(CONTEXT)])
                    for i in range(batch)]
-        for repeat in range(WARMUP + REPEATS):
+        for repeat in range(warmup + repeats):
             llm.collective_rpc('calibration_begin', args=(batch, k, CONTEXT))
             llm.sleep(level=0)
             llm.enqueue(prompts, SamplingParams(max_tokens=2*k+4, temperature=0., ignore_eos=True), use_tqdm=False)
@@ -79,7 +87,7 @@ def measure_cell_group(config, k, batches):
                 if not positive(samples.get(key)):
                     raise RuntimeError(f'No exact measured {key} sample: K={k}, B={batch}')
             records.append(dict(k=k, batch=batch, context=CONTEXT, repeat=repeat,
-                                warmup=repeat < WARMUP, **result))
+                                warmup=repeat < warmup, **result))
         print(f'Calibration measured K={k}, B={batch}', flush=True)
     return dict(device=device, sm_architecture=sm, vram_total_mb=torch.cuda.get_device_properties(0).total_memory / 2**20,
                 torch_version=torch.__version__, cuda_version=torch.version.cuda,
@@ -93,6 +101,7 @@ def positive(value):
 
 def build_profile(config, groups, batches):
     """Reject incomplete, duplicate, mismatched or non-finite observations."""
+    warmup, repeats = measurement_settings(config)
     matrix, raw = {}, []
     devices = set()
     revisions = set()
@@ -111,12 +120,12 @@ def build_profile(config, groups, batches):
         if not all(isinstance(v, str) and len(v) == 40 for v in (group.get('target_revision'), group.get('draft_revision'))):
             raise ValueError('Missing resolved model revisions')
         records = group['records']
-        expected = {(k, b, r) for b in batches for r in range(WARMUP + REPEATS)}
+        expected = {(k, b, r) for b in batches for r in range(warmup + repeats)}
         actual = {(r['k'], r['batch'], r['repeat']) for r in records}
         if actual != expected or len(records) != len(expected):
             raise ValueError('Incomplete/duplicate calibration samples')
         for r in records:
-            if r['context'] != CONTEXT or r['warmup'] != (r['repeat'] < WARMUP):
+            if r['context'] != CONTEXT or r['warmup'] != (r['repeat'] < warmup):
                 raise ValueError('Calibration context/warmup mismatch')
             if not any(s == dict(batch=r['batch'], query=[k+1]*r['batch'],
                                  context=[CONTEXT]*r['batch']) for s in r['shapes']):
@@ -140,7 +149,8 @@ def build_profile(config, groups, batches):
                               provenance='worker_cuda_synchronize_perf_counter', raw_sha256=digest,
                               timestamp_utc=datetime.now(timezone.utc).isoformat(),
                               cost_semantics='eager_target_forward_plus_draft_proposal_including_k0_cache_sync_excludes_target_logits_sampling',
-                              vllm_version='0.30.0'),
+                              vllm_version='0.30.0', measurement_mode=config.get('measurement_mode', 'full'),
+                              warmup=warmup, repeats=repeats),
                 models=dict(target=config['target_model'], draft=config['draft_model'],
                             target_revision=groups[0]['target_revision'], draft_revision=groups[0]['draft_revision']),
                 draft_method=config['draft_method'], grid=dict(batches=batches, candidate_budgets=KS, contexts=[CONTEXT]),

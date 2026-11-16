@@ -103,7 +103,7 @@ def test_wizard_remote_serving_hardware_resolution(tmp_path, monkeypatch):
     assert modal_a10g_hw.sm_architecture == "sm_86"
     assert "A10G" in modal_a10g_hw.device_name
     _, a10g_prof = load_profile_for_hardware(modal_a10g_hw, strict=False)
-    assert a10g_prof == "conservative_analytical_fallback"
+    assert a10g_prof == "profile_sm_86_remote_a10g_fcda5486b12d.json"
 
     # Test Modal L4
     modal_l4_hw = resolve_serving_hw("modal", "L4", cpu_hw)
@@ -126,6 +126,7 @@ def test_wizard_uncalibrated_gpu_abort_action(tmp_path, monkeypatch, capsys):
     """Khi gặp GPU chưa có profile đo đạc và chọn Abort setup, wizard phải thoát với exit code 1."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr('flexsds.core.cost_model.USER_PROFILES_DIR', tmp_path / 'profiles')
+    monkeypatch.setattr('flexsds.core.cost_model.PROFILES_DIR', tmp_path / 'bundled')
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import HardwareInfo
 
@@ -174,6 +175,7 @@ def test_wizard_uncalibrated_gpu_switch_static_action(tmp_path, monkeypatch, cap
     """Khi gặp GPU chưa có profile đo đạc và chọn Switch to static, wizard tắt adaptive và tiếp tục."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr('flexsds.core.cost_model.USER_PROFILES_DIR', tmp_path / 'profiles')
+    monkeypatch.setattr('flexsds.core.cost_model.PROFILES_DIR', tmp_path / 'bundled')
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import HardwareInfo
 
@@ -233,6 +235,7 @@ def test_wizard_uncalibrated_gpu_calibrate_action(tmp_path, monkeypatch, capsys)
     """Khi gặp GPU chưa có profile đo đạc và chọn Calibrate now, wizard chạy benchmark và nạp profile."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr('flexsds.core.cost_model.USER_PROFILES_DIR', tmp_path / 'profiles')
+    monkeypatch.setattr('flexsds.core.cost_model.PROFILES_DIR', tmp_path / 'bundled')
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import HardwareInfo
     from pathlib import Path
@@ -273,7 +276,8 @@ def test_wizard_uncalibrated_gpu_calibrate_action(tmp_path, monkeypatch, capsys)
     benchmark_called = []
     fake_cost_model = MagicMock()
 
-    def fake_benchmark(hw, target_model=None, draft_model=None, backend=None):
+    def fake_benchmark(hw, target_model=None, draft_model=None, backend=None, measurement_mode=None):
+        assert measurement_mode == "fast"
         benchmark_called.append((hw.sm_architecture, target_model, draft_model))
         return fake_cost_model, Path("/fake/path/profile_sm86_a10g.json")
 
@@ -315,3 +319,40 @@ def test_wizard_uncalibrated_gpu_calibrate_action(tmp_path, monkeypatch, capsys)
 
 
 
+
+
+@pytest.mark.parametrize('mode', ['fast', 'full'])
+def test_profile_menu_measures_and_saves(tmp_path, monkeypatch, capsys, mode):
+    from flexsds.cli import wizard
+    from flexsds.core.hardware import HardwareInfo
+    monkeypatch.setattr('flexsds.core.cost_model.USER_PROFILES_DIR', tmp_path)
+    monkeypatch.setattr('flexsds.core.cost_model.PROFILES_DIR', tmp_path)
+    def choose(question, choices, default_idx=0):
+        if question == 'Select action:':
+            assert choices[2] == 'Measure & available profile GPU'
+            return choices[2]
+        if question == 'Measurement mode:':
+            return 'Fast measure' if mode == 'fast' else 'Full measure'
+        return choices[default_idx]
+    monkeypatch.setattr(wizard, 'prompt_choice', choose)
+    monkeypatch.setattr(wizard, 'prompt_string', lambda question, default_val='': default_val)
+    monkeypatch.setattr(wizard, 'load_profile_for_hardware', lambda *a, **kw: (None, ''))
+    def measure(hw, **kwargs):
+        assert kwargs['backend'] == 'modal'
+        assert kwargs['measurement_mode'] == mode
+        return object(), tmp_path / f'profile_{mode}.json'
+    monkeypatch.setattr(wizard, 'run_hardware_micro_benchmark', measure)
+    result = wizard.run_interactive_wizard(HardwareInfo('CPU', 'cpu', 0, 0, '', False))
+    assert result['profile_path'].endswith(f'profile_{mode}.json')
+    assert 'Available GPU profiles' in capsys.readouterr().out
+
+
+def test_profile_menu_reuses_existing_without_measurement(monkeypatch, capsys):
+    from flexsds.cli import wizard
+    from flexsds.core.hardware import HardwareInfo
+    monkeypatch.setattr(wizard, 'prompt_choice', lambda question, choices, default_idx=0: choices[default_idx])
+    monkeypatch.setattr(wizard, 'prompt_string', lambda question, default_val='': default_val)
+    monkeypatch.setattr(wizard, 'load_profile_for_hardware', lambda *a, **kw: (object(), 'existing.json'))
+    monkeypatch.setattr(wizard, 'run_hardware_micro_benchmark', lambda *a, **kw: pytest.fail('unexpected measurement'))
+    assert wizard.run_profile_wizard(HardwareInfo('CPU', 'cpu', 0, 0, '', False))['profile_applied'] == 'existing.json'
+    assert 'already exists' in capsys.readouterr().out

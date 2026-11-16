@@ -124,3 +124,33 @@ def test_raw_cuda_names_share_only_the_a10_resource_alias():
     assert matches_gpu_label('NVIDIA A10G','NVIDIA A10')
     assert matches_gpu_label('NVIDIA A10','NVIDIA A10G')
     assert not matches_gpu_label('NVIDIA A10G','NVIDIA RTX 3090')
+
+
+@pytest.mark.parametrize('mode,warmup,repeats', [('fast', 2, 5), ('full', 5, 50)])
+def test_measurement_modes_preserve_exact_evidence(mode, warmup, repeats):
+    config = dict(target_model='target', draft_model='draft', draft_method='draft_model',
+                  sm_architecture='sm_86', target_gpu='A10G', measurement_mode=mode)
+    groups = observed_groups(config, cal.BATCHES)
+    for group in groups:
+        group['records'] = [dict(record, warmup=record['repeat'] < warmup)
+                            for record in group['records'] if record['repeat'] < warmup + repeats]
+    profile = cal.build_profile(config, groups, cal.BATCHES)
+    assert profile['metadata']['measurement_mode'] == mode
+    assert len(profile['cost_matrix_ms']) == 30
+    cm.validate_measured_profile(profile)
+    groups[0]['records'].pop()
+    with pytest.raises(ValueError, match='Incomplete'):
+        cal.build_profile(config, groups, cal.BATCHES)
+
+
+def test_packaged_a10g_profile_is_verified_and_matches_models(tmp_path, monkeypatch):
+    monkeypatch.setattr(cm, 'USER_PROFILES_DIR', tmp_path)
+    hw = HardwareInfo('Remote A10G', 'sm_86', 0, 0, '', True)
+    model, name = cm.load_profile_for_hardware(hw, strict=True,
+        target_model='Qwen/Qwen2.5-7B-Instruct-AWQ',
+        draft_model='duckhoi/qwen2.5-7b-eagle3.1-speculator')
+    assert model is not None
+    assert name == 'profile_sm_86_remote_a10g_fcda5486b12d.json'
+    assert cm.load_profile_for_hardware(hw, strict=True, target_model='other') == (None, '')
+    other = HardwareInfo('NVIDIA RTX 3090', 'sm_86', 0, 0, '', True)
+    assert cm.load_profile_for_hardware(other, strict=True) == (None, '')

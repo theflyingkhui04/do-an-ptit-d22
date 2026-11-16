@@ -150,6 +150,10 @@ class ColabServingRunner:
                             new_lines.append(f'DRAFT_METHOD = "{method}"  #@param ["eagle", "eagle3", "draft_model"]\n')
                         elif line.startswith("QUANTIZATION ="):
                             new_lines.append(f'QUANTIZATION = "{quant}"  #@param ["awq", "gptq", "none"]\n')
+                        elif line.startswith("MAX_NUM_SEQS ="):
+                            new_lines.append(f'MAX_NUM_SEQS = {int(serving_cfg.get("max_num_seqs", 32))}  #@param {{type:"integer"}}\n')
+                        elif line.startswith("MAX_MODEL_LEN ="):
+                            new_lines.append(f'MAX_MODEL_LEN = {int(serving_cfg.get("max_model_len", 4096))}  #@param {{type:"integer"}}\n')
                         elif line.startswith("ENABLE_ADAPTIVE ="):
                             new_lines.append(f'ENABLE_ADAPTIVE = {adaptive}  #@param {{type:"boolean"}}\n')
                         else:

@@ -58,13 +58,13 @@ def test_unsafe_real_serve_never_reaches_runner(machine, monkeypatch, backend, f
     modal.assert_not_called()
 
 
-def test_unsafe_preview_is_zero_and_never_starts_process(machine, monkeypatch, capsys):
+def test_oom_preview_with_override_is_zero_and_never_starts_process(machine, monkeypatch, capsys):
     machine.free_vram_mb = 1
     popen = Mock(side_effect=AssertionError("preview launched"))
     monkeypatch.setattr("subprocess.Popen", popen)
-    assert cli.main(PAIR + ["--backend", "local", "--dry-run"]) == 0
+    assert cli.main(PAIR + ["--backend", "local", "--dry-run", "--allow-oom-risk"]) == 0
     output = capsys.readouterr().out
-    assert "Launch blocked" in output
+    assert "VRAM warning" in output
     assert "Dry-run execution command" in output
     assert "not a readiness check" in output
     popen.assert_not_called()
@@ -104,8 +104,11 @@ def test_wizard_guard_blocks_before_config_write_and_launch(machine, monkeypatch
         monkeypatch.setattr(compat, "check_compatibility", incompatible)
     launch = Mock(side_effect=AssertionError("unsafe wizard launch"))
     monkeypatch.setattr(LocalServingRunner, "launch", launch)
-    with pytest.raises(compat.ServingBlockedError):
-        wizard.run_interactive_wizard(machine)
+    if failure == "oom":
+        assert wizard.run_interactive_wizard(machine)["action"] == "abort"
+    else:
+        with pytest.raises(compat.ServingBlockedError):
+            wizard.run_interactive_wizard(machine)
     launch.assert_not_called()
     assert list(tmp_path.iterdir()) == []
 

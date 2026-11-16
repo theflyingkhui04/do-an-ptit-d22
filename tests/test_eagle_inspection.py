@@ -266,7 +266,7 @@ def test_wizard_displays_and_saves_exact_selected_legacy_version(models, tmp_pat
             return 'EAGLE-2'
         return choices[0]
     monkeypatch.setattr(wizard, 'prompt_choice', choose)
-    monkeypatch.setattr(wizard, 'prompt_string', lambda question, **kwargs: str(target if 'Target' in question else draft))
+    monkeypatch.setattr(wizard, 'prompt_string', lambda question, default_val='', **kwargs: str(target if 'Target' in question else draft) if 'Target' in question or 'Draft' in question else default_val)
     monkeypatch.setattr(wizard, 'prompt_bool', lambda *a, **kwargs: False)
     wizard.run_interactive_wizard(HardwareInfo('GPU','sm_89',23000,23000,'',True))
     output = capsys.readouterr().out
@@ -275,3 +275,79 @@ def test_wizard_displays_and_saves_exact_selected_legacy_version(models, tmp_pat
     saved = json.loads((tmp_path / 'serving_config.json').read_text())
     assert saved['eagle_version'] == '2'
     assert saved['draft_method'] == 'eagle'
+
+
+def test_oom_override_preserves_hard_failures(models):
+    from types import SimpleNamespace
+    from flexsds.core.compatibility import ServingBlockedError
+    hw = SimpleNamespace(free_vram_mb=1, is_cuda_available=True)
+    result = evaluate_serving_preflight(str(models[0]), str(models[1]), hw)
+    assert result.report.oom_risk
+    with pytest.raises(ServingBlockedError):
+        result.require_safe()
+    result.require_safe(allow_oom_risk=True)
+    write_config(models[1], target_model_name_or_path='wrong/model')
+    result = evaluate_serving_preflight(str(models[0]), str(models[1]), hw)
+    with pytest.raises(ServingBlockedError, match='pairing'):
+        result.require_safe(allow_oom_risk=True)
+    hw.is_cuda_available = False
+    result = evaluate_serving_preflight(str(models[0]), str(models[1]), hw)
+    assert any('CUDA' in reason for reason in result.launch_reasons(True))
+
+
+@pytest.mark.parametrize('override,expected', [(False, 2), (True, 0)])
+def test_cli_oom_requires_explicit_override_and_forwards_limits(models, monkeypatch, override, expected):
+    from flexsds.cli import main as cli
+    from flexsds.core.hardware import HardwareInfo
+    monkeypatch.setattr(cli, 'detect_hardware', lambda: HardwareInfo('GPU', 'sm_89', 1, 1, '', True))
+    calls = []
+    monkeypatch.setattr(cli.LocalServingRunner, 'launch', lambda self, config, **kwargs: calls.append(config))
+    args = ['serve', '--target', str(models[0]), '--draft', str(models[1]),
+            '--backend', 'local', '--no-adaptive', '--dry-run', '--max-num-seqs', '4', '--max-model-len', '1024']
+    assert cli.main(args + (['--allow-oom-risk'] if override else [])) == expected
+    if override:
+        assert calls[0]['serving']['max_num_seqs'] == 4
+        assert calls[0]['serving']['max_model_len'] == 1024
+    else:
+        assert not calls
+
+
+@pytest.mark.parametrize('action', ['adjust', 'continue', 'cancel'])
+def test_wizard_oom_choices_and_recalculation(models, tmp_path, monkeypatch, action):
+    import io
+    from flexsds.cli import wizard
+    from flexsds.core.hardware import HardwareInfo
+    # With these tiny test models the default KV capacity crosses the budget,
+    # while batch=1/context=1024 fits.
+    hw = HardwareInfo('GPU', 'sm_89', 1080, 1080, '', True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(wizard.sys, 'stdin', type('Input', (io.StringIO,), {'isatty': lambda self: True})())
+    batch_prompts = []
+    def text(question, default_val=''):
+        if 'Target model' in question: return str(models[0])
+        if 'Draft speculator' in question: return str(models[1])
+        if 'concurrent' in question:
+            batch_prompts.append(question)
+            return '32' if len(batch_prompts) == 1 else '1'
+        if 'context' in question: return '4096' if len(batch_prompts) == 1 else '1024'
+        return default_val
+    def choose(question, choices, **kwargs):
+        if 'Model configuration' in question: return choices[1]
+        if 'Serving platform' in question: return next(c for c in choices if 'Local vLLM' in c)
+        if question == 'VRAM risk action:': return choices[{'adjust': 0, 'continue': 1, 'cancel': 2}[action]]
+        return choices[0]
+    monkeypatch.setattr(wizard, 'prompt_string', text)
+    monkeypatch.setattr(wizard, 'prompt_choice', choose)
+    monkeypatch.setattr(wizard, 'prompt_bool', lambda *a, **kw: False)
+    result = wizard.run_interactive_wizard(hw)
+    if action == 'cancel':
+        assert result['action'] == 'abort'
+        assert not (tmp_path / 'serving_config.json').exists()
+    else:
+        assert result['action'] == 'serve'
+        assert result['max_num_seqs'] == (1 if action == 'adjust' else 32)
+        assert result['allow_oom_risk'] == (action == 'continue')
+        from flexsds.server.local_runner import LocalServingRunner
+        cmd = LocalServingRunner().build_command(result)
+        assert cmd[cmd.index('--max-num-seqs') + 1] == str(result['max_num_seqs'])
+        assert cmd[cmd.index('--max-model-len') + 1] == str(result['max_model_len'])

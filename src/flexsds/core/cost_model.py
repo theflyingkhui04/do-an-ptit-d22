@@ -396,9 +396,9 @@ def validate_measured_profile(data, hardware=None, target_model=None, draft_mode
             raise ValueError(f'Profile {field} identity mismatch')
     if hardware and meta['sm_architecture'] != hardware.sm_architecture:
         raise ValueError('Profile GPU architecture mismatch')
-    if hardware and hardware.device_name.startswith('Remote '):
+    if hardware and hardware.is_cuda_available:
         from flexsds.core.hardware import matches_gpu_label
-        if not matches_gpu_label(hardware.device_name[7:], meta['device']):
+        if not matches_gpu_label(hardware.device_name.removeprefix('Remote '), meta['device']):
             raise ValueError('Profile GPU model mismatch')
     if target_model and data['models']['target'] != target_model:
         raise ValueError('Profile target model mismatch')
@@ -477,7 +477,8 @@ def load_profile_for_hardware(
                 if not strict:
                     raise
 
-        matches = sorted(USER_PROFILES_DIR.glob(f"profile_{sm_arch}*.json"))
+        matches = sorted(USER_PROFILES_DIR.glob(f"profile_{sm_arch}*.json"),
+                         key=lambda path: (path.stem.endswith("_fast"), path.name))
         for match in matches:
             try:
                 return load_checked(match)
@@ -496,6 +497,13 @@ def load_profile_for_hardware(
             "A100 requires a measured profile_sm80.json; "
             "no L4/analytical substitution"
         )
+
+    # Packaged measured artifacts use the same evidence checks as user profiles.
+    for path in sorted(PROFILES_DIR.glob(f"profile_{sm_arch}*.json")):
+        try:
+            return load_checked(path)
+        except ValueError:
+            continue
 
     # Tier 3: built-in vendor profiles for non-A100 hardware.
     arch_map = {
@@ -565,6 +573,7 @@ def run_hardware_micro_benchmark(
     batch_sizes: Optional[List[int]] = None,
     target_dir: Optional[Path] = None,
     backend: str = "local",
+    measurement_mode: str = "full",
 ) -> Tuple[FlexCostModel, Path]:
     """Measure actual vLLM worker components; never substitute analytical costs.
 
@@ -572,6 +581,8 @@ def run_hardware_micro_benchmark(
     """
     from flexsds.core.calibration import BATCHES, KS, build_profile, run_local_group
     from flexsds.core.compatibility import check_compatibility
+    from flexsds.core.calibration import measurement_settings
+    measurement_settings({'measurement_mode': measurement_mode})
     batches = BATCHES if batch_sizes is None else sorted(set(batch_sizes))
     if not batches or any(type(b) is not int or b not in BATCHES for b in batches):
         raise ValueError("Invalid calibration batch grid")
@@ -583,7 +594,8 @@ def run_hardware_micro_benchmark(
     if report.draft_method == "unsupported" or not report.is_compatible:
         raise ValueError("Calibration blocked: " + "; ".join(report.blocking_reasons))
     config = dict(target_model=target_model, draft_model=draft_model,
-                  draft_method=report.draft_method, sm_architecture=hw_info.sm_architecture)
+                  draft_method=report.draft_method, sm_architecture=hw_info.sm_architecture,
+                  measurement_mode=measurement_mode)
     for key in ('target_revision', 'draft_revision'):
         revision = getattr(report, key, None)
         if revision and revision != 'local':
@@ -603,5 +615,5 @@ def run_hardware_micro_benchmark(
     import hashlib
     identity = hashlib.sha256(json.dumps(data['models'], sort_keys=True).encode()).hexdigest()[:12]
     saved_path = save_hardware_profile(data, hw_info.sm_architecture,
-                                       f"{hw_info.device_name}_{identity}", target_dir)
+                                       f"{hw_info.device_name}_{identity}_{measurement_mode}", target_dir)
     return FlexCostModel.from_json(saved_path), saved_path
