@@ -156,3 +156,19 @@ def test_wizard_choice_confirmation_on_cp1252(monkeypatch):
     assert wizard.prompt_choice("Platform?", ["Local", "Modal"]) == "Local"
     assert "[OK]" in sink.getvalue()
     assert sink.getvalue().isascii()
+
+
+@pytest.mark.parametrize("terminal,expected", [("legacy", "[OK]"), ("wt", "✔"), ("vscode", "✔")])
+def test_windows_status_marker_handles_missing_font_glyph(monkeypatch, terminal, expected):
+    from flexsds.cli import output
+    sink = EncodedStream("utf-8", tty=True)
+    monkeypatch.setattr(output.sys, "platform", "win32")
+    monkeypatch.setattr(output, "supports_truecolor", lambda stream: True)
+    monkeypatch.delenv("WT_SESSION", raising=False)
+    monkeypatch.delenv("TERM_PROGRAM", raising=False)
+    if terminal == "wt":
+        monkeypatch.setenv("WT_SESSION", "test-session")
+    elif terminal == "vscode":
+        monkeypatch.setenv("TERM_PROGRAM", "vscode")
+    output.print_output("\x1b[32m✔ Ready\x1b[0m", file=sink)
+    assert sink.getvalue() == f"\x1b[32m{expected} Ready\x1b[0m\n"

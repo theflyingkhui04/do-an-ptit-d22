@@ -68,6 +68,10 @@ def print_output(text: str = "", *, file=None, end: str = "\n", fallback=None) -
     if stream is None:
         return
     message = text + end
+    # UTF-8 encoding does not guarantee legacy console font glyph coverage.
+    if (sys.platform == "win32" and not os.environ.get("WT_SESSION")
+            and os.environ.get("TERM_PROGRAM", "").lower() != "vscode"):
+        message = message.replace("✔", "[OK]").replace("✓", "[OK]")
     if not supports_truecolor(stream):
         message = _ANSI.sub("", message)
     if not supports_unicode(stream):

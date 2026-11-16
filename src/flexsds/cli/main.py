@@ -53,6 +53,17 @@ except ModuleNotFoundError:
     from src.flexsds.server.modal_runner import ModalServingRunner
 
 
+def positive_int(value):
+    import argparse
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Expected a positive integer")
+    if number <= 0:
+        raise argparse.ArgumentTypeError("Expected a positive integer")
+    return number
+
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="flexsds",
@@ -123,6 +134,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Model identifier override for benchmarking",
     )
 
+    profile_parser.add_argument("--measure-mode", choices=["fast", "full"], default="full", help="Measurement repetitions: fast (5) or full (50)")
     profile_parser.add_argument("--backend", choices=["local", "modal"], default="local", help="Where to run calibration")
     profile_parser.add_argument("--gpu", choices=["A10G", "L4", "T4"], default="A10G", help="GPU to allocate for Modal calibration")
 
@@ -153,6 +165,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     serve_parser.add_argument(
         "--backend", choices=["modal", "local", "colab"], default="modal", help="Serving backend platform"
     )
+    serve_parser.add_argument("--allow-oom-risk", action="store_true", help="Continue despite estimated VRAM risk; other compatibility failures still block")
+    serve_parser.add_argument("--max-num-seqs", type=positive_int, default=32, help="Maximum concurrent sequences")
+    serve_parser.add_argument("--max-model-len", type=positive_int, default=4096, help="Maximum context length per sequence")
     serve_parser.add_argument("--gpu", choices=["L4", "T4", "A10G"], default="L4", help="Remote GPU memory budget and Modal allocation")
     serve_parser.add_argument(
         "--port", type=int, default=8000, help="API server port"
@@ -321,6 +336,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             try:
                 cost_model, saved_path = run_hardware_micro_benchmark(
                     hw_info=hw_info, target_model=target_model, draft_model=draft_model, backend=args.backend,
+                    measurement_mode=args.measure_mode,
                 )
             except KeyboardInterrupt:
                 print("Calibration cancelled.")
@@ -384,7 +400,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
 
             preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
-                                                   args.backend, getattr(args, "gpu", "L4"))
+                                                   args.backend, getattr(args, "gpu", "L4"),
+                                                   max_num_seqs=args.max_num_seqs, max_model_len=args.max_model_len)
             if args.eagle_version:
                 from flexsds.core.compatibility import select_report_eagle_version
                 try:
@@ -398,11 +415,17 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(preflight.report.summary())
             for detail in preflight.report.warnings + preflight.report.recommendations:
                 print(detail)
-            if not preflight.is_safe:
-                print("Launch blocked: " + "; ".join(preflight.reasons))
+            reasons = preflight.launch_reasons(args.allow_oom_risk)
+            if preflight.report.oom_risk:
+                print(f"VRAM warning at batch={args.max_num_seqs}, context={args.max_model_len}: "
+                      "smaller workloads may fit; runtime memory fit is unverified.")
+                if not args.allow_oom_risk:
+                    print("Reduce --max-num-seqs/--max-model-len or pass --allow-oom-risk to continue.")
+            if reasons:
+                print("Launch blocked: " + "; ".join(reasons))
             if args.backend != "local":
                 print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
-            if (not args.dry_run and not preflight.is_safe) or preflight.report.draft_method == "unsupported":
+            if reasons:
                 return 2
 
             if not args.no_adaptive:
@@ -432,11 +455,14 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
                 "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
                 "enable_adaptive": not args.no_adaptive,
+                "max_num_seqs": args.max_num_seqs, "max_model_len": args.max_model_len,
+                "allow_oom_risk": args.allow_oom_risk,
                 "profile_path": str(resolve_profile_path(profile_name)) if not args.no_adaptive else None,
             }}
             if args.backend == "colab":
                 print("Colab guidance only: no server or endpoint was created; supplied models are not forwarded to the notebook.")
                 print("Open notebooks/flexsds_colab_server.ipynb and configure the exact models on that runtime.")
+                print(f"Set MAX_NUM_SEQS={args.max_num_seqs} and MAX_MODEL_LEN={args.max_model_len} in the notebook.")
                 return 0
             if args.dry_run:
                 print("Preview only; not a readiness check.")

@@ -45,6 +45,8 @@ def test_colab_runner_sync_notebook_config(tmp_path):
                 "source": [
                     'TARGET_MODEL = "old"  #@param {type:"string"}\n',
                     'DRAFT_MODEL = "old_draft"  #@param {type:"string"}\n',
+                    'MAX_NUM_SEQS = 32\n',
+                    'MAX_MODEL_LEN = 4096\n',
                 ]
             }
         ]
@@ -53,6 +55,7 @@ def test_colab_runner_sync_notebook_config(tmp_path):
         "target_model": "custom/target-model",
         "draft_model": "custom/draft-model",
         "draft_method": "draft_model",
+        "max_num_seqs": 4, "max_model_len": 1024,
     }
     success = runner.sync_notebook_config(cfg, notebook_path=str(fake_nb))
     assert success is True
@@ -60,3 +63,6 @@ def test_colab_runner_sync_notebook_config(tmp_path):
     cell_code = "".join(updated["cells"][0]["source"])
     assert "custom/target-model" in cell_code
     assert "custom/draft-model" in cell_code
+
+    assert "MAX_NUM_SEQS = 4" in cell_code
+    assert "MAX_MODEL_LEN = 1024" in cell_code
