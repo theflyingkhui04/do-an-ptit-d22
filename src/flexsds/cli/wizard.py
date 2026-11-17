@@ -396,6 +396,52 @@ def run_profile_wizard(hw_info):
             print("Legacy profiles require measurement for adaptive serving.")
     else:
         print("  No GPU profiles available.")
+    action = prompt_choice("Profile action:", ["Measure now", "Import hardware profile", "Back to main menu"], default_idx=0)
+    if action == "Back to main menu":
+        return {"action": "profile", "back": True}
+    if action == "Import hardware profile":
+        return run_profile_import()
+    return run_profile_measurement(hw_info)
+
+
+def run_profile_import():
+    from flexsds.core.profile_import import import_profile, read_profile_source
+    from flexsds.cli.profile_paste import paste_profile
+    import sqlite3
+    while True:
+        choice = prompt_choice("Import source:", ["Paste JSON (Ctrl+X to save)", "File path or URL", "Back"], default_idx=0)
+        if choice == "Back":
+            return {"action": "profile", "back": True}
+        try:
+            if choice.startswith("Paste JSON"):
+                text = paste_profile()
+                if text is None:
+                    continue
+            else:
+                print("For web links, use a direct/raw JSON URL.")
+                source = prompt_string("Hardware profile file path or URL:", "")
+                if not source:
+                    continue
+                from flexsds.cli.spinner import status_spinner
+                with status_spinner("Reading hardware profile"):
+                    text = read_profile_source(source)
+            path, status = import_profile(text)
+        except KeyboardInterrupt:
+            print("Import cancelled.")
+            return {"action": "profile", "back": True}
+        except (OSError, EOFError, ValueError, TypeError, KeyError, sqlite3.Error) as exc:
+            print(f"Profile import failed: {exc}")
+            if not sys.stdin.isatty():
+                return {"action": "abort", "exit_code": 1}
+            continue
+        print(f"Hardware profile imported: {path}")
+        print(f"Profile database: {path.parent / 'profiles.sqlite3'}")
+        if status == "legacy":
+            print("Saved as legacy. Adaptive serving still requires verified measurement evidence.")
+        return {"action": "profile", "profile_path": str(path), "status": status, "back": True}
+
+
+def run_profile_measurement(hw_info):
     platform = prompt_choice("Measurement platform:", ["Modal", "Local CUDA (including Colab runtime)"], default_idx=0)
     backend = "modal" if platform == "Modal" else "local"
     hardware = hw_info
@@ -434,6 +480,11 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             ["Launch serving", "Detect hardware", "Measure & available profile GPU", "Delete Modal token", "Running endpoint"],
             default_idx=0,
         )
+        if action == "Measure & available profile GPU":
+            result = run_profile_wizard(hw_info)
+            if result.get("back"):
+                continue
+            return result
         if action == "Running endpoint":
             from flexsds.cli.endpoints import run_endpoint_menu
             run_endpoint_menu()
@@ -451,8 +502,6 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
         else:
             print("Modal token deleted locally. Log in again to use Modal.")
 
-    if action == "Measure & available profile GPU":
-        return run_profile_wizard(hw_info)
 
     # Step 2: Target & Draft Model Configuration
     model_mode = prompt_choice(

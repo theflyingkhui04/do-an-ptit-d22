@@ -48,3 +48,23 @@ notebook, wizard báo lỗi và dừng để tránh upload file cấu hình cũ.
 
 Upload file ở đường dẫn local CLI vừa in. Link Colab từ repository chỉ mở bản
 template, không mang theo các lựa chọn vừa nhập trong wizard.
+
+## Measure now và Import hardware profile
+
+Trong `Measure & available profile GPU`, danh sách profile hiện có được giữ
+nguyên; chọn một trong hai chức năng:
+
+- `Measure now`: chọn nền tảng/GPU, model và Fast/Full để đo như trước.
+- `Import hardware profile`: chọn dán JSON hoặc nhập đường dẫn file/link JSON
+  trực tiếp qua HTTP(S). Với màn hình dán, Ctrl+X gửi nội dung để kiểm tra và lưu;
+  Esc hoặc Ctrl+C hủy. File/link phải trả nội dung JSON, không phải trang xem file.
+
+Import thành công lưu artifact JSON trong `~/.flexsds/profiles/` và metadata
+vào SQLite `~/.flexsds/profiles/profiles.sqlite3`, rồi quay lại menu chính.
+Nội dung trùng nhau chỉ có một artifact/bản ghi. Serving tiếp tục đọc artifact
+JSON theo cơ chế hiện có nên không cần chuyển đổi dữ liệu.
+
+Import kiểm tra JSON, metadata GPU/model và độ hợp lệ của chi phí. Profile
+`flexsds-component-v2` phải vượt kiểm tra worker evidence. File legacy được lưu
+và hiển thị là legacy; import không bỏ qua kiểm tra adaptive hoặc tự đổi nhãn
+legacy thành measured. Nội dung JSON lỗi không được lưu.
