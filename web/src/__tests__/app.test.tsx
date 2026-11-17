@@ -75,6 +75,12 @@ describe("brand", () => {
 });
 
 describe("endpoints", () => {
+  const ok = (url: string, model = "Qwen/Qwen2.5-7B-Instruct"): DetectResult =>
+    ({ input: url, url, ok: true, code: null, message: null, platform: "modal", model_id: model, max_model_len: 8192 });
+  const refused = (url: string, code: string, message: string): DetectResult =>
+    ({ input: url, url, ok: false, code, message, platform: "modal", model_id: null, max_model_len: null });
+  const rowOf = (name: string) => screen.getByRole("article", { name });
+
   it("opens on the onboarding page when no endpoint has been added", async () => {
     open("", fakeApi({ endpoints: vi.fn(async () => ({ endpoints: [] })) }));
     expect(await screen.findByRole("heading", { name: "Chưa có endpoint nào" })).toBeInTheDocument();
@@ -85,38 +91,107 @@ describe("endpoints", () => {
     expect(screen.getByTestId("endpoint-summary")).toHaveTextContent("Chưa có endpoint");
   });
 
-  it("detects pasted addresses, explains the tunnel for a local one and saves the usable ones", async () => {
+  it("lists each endpoint on one row without the parts it does not need", async () => {
+    const endpoints = vi.fn(async () => ({ endpoints: [
+      endpoint(FAST, "adaptive", { model_id: "qwen2.5-7b-adaptive", meta: { gpu: "NVIDIA L4", draft_method: "eagle3", adaptive: true } }),
+      endpoint(BASE, "vanilla", { is_baseline: true, model_id: "vanilla", has_key: false, status: "down",
+        status_message: "Endpoint chưa sẵn sàng (HTTP 503): GPU đang khởi động hoặc đang ngủ, hoặc phiên flexsds serve đã dừng." }),
+    ] }));
+    open("endpoints", fakeApi({ endpoints }));
+    const rows = await screen.findAllByRole("article");
+    expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["vanilla", "adaptive"]); // the baseline first
+    const vanilla = rowOf("vanilla");
+    expect(within(vanilla).getByText("Mốc")).toBeInTheDocument();
+    expect(within(vanilla).getByText("Đã dừng")).toBeInTheDocument();
+    expect(within(vanilla).getByText("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeInTheDocument();
+    expect(within(vanilla).queryByText(/Model endpoint báo/)).toBeNull(); // same as its name
+    expect(within(vanilla).queryByText(/Chưa rõ GPU/)).toBeNull();
+    const adaptive = rowOf("adaptive");
+    expect(within(adaptive).getByText("NVIDIA L4, EAGLE-3, Hardware-Adaptive")).toBeInTheDocument();
+    expect(within(adaptive).getByText("qwen2.5-7b-adaptive")).toBeInTheDocument();
+    expect(within(adaptive).getByText(/có khoá API/)).toBeInTheDocument();
+    for (const action of ["Kiểm tra adaptive", "Sửa adaptive", "Xoá adaptive"]) {
+      expect(within(adaptive).getByRole("button", { name: action })).toBeVisible();
+    }
+    // One "Thêm endpoint" (top bar), no radio column, no tunnel panel
+    expect(screen.getAllByRole("button", { name: "Thêm endpoint" })).toHaveLength(1);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByText("Endpoint trên máy cá nhân")).toBeNull();
+  });
+
+  it("adds by address only: checks each one, explains a local one and saves the usable one under the typed name", async () => {
+    const modal = "https://acct--flexsds-serve.modal.run/v1";
+    const local = "http://127.0.0.1:8000/v1";
     const found: Record<string, DetectResult> = {
-      "https://acct--flexsds-serve.modal.run/v1": { input: "https://acct--flexsds-serve.modal.run/v1", url: "https://acct--flexsds-serve.modal.run/v1", ok: true, code: null, message: null, platform: "modal", model_id: "Qwen/Qwen2.5-7B-Instruct", max_model_len: 8192 },
-      "http://127.0.0.1:8000/v1": { input: "http://127.0.0.1:8000/v1", url: "http://127.0.0.1:8000/v1", ok: false, code: "needs_tunnel", platform: "local", model_id: null, max_model_len: null,
-        message: "Đây là địa chỉ trên máy của bạn; chạy lệnh `cloudflared tunnel --url http://127.0.0.1:8000` rồi dán lại." },
+      [modal]: ok(modal),
+      [local]: { ...refused(local, "needs_tunnel", "Đây là địa chỉ trên máy của bạn; chạy lệnh `cloudflared tunnel --url http://127.0.0.1:8000` rồi dán lại."), platform: "local" },
     };
     const detectEndpoints = vi.fn(async (urls: string[]) => ({ results: urls.map((u) => found[u]) }));
-    const added = endpoint("ep_0000000c", "Qwen/Qwen2.5-7B-Instruct");
-    const addEndpoints = vi.fn(async () => ({
-      results: [{ input: added.base_url, url: added.base_url, ok: true, code: null, message: null, platform: "modal" as const, model_id: added.model_id, max_model_len: 8192 }],
-      saved: [added],
-    }));
+    const addEndpoints = vi.fn(async () => ({ results: [ok(modal)], saved: [endpoint("ep_0000000c", "adaptive L4")] }));
     const api = fakeApi({ detectEndpoints, addEndpoints });
     open("endpoints", api);
     const user = userEvent.setup();
-    await user.click((await screen.findAllByRole("button", { name: "Thêm endpoint" }))[0]);
-    const dialog = screen.getByRole("dialog", { name: "Thêm endpoint" });
-    await user.type(within(dialog).getByLabelText("Endpoint URL"), "https://acct--flexsds-serve.modal.run/v1\nhttp://127.0.0.1:8000/v1");
-    await user.type(within(dialog).getByLabelText("Khoá API (nếu có)"), "tok.secret");
-    await user.click(within(dialog).getByRole("button", { name: "Kiểm tra" }));
-    expect(await within(dialog).findByText("Cần mở đường hầm")).toBeInTheDocument();
-    expect(within(dialog).getByText("cloudflared tunnel --url http://127.0.0.1:8000")).toBeInTheDocument();
-    expect(within(dialog).getByText("Qwen/Qwen2.5-7B-Instruct")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Thêm endpoint" }));
+    const drawer = screen.getByRole("dialog", { name: "Thêm endpoint" });
+    expect(within(drawer).queryByLabelText(/Khoá API/)).toBeNull();
+    expect(within(drawer).queryByText(/serving_config/)).toBeNull();
+    await user.type(within(drawer).getByLabelText("Địa chỉ API"), `${modal}\n${local}`);
+    await user.click(within(drawer).getByRole("button", { name: "Kiểm tra" }));
+    expect(await within(drawer).findByText("Cần mở đường hầm")).toBeInTheDocument();
+    expect(within(drawer).getByText("cloudflared tunnel --url http://127.0.0.1:8000")).toBeInTheDocument();
     // Each address is checked on its own, so one slow GPU does not hold back the others.
-    expect(detectEndpoints).toHaveBeenCalledTimes(2);
-    expect(detectEndpoints).toHaveBeenCalledWith(["https://acct--flexsds-serve.modal.run/v1"], "tok.secret");
-    expect(detectEndpoints).toHaveBeenCalledWith(["http://127.0.0.1:8000/v1"], "tok.secret");
+    expect(detectEndpoints).toHaveBeenCalledWith([modal], undefined);
+    expect(detectEndpoints).toHaveBeenCalledWith([local], undefined);
 
-    await user.click(within(dialog).getByRole("button", { name: "Thêm 1 endpoint" }));
+    const name = within(drawer).getByLabelText(`Tên hiển thị cho ${modal}`);
+    expect(name).toHaveValue("Qwen/Qwen2.5-7B-Instruct");
+    await user.clear(name);
+    await user.type(name, "adaptive L4");
+    expect(within(drawer).getByText("Bỏ qua 1 địa chỉ lỗi")).toBeInTheDocument();
+    await user.click(within(drawer).getByRole("button", { name: "Thêm 1 endpoint" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(addEndpoints).toHaveBeenCalledWith(["https://acct--flexsds-serve.modal.run/v1"], "tok.secret", undefined);
+    expect(addEndpoints).toHaveBeenCalledWith([{ url: modal, name: "adaptive L4", api_key: undefined }]);
     expect(api.endpoints).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks for a key on the row of an endpoint that refuses the call", async () => {
+    const url = "https://llm.other-team.example.com/v1";
+    const detectEndpoints = vi.fn(async (_urls: string[], key?: string) => ({
+      results: [key === "k-1" ? ok(url, "meta/llama") : refused(url, "auth_failed", "Endpoint từ chối khoá API (HTTP 401).")],
+    }));
+    const addEndpoints = vi.fn(async () => ({ results: [ok(url, "meta/llama")], saved: [endpoint("ep_0000000c", "meta/llama")] }));
+    open("endpoints", fakeApi({ detectEndpoints, addEndpoints }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Thêm endpoint" }));
+    const drawer = screen.getByRole("dialog", { name: "Thêm endpoint" });
+    await user.type(within(drawer).getByLabelText("Địa chỉ API"), url);
+    await user.click(within(drawer).getByRole("button", { name: "Kiểm tra" }));
+    expect(await within(drawer).findByText("Endpoint này cần khoá API (HTTP 401)")).toBeInTheDocument();
+    await user.type(within(drawer).getByLabelText(`Khoá API cho ${url}`), "k-1");
+    await user.click(within(drawer).getByRole("button", { name: "Kiểm tra lại với khoá này" }));
+    expect(await within(drawer).findByLabelText(`Tên hiển thị cho ${url}`)).toHaveValue("meta/llama");
+    expect(detectEndpoints).toHaveBeenLastCalledWith([url], "k-1");
+    await user.click(within(drawer).getByRole("button", { name: "Thêm 1 endpoint" }));
+    expect(addEndpoints).toHaveBeenCalledWith([{ url, name: undefined, api_key: "k-1" }]);
+  });
+
+  it("says an address is already in the list and skips it", async () => {
+    const saved = "https://acct--vanilla.modal.run/v1";
+    const fresh = "https://acct--static.modal.run/v1";
+    const detectEndpoints = vi.fn(async (urls: string[]) => ({
+      results: [urls[0] === saved
+        ? { ...refused(saved, "exists", "Đã có trong danh sách với tên vanilla, không cần thêm lại."), endpoint_id: BASE, name: "vanilla" }
+        : ok(fresh, "qwen2.5-7b-static")],
+    }));
+    open("endpoints", fakeApi({ detectEndpoints }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Thêm endpoint" }));
+    const drawer = screen.getByRole("dialog", { name: "Thêm endpoint" });
+    await user.type(within(drawer).getByLabelText("Địa chỉ API"), `${saved}\n${fresh}`);
+    await user.click(within(drawer).getByRole("button", { name: "Kiểm tra" }));
+    expect(await within(drawer).findByText("Đã có trong danh sách với tên vanilla, không cần thêm lại.")).toBeInTheDocument();
+    expect(await within(drawer).findByRole("button", { name: "Thêm 1 endpoint" })).toBeEnabled();
+    expect(within(drawer).getByText("Bỏ qua 1 địa chỉ đã có")).toBeInTheDocument();
   });
 
   it("shows each address while it is checked, its own result as soon as it answers, and a hint for slow GPUs", async () => {
@@ -130,28 +205,28 @@ describe("endpoints", () => {
       }));
       open("endpoints", fakeApi({ detectEndpoints }));
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      await user.click((await screen.findAllByRole("button", { name: "Thêm endpoint" }))[0]);
-      const dialog = screen.getByRole("dialog", { name: "Thêm endpoint" });
-      await user.type(within(dialog).getByLabelText("Endpoint URL"), `${a}\n${b}`);
-      await user.click(within(dialog).getByRole("button", { name: "Kiểm tra" }));
+      await user.click(await screen.findByRole("button", { name: "Thêm endpoint" }));
+      const drawer = screen.getByRole("dialog", { name: "Thêm endpoint" });
+      await user.type(within(drawer).getByLabelText("Địa chỉ API"), `${a}\n${b}`);
+      await user.click(within(drawer).getByRole("button", { name: "Kiểm tra" }));
 
-      const button = within(dialog).getByRole("button", { name: /Đang kiểm tra/ });
+      const button = within(drawer).getByRole("button", { name: /Đang kiểm tra/ });
       expect(button).toHaveAttribute("aria-busy", "true");
       expect(within(button).getByTestId("spinner")).toBeInTheDocument();
-      expect(within(dialog).getAllByTestId("check-running")).toHaveLength(2);
-      expect(within(dialog).queryByText(/đang ngủ/)).toBeNull();
+      expect(within(drawer).getAllByTestId("check-running")).toHaveLength(2);
+      expect(within(drawer).queryByText(/đang ngủ/)).toBeNull();
 
       await act(async () => {
         vi.advanceTimersByTime(11_000);
       });
       expect(button).toHaveTextContent(/1[01] s/);
-      expect(within(dialog).getByText(/đang ngủ/)).toBeInTheDocument();
+      expect(within(drawer).getByText(/đang ngủ/)).toBeInTheDocument();
 
       await act(async () => {
-        answer[a]({ results: [{ input: a, url: a, ok: true, code: null, message: null, platform: "modal", model_id: "Qwen/Qwen2.5-7B-Instruct-AWQ", max_model_len: 8192 }] });
+        answer[a]({ results: [ok(a, "Qwen/Qwen2.5-7B-Instruct-AWQ")] });
       });
-      expect(within(dialog).getByText("Qwen/Qwen2.5-7B-Instruct-AWQ")).toBeInTheDocument();
-      expect(within(dialog).getAllByTestId("check-running")).toHaveLength(1); // b is still waking up
+      expect(within(drawer).getByLabelText(`Tên hiển thị cho ${a}`)).toHaveValue("Qwen/Qwen2.5-7B-Instruct-AWQ");
+      expect(within(drawer).getAllByTestId("check-running")).toHaveLength(1); // b is still waking up
     } finally {
       vi.useRealTimers();
     }
@@ -164,16 +239,15 @@ describe("endpoints", () => {
     }));
     open("endpoints", fakeApi({ checkEndpoint }));
     const user = userEvent.setup();
-    const recheck = (await screen.findAllByRole("button", { name: "Kiểm tra lại" }))[0];
-    await user.click(recheck);
-    const row = recheck.closest("tr") as HTMLElement;
-    expect(within(row).getByText(/Đang kiểm tra ·/)).toBeInTheDocument();
-    expect(within(row).getByRole("button", { name: /Kiểm tra lại|Đang kiểm tra/ })).toHaveAttribute("aria-busy", "true");
+    await user.click(await screen.findByRole("button", { name: "Kiểm tra vanilla" }));
+    const row = rowOf("vanilla");
+    expect(within(row).getByText(/Đang kiểm tra, \d+ s/)).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Kiểm tra vanilla" })).toHaveAttribute("aria-busy", "true");
     expect(within(screen.getByTestId("endpoint-summary")).getByTestId("spinner")).toBeInTheDocument();
 
-    await act(async () => finish(ENDPOINTS[0]));
-    expect(await within(row).findByText(/Vừa kiểm tra/)).toBeInTheDocument();
-    expect(within(row).queryByText(/Đang kiểm tra ·/)).toBeNull();
+    await act(async () => finish({ ...ENDPOINTS[0], checked_at: new Date().toISOString() }));
+    expect(await within(row).findByText(/Kiểm tra vừa xong, mất/)).toBeInTheDocument();
+    expect(within(row).queryByText(/Đang kiểm tra,/)).toBeNull();
     expect(within(screen.getByTestId("endpoint-summary")).queryByTestId("spinner")).toBeNull();
   });
 
@@ -187,10 +261,10 @@ describe("endpoints", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Kiểm tra tất cả" }));
     expect(checkEndpoint).toHaveBeenCalledTimes(ENDPOINTS.length); // all started before any answered
-    expect(screen.getAllByText(/Đang kiểm tra ·/)).toHaveLength(ENDPOINTS.length);
+    expect(screen.getAllByText(/Đang kiểm tra, \d+ s/)).toHaveLength(ENDPOINTS.length);
 
     await act(async () => answers.forEach((answerNow) => answerNow()));
-    await waitFor(() => expect(screen.getAllByText(/Vừa kiểm tra/)).toHaveLength(ENDPOINTS.length));
+    await waitFor(() => expect(screen.getAllByText(/, mất /)).toHaveLength(ENDPOINTS.length));
     expect(api.endpoints).toHaveBeenCalledTimes(2); // first load + one reload
   });
 
@@ -200,24 +274,100 @@ describe("endpoints", () => {
     });
     open("endpoints", fakeApi({ checkEndpoint }));
     const user = userEvent.setup();
-    const recheck = (await screen.findAllByRole("button", { name: "Kiểm tra lại" }))[0];
-    await user.click(recheck);
-    const row = recheck.closest("tr") as HTMLElement;
-    expect(await within(row).findByText(/Không gọi được máy chủ/)).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Kiểm tra vanilla" }));
+    expect(await within(rowOf("vanilla")).findByText(/Không gọi được máy chủ/)).toBeInTheDocument();
   });
 
-  it("sets the baseline, checks on demand and asks before deleting", async () => {
+  it("edits name, address, key, notes and baseline in the drawer, sending only what changed", async () => {
+    const updateEndpoint = vi.fn(async () => ENDPOINTS[1]);
+    const api = fakeApi({ updateEndpoint });
+    open("endpoints", api);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Sửa adaptive" }));
+    const drawer = screen.getByRole("dialog", { name: "Sửa endpoint" });
+    expect(within(drawer).getByText("Đã đặt khoá, không hiện lại")).toBeInTheDocument();
+    await user.clear(within(drawer).getByLabelText("Tên hiển thị"));
+    await user.type(within(drawer).getByLabelText("Tên hiển thị"), "adaptive L4");
+    await user.clear(within(drawer).getByLabelText("Địa chỉ API"));
+    await user.type(within(drawer).getByLabelText("Địa chỉ API"), "https://acct--adaptive-l4.modal.run/v1");
+    await user.click(within(drawer).getByRole("checkbox", { name: /endpoint mốc/ }));
+    await user.click(within(drawer).getByRole("button", { name: "Đổi khoá" }));
+    await user.type(within(drawer).getByLabelText("Khoá mới"), "k-2");
+    await user.clear(within(drawer).getByLabelText("GPU"));
+    await user.type(within(drawer).getByLabelText("GPU"), "NVIDIA A10G");
+    await user.selectOptions(within(drawer).getByLabelText("Cách giải mã"), "Không nháp (vanilla)");
+    await user.click(within(drawer).getByRole("button", { name: "Lưu thay đổi" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(updateEndpoint).toHaveBeenCalledWith(FAST, {
+      name: "adaptive L4", base_url: "https://acct--adaptive-l4.modal.run/v1", api_key: "k-2", is_baseline: true,
+      meta: { gpu: "NVIDIA A10G", draft_method: "none", adaptive: null },
+    });
+    expect(api.endpoints).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the drawer open with the reason when a new address does not answer", async () => {
+    const updateEndpoint = vi.fn(async () => {
+      throw new ApiError(422, "Endpoint chưa sẵn sàng (HTTP 503): GPU đang khởi động hoặc đang ngủ.");
+    });
+    open("endpoints", fakeApi({ updateEndpoint }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "vanilla" }));
+    const drawer = screen.getByRole("dialog", { name: "Sửa endpoint" });
+    await user.type(within(drawer).getByLabelText("Địa chỉ API"), "x");
+    await user.click(within(drawer).getByRole("button", { name: "Lưu thay đổi" }));
+    expect(await within(drawer).findByText(/HTTP 503/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Sửa endpoint" })).toBeInTheDocument();
+  });
+
+  it("removes a key and sends nothing else", async () => {
     const api = fakeApi();
     open("endpoints", api);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("radio", { name: "Chọn adaptive làm mốc" }));
-    expect(api.updateEndpoint).toHaveBeenCalledWith(FAST, { is_baseline: true });
-    await user.click(screen.getAllByRole("button", { name: "Kiểm tra lại" })[0]);
-    expect(api.checkEndpoint).toHaveBeenCalledWith(BASE);
-    await user.click(screen.getByRole("button", { name: "Xoá adaptive" }));
+    await user.click(await screen.findByRole("button", { name: "Sửa vanilla" }));
+    const drawer = screen.getByRole("dialog", { name: "Sửa endpoint" });
+    await user.click(within(drawer).getByRole("button", { name: "Bỏ khoá" }));
+    expect(within(drawer).getByText("Sẽ bỏ khoá khi lưu")).toBeInTheDocument();
+    await user.click(within(drawer).getByRole("button", { name: "Lưu thay đổi" }));
+    expect(api.updateEndpoint).toHaveBeenCalledWith(BASE, { api_key: null });
+  });
+
+  it("fills the notes from the serving_config.json the CLI wrote", async () => {
+    const api = fakeApi();
+    open("endpoints", api);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Sửa vanilla" }));
+    const drawer = screen.getByRole("dialog", { name: "Sửa endpoint" });
+    const config = { target_model: "Qwen/Qwen2.5-7B-Instruct-AWQ", draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+      draft_method: "eagle3", enable_adaptive: true, hardware: { device_name: "NVIDIA A10G" } };
+    await user.upload(within(drawer).getByLabelText("Nạp từ serving_config.json"),
+      new File([JSON.stringify(config)], "serving_config.json", { type: "application/json" }));
+    expect(await within(drawer).findByText(/Đã đọc serving_config.json/)).toBeInTheDocument();
+    expect(within(drawer).getByLabelText("GPU")).toHaveValue("NVIDIA A10G");
+    expect(within(drawer).getByLabelText("Model nháp")).toHaveValue("duckhoi/qwen2.5-7b-eagle3.1-speculator");
+    await user.click(within(drawer).getByRole("button", { name: "Lưu thay đổi" }));
+    expect(api.updateEndpoint).toHaveBeenCalledWith(BASE, { meta: {
+      gpu: "NVIDIA A10G", draft_method: "eagle3", adaptive: true, draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+      target_model: "Qwen/Qwen2.5-7B-Instruct-AWQ" } });
+  });
+
+  it("asks before deleting and says what deleting does not stop", async () => {
+    const api = fakeApi();
+    open("endpoints", api);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Xoá vanilla" }));
+    let confirm = screen.getByRole("alertdialog", { name: "Xoá vanilla?" });
+    expect(confirm).toHaveTextContent("không bị tắt");
+    expect(confirm).toHaveTextContent("Đây là endpoint mốc");
+    await user.click(within(confirm).getByRole("button", { name: "Giữ lại" }));
     expect(api.deleteEndpoint).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Xoá" }));
-    expect(api.deleteEndpoint).toHaveBeenCalledWith(FAST);
+
+    await user.click(screen.getByRole("button", { name: "Sửa adaptive" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Sửa endpoint" })).getByRole("button", { name: "Xoá endpoint" }));
+    confirm = screen.getByRole("alertdialog", { name: "Xoá adaptive?" });
+    expect(confirm).not.toHaveTextContent("Đây là endpoint mốc");
+    await user.click(within(confirm).getByRole("button", { name: "Xoá endpoint" }));
+    await waitFor(() => expect(api.deleteEndpoint).toHaveBeenCalledWith(FAST));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("does not warn when the served names differ but the model behind them is the same", async () => {

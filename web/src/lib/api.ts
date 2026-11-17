@@ -1,5 +1,5 @@
 // Client of the FastAPI backend (src/api). The browser only knows the backend URL and the demo key the user
-// typed. Endpoint API keys are sent once when an endpoint is added and are never returned by the backend.
+// typed. Endpoint API keys are sent when an endpoint is added or its key is changed, and are never returned.
 
 export interface Status {
   backend: string;
@@ -47,6 +47,33 @@ export interface DetectResult {
   platform: Platform | null;
   model_id: string | null;
   max_model_len: number | null;
+  endpoint_id?: string; // code "exists": the saved endpoint with this address
+  name?: string;
+}
+
+// One address to add, with the name and key typed on its row (design D14).
+export interface NewEndpoint {
+  url: string;
+  name?: string;
+  api_key?: string;
+}
+
+// Notes on how an endpoint is served; null removes a note.
+export interface EndpointNotes {
+  gpu?: string | null;
+  draft_method?: string | null;
+  draft_model?: string | null;
+  target_model?: string | null;
+  adaptive?: boolean | null;
+}
+
+// Fields left out stay as they are; api_key null removes the key.
+export interface EndpointChange {
+  name?: string;
+  is_baseline?: boolean;
+  base_url?: string;
+  api_key?: string | null;
+  meta?: EndpointNotes;
 }
 
 export interface Money {
@@ -306,12 +333,8 @@ export interface Api {
   status(): Promise<Status>;
   endpoints(): Promise<{ endpoints: Endpoint[] }>;
   detectEndpoints(urls: string[], apiKey?: string): Promise<{ results: DetectResult[] }>;
-  addEndpoints(
-    urls: string[],
-    apiKey?: string,
-    servingConfig?: unknown,
-  ): Promise<{ results: DetectResult[]; saved: Endpoint[] }>;
-  updateEndpoint(endpointId: string, change: { name?: string; is_baseline?: boolean }): Promise<Endpoint>;
+  addEndpoints(endpoints: NewEndpoint[]): Promise<{ results: DetectResult[]; saved: Endpoint[] }>;
+  updateEndpoint(endpointId: string, change: EndpointChange): Promise<Endpoint>;
   deleteEndpoint(endpointId: string): Promise<{ deleted: string }>;
   checkEndpoint(endpointId: string): Promise<Endpoint>;
   upload(file: File, endpointIds: string[]): Promise<{ job_id: string; endpoint_ids: string[] }>;
@@ -390,8 +413,7 @@ export function createApi(baseUrl: string, getKey: () => string | null): Api {
     status: () => call<Status>("/api/status", {}, false),
     endpoints: () => call("/api/endpoints"),
     detectEndpoints: (urls, apiKey) => call("/api/endpoints/detect", json("POST", { urls, api_key: apiKey || null })),
-    addEndpoints: (urls, apiKey, servingConfig) =>
-      call("/api/endpoints", json("POST", { urls, api_key: apiKey || null, serving_config: servingConfig ?? null })),
+    addEndpoints: (endpoints) => call("/api/endpoints", json("POST", { endpoints })),
     updateEndpoint: (endpointId, change) => call(`/api/endpoints/${id(endpointId)}`, json("PATCH", change)),
     deleteEndpoint: (endpointId) => call(`/api/endpoints/${id(endpointId)}`, { method: "DELETE" }),
     checkEndpoint: (endpointId) => call(`/api/endpoints/${id(endpointId)}/check`, { method: "POST" }),

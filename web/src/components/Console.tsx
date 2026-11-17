@@ -3,7 +3,7 @@
 import { Activity, ChevronRight, Gauge, LogOut, Plus, Server } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import AddEndpointDialog from "@/components/AddEndpointDialog";
+import AddEndpointDrawer from "@/components/AddEndpointDrawer";
 import EndpointsPage from "@/components/EndpointsPage";
 import KeyGate from "@/components/KeyGate";
 import Node1Page from "@/components/Node1Page";
@@ -241,7 +241,7 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
       </div>
 
       {adding && (
-        <AddEndpointDialog
+        <AddEndpointDrawer
           api={api}
           onClose={() => setAdding(false)}
           onSaved={async () => {

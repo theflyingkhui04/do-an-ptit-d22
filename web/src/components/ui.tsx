@@ -1,8 +1,8 @@
 "use client";
 
-import { Loader2, type LucideIcon } from "lucide-react";
+import { Check, Copy, Loader2, X, type LucideIcon } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import type { Endpoint } from "@/lib/api";
 import { formatCell, formatMs } from "@/lib/format";
@@ -64,14 +64,14 @@ export function Spinner({ className }: { className?: string }) {
   return <Loader2 aria-hidden data-testid="spinner" className={cx("size-4 shrink-0 animate-spin", className)} />;
 }
 
-/** Current time, refreshed every second while `active`: drives the "· 12 s" waiting counters. */
-export function useNow(active: boolean): number {
+/** Current time, refreshed every `everyMs` (one second by default) while `active`: drives waiting counters. */
+export function useNow(active: boolean, everyMs = 1000): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    const timer = window.setInterval(() => setNow(Date.now()), everyMs);
     return () => window.clearInterval(timer);
-  }, [active]);
+  }, [active, everyMs]);
   return now;
 }
 
@@ -84,7 +84,7 @@ export function clockTime(date: Date): string {
 }
 
 export function Button({ variant = "primary", icon: Icon, loading = false, children, className, ...props }: {
-  variant?: "primary" | "ghost" | "danger";
+  variant?: "primary" | "ghost" | "danger" | "danger-solid";
   icon?: LucideIcon;
   // Shows a spinner in place of the icon and tells assistive tech the action is running.
   loading?: boolean;
@@ -93,6 +93,7 @@ export function Button({ variant = "primary", icon: Icon, loading = false, child
     primary: "bg-ink text-surface hover:opacity-90",
     ghost: "border border-line bg-surface text-ink hover:bg-sunken",
     danger: "border border-line bg-surface text-bad hover:bg-bad-tint",
+    "danger-solid": "bg-bad text-white hover:opacity-90",
   }[variant];
   return (
     <button
@@ -104,6 +105,138 @@ export function Button({ variant = "primary", icon: Icon, loading = false, child
       {loading ? <Spinner /> : Icon && <Icon aria-hidden className="size-4" />}
       {children}
     </button>
+  );
+}
+
+// Icon-only copy button; the clipboard can refuse (older desktop apps), then the text stays selectable.
+export function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return (
+    <button
+      type="button"
+      aria-label={copied ? "Đã copy" : label}
+      title={copied ? "Đã copy" : label}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+        } catch {
+          setCopied(false);
+        }
+      }}
+      className="grid size-6 shrink-0 place-items-center rounded-md text-ink-3 hover:bg-sunken hover:text-ink"
+    >
+      {copied ? <Check aria-hidden className="size-3.5 text-good" /> : <Copy aria-hidden className="size-3.5" />}
+    </button>
+  );
+}
+
+// Side panel for adding or editing (design D14). Esc and the backdrop close it unless `paused`
+// (a confirmation is open on top); focus goes back to the control that opened it.
+export function Drawer({ title, aside, onClose, footer, children, paused = false }: {
+  title: string;
+  aside?: ReactNode;
+  onClose: () => void;
+  footer?: ReactNode;
+  children: ReactNode;
+  paused?: boolean;
+}) {
+  const titleId = useId();
+  const close = useRef(onClose);
+  const hold = useRef(paused);
+  useEffect(() => {
+    close.current = onClose;
+    hold.current = paused;
+  });
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !hold.current) close.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus?.();
+    };
+  }, []);
+  return (
+    <>
+      <div aria-hidden className="fixed inset-0 z-30 bg-[rgb(10_16_22/0.45)]" onClick={() => !hold.current && close.current()} />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="fixed inset-y-0 right-0 z-40 flex w-full max-w-[560px] animate-fade-in flex-col border-l border-line bg-surface text-[14px] text-ink shadow-[-12px_0_32px_rgb(0_0_0/0.18)]"
+      >
+        <header className="flex items-center gap-2.5 border-b border-line px-5 py-3.5">
+          <h2 id={titleId} className="text-base font-bold">{title}</h2>
+          {aside}
+          <button type="button" onClick={onClose} aria-label="Đóng" className="ml-auto rounded-md p-1 text-ink-3 hover:bg-sunken">
+            <X aria-hidden className="size-5" />
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-[18px]">{children}</div>
+        {footer && <footer className="flex flex-wrap items-center justify-end gap-2.5 border-t border-line px-5 py-3">{footer}</footer>}
+      </aside>
+    </>
+  );
+}
+
+// A question before an action that cannot be undone. The safe answer has the focus; Esc keeps things as they are.
+export function ConfirmDialog({ title, children, confirmLabel, confirmIcon, busy = false, onConfirm, onCancel }: {
+  title: string;
+  children: ReactNode;
+  confirmLabel: string;
+  confirmIcon?: LucideIcon;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const titleId = useId();
+  const keep = useRef<HTMLButtonElement>(null);
+  const cancel = useRef(onCancel);
+  useEffect(() => {
+    cancel.current = onCancel;
+  });
+  useEffect(() => {
+    keep.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancel.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <>
+      <div aria-hidden className="fixed inset-0 z-50 bg-[rgb(10_16_22/0.45)]" onClick={onCancel} />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="fixed left-1/2 top-1/2 z-[60] w-[min(480px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 animate-fade-in rounded-2xl bg-surface text-ink shadow-[0_20px_48px_rgb(0_0_0/0.25)]"
+      >
+        <header className="border-b border-line px-5 py-3.5">
+          <h2 id={titleId} className="text-base font-bold">{title}</h2>
+        </header>
+        <div className="grid gap-2.5 px-5 py-4 text-[14px]">{children}</div>
+        <footer className="flex flex-wrap justify-end gap-2.5 border-t border-line px-5 py-3">
+          <button
+            ref={keep}
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center justify-center rounded-lg border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-ink hover:bg-sunken"
+          >
+            Giữ lại
+          </button>
+          <Button variant="danger-solid" icon={confirmIcon} loading={busy} disabled={busy} onClick={onConfirm}>{confirmLabel}</Button>
+        </footer>
+      </div>
+    </>
   );
 }
 
