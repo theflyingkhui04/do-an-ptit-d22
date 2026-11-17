@@ -1,5 +1,5 @@
 {
-  "flexsds_version": "0.2.2",
+  "flexsds_version": "0.2.3",
   "action": "serve",
   "backend": "modal",
   "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
@@ -17,7 +17,7 @@
   "profile_path": "/home/duckhoi04/.flexsds/profiles/profile_sm_86_remote_a10g_fcda5486b12d.json",
   "target_gpu": "A10G",
   "colab_tunnel_url": "",
-  "modal_deploy": false,
+  "modal_deploy": true,
   "hardware": {
     "device_name": "Remote A10G",
     "sm_architecture": "sm_86",

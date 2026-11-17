@@ -303,14 +303,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif args.auth_action == "login":
             import getpass
             prov = args.provider
+            if prov == "modal":
+                from flexsds.server.modal_auth import ensure_modal, print_token_instructions, save_verified_modal_token
+                try:
+                    ensure_modal()
+                    print_token_instructions()
+                    if args.key not in (None, 'MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'):
+                        print('Modal requires MODAL_TOKEN_ID and MODAL_TOKEN_SECRET.')
+                        return 1
+                    token_id = (args.token if args.key != 'MODAL_TOKEN_SECRET' else None) or getpass.getpass("Enter MODAL_TOKEN_ID: ")
+                    secret = (args.token if args.key == 'MODAL_TOKEN_SECRET' else None) or getpass.getpass("Enter MODAL_TOKEN_SECRET: ")
+                    save_verified_modal_token(cred_mgr, token_id, secret)
+                except (OSError, RuntimeError) as exc:
+                    print(str(exc))
+                    return 1
+                return 0
             key_name = args.key or ("HF_TOKEN" if prov == "huggingface" else ("MODAL_TOKEN_ID" if prov == "modal" else "TOKEN"))
             val = args.token or getpass.getpass(f"Enter {key_name} for {prov}: ")
-            if prov == "modal" and args.key is None and val:
-                secret = getpass.getpass("Enter MODAL_TOKEN_SECRET for modal: ").strip()
-                if not secret:
-                    print("Both Modal token ID and secret are required.")
-                    return 1
-                cred_mgr.set_credential(prov, "MODAL_TOKEN_SECRET", secret)
             if val:
                 cred_mgr.set_credential(prov, key_name, val.strip())
                 print(f"\033[32m✔ Securely saved {key_name} for {prov} (POSIX mode 0600; Windows uses filesystem ACLs).\033[0m")
@@ -399,7 +408,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
             draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
 
-            preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
+            from flexsds.cli.spinner import status_spinner
+            with status_spinner("Checking models compatibility"):
+                preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
                                                    args.backend, getattr(args, "gpu", "L4"),
                                                    max_num_seqs=args.max_num_seqs, max_model_len=args.max_model_len)
             if args.eagle_version:

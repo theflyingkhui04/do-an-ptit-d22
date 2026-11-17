@@ -36,7 +36,7 @@ class ColabServingRunner:
             "cost_profile": profile,
             "tunnel_method": "cloudflared",
             "steps": [
-                "1. Open Google Colab and upload 'notebooks/flexsds_colab_server.ipynb' (or open via notebook URL if repo is authorized).",
+                "1. Open Google Colab and upload the configured notebook from the local path shown below.",
                 f"2. Select Runtime -> Change runtime type -> Choose {runtime_desc.split(' ')[0]} GPU.",
                 "3. Click 'Run all' to set up the environment and launch vLLM + Cloudflare tunnel.",
                 "4. Copy the public *.trycloudflare.com URL and paste it into this prompt.",

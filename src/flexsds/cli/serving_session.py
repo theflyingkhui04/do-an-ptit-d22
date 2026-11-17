@@ -29,7 +29,8 @@ def present_session(proc, output, *, endpoint, model, config, deploy):
                 import os
                 import shutil
                 import subprocess
-                cmd = [shutil.which('modal') or 'modal', 'app', 'logs',
+                from flexsds.server.modal_auth import modal_command
+                cmd = [*modal_command(), 'app', 'logs',
                        output.app_url.rstrip('/').rsplit('/', 1)[-1] if output.app_url else 'flexsds-serving']
                 from flexsds.cli.process_progress import ProcessProgress
                 watcher = ProcessProgress('serving')

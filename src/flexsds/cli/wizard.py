@@ -174,6 +174,8 @@ CHOICE_HELP = {
     'Realtime chat with deployed LLM': 'Send messages to the verified endpoint with streaming responses. /exit returns here.',
     "Launch serving": "Configure models, check compatibility, and start an inference API.",
     "Detect hardware": "Show local GPU, CUDA availability, and available memory.",
+    "Running endpoint": "Browse deployed Modal endpoints, view details, chat, or stop a deployment.",
+    "Delete Modal token": "Remove local Modal credentials and disconnect the active Modal profile.",
     "Measure & available profile GPU": "List available profiles and measure GPU costs in Fast or Full mode.",
     "Default:": "Use Qwen2.5-7B AWQ with the team's EAGLE-3.1 speculator.",
     "Custom Hugging Face model": "Enter your own target and draft model IDs or local paths.",
@@ -394,6 +396,52 @@ def run_profile_wizard(hw_info):
             print("Legacy profiles require measurement for adaptive serving.")
     else:
         print("  No GPU profiles available.")
+    action = prompt_choice("Profile action:", ["Measure now", "Import hardware profile", "Back to main menu"], default_idx=0)
+    if action == "Back to main menu":
+        return {"action": "profile", "back": True}
+    if action == "Import hardware profile":
+        return run_profile_import()
+    return run_profile_measurement(hw_info)
+
+
+def run_profile_import():
+    from flexsds.core.profile_import import import_profile, read_profile_source
+    from flexsds.cli.profile_paste import paste_profile
+    import sqlite3
+    while True:
+        choice = prompt_choice("Import source:", ["Paste JSON (Ctrl+X to save)", "File path or URL", "Back"], default_idx=0)
+        if choice == "Back":
+            return {"action": "profile", "back": True}
+        try:
+            if choice.startswith("Paste JSON"):
+                text = paste_profile()
+                if text is None:
+                    continue
+            else:
+                print("For web links, use a direct/raw JSON URL.")
+                source = prompt_string("Hardware profile file path or URL:", "")
+                if not source:
+                    continue
+                from flexsds.cli.spinner import status_spinner
+                with status_spinner("Reading hardware profile"):
+                    text = read_profile_source(source)
+            path, status = import_profile(text)
+        except KeyboardInterrupt:
+            print("Import cancelled.")
+            return {"action": "profile", "back": True}
+        except (OSError, EOFError, ValueError, TypeError, KeyError, sqlite3.Error) as exc:
+            print(f"Profile import failed: {exc}")
+            if not sys.stdin.isatty():
+                return {"action": "abort", "exit_code": 1}
+            continue
+        print(f"Hardware profile imported: {path}")
+        print(f"Profile database: {path.parent / 'profiles.sqlite3'}")
+        if status == "legacy":
+            print("Saved as legacy. Adaptive serving still requires verified measurement evidence.")
+        return {"action": "profile", "profile_path": str(path), "status": status, "back": True}
+
+
+def run_profile_measurement(hw_info):
     platform = prompt_choice("Measurement platform:", ["Modal", "Local CUDA (including Colab runtime)"], default_idx=0)
     backend = "modal" if platform == "Modal" else "local"
     hardware = hw_info
@@ -425,19 +473,35 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     """Guides the user through setting up and launching FlexSDS serving."""
     print("\n\033[1;37m--- FlexSDS Serving Wizard ---\033[0m")
 
-    # Step 1: Select Action
-    action = prompt_choice(
-        "Select action:",
-        ["Launch serving", "Detect hardware", "Measure & available profile GPU"],
-        default_idx=0,
-    )
+    # Return to this menu after viewing hardware or managing Modal resources.
+    while True:
+        action = prompt_choice(
+            "Select action:",
+            ["Launch serving", "Detect hardware", "Measure & available profile GPU", "Delete Modal token", "Running endpoint"],
+            default_idx=0,
+        )
+        if action == "Measure & available profile GPU":
+            result = run_profile_wizard(hw_info)
+            if result.get("back"):
+                continue
+            return result
+        if action == "Running endpoint":
+            from flexsds.cli.endpoints import run_endpoint_menu
+            run_endpoint_menu()
+            continue
+        if action == "Detect hardware":
+            print(f"\n\033[32m✔ Hardware specs: {hw_info.summary()}\033[0m")
+            continue
+        if action != "Delete Modal token":
+            break
+        from flexsds.server.modal_auth import clear_modal
+        try:
+            clear_modal(ModalServingRunner().cred_mgr)
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"Modal token deletion failed: {exc}")
+        else:
+            print("Modal token deleted locally. Log in again to use Modal.")
 
-    if action == "Detect hardware":
-        print(f"\n\033[32m✔ Hardware specs: {hw_info.summary()}\033[0m")
-        return {"action": "detect"}
-
-    if action == "Measure & available profile GPU":
-        return run_profile_wizard(hw_info)
 
     # Step 2: Target & Draft Model Configuration
     model_mode = prompt_choice(
@@ -480,7 +544,9 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     max_model_len = prompt_positive_int("Maximum context length:", 4096)
     allow_oom_risk = False
     while True:
-        preflight = evaluate_serving_preflight(target_model, draft_model, hw_info, backend, target_gpu,
+        from flexsds.cli.spinner import status_spinner
+        with status_spinner("Checking models compatibility"):
+            preflight = evaluate_serving_preflight(target_model, draft_model, hw_info, backend, target_gpu,
                                                    max_num_seqs=max_num_seqs, max_model_len=max_model_len)
         if preflight.report.identified_method == "eagle" and preflight.report.checkpoint_verified:
             from flexsds.core.compatibility import select_report_eagle_version
@@ -550,19 +616,27 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
     modal_deploy = False
     if backend == "modal":
         modal_runner = ModalServingRunner()
+        from flexsds.server.modal_auth import ensure_modal, print_token_instructions, save_verified_modal_token
+        try:
+            ensure_modal()
+        except (OSError, RuntimeError) as exc:
+            print(str(exc))
+            return {"action": "abort", "exit_code": 1}
         if not modal_runner.check_credentials():
             print("\n\033[1;33m⚠ [Authentication Warning] Modal credentials not configured.\033[0m")
             print("  Modal requires MODAL_TOKEN_ID and MODAL_TOKEN_SECRET to serve or deploy.")
             setup_now = prompt_bool("Configure Modal credentials now?", default_val=True)
             if setup_now:
+                print_token_instructions()
                 token_id = prompt_string("Enter MODAL_TOKEN_ID (or press Enter to skip):", default_val="")
                 import getpass
                 token_secret = getpass.getpass("Enter MODAL_TOKEN_SECRET (or press Enter to skip): ")
                 if token_id and token_secret:
-                    modal_runner.cred_mgr.set_credential("modal", "MODAL_TOKEN_ID", token_id.strip())
-                    modal_runner.cred_mgr.set_credential("modal", "MODAL_TOKEN_SECRET", token_secret.strip())
-                    modal_runner.cred_mgr.inject_into_environ()
-                    print("\033[32m✔ Modal credentials saved securely.\033[0m")
+                    try:
+                        save_verified_modal_token(modal_runner.cred_mgr, token_id, token_secret)
+                    except (OSError, RuntimeError) as exc:
+                        print(str(exc))
+                        return {"action": "abort", "exit_code": 1}
                 else:
                     print("  Credentials not provided. You can configure later via 'flexsds auth login --provider modal'.")
             else:
@@ -572,54 +646,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
                                    ["Development (modal serve)", "Production (modal deploy)"], default_idx=0)
         modal_deploy = "Production" in mode_choice
 
-    elif backend == "colab":
-        colab_runner = ColabServingRunner()
-        nb_path = colab_runner.resolve_notebook_path()
-        colab_runner.sync_notebook_config({
-            "target_model": target_model,
-            "draft_model": draft_model,
-            "draft_method": report.draft_method,
-            "eagle_version": report.eagle_version.removeprefix("EAGLE-"),
-            "target_revision": report.target_revision,
-            "draft_revision": report.draft_revision,
-            "enable_adaptive": True,
-            "max_num_seqs": max_num_seqs, "max_model_len": max_model_len,
-        }, notebook_path=str(nb_path))
-
-        instructions = colab_runner.get_colab_instructions(target_gpu=target_gpu)
-        abs_nb = str(nb_path.resolve())
-        parent_dir = str(nb_path.parent.resolve())
-        cmd_linux = f'xdg-open "{parent_dir}"'
-        cmd_win = f'explorer /select,"{abs_nb}"'
-
-        print("\n\033[1;37mGoogle Colab Instructions:\033[0m")
-        for step in instructions["steps"]:
-            print(f"  \033[90m{step}\033[0m")
-        print(f"\n  \033[1;37mLocal notebook path (upload this to Colab):\033[0m")
-        print(f"    \033[36m{abs_nb}\033[0m")
-        print(f"  \033[1;37mCommands to reveal notebook folder:\033[0m")
-        print(f"    • Linux  : \033[33m{cmd_linux}\033[0m")
-        print(f"    • Windows: \033[33m{cmd_win}\033[0m")
-        print(f"  \033[1;37mDirect Colab URL (if repository is authorized):\033[0m")
-        print(f"    \033[34m{instructions['notebook_url']}\033[0m\n")
-
-        open_folder = prompt_bool("Open containing folder in file manager now?", default_val=False)
-        if open_folder:
-            if colab_runner.open_in_file_manager(nb_path):
-                print("  \033[32m✔ File manager opened.\033[0m")
-            else:
-                print("  \033[33m⚠ Could not open file manager automatically. Please use the command above.\033[0m")
-
-        colab_tunnel_url = prompt_string("Paste Cloudflare tunnel URL (Enter to skip):", "")
-        if colab_tunnel_url:
-            print("\033[90mVerifying tunnel connection...\033[0m")
-            if colab_runner.verify_tunnel_health(colab_tunnel_url):
-                print("\033[32m✔ Cloudflare tunnel is reachable.\033[0m")
-            else:
-                print("\033[33m⚠ Endpoint not responding yet (model weights may still be loading).\033[0m")
-
-    else:
-        backend = "local"
+    elif backend == "local":
         if not hw_info.is_cuda_available:
             print("\n\033[33m⚠ No NVIDIA CUDA GPU detected on this system.\033[0m")
             print("  Modal or Google Colab is recommended for hardware acceleration.")
@@ -729,6 +756,47 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
             "free_vram_mb": serving_hw.free_vram_mb,
         },
     }
+
+    if backend == "colab":
+        colab_runner = ColabServingRunner()
+        nb_path = colab_runner.resolve_notebook_path()
+        if not colab_runner.sync_notebook_config(config, notebook_path=str(nb_path)):
+            print("Could not prepare the configured Colab notebook. Check the notebook file and write permissions.")
+            return {"action": "abort", "exit_code": 1}
+
+        instructions = colab_runner.get_colab_instructions(target_gpu=target_gpu)
+        abs_nb = str(nb_path.resolve())
+        parent_dir = str(nb_path.parent.resolve())
+        cmd_linux = f'xdg-open "{parent_dir}"'
+        cmd_win = f'explorer /select,"{abs_nb}"'
+
+        print("\n\033[1;37mGoogle Colab Instructions:\033[0m")
+        for step in instructions["steps"]:
+            print(f"  \033[90m{step}\033[0m")
+        print(f"\n  \033[1;37mLocal notebook path (upload this to Colab):\033[0m")
+        print(f"    \033[36m{abs_nb}\033[0m")
+        print(f"  \033[1;37mCommands to reveal notebook folder:\033[0m")
+        print(f"    • Linux  : \033[33m{cmd_linux}\033[0m")
+        print(f"    • Windows: \033[33m{cmd_win}\033[0m")
+        print(f"  \033[1;37mTemplate Colab URL (does not include your selected configuration):\033[0m")
+        print(f"    \033[34m{instructions['notebook_url']}\033[0m\n")
+
+        open_folder = prompt_bool("Open containing folder in file manager now?", default_val=False)
+        if open_folder:
+            if colab_runner.open_in_file_manager(nb_path):
+                print("  \033[32m✔ File manager opened.\033[0m")
+            else:
+                print("  \033[33m⚠ Could not open file manager automatically. Please use the command above.\033[0m")
+
+        colab_tunnel_url = prompt_string("Paste Cloudflare tunnel URL (Enter to skip):", "")
+        if colab_tunnel_url:
+            print("\033[90mVerifying tunnel connection...\033[0m")
+            if colab_runner.verify_tunnel_health(colab_tunnel_url):
+                print("\033[32m✔ Cloudflare tunnel is reachable.\033[0m")
+            else:
+                print("\033[33m⚠ Endpoint not responding yet (model weights may still be loading).\033[0m")
+
+        config["colab_tunnel_url"] = colab_tunnel_url
 
     config_file = Path("serving_config.json")
     with open(config_file, "w", encoding="utf-8") as f:
