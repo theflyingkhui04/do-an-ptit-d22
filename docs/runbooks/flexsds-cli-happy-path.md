@@ -5,3 +5,46 @@
 > **Ngày lập:** 11/11/2026  
 
 Vui lòng xem chi tiết tài liệu kịch bản tại đường dẫn trên.
+
+## Modal onboarding
+
+- Menu đầu có `Delete Modal token`: xóa credentials Modal local và token trong
+  active native profile; không thu hồi token trên website Modal.
+- Khi đăng nhập hoặc chạy Modal mà chưa cài SDK/CLI, FlexSDS tự chạy
+  `python -m pip install modal` bằng Python đang chạy FlexSDS. Nếu launcher
+  chưa nằm trong PATH, FlexSDS dùng `python -m modal`.
+- Wizard và `flexsds auth login --provider modal` in hướng dẫn tiếng Anh từng
+  bước: đăng nhập modal.com, chọn workspace, vào Settings > API Tokens, tạo
+  token rồi copy Token ID và Token Secret vào CLI.
+- CLI kiểm tra bằng `modal token info` với chính cặp token vừa nhập, hiển thị
+  `Modal workspace: <name> (<id>)`, rồi mới lưu credentials. Token không hợp lệ
+  hoặc lỗi kết nối không ghi đè credentials cũ; thử lại sau khi kiểm tra key.
+
+Tham khảo: [Modal token CLI](https://frontend.modal.com/docs/cli/latest/token).
+
+## Running endpoint
+
+Chọn `Running endpoint` từ menu chính để lấy danh sách web endpoint đã deploy
+trong workspace/environment Modal hiện tại. Deployment có 0 active tasks vẫn
+được hiển thị; app development, app đã dừng và function batch không nằm trong
+danh sách này. `Refresh list` tải lại dữ liệu, `Back to main menu` quay lại menu.
+
+Chọn một endpoint để xem URL, App ID, Function ID, GPU, trạng thái và thời điểm
+deploy. `Chat with endpoint` mở chat và tự lấy model qua API. Endpoint có xác
+thực riêng cần cấu hình quyền truy cập phù hợp. `Stop deployment` yêu cầu xác
+nhận app cụ thể, rồi dừng bằng App ID; thao tác này dừng toàn bộ endpoint trong
+cùng app. Dừng xong quay lại danh sách cập nhật. Chỉ xem thông tin không gửi
+request inference và không chủ động đánh thức GPU.
+
+Tham khảo: [Modal app CLI](https://frontend.modal.com/docs/cli/latest/app).
+
+## Thứ tự cấu hình Colab
+
+Wizard hỏi bật/tắt HardwareAdaptive và xử lý profile trước khi cập nhật notebook.
+Nếu thiếu profile và chọn chuyển sang static, notebook cũng nhận
+`ENABLE_ADAPTIVE = False`. Sau khi chốt cấu hình, CLI đồng bộ notebook local,
+rồi mới hiện hướng dẫn upload, mở thư mục và hỏi tunnel URL. Khi không ghi được
+notebook, wizard báo lỗi và dừng để tránh upload file cấu hình cũ.
+
+Upload file ở đường dẫn local CLI vừa in. Link Colab từ repository chỉ mở bản
+template, không mang theo các lựa chọn vừa nhập trong wizard.

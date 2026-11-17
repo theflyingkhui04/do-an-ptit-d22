@@ -175,3 +175,71 @@ def test_modal_unicode_output_survives_legacy_pipe_encoding(monkeypatch, kind):
     assert marker in log_path.read_text(encoding='utf-8')
     assert os.environ['PYTHONIOENCODING'] == 'cp1252'
     assert os.environ['PYTHONUTF8'] == '0'
+
+
+@pytest.mark.parametrize('prefix', ['\x00', '\xe0'])
+def test_windows_arrow_sequences_and_letters_scroll_rendered_log(monkeypatch, capsys, prefix):
+    from collections import deque
+    from types import SimpleNamespace
+    keys = deque()
+    console = SimpleNamespace(kbhit=lambda: bool(keys), getwch=lambda: keys.popleft())
+    monkeypatch.setattr(pp.shutil, 'get_terminal_size', lambda *a: os.terminal_size((100, 12)))
+    progress = pp.ProcessProgress('serving')
+    progress.interactive = True
+    try:
+        for i in range(30):
+            progress.feed(f'line-{i:02d}\n')
+        progress.handle_key('\x0f')
+        assert 'line-29' in capsys.readouterr().out
+        keys.extend([prefix, 'H'])
+        progress.handle_key(pp.read_windows_key(console))
+        assert not keys  # Both halves must be consumed as one key.
+        frame = capsys.readouterr().out
+        assert 'line-26' in frame and 'line-29' not in frame
+        keys.extend([prefix, 'P'])
+        progress.handle_key(pp.read_windows_key(console))
+        assert 'line-29' in capsys.readouterr().out
+        for up, down in [('k', 'j'), ('K', 'J')]:
+            keys.append(up)
+            progress.handle_key(pp.read_windows_key(console))
+            assert 'line-29' not in capsys.readouterr().out
+            # Incoming lines should not push the history under the cursor.
+            progress.feed('new-live-line\n')
+            frame = capsys.readouterr().out
+            assert 'line-26' in frame and 'new-live-line' not in frame
+            keys.append(down)
+            progress.handle_key(pp.read_windows_key(console))
+            capsys.readouterr()
+            progress.handle_key('G')
+            assert 'new-live-line' in capsys.readouterr().out
+        progress.handle_key('\x0f')
+        assert not progress.details
+    finally:
+        progress.close()
+
+
+def test_windows_listener_dispatches_arrows_and_jk_without_enter(monkeypatch, capsys):
+    from collections import deque
+    from types import SimpleNamespace
+    keys = deque(['\x0f', '\xe0', 'H', 'k', 'j'])
+    monkeypatch.setitem(sys.modules, 'msvcrt', SimpleNamespace(
+        kbhit=lambda: bool(keys), getwch=lambda: keys.popleft()))
+    # Replace only this module's OS reference; pathlib keeps the real host OS.
+    monkeypatch.setattr(pp, 'os', SimpleNamespace(name='nt'))
+    progress = pp.ProcessProgress('serving')
+    progress.interactive = True
+    try:
+        for i in range(50):
+            progress.feed(f'log-{i}\n')
+        progress.start()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            with progress.lock:
+                if progress.details and progress.panel_offset == 3 and not keys:
+                    break
+            time.sleep(0.02)
+        assert progress.details and progress.panel_offset == 3
+        assert progress.listener.is_alive()
+    finally:
+        progress.close()
+    assert not progress.listener.is_alive()

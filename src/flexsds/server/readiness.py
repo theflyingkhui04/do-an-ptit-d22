@@ -13,7 +13,7 @@ def request_json(url, payload=None, timeout=10):
         return json.loads(body) if body else {}
 
 
-def verify_endpoint(endpoint, *, process=None, timeout=900, deployed=False):
+def verify_endpoint(endpoint, *, process=None, timeout=900, deployed=False, on_status=None):
     """A URL alone is insufficient; require actual model discovery and completion."""
     deadline = time.monotonic() + timeout
     last_error = 'endpoint has not responded'
@@ -25,9 +25,13 @@ def verify_endpoint(endpoint, *, process=None, timeout=900, deployed=False):
         try:
             remaining = max(0.1, min(30, deadline - time.monotonic()))
             request_json(endpoint.rstrip('/') + '/health', timeout=remaining)
+            if on_status:
+                on_status('Health OK; checking served models')
             models = request_json(endpoint.rstrip('/') + '/v1/models',
                                   timeout=max(0.1, min(30, deadline-time.monotonic())))
             model = models['data'][0]['id']
+            if on_status:
+                on_status('Models OK; verifying actual inference')
             result = request_json(endpoint.rstrip('/') + '/v1/completions',
                                   dict(model=model, prompt='Hello', max_tokens=1, temperature=0),
                                   timeout=max(0.1, min(60, deadline - time.monotonic())))
@@ -36,5 +40,7 @@ def verify_endpoint(endpoint, *, process=None, timeout=900, deployed=False):
             return model
         except (OSError, URLError, HTTPError, ValueError, KeyError, IndexError) as exc:
             last_error = str(exc)
+            if on_status:
+                on_status('Waiting for endpoint: ' + last_error[:160])
             time.sleep(min(2, max(0, deadline-time.monotonic())))
     raise RuntimeError(f'Endpoint readiness timed out: {last_error}')

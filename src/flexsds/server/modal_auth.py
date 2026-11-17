@@ -9,6 +9,67 @@ import subprocess
 import sys
 
 
+def ensure_modal():
+    """Install Modal into the running Python when no CLI or SDK is available."""
+    if shutil.which('modal'):
+        return
+    import importlib.util
+    if importlib.util.find_spec('modal') is not None:
+        return
+    from flexsds.cli.output import print_output as print
+    print('Modal is not installed. Installing Modal automatically...')
+    result = subprocess.run([sys.executable, '-m', 'pip', 'install', 'modal'],
+                            stdin=subprocess.DEVNULL)
+    if result.returncode:
+        raise RuntimeError('Automatic Modal installation failed. Check your connection and Python environment permissions, then retry.')
+
+
+def modal_command():
+    executable = shutil.which('modal')
+    return [executable] if executable else [sys.executable, '-m', 'modal']
+
+
+def print_token_instructions():
+    from flexsds.cli.output import print_output as print
+    print('\nHow to get your Modal API token:')
+    print('1. Open https://modal.com and sign in to your account.')
+    print('2. Select the workspace you want to use for serving.')
+    print('3. Open Settings > API Tokens (https://modal.com/settings/tokens).')
+    print('4. Create a new API token for that workspace.')
+    print('5. Copy the Token ID (ak-...) and Token Secret (as-...). The secret is shown only once.')
+    print('6. Paste the Token ID and Token Secret into the prompts below.')
+    print('FlexSDS will verify the token and display its workspace before continuing.\n')
+
+
+def save_verified_modal_token(manager, token_id, token_secret):
+    """Verify the pasted pair, show its workspace, then persist it locally."""
+    import re
+    from flexsds.cli.output import print_output as print
+    token_id, token_secret = token_id.strip(), token_secret.strip()
+    if not token_id or not token_secret:
+        raise RuntimeError('Both Modal token ID and secret are required.')
+    ensure_modal()
+    env = dict(os.environ, MODAL_TOKEN_ID=token_id, MODAL_TOKEN_SECRET=token_secret,
+               NO_COLOR='1', TERM='dumb', COLUMNS='240', PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
+    env.pop('PYTHONPATH', None)
+    print('Verifying Modal token and workspace...')
+    try:
+        result = subprocess.run([*modal_command(), 'token', 'info'], env=env,
+                                stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, encoding='utf-8', errors='replace', timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError('Could not verify the Modal workspace. Check your connection and retry.') from exc
+    # Never echo command output on failure: it may contain credential details.
+    workspace = re.search(r'^\s*Workspace:\s*(.+)$', result.stdout, re.MULTILINE)
+    if result.returncode or not workspace:
+        raise RuntimeError('Modal token verification failed. Check the token pair, workspace access, and connection, then retry.')
+    print('Modal workspace: ' + workspace.group(1).strip())
+    manager.set_credential('modal', 'MODAL_TOKEN_ID', token_id)
+    manager.set_credential('modal', 'MODAL_TOKEN_SECRET', token_secret)
+    os.environ.update(MODAL_TOKEN_ID=token_id, MODAL_TOKEN_SECRET=token_secret)
+    print('Modal credentials verified and saved.')
+
+
 def native_profile(action='inspect'):
     path = Path(os.environ.get('MODAL_CONFIG_PATH') or '~/.modal.toml').expanduser()
     if not path.exists():

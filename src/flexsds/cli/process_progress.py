@@ -17,6 +17,16 @@ LOG_DIR = Path.home() / '.flexsds' / 'logs'
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b\].*?(?:\x07|\x1b\\)')
 
 
+def read_windows_key(console):
+    """Consume the complete two-character sequence emitted for Windows arrows."""
+    if not console.kbhit():
+        return ''
+    key = console.getwch()
+    if key in ('\x00', '\xe0'):
+        return {'H': 'k', 'P': 'j', 'O': 'G'}.get(console.getwch(), '')
+    return key
+
+
 class ProcessProgress:
     def __init__(self, kind: str, total_cells: int = 0):
         self.kind = kind
@@ -29,6 +39,7 @@ class ProcessProgress:
         self.paused = False
         self.panel_offset = 0
         self.panel_signature = None
+        self.panel_total_rows = 0
         self.pending_notices = []
         self.closed = False
         self.interactive = sys.stdout.isatty() and sys.stdin.isatty()
@@ -116,7 +127,7 @@ class ProcessProgress:
             if app and app.group() != self.app_url:
                 self.app_url = app.group()
                 self.notice('View app: '+self.app_url)
-            error = re.search(r'(?:RuntimeError|ValueError|ImportError|ModuleNotFoundError|OSError): (.+)',clean)
+            error = re.search(r'(?:RuntimeError|ValueError|JSONDecodeError|ImportError|ModuleNotFoundError|OSError): (.+)',clean)
             if error and self.last_error is None:
                 self.last_error = error.group(1)
             cell = re.search(r'Calibration measured K=(\d+), B=(\d+)',clean)
@@ -146,13 +157,18 @@ class ProcessProgress:
         signature = (self.log_path.stat().st_size, width, height, self.panel_offset)
         if signature == self.panel_signature:
             return
-        self.panel_signature = signature
         self.log.flush()
         with self.log_path.open(encoding='utf-8') as saved:
             lines = [part for line in saved for part in
                      (textwrap.wrap(ANSI.sub('', line).rstrip(), width=width,
                                     replace_whitespace=True) or [''])]
+        # While viewing history, keep the same rows visible as new logs arrive.
+        # Offset zero is the explicit follow-latest mode.
+        if self.panel_offset and len(lines) > self.panel_total_rows:
+            self.panel_offset += len(lines) - self.panel_total_rows
+        self.panel_total_rows = len(lines)
         self.panel_offset = min(self.panel_offset, max(0, len(lines) - rows))
+        self.panel_signature = (signature[0], width, height, self.panel_offset)
         end = max(rows, len(lines) - self.panel_offset)
         visible = lines[max(0, end - rows):end]
         header = 'Modal logs | Ctrl+O: close | Up/Down or j/k: scroll | G: latest'
@@ -182,6 +198,22 @@ class ProcessProgress:
                     self._write('\r\x1b[K' + text + '\n')
                 self.pending_notices.clear()
                 self._draw()
+
+    def handle_key(self, key):
+        """Apply the same navigation to Windows key codes and letter shortcuts."""
+        with self.lock:
+            if self.closed or self.paused:
+                return
+            if key == '\x0f':
+                self.toggle_details()
+            elif self.details and key in ('j', 'J', 'k', 'K', 'G'):
+                # Account for new rows before changing the user's scroll offset.
+                self._draw_panel()
+                if key == 'G':
+                    self.panel_offset = 0
+                else:
+                    self.panel_offset = max(0, self.panel_offset + (3 if key.lower() == 'k' else -3))
+            self._draw()
 
     def suspend(self):
         """Release stdin and the terminal while log capture continues."""
@@ -232,7 +264,7 @@ class ProcessProgress:
                         key = ''
                         if os.name == 'nt':
                             import msvcrt
-                            if msvcrt.kbhit(): key = msvcrt.getwch()
+                            key = read_windows_key(msvcrt)
                         elif select.select([sys.stdin.fileno()],[],[],0)[0]:
                             fd = sys.stdin.fileno()
                             key = os.read(fd,1).decode(errors='replace')
@@ -240,12 +272,7 @@ class ProcessProgress:
                                 while select.select([fd], [], [], 0.01)[0]:
                                     key += os.read(fd, 1).decode(errors='replace')
                                 key = {'\x1b[A': 'k', '\x1b[B': 'j', '\x1b[F': 'G'}.get(key, key)
-                        if key == '\x0f': self.toggle_details()
-                        elif self.details and key in ('j', 'k', 'G'):
-                            with self.lock:
-                                if key == 'G': self.panel_offset = 0
-                                else: self.panel_offset = max(0, self.panel_offset + (3 if key == 'k' else -3))
-                        with self.lock: self._draw()
+                        self.handle_key(key)
                     except (OSError,ValueError):
                         return
             self.listener = threading.Thread(target=listen,daemon=True)

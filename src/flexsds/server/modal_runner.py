@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import re
 import time
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +17,38 @@ try:
 except ModuleNotFoundError:
     from src.flexsds.cli.output import print_output as print
     from src.flexsds.core.credentials import CredentialsManager
+
+
+@contextmanager
+def deployment_logs(output, env):
+    """Follow runtime logs while checking a published app; never stop the app."""
+    from flexsds.server.modal_auth import modal_command
+    child = reader = None
+    try:
+        try:
+            child = subprocess.Popen(
+                [*modal_command(), 'app', 'logs', ModalServingRunner.DEFAULT_APP_NAME, '--follow'],
+                env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', bufsize=1)
+        except OSError as exc:
+            output.notice(f'Cannot follow runtime logs: {exc}. Endpoint verification continues.')
+        if child is not None:
+            reader = output.capture(child)
+            output.notice('Deployment published. Following GPU startup logs; first startup may take several minutes.')
+        yield
+    finally:
+        if child is not None:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+            if reader is not None:
+                reader.join(timeout=5)
+            if child.stdout is not None:
+                child.stdout.close()
 
 
 class ModalServingRunner:
@@ -33,9 +66,9 @@ class ModalServingRunner:
 
     def build_modal_command(self, config: Dict[str, Any], deploy: bool = False) -> List[str]:
         """Tạo danh sách đối số dòng lệnh gọi công cụ CLI modal tới modal_app.py."""
-        modal_bin = shutil.which("modal") or "modal"
+        from flexsds.server.modal_auth import modal_command
         app_path = str(Path(__file__).parent / "modal_app.py")
-        return [modal_bin, "deploy" if deploy else "serve", app_path]
+        return [*modal_command(), "deploy" if deploy else "serve", app_path]
 
     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
         """Forward non-secret serving settings and package paths for app construction."""
@@ -66,6 +99,9 @@ class ModalServingRunner:
         dry_run: bool = False,
     ) -> Optional[subprocess.Popen]:
         """Khởi chạy ứng dụng Modal serverless."""
+        if not dry_run:
+            from flexsds.server.modal_auth import ensure_modal
+            ensure_modal()
         if not dry_run and not self.check_credentials():
             print("\n\033[31m[Authentication Error]\033[0m Modal credentials not configured.")
             print("  Please run: flexsds auth login --provider modal")
@@ -109,7 +145,7 @@ class ModalServingRunner:
                 match = re.search(r"https://[a-zA-Z0-9.-]+\.modal\.run", line)
                 if match and not endpoint:
                     endpoint.append(match.group())
-            output.capture(proc, on_line=observe_endpoint, close_on_exit=not deploy)
+            deploy_reader = output.capture(proc, on_line=observe_endpoint, close_on_exit=not deploy)
             proc._flexsds_output = output
             logs_done = output.done
             def ready():
@@ -122,10 +158,22 @@ class ModalServingRunner:
                     if time.monotonic() >= deadline:
                         raise RuntimeError("Timed out waiting for Modal endpoint URL")
                     time.sleep(0.2)
+                if deploy:
+                    # A URL is printed before publication finishes. Do not verify
+                    # a previous version while the new deployment is still uploading.
+                    while proc.poll() is None:
+                        if time.monotonic() >= deadline:
+                            raise RuntimeError('Timed out waiting for Modal deployment to finish')
+                        time.sleep(0.2)
+                    deploy_reader.join(timeout=5)
+                    if proc.returncode:
+                        raise RuntimeError(f'Modal deployment failed (exit {proc.returncode})')
                 output.notice(f"Endpoint: {endpoint[0]}")
-                output.update('Waiting for endpoint readiness',15)
-                model = verify_endpoint(endpoint[0], process=proc, deployed=deploy,
-                                        timeout=max(0.1, deadline-time.monotonic()))
+                output.update('Waiting for GPU cold start and endpoint readiness',15)
+                with deployment_logs(output, self.setup_environment(config)) if deploy else nullcontext():
+                    model = verify_endpoint(endpoint[0], process=proc, deployed=deploy,
+                                            timeout=max(0.1, deadline-time.monotonic()),
+                                            on_status=output.update)
                 proc._flexsds_session = dict(endpoint=endpoint[0].rstrip('/')+'/v1', model=model,
                                             config=cfg, deploy=deploy)
                 output.notice(f"Inference verified: {endpoint[0]}/v1 (model={model})")
@@ -135,7 +183,7 @@ class ModalServingRunner:
             proc._flexsds_readiness = ready
             return proc
         except FileNotFoundError:
-            print("\n\033[31m[Error]\033[0m 'modal' CLI not found. Install with: pip install modal")
+            print("Modal could not be started. Check the Python environment and retry.")
             return None
 
     def check_process_status(self, proc: subprocess.Popen) -> tuple[bool, Optional[int]]:
@@ -147,9 +195,10 @@ class ModalServingRunner:
 
     def stop(self, app_name: str = DEFAULT_APP_NAME) -> bool:
         """Dừng ứng dụng đang chạy trên hạ tầng Modal Cloud."""
-        modal_bin = shutil.which("modal") or "modal"
-        cmd = [modal_bin, "app", "stop", app_name]
+        from flexsds.server.modal_auth import ensure_modal, modal_command
         try:
+            ensure_modal()
+            cmd = [*modal_command(), "app", "stop", app_name]
             res = subprocess.run(cmd, capture_output=True, text=True)
             return res.returncode == 0
         except Exception:

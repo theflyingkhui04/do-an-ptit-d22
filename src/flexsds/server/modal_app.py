@@ -5,6 +5,7 @@ The web_server decorator owns startup readiness and endpoint exposure.
 """
 from __future__ import annotations
 import json
+import base64
 import os
 import sys
 import subprocess
@@ -31,7 +32,14 @@ except ModuleNotFoundError:
         from local_runner import LocalServingRunner
 
 APP_NAME = "flexsds-serving"
-SERVING_CONFIG = json.loads(os.environ.get("FLEXSDS_SERVING_CONFIG", "{}"))
+# Image.env becomes a Dockerfile ENV instruction. Raw JSON containing Windows
+# paths can lose a layer of backslash escaping there. The local CLI still sends
+# raw JSON; only the image transport uses base64 to survive Dockerfile parsing.
+_encoded_config = os.environ.get("FLEXSDS_SERVING_CONFIG_B64")
+SERVING_CONFIG = json.loads(
+    base64.b64decode(_encoded_config, validate=True).decode("utf-8")
+    if _encoded_config is not None else os.environ.get("FLEXSDS_SERVING_CONFIG", "{}")
+)
 PORT = int(SERVING_CONFIG.get("port", 8000))
 GPU = SERVING_CONFIG.get("target_gpu", "L4")
 if GPU not in {"L4", "T4", "A10G"} or not 1 <= PORT <= 65535:
@@ -45,10 +53,14 @@ except ImportError:
 if modal is not None:
     from flexsds.server.modal_image import serving_image
     app = modal.App(APP_NAME)
+    container_config = dict(SERVING_CONFIG)
+    if container_config.get("profile_path"):
+        container_config["profile_path"] = "/root/project/hardware_profile.json"
     image = (
         serving_image()
         .env({"PYTHONPATH": "/root/project:/root/project/src",
-              "FLEXSDS_SERVING_CONFIG": json.dumps(SERVING_CONFIG)})
+              "FLEXSDS_SERVING_CONFIG_B64": base64.b64encode(
+                  json.dumps(container_config).encode("utf-8")).decode("ascii")})
     )
     if modal.is_local():
         src_dir = PROJECT_ROOT / "src"
