@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { BarChart, SpeedChart } from "@/components/charts";
+import { BarChart, LineChart } from "@/components/charts";
 import { Trace } from "@/components/ui";
 
 describe("charts and trace keep their labels readable", () => {
@@ -23,9 +23,12 @@ describe("charts and trace keep their labels readable", () => {
     expect(within(chart).getByText("2020-08-10")).toBeInTheDocument();
   });
 
-  it("names an endpoint in full at the end of its speed-up line", () => {
-    render(<SpeedChart loads={[1, 8]} series={[{ name: "qwen2.5-7b-adaptive", color: "red", values: [1.29, 0.93] }]} />);
-    expect(screen.getByText("qwen2.5-7b-adaptive")).toBeInTheDocument();
+  it("names each line at its end with its last value, and labels the 1x baseline", () => {
+    render(<LineChart label="Nhanh gấp mấy lần mốc" loads={[1, 8]} format={(v) => `${v}×`} reference={1} referenceLabel="vanilla, mốc 1×"
+      series={[{ name: "qwen2.5-7b-adaptive", color: "red", values: [1.29, 0.93] }]} />);
+    const chart = screen.getByRole("img", { name: "Nhanh gấp mấy lần mốc" });
+    expect(within(chart).getByText("qwen2.5-7b-adaptive 0.93×")).toBeInTheDocument();
+    expect(within(chart).getByText("vanilla, mốc 1×")).toBeInTheDocument();
   });
 
   it("leaves a very short step unlabeled inside the bar but keeps it in the legend", () => {

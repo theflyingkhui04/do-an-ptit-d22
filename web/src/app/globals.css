@@ -31,6 +31,13 @@
   --step-2: #6d58c8;
   --step-3: #8f7ad9;
   --step-io: #9aa6b2;
+  /* Node 1 -> 2 -> 3 of a chain run: one hue, dark to light, far apart (design D17) */
+  --node-1: #2e2276;
+  --node-2: #6b58cf;
+  --node-3: #c9c0f5;
+  --node-1-ink: #ffffff;
+  --node-2-ink: #ffffff;
+  --node-3-ink: #2e2276;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -58,6 +65,12 @@
     --step-2: #7d69d0;
     --step-3: #604db6;
     --step-io: #5d6976;
+    --node-1: #c9c0f5;
+    --node-2: #8b78e6;
+    --node-3: #4a3a9e;
+    --node-1-ink: #1b1640;
+    --node-2-ink: #1b1640;
+    --node-3-ink: #ffffff;
     color-scheme: dark;
   }
 }

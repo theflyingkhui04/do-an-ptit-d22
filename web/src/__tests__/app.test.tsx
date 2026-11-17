@@ -776,60 +776,112 @@ describe("node 3", () => {
 });
 
 describe("measure and compare", () => {
-  it("starts a quick speed run, follows its progress and shows the live result", async () => {
+  const chainRun = (): BenchRun => ({
+    run_id: "bn_0000000000ff",
+    kind: "chain",
+    status: "done",
+    config: { kind: "chain", endpoint_ids: [BASE, FAST], sample_id: "m0_04_001" },
+    progress: { done: 2, total: 2 },
+    result: {
+      kind: "chain", live: true, sample_id: "m0_04_001", ocr_ms: 8000, baseline: BASE,
+      endpoints: [BASE, FAST].map((id) => ({
+        endpoint_id: id, name: id === BASE ? "vanilla" : "adaptive",
+        timings_ms: { node1: id === BASE ? 8000 : 6000, node2: 7000, node3: 4500 }, total_ms: 0,
+        node1: doneJob().result.runs![id], invoice: doneJob().result.invoice!, questions: CHAIN.questions,
+        report: CHAIN.report, number_check: CHAIN.number_check,
+        same_as_baseline: id === BASE ? null : { node1: true, node2: true, node3: false },
+      })),
+    },
+    error: null,
+    created_at: "2026-11-12T03:00:00Z",
+  });
+
+  it("starts a quick speed run, says the plan while it runs, then explains each metric", async () => {
+    let finish: (run: BenchRun) => void = () => undefined;
     const running: BenchRun = { ...speedRun(), status: "running", progress: { done: 8, total: 32 }, result: {} };
-    const bench = vi.fn().mockResolvedValueOnce(running).mockResolvedValueOnce(speedRun());
+    const bench = vi.fn().mockResolvedValueOnce(running).mockImplementationOnce(() => new Promise<BenchRun>((resolve) => {
+      finish = resolve;
+    }));
     const benches = vi.fn().mockResolvedValueOnce({ runs: [] }).mockResolvedValue({ runs: [speedRun()] });
     const api = fakeApi({ bench, benches });
     open("result", api);
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Bắt đầu đo" }));
-    expect(await screen.findByRole("table", { name: "Bảng kết quả đo" })).toBeInTheDocument();
+    const user = userEvent.setup();
+    expect(await screen.findByText(/Nhanh: 1, 8 người dùng cùng lúc, 8 request mỗi mức; ước tính khoảng 3 phút/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Bắt đầu đo" }));
     expect(api.startBench).toHaveBeenCalledWith({ kind: "speed", endpoint_ids: [BASE, FAST], workload: "W1", loads: [1, 8], requests: 8, repeats: 1 });
-    expect(screen.getByText("đo trực tiếp, có nhiễu")).toBeInTheDocument();
-    expect(screen.getByText("0,88×", { selector: "td" })).toBeInTheDocument();
-    // at 8 users the best endpoint is still slower than the baseline: the tile must say so
-    expect(screen.getByText("Tốt nhất ở 8 người dùng").parentElement).toHaveTextContent("adaptive, chậm hơn mốc");
-    expect(screen.getByText(/khoảng 3 phút/)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Nhanh gấp mấy lần/ })).toBeInTheDocument();
+    expect(await screen.findByText(/Kế hoạch: 2 endpoint × 2 mức người dùng \(1, 8\) × 8 request = 32 request/)).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "25");
+
+    await act(async () => finish(speedRun()));
+    expect(await screen.findByText("đo trực tiếp, có nhiễu")).toBeInTheDocument();
+    const about = screen.getByLabelText("Lần đo này đo gì");
+    expect(about).toHaveTextContent("Node 1 trích xuất hoá đơn (W1)");
+    expect(about).toHaveTextContent("2 mức người dùng cùng lúc (1, 8), mỗi mức 8 request; lấy trung vị (p50). Tổng 32 request.");
+    expect(screen.getByRole("tab", { name: "Tốc độ sinh token (TPOT)" })).toHaveAttribute("aria-selected", "true");
+    const heavy = screen.getByRole("group", { name: "8 người dùng cùng lúc" });
+    expect(heavy).toHaveTextContent("25 ms");
+    expect(heavy).toHaveTextContent("chậm hơn 1,14×");
+    expect(within(screen.getByRole("group", { name: "1 người dùng cùng lúc" })).getByText("nhanh hơn 1,43×")).toBeInTheDocument();
+    // at 8 users even the best endpoint is slower than the baseline: the conclusion says so
+    expect(screen.getByText(/mọi endpoint đều chậm hơn mốc; đỡ nhất là adaptive, chậm hơn 1,14×/)).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Thông lượng" }));
+    expect(screen.getByText(/Tổng số token cả endpoint sinh ra mỗi giây/)).toBeInTheDocument();
+    expect(screen.getAllByText("80 token/s").length).toBeGreaterThan(0);
+    // gone: the lead text and the three stat tiles
+    expect(screen.queryByText(/Đo cùng một bài trên nhiều endpoint/)).toBeNull();
+    expect(screen.queryByText(/Tốt nhất ở 8 người dùng/)).toBeNull();
   });
 
-  it("keeps the official campaign numbers apart from live runs", async () => {
+  it("starts a full run with the six loads of the old preset", async () => {
+    const api = fakeApi();
+    open("result", api);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("radio", { name: "Đầy đủ" }));
+    expect(screen.getByText(/Đầy đủ: 1, 2, 4, 8, 16, 32 người dùng cùng lúc, 32 request mỗi mức, lặp 3 lần/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Bắt đầu đo" }));
+    expect(api.startBench).toHaveBeenCalledWith({ kind: "speed", endpoint_ids: [BASE, FAST], workload: "W1", loads: [1, 2, 4, 8, 16, 32], requests: 32, repeats: 3 });
+  });
+
+  it("shows the official campaign numbers apart from live runs", async () => {
     open("result", fakeApi());
-    await userEvent.setup().click(await screen.findByRole("button", { name: /M3-05, GPU L4/ }));
-    expect(screen.getAllByText("số chính thức").length).toBeGreaterThan(1);
-    expect(screen.getByText(/Ở 32 người dùng cả ba cách giải mã suy đoán đều chậm hơn mốc/)).toBeInTheDocument();
+    expect(await screen.findByText("số chính thức")).toBeInTheDocument();
+    expect(screen.getByText(/Số chính thức chỉ lưu hệ số/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Lần đo này đo gì")).toHaveTextContent("GPU L4");
+    expect(screen.getByRole("table", { name: "Nhanh gấp mấy lần mốc theo số người dùng" })).toHaveTextContent("0,95×");
+    expect(screen.getByRole("img", { name: /Nhanh gấp mấy lần mốc/ })).toBeInTheDocument();
+  });
+
+  it("lists earlier runs and opens one", async () => {
+    const benches = vi.fn(async () => ({ runs: [speedRun()] }));
+    open("result", fakeApi({ benches }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Node 1 \(W1\), 1, 8 người dùng/ }));
+    expect(screen.getByText("đo trực tiếp, có nhiễu")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "8 người dùng cùng lúc" })).toHaveTextContent("25 ms");
+    await user.click(screen.getByRole("radio", { name: "Số chính thức M3-05" }));
+    expect(screen.getByText("số chính thức")).toBeInTheDocument();
   });
 
   it("runs the whole chain per endpoint and compares each node with the baseline", async () => {
-    const chain: BenchRun = {
-      run_id: "bn_0000000000ff",
-      kind: "chain",
-      status: "done",
-      config: { kind: "chain", endpoint_ids: [BASE, FAST], sample_id: "m0_04_001" },
-      progress: { done: 2, total: 2 },
-      result: {
-        kind: "chain", live: true, sample_id: "m0_04_001", ocr_ms: 8000, baseline: BASE,
-        endpoints: [BASE, FAST].map((id) => ({
-          endpoint_id: id, name: id === BASE ? "vanilla" : "adaptive",
-          timings_ms: { node1: id === BASE ? 8000 : 6000, node2: 7000, node3: 4500 }, total_ms: 0,
-          node1: doneJob().result.runs![id], invoice: doneJob().result.invoice!, questions: CHAIN.questions,
-          report: CHAIN.report, number_check: CHAIN.number_check,
-          same_as_baseline: id === BASE ? null : { node1: true, node2: true, node3: false },
-        })),
-      },
-      error: null,
-      created_at: "2026-11-12T03:00:00Z",
-    };
-    const api = fakeApi({ bench: vi.fn(async () => chain) });
+    const api = fakeApi({ bench: vi.fn(async () => chainRun()) });
     open("result", api);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("tab", { name: "Chạy cả chuỗi 1 → 2 → 3" }));
+    await user.click(await screen.findByRole("radio", { name: "Chạy cả chuỗi 1 → 2 → 3" }));
     await user.click(screen.getByRole("button", { name: "Chạy cả chuỗi" }));
-    expect(await screen.findByText("giống mốc 2/3 node, khác ở Node 3")).toBeInTheDocument();
     expect(api.startBench).toHaveBeenCalledWith({ kind: "chain", endpoint_ids: [BASE, FAST], sample_id: "m0_04_001" });
+    const quality = await screen.findByRole("table", { name: "Kết quả từng node so với mốc" });
+    const fields = leafFields(INVOICE).length;
+    const adaptiveRow = within(quality).getByText("adaptive").closest("tr") as HTMLElement;
+    expect(adaptiveRow).toHaveTextContent(`${fields}/${fields}`);
+    expect(adaptiveRow).toHaveTextContent("6/6");
+    expect(adaptiveRow).toHaveTextContent("4/4");
     expect(screen.getByRole("img", { name: /adaptive: Node 1 6 s, Node 2 7 s, Node 3 4,5 s/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Xem adaptive" }));
-    expect(screen.getByLabelText("JSON hoá đơn")).toHaveTextContent("MINIMART ANAN");
+    expect(screen.getByLabelText("Lần đo này đo gì")).toHaveTextContent("OCR ảnh một lần");
+    await user.click(screen.getByRole("button", { name: "Xem chi tiết adaptive" }));
+    const drawer = screen.getByRole("dialog", { name: "Chi tiết adaptive" });
+    expect(within(drawer).getByLabelText("JSON hoá đơn")).toHaveTextContent("MINIMART ANAN");
+    await user.click(within(drawer).getByRole("radio", { name: "Node 2, SQL Q1–Q6" }));
+    expect(within(drawer).getAllByLabelText("Câu SQL")).toHaveLength(6);
   });
 
   it("reports that another run is in progress", async () => {

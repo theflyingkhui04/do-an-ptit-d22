@@ -1,75 +1,85 @@
 "use client";
 
-import { formatNumber, formatSpeedup } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 
-// Line chart of speed-up versus load, one line per endpoint, with the bold 1x line of the baseline.
-// Text uses theme ink tokens; marks use the endpoint colours. Labels sit at the line ends (no legend lookup).
+// A value per load for each endpoint, as lines; labels sit at the line ends (no legend lookup). Used for the
+// speed-up of the official campaign (with the 1x baseline line) and for live numbers over many loads (design D17).
+// Text uses theme ink tokens; marks use the endpoint colours.
 export interface Series {
   name: string;
   color: string;
   values: (number | null)[];
+  dashed?: boolean; // the baseline, when it is drawn as a line of its own
 }
 
-export function SpeedChart({ loads, series, baselineLabel = "endpoint mốc" }: {
+// Round ticks: a 1-2-5 step giving about four gaps.
+function ticksFor(lo: number, hi: number): number[] {
+  const raw = (hi - lo) / 4 || Math.abs(hi) / 4 || 1;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map((k) => k * mag).find((v) => v >= raw) ?? raw;
+  const ticks: number[] = [];
+  for (let t = Math.floor(lo / step) * step; t <= Math.ceil(hi / step) * step + step / 2; t += step) ticks.push(Number(t.toPrecision(6)));
+  return ticks;
+}
+
+export function LineChart({ label, loads, series, format, reference, referenceLabel }: {
+  label: string;
   loads: number[];
   series: Series[];
-  baselineLabel?: string;
+  format: (value: number) => string;
+  reference?: number; // drawn bold, e.g. 1x for the baseline
+  referenceLabel?: string;
 }) {
-  const W = 720, H = 330, L = 56, R = 220, T = 18, B = 52;
-  const all = series.flatMap((s) => s.values.filter((v): v is number => v !== null));
-  const lo = Math.min(0.6, Math.floor((Math.min(1, ...all) - 0.05) * 10) / 10);
-  const hi = Math.max(1.6, Math.ceil((Math.max(1, ...all) + 0.05) * 10) / 10);
+  const W = 720, H = 320, L = 74, R = 230, T = 18, B = 52;
+  const all = series.flatMap((s) => s.values.filter((v): v is number => v !== null)).concat(reference === undefined ? [] : [reference]);
+  const ticks = ticksFor(Math.min(...all), Math.max(...all));
+  const lo = ticks[0], hi = ticks[ticks.length - 1];
   const x = (i: number) => (loads.length === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (loads.length - 1));
-  const y = (v: number) => T + ((hi - v) * (H - T - B)) / (hi - lo);
-  const ticks: number[] = [];
-  for (let t = Math.ceil(lo * 5) / 5; t <= hi + 1e-9; t += 0.2) ticks.push(Math.round(t * 10) / 10);
+  const y = (v: number) => T + ((hi - v) * (H - T - B)) / (hi - lo || 1);
   const ends = series
     .map((s) => ({ s, last: [...s.values].reverse().find((v) => v !== null) ?? null }))
     .filter((e): e is { s: Series; last: number } => e.last !== null)
     .sort((a, b) => b.last - a.last);
-  let prev = -Infinity;
-  const labelY = ends.map((e) => {
-    const yy = Math.max(y(e.last) + 5, prev + 18);
-    prev = yy;
-    return yy;
-  });
+  // End labels go down the right side in value order, at least 18 px apart so they never overlap.
+  const labelY: number[] = [];
+  for (const e of ends) labelY.push(Math.max(y(e.last) + 5, (labelY[labelY.length - 1] ?? -Infinity) + 18));
   return (
-    <div className="overflow-x-auto">
-    <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full min-w-[540px] max-w-[800px]" role="img" aria-label="Nhanh gấp mấy lần endpoint mốc theo số người dùng cùng lúc">
-      {ticks.filter((t) => Math.abs(t - 1) > 1e-9).map((t) => (
+    <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full min-w-[520px] max-w-[820px]" role="img" aria-label={label}>
+      {ticks.map((t) => (
         <g key={t}>
           <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="var(--line)" />
-          <text x={L - 10} y={y(t) + 5} textAnchor="end" fontSize={15} fill="var(--ink-3)">{formatSpeedup(t)}</text>
+          <text x={L - 10} y={y(t) + 5} textAnchor="end" fontSize={14} fill="var(--ink-3)">{format(t)}</text>
         </g>
       ))}
-      <line x1={L} x2={W - R} y1={y(1)} y2={y(1)} stroke="var(--ink)" strokeWidth={2} />
-      <text x={L - 10} y={y(1) + 5} textAnchor="end" fontSize={15} fontWeight={700} fill="var(--ink)">1×</text>
-      <text x={L + 8} y={y(1) - 8} fontSize={14} fill="var(--ink-2)">{baselineLabel} (1×)</text>
+      {reference !== undefined && (
+        <>
+          <line x1={L} x2={W - R} y1={y(reference)} y2={y(reference)} stroke="var(--ink)" strokeWidth={2} />
+          {referenceLabel && <text x={L + 8} y={y(reference) - 8} fontSize={14} fill="var(--ink-2)">{referenceLabel}</text>}
+        </>
+      )}
       {loads.map((c, i) => (
-        <text key={c} x={x(i)} y={H - B + 22} textAnchor="middle" fontSize={15} fill="var(--ink-3)">{c}</text>
+        <text key={c} x={x(i)} y={H - B + 22} textAnchor="middle" fontSize={14} fill="var(--ink-3)">{c}</text>
       ))}
-      <text x={(L + W - R) / 2} y={H - 6} textAnchor="middle" fontSize={14} fill="var(--ink-3)">Số người dùng cùng lúc</text>
+      <text x={(L + W - R) / 2} y={H - 6} textAnchor="middle" fontSize={13} fill="var(--ink-3)">Số người dùng cùng lúc</text>
       {series.map((s) => {
         const points = s.values.map((v, i) => (v === null ? null : `${x(i)},${y(v)}`)).filter(Boolean).join(" ");
         return (
           <g key={s.name}>
-            <polyline points={points} fill="none" stroke={s.color} strokeWidth={2.5} strokeLinejoin="round" />
+            <polyline points={points} fill="none" stroke={s.color} strokeWidth={2.5} strokeLinejoin="round" strokeDasharray={s.dashed ? "6 5" : undefined} />
             {s.values.map((v, i) => v !== null && (
               <circle key={i} cx={x(i)} cy={y(v)} r={5} fill={s.color} stroke="var(--surface)" strokeWidth={2}>
-                <title>{`${s.name}, ${loads[i]} người dùng: ${formatSpeedup(v)}`}</title>
+                <title>{`${s.name}, ${loads[i]} người dùng: ${format(v)}`}</title>
               </circle>
             ))}
           </g>
         );
       })}
       {ends.map((e, i) => (
-        <text key={e.s.name} x={W - R + 14} y={labelY[i]} fontSize={14} fill="var(--ink)">
-          <tspan fontWeight={600}>{e.s.name.length > 22 ? `${e.s.name.slice(0, 21)}…` : e.s.name}</tspan>
-          <tspan fill="var(--ink-2)"> {formatSpeedup(e.last)}</tspan>
+        <text key={e.s.name} x={W - R + 14} y={labelY[i]} fontSize={14} fontWeight={600} fill="var(--ink)">
+          {`${e.s.name.length > 22 ? `${e.s.name.slice(0, 21)}…` : e.s.name} ${format(e.last)}`}
         </text>
       ))}
     </svg>
-    </div>
   );
 }
 
