@@ -29,7 +29,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.api.endpoints import EndpointError
 from src.api.security import RateLimiter, client_ip, key_matches, redact
@@ -59,14 +59,42 @@ class Deps:
 
 
 class EndpointsIn(BaseModel):
+    """Addresses to check before adding (one key for all; the web checks one address per call)."""
     urls: list[str] = Field(min_length=1, max_length=10)
     api_key: str | None = Field(default=None, max_length=500)
-    serving_config: dict[str, Any] | None = None
+
+
+class NewEndpoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(min_length=1, max_length=500)
+    name: str | None = Field(default=None, max_length=80)
+    api_key: str | None = Field(default=None, max_length=500)
+
+
+class NewEndpoints(BaseModel):
+    """Addresses to add, each with its own display name and key (design D14)."""
+    model_config = ConfigDict(extra="forbid")
+    endpoints: list[NewEndpoint] = Field(min_length=1, max_length=10)
+
+
+class EndpointNotes(BaseModel):
+    """Notes on how an endpoint is served; ``null`` removes a note (design D14)."""
+    model_config = ConfigDict(extra="forbid")
+    gpu: str | None = Field(default=None, max_length=100)
+    draft_method: str | None = Field(default=None, max_length=40)
+    draft_model: str | None = Field(default=None, max_length=200)
+    target_model: str | None = Field(default=None, max_length=200)
+    adaptive: bool | None = None
 
 
 class EndpointPatch(BaseModel):
+    """Fields left out stay as they are; ``"api_key": null`` removes the key."""
+    model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=80)
     is_baseline: bool | None = None
+    base_url: str | None = Field(default=None, min_length=1, max_length=500)
+    api_key: str | None = Field(default=None, min_length=1, max_length=500)
+    meta: EndpointNotes | None = None
 
 
 class QuestionIn(BaseModel):
@@ -181,18 +209,31 @@ def create_app(settings: Settings, deps: Deps) -> FastAPI:
         return {"results": deps.endpoints.detect(body.urls, body.api_key)}
 
     @app.post("/api/endpoints", dependencies=[Depends(require_key)])
-    def add_endpoints(request: Request, body: EndpointsIn) -> dict[str, Any]:
+    def add_endpoints(request: Request, body: NewEndpoints) -> dict[str, Any]:
         limit(endpoint_limiter, request)
         try:
-            return deps.endpoints.add(body.urls, body.api_key, body.serving_config)
+            return deps.endpoints.add([item.model_dump() for item in body.endpoints])
         except EndpointError as exc:
             raise HTTPException(422, exc.message) from exc
 
     @app.patch("/api/endpoints/{endpoint_id}", dependencies=[Depends(require_key)])
-    def patch_endpoint(endpoint_id: str, body: EndpointPatch) -> dict[str, Any]:
+    def patch_endpoint(request: Request, endpoint_id: str, body: EndpointPatch) -> dict[str, Any]:
         endpoint_or_404(endpoint_id)
+        change: dict[str, Any] = {}
         if body.name is not None:
-            deps.endpoints.rename(endpoint_id, body.name)
+            change["name"] = body.name
+        if body.base_url is not None:
+            limit(endpoint_limiter, request)  # a new address is called like a pasted one
+            change["base_url"] = body.base_url
+        if "api_key" in body.model_fields_set:
+            change["api_key"] = body.api_key
+        if body.meta is not None:
+            change["meta"] = body.meta.model_dump(exclude_unset=True)
+        if change:
+            try:
+                deps.endpoints.update(endpoint_id, **change)
+            except EndpointError as exc:
+                raise HTTPException(422, exc.message) from exc
         if body.is_baseline is not None:
             current = deps.endpoints.baseline()
             if body.is_baseline:

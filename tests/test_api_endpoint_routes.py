@@ -1,4 +1,4 @@
-"""[M5-01 web console] /api/endpoints: paste, detect, rename, baseline, check, delete."""
+"""[M5-01 web console] /api/endpoints: paste, detect, edit, baseline, check, delete (design D2, D14)."""
 
 from __future__ import annotations
 
@@ -22,6 +22,8 @@ def app_with_registry(down=()):
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host in down:
             raise httpx.ConnectError("refused")
+        if request.url.host == "llm.other-team.example.com" and request.headers.get("authorization") != "Bearer k-2":
+            return httpx.Response(401)
         return httpx.Response(200, json={"data": [{"id": "Qwen/Qwen2.5-7B-Instruct-AWQ", "max_model_len": 4096}]})
 
     def public_dns(host, port, *args, **kwargs):
@@ -40,19 +42,21 @@ def test_paste_detect_and_save_from_the_cli_output():
         assert [(r["ok"], r["code"]) for r in detected] == [(True, None), (False, "needs_tunnel")]
         assert client.get("/api/endpoints", headers=HEADERS).json() == {"endpoints": []}
         added = client.post("/api/endpoints", headers=HEADERS,
-                            json={"urls": [MODAL, COLAB], "api_key": "ak-1.as-2",
-                                  "serving_config": {"serving": {"adaptive_enabled": True}}}).json()
-        assert [e["platform"] for e in added["saved"]] == ["modal", "tunnel"]
+                            json={"endpoints": [{"url": MODAL, "name": "adaptive L4", "api_key": "ak-1.as-2"},
+                                                {"url": COLAB}]}).json()
+        assert [(e["platform"], e["name"], e["has_key"]) for e in added["saved"]] == [
+            ("modal", "adaptive L4", True), ("tunnel", "Qwen/Qwen2.5-7B-Instruct-AWQ", False)]
         listed = client.get("/api/endpoints", headers=HEADERS).json()["endpoints"]
-    assert len(listed) == 2 and all("api_key" not in e and e["has_key"] for e in listed)
-    assert listed[0]["meta"] == {"adaptive": True}
+        again = client.post("/api/endpoints/detect", headers=HEADERS, json={"urls": [MODAL]}).json()["results"][0]
+    assert len(listed) == 2 and all("api_key" not in e for e in listed)
+    assert (again["code"], again["name"], again["endpoint_id"]) == ("exists", "adaptive L4", listed[0]["endpoint_id"])
 
 
 def test_rename_baseline_check_and_delete():
     down: set[str] = set()
     app, _ = app_with_registry(down=down)
     with TestClient(app) as client:
-        saved = client.post("/api/endpoints", headers=HEADERS, json={"urls": [MODAL, COLAB]}).json()["saved"]
+        saved = client.post("/api/endpoints", headers=HEADERS, json={"endpoints": [{"url": MODAL}, {"url": COLAB}]}).json()["saved"]
         down.add("swift-orchid-ptit.trycloudflare.com")  # the Colab session stops after it was added
         a, b = (e["endpoint_id"] for e in saved)
         renamed = client.patch(f"/api/endpoints/{a}", headers=HEADERS, json={"name": "Modal L4"}).json()
@@ -74,7 +78,35 @@ def test_rename_baseline_check_and_delete():
 def test_paste_limits():
     app, _ = app_with_registry()
     with TestClient(app) as client:
-        assert client.post("/api/endpoints", headers=HEADERS, json={"urls": []}).status_code == 422
-        assert client.post("/api/endpoints", headers=HEADERS, json={"urls": [MODAL] * 11}).status_code == 422
-        bad_config = client.post("/api/endpoints", headers=HEADERS, json={"urls": [MODAL], "serving_config": None})
-        assert bad_config.status_code == 200
+        assert client.post("/api/endpoints", headers=HEADERS, json={"endpoints": []}).status_code == 422
+        assert client.post("/api/endpoints", headers=HEADERS, json={"endpoints": [{"url": MODAL}] * 11}).status_code == 422
+        assert client.post("/api/endpoints", headers=HEADERS, json={"endpoints": [{"url": MODAL, "name": "x" * 81}]}).status_code == 422
+        assert client.post("/api/endpoints", headers=HEADERS, json={"urls": [MODAL]}).status_code == 422  # the old body
+
+
+def test_edit_address_key_and_notes():
+    app, store = app_with_registry(down={"dead--flexsds-serve.modal.run"})
+    with TestClient(app) as client:
+        ep = client.post("/api/endpoints", headers=HEADERS, json={"endpoints": [{"url": MODAL}]}).json()["saved"][0]
+        other = client.post("/api/endpoints", headers=HEADERS, json={"endpoints": [{"url": COLAB}]}).json()["saved"][0]
+        path = f"/api/endpoints/{ep['endpoint_id']}"
+
+        refused = client.patch(path, headers=HEADERS, json={"base_url": "https://llm.other-team.example.com/v1"})
+        assert refused.status_code == 422 and "401" in refused.json()["detail"]
+        moved = client.patch(path, headers=HEADERS, json={"base_url": "https://llm.other-team.example.com/v1",
+                                                         "api_key": "k-2"}).json()
+        assert (moved["base_url"], moved["platform"], moved["has_key"]) == ("https://llm.other-team.example.com/v1", "other", True)
+        assert "api_key" not in moved and store.endpoints[ep["endpoint_id"]]["api_key"] == "k-2"
+
+        dead = client.patch(path, headers=HEADERS, json={"base_url": "https://dead--flexsds-serve.modal.run/v1"})
+        assert dead.status_code == 422 and "flexsds serve" in dead.json()["detail"]
+        taken = client.patch(path, headers=HEADERS, json={"base_url": other["base_url"]})
+        assert taken.status_code == 422 and other["name"] in taken.json()["detail"]
+
+        noted = client.patch(path, headers=HEADERS, json={"meta": {"gpu": "NVIDIA L4", "draft_method": "eagle3", "adaptive": True}}).json()
+        assert noted["meta"] == {"gpu": "NVIDIA L4", "draft_method": "eagle3", "adaptive": True} and noted["has_key"] is True
+        cleared = client.patch(path, headers=HEADERS, json={"api_key": None, "meta": {"adaptive": None}}).json()
+        assert cleared["has_key"] is False and cleared["meta"] == {"gpu": "NVIDIA L4", "draft_method": "eagle3"}
+        assert client.patch(path, headers=HEADERS, json={"meta": {"base_model": "x"}}).status_code == 422
+        assert client.patch(path, headers=HEADERS, json={"name": "   "}).status_code == 422
+        assert client.patch(path, headers=HEADERS, json={"api_key": "x" * 501}).status_code == 422
