@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import Console from "@/components/Console";
-import { ApiError, type Api, type BenchRun, type DetectResult, type Endpoint, type Job } from "@/lib/api";
+import { ApiError, type Api, type BenchRun, type DetectResult, type Endpoint, type Job, type ReportResult } from "@/lib/api";
 
 import { BASE, CHAIN, ENDPOINTS, FAST, INVOICE, REPORT, doneJob, endpoint, fakeApi, jobEvents, jpegFile, question, run, speedRun } from "./fakes";
 import { leafFields } from "@/lib/fields";
@@ -644,40 +644,92 @@ describe("node 2", () => {
 });
 
 describe("node 3", () => {
-  it("sends the request and scope, draws the charts the model chose from the tables and checks the numbers", async () => {
-    const api = fakeApi();
-    open("node3", api);
-    expect(await screen.findByRole("heading", { name: "Chưa có báo cáo" })).toBeInTheDocument();
+  const STORES = "Cửa hàng nào chi nhiều nhất? So sánh các cửa hàng";
+  // The baseline (vanilla) writes slower; both pick the same charts unless told otherwise.
+  const written = (endpointId: string, extra: Partial<ReportResult> = {}): ReportResult => ({
+    ...REPORT,
+    report: { ...REPORT.report, metrics: { ttft_ms: 600, tpot_ms: endpointId === BASE ? 20 : 16, completion_tokens: 300 } },
+    timings_ms: endpointId === BASE ? { data: 120, dashboard: 1900, report: 7800 } : { data: 120, dashboard: 1500, report: 6000 },
+    endpoint: { endpoint_id: endpointId, name: endpointId === BASE ? "vanilla" : "adaptive" },
+    ...extra,
+  });
+  const column = (name: string) => screen.getByRole("article", { name });
+
+  it("runs a sample on the chosen endpoint and the baseline, shows the totals once and each report", async () => {
+    const report = vi.fn(async (endpointId: string) => written(endpointId));
+    open("node3", fakeApi({ report }));
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Cửa hàng nào chi nhiều nhất? So sánh các cửa hàng" }));
-    await user.click(screen.getByRole("radio", { name: "25 gần nhất" }));
-    await user.click(screen.getByRole("button", { name: "Tạo báo cáo" }));
-    expect(await screen.findByText("3.912.548 đ")).toBeInTheDocument();
-    expect(api.report).toHaveBeenCalledWith(FAST, "Cửa hàng nào chi nhiều nhất? So sánh các cửa hàng", 25);
-    expect(screen.getByLabelText("Tổng quan 10 hoá đơn")).toHaveTextContent("Hoá đơn có VAT");
+    await user.click(await screen.findByRole("radio", { name: "25 hoá đơn gần nhất" }));
+    await user.click(screen.getByRole("button", { name: "So sánh cửa hàng" }));
+    expect(report).toHaveBeenCalledWith(FAST, STORES, 25);
+    expect(report).toHaveBeenCalledWith(BASE, STORES, 25);
+    const totals = await screen.findByLabelText("Số tổng của phạm vi");
+    expect(totals).toHaveTextContent("3.912.548 đ");
+    expect(totals).toHaveTextContent("391.255 đ"); // the average is money too
+    expect(await screen.findAllByRole("article")).toHaveLength(2);
+    expect(screen.getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual(["vanilla", "adaptive"]);
+    const adaptive = column("adaptive");
+    await within(adaptive).findByText("Đã viết");
+    expect(within(adaptive).getByText("10 hoá đơn gần nhất có tổng chi tiêu 3.912.548 đồng.")).toBeInTheDocument();
+    expect(within(adaptive).getByText("7,62 s")).toBeInTheDocument(); // data + charts + report
+    expect(within(adaptive).getByText("2/2 số khớp bảng số liệu")).toBeInTheDocument();
+    // the dashboard of the chosen endpoint, without repeating the totals
     expect(screen.getByRole("img", { name: "Chi tiêu theo ngày" })).toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: /theo cửa hàng/ })).not.toBeInTheDocument();
     expect(screen.getByText("nghi lỗi OCR")).toBeInTheDocument();
-    expect(screen.getByText(/2 số trong báo cáo đều có trong bảng số liệu/)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Lấy số liệu .*Chọn biểu đồ 1,5 s, Viết báo cáo 6 s/ })).toBeInTheDocument();
-    expect(screen.getByText("Số liệu đầu vào của Node 3")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Tổng quan 10 hoá đơn")).toBeNull();
+    const compare = screen.getByRole("table", { name: "So với mốc vanilla" });
+    expect(compare).toHaveTextContent("Giống mốc");
+    expect(compare).toHaveTextContent("Số đều khớp");
+    expect(compare).toHaveTextContent("Nhanh hơn 1,25×");
+    // gone: the lead text, the empty state and the table keys on the charts
+    expect(screen.queryByText(/Node 3 nhận yêu cầu/)).toBeNull();
+    expect(screen.queryByText("top_items")).toBeNull();
+  });
+
+  it("marks a number the report made up, right in the sentence", async () => {
+    const report = vi.fn(async (endpointId: string) => (endpointId === BASE ? written(endpointId) : written(endpointId, {
+      report: { status: "ok", text: "MINIMART ANAN chi nhiều nhất, 1.270.000 đồng.", metrics: { tpot_ms: 16 } },
+      number_check: { numbers: 2, ungrounded: ["1.270.000"] },
+    })));
+    open("node3", fakeApi({ report }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    const adaptive = await screen.findByRole("article", { name: "adaptive" });
+    expect(await within(adaptive).findByText("1.270.000", { selector: "mark" })).toBeInTheDocument();
+    expect(within(adaptive).getByText(/1 số không có trong bảng/)).toHaveTextContent("1.270.000");
+    expect(screen.getByRole("table", { name: "So với mốc vanilla" })).toHaveTextContent("1 số không khớp");
+  });
+
+  it("says which charts differ from the baseline and switches the dashboard", async () => {
+    const report = vi.fn(async (endpointId: string) => (endpointId === BASE ? written(endpointId) : written(endpointId, {
+      dashboard: { status: "ok", error: null, charts: [REPORT.dashboard.charts[0], REPORT.dashboard.charts[1], { table: "taxes", type: "table", value: null, title: "Thuế" }] },
+    })));
+    open("node3", fakeApi({ report }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    const adaptive = await screen.findByRole("article", { name: "adaptive" });
+    expect(await within(adaptive).findByText("Thuế")).toHaveAttribute("data-diff", "true");
+    expect(within(adaptive).getByText("Chi tiêu theo ngày")).not.toHaveAttribute("data-diff");
+    expect(screen.getByRole("table", { name: "So với mốc vanilla" })).toHaveTextContent("Khác mốc");
+    expect(screen.queryByText("nghi lỗi OCR")).toBeNull(); // adaptive's dashboard has no item table
+    await user.click(screen.getByRole("radio", { name: "Dashboard của vanilla" }));
+    expect(screen.getByText("nghi lỗi OCR")).toBeInTheDocument();
   });
 
   it("flags foreign words in the report", async () => {
-    const report = vi.fn(async () => ({ ...REPORT, language_check: { foreign_words: ["城市"] } }));
+    const report = vi.fn(async (endpointId: string) => written(endpointId, { language_check: { foreign_words: ["城市"] } }));
     open("node3", fakeApi({ report }));
     await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
-    expect(await screen.findByText(/Chữ không phải tiếng Việt/)).toHaveTextContent("城市");
+    expect((await screen.findAllByText(/Chữ không phải tiếng Việt/))[0]).toHaveTextContent("城市");
   });
 
   it("says when the model chose no usable chart and the default set is shown", async () => {
-    const report = vi.fn(async () => ({
-      ...REPORT,
+    const report = vi.fn(async (endpointId: string) => written(endpointId, {
       dashboard: { status: "fallback" as const, error: "Model không trả JSON hợp lệ cho dashboard.", charts: [{ table: "by_store", type: "bar" as const, value: "tong_tien", title: "Tổng tiền theo cửa hàng" }] },
     }));
     open("node3", fakeApi({ report }));
     await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
-    expect(await screen.findByText(/Đang hiện bộ biểu đồ mặc định/)).toHaveTextContent("Model không trả JSON hợp lệ");
+    const flag = (await within(await screen.findByRole("article", { name: "adaptive" })).findByText("Không chọn được biểu đồ, dùng bộ mặc định"));
+    expect(flag).toHaveAttribute("title", "Model không trả JSON hợp lệ cho dashboard.");
     expect(screen.getByRole("img", { name: "Tổng tiền theo cửa hàng" })).toBeInTheDocument();
   });
 
@@ -686,8 +738,7 @@ describe("node 3", () => {
       key: "invoices", title: "Danh sách hoá đơn", columns: ["issued_date", "seller_name", "tong_tien", "so_mat_hang"],
       rows: [["2020-08-16", "MINIMART ANAN", 161500, 8], ["2020-08-16", "CUA HANG X", 52000, 2], ["2020-08-15", "MINIMART ANAN", 30000, 1]],
     };
-    const report = vi.fn(async () => ({
-      ...REPORT,
+    const report = vi.fn(async (endpointId: string) => written(endpointId, {
       tables: REPORT.tables.map((t) => (t.key === "invoices" ? invoices : t)),
       dashboard: { status: "ok" as const, error: null, charts: [
         { table: "invoices", type: "bar" as const, value: "tong_tien", title: "Từng hoá đơn" },
@@ -705,10 +756,22 @@ describe("node 3", () => {
   });
 
   it("explains an empty scope instead of drawing anything", async () => {
-    const report = vi.fn(async () => ({ ...REPORT, scope: { limit: 10, invoice_count: 0, label: "x" }, dashboard: { ...REPORT.dashboard, charts: [] } }));
+    const report = vi.fn(async (endpointId: string) => written(endpointId, { scope: { limit: 10, invoice_count: 0, label: "x" }, dashboard: { ...REPORT.dashboard, charts: [] } }));
     open("node3", fakeApi({ report }));
     await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
     expect(await screen.findByText(/Phạm vi này chưa có hoá đơn nào/)).toBeInTheDocument();
+    expect(screen.queryByRole("article")).toBeNull();
+  });
+
+  it("lists the input tables of the last report in a side panel", async () => {
+    open("node3", fakeApi());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    await screen.findByLabelText("Số tổng của phạm vi");
+    await user.click(screen.getByRole("button", { name: "Số liệu đầu vào" }));
+    const drawer = screen.getByRole("dialog", { name: "Số liệu đầu vào" });
+    expect(drawer).toHaveTextContent("Tổng tiền theo cửa hàng");
+    expect(drawer).toHaveTextContent("truy vấn cố định");
   });
 });
 

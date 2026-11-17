@@ -9,6 +9,18 @@ describe("charts and trace keep their labels readable", () => {
     render(<BarChart horizontal label="Từng hoá đơn" rows={[["2020-08-16, MINIMART ANAN", 161500], ["2020-08-16, CUA HANG X", 52000]]} />);
     const chart = screen.getByRole("img", { name: "Từng hoá đơn" });
     expect(within(chart).getByText("2020-08-16, MINIMART ANAN")).toBeInTheDocument();
+    // drawn with HTML text, not an SVG that shrinks its text on a phone
+    expect(chart.tagName).not.toBe("svg");
+    expect(within(chart).getByText("161.500 đ")).toBeInTheDocument();
+  });
+
+  it("writes each column's value on it and keeps whole dates under the columns", () => {
+    render(<BarChart label="Theo ngày" rows={[["2020-08-10", 420000], ["2020-08-13", 1268000]]} />);
+    const chart = screen.getByRole("img", { name: "Theo ngày" });
+    expect(chart.tagName).not.toBe("svg");
+    expect(within(chart).getByText("1,27 tr")).toBeInTheDocument();
+    expect(within(chart).getByText("420 k")).toBeInTheDocument();
+    expect(within(chart).getByText("2020-08-10")).toBeInTheDocument();
   });
 
   it("names an endpoint in full at the end of its speed-up line", () => {

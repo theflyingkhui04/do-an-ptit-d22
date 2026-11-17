@@ -73,8 +73,9 @@ export function SpeedChart({ loads, series, baselineLabel = "endpoint mốc" }: 
   );
 }
 
-// Bars drawn straight from SQL rows: vertical for dates, horizontal for names.
-export function BarChart({ rows, horizontal, color = "var(--lane-1)", unit = "đ", label }: {
+// Bars drawn straight from SQL rows: vertical for dates, horizontal for names. HTML, not SVG, so the text keeps
+// its size on a phone (design D16); values are written on the bars, so there is no axis.
+export function BarChart({ rows, horizontal, color = "var(--step-3)", unit = "đ", label }: {
   rows: [string, number][];
   horizontal?: boolean;
   color?: string;
@@ -84,46 +85,38 @@ export function BarChart({ rows, horizontal, color = "var(--lane-1)", unit = "đ
   const max = Math.max(1, ...rows.map((r) => r[1]));
   const fmt = (v: number) => `${formatNumber(v)}${unit ? ` ${unit}` : ""}`;
   if (horizontal) {
-    // Label column wide enough for "2020-08-16, MINIMART ANAN" (date + store) at 13px.
-    const W = 560, L = 240, R = 110, rowH = 34, H = rows.length * rowH + 10;
     return (
-      <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label={label}>
-        {rows.map(([k, v], i) => {
-          const w = ((W - L - R) * v) / max, yy = 6 + i * rowH;
-          return (
-            <g key={`${k}-${i}`}>
-              <text x={L - 10} y={yy + 18} textAnchor="end" fontSize={13} fill="var(--ink-2)">{k.length > 28 ? `${k.slice(0, 27)}…` : k}</text>
-              <rect x={L} y={yy + 5} width={Math.max(w, 2)} height={18} rx={4} fill={color}><title>{`${k}: ${fmt(v)}`}</title></rect>
-              <text x={L + w + 8} y={yy + 18} fontSize={13} fill="var(--ink)">{fmt(v)}</text>
-            </g>
-          );
-        })}
-      </svg>
+      <div role="img" aria-label={label} className="grid gap-2">
+        {rows.map(([k, v], i) => (
+          <div key={`${k}-${i}`} className="grid grid-cols-[minmax(0,13em)_minmax(0,1fr)_auto] items-center gap-2.5 text-[13px] max-sm:grid-cols-[minmax(0,7.5em)_minmax(0,1fr)_auto]">
+            <span className="truncate text-right text-ink-2" title={k}>{k}</span>
+            <span className="h-4">
+              <span className="block h-full rounded" style={{ width: `${Math.max(1, (v / max) * 100)}%`, background: color }} title={`${k}: ${fmt(v)}`} />
+            </span>
+            <span className="num whitespace-nowrap font-semibold">{fmt(v)}</span>
+          </div>
+        ))}
+      </div>
     );
   }
-  const W = 520, H = 240, L = 64, B = 34, T = 22;
-  const bw = (W - L - 10) / Math.max(rows.length, 1);
-  const top = Math.ceil(max / 4 / 100000) * 100000 * 4 || max;
-  const y = (v: number) => T + (1 - v / top) * (H - T - B);
+  // Short values fit above narrow columns: 1,27 tr and 420 k for money.
+  const short = (v: number) => (!unit ? formatNumber(v)
+    : v >= 1e6 ? `${formatNumber(Math.round(v / 1e4) / 100)} tr` : v >= 1e3 ? `${formatNumber(Math.round(v / 1e3))} k` : fmt(v));
   const peak = rows.reduce((best, r, i) => (r[1] > rows[best][1] ? i : best), 0);
+  const crowded = rows.length > 8; // then only the highest column is labelled
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label={label}>
-      {[0, top / 4, top / 2, (3 * top) / 4, top].map((g) => (
-        <g key={g}>
-          <line x1={L} x2={W - 10} y1={y(g)} y2={y(g)} stroke="var(--line)" />
-          <text x={L - 8} y={y(g) + 4} textAnchor="end" fontSize={12} fill="var(--ink-3)">{g >= 1000 ? `${formatNumber(g / 1000)}k` : formatNumber(g)}</text>
-        </g>
+    <div role="img" aria-label={label} className="flex h-[220px] items-end gap-1.5 border-b border-line pt-1 sm:gap-2.5">
+      {rows.map(([k, v], i) => (
+        <div key={`${k}-${i}`} className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 pb-6">
+          {(!crowded || i === peak) && <span className="num whitespace-nowrap text-[12px] font-semibold">{short(v)}</span>}
+          <span
+            className="w-[70%] max-w-14 rounded-t-[5px]"
+            style={{ height: `calc((100% - 20px) * ${Math.max(0.01, v / max)})`, background: color }}
+            title={`${k}: ${fmt(v)}`}
+          />
+          <span className="absolute bottom-0.5 max-w-full truncate text-[11.5px] text-ink-3 sm:text-[12px]">{k}</span>
+        </div>
       ))}
-      {rows.map(([k, v], i) => {
-        const xx = L + i * bw + bw * 0.18, w = bw * 0.64;
-        return (
-          <g key={`${k}-${i}`}>
-            <rect x={xx} y={y(v)} width={w} height={H - B - y(v)} rx={4} fill={color}><title>{`${k}: ${fmt(v)}`}</title></rect>
-            <text x={xx + w / 2} y={H - B + 18} textAnchor="middle" fontSize={12} fill="var(--ink-3)">{k}</text>
-            {i === peak && <text x={xx + w / 2} y={y(v) - 7} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--ink)">{fmt(v)}</text>}
-          </g>
-        );
-      })}
-    </svg>
+    </div>
   );
 }

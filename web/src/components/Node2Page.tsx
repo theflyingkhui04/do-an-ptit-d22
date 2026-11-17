@@ -199,11 +199,11 @@ function Compare({ base, others, colors }: {
     <div className="grid gap-2 border-t border-line pt-4">
       <h3 className="text-[14px] font-bold">So với mốc {base.endpoint.name}</h3>
       <div className="overflow-x-auto rounded-lg border border-line">
-        <table aria-label={`So với mốc ${base.endpoint.name}`} className="w-full text-left text-[13.5px] [&_td]:[overflow-wrap:anywhere]">
-          <thead className="bg-sunken text-[12px] text-ink-3">
+        <table role="table" aria-label={`So với mốc ${base.endpoint.name}`} className="w-full text-left text-[13.5px] [&_td]:[overflow-wrap:anywhere] max-sm:block">
+          <thead className="bg-sunken text-[12px] text-ink-3 max-sm:hidden">
             <tr><th className="px-3.5 py-1.5 font-medium">Endpoint</th><th className="px-3.5 py-1.5 font-medium">Kết quả</th><th className="px-3.5 py-1.5 font-medium">Tốc độ</th></tr>
           </thead>
-          <tbody>
+          <tbody className="max-sm:block">
             {others.map(({ endpoint, result: r }) => {
               let verdict: ReactNode;
               if (r.status === "error" || b.status === "error") {
@@ -219,10 +219,10 @@ function Compare({ base, others, colors }: {
               const theirs = firstSql(b)?.tpot_ms;
               const speed = mine && theirs ? theirs / mine : null;
               return (
-                <tr key={endpoint.endpoint_id} className="border-t border-line align-top">
-                  <td className="px-3.5 py-2.5"><span className="flex items-center gap-2 font-bold"><Dot color={colors[endpoint.endpoint_id]} />{endpoint.name}</span></td>
-                  <td className="px-3.5 py-2.5">{verdict}</td>
-                  <td className="px-3.5 py-2.5">
+                <tr key={endpoint.endpoint_id} role="row" className="border-t border-line align-top max-sm:grid max-sm:gap-0.5 max-sm:py-1.5">
+                  <td role="cell" data-label="Endpoint" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]"><span className="flex items-center gap-2 font-bold"><Dot color={colors[endpoint.endpoint_id]} />{endpoint.name}</span></td>
+                  <td role="cell" data-label="Kết quả" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">{verdict}</td>
+                  <td role="cell" data-label="Tốc độ" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">
                     {speed === null ? <span className="text-ink-3">Chưa đủ số đo</span> : (
                       <>
                         <b className={speed >= 1 ? "text-good" : "text-bad"}>{speed >= 1 ? `Nhanh hơn ${formatSpeedup(speed)}` : `Chậm hơn ${formatSpeedup(1 / speed)}`}</b>
