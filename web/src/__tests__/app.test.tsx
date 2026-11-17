@@ -41,7 +41,7 @@ describe("demo key gate", () => {
       throw new ApiError(401, "Sai mật khẩu demo");
     });
     open("node2", fakeApi({ ask }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Q1" }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Q1/ }));
     expect(await screen.findByLabelText("Mật khẩu demo")).toBeInTheDocument();
     expect(window.sessionStorage.getItem("ptit-demo-key")).toBeNull();
   });
@@ -514,23 +514,99 @@ describe("node 1", () => {
 });
 
 describe("node 2", () => {
-  it("asks a fixed question on the chosen endpoint and shows the checked SQL and rows", async () => {
+  const Q1 = "Tổng chi tiêu trong tháng 08/2020 là bao nhiêu?";
+  // The baseline (vanilla) is slower; the chosen endpoint (adaptive) answers the same unless told otherwise.
+  const timed = (endpointId: string, extra: Parameters<typeof question>[0] = {}) => question({
+    calls: [
+      { step: "node2", endpoint: endpointId, wall_ms: endpointId === BASE ? 2600 : 2100, ttft_ms: 400, tpot_ms: endpointId === BASE ? 20 : 15, completion_tokens: 40 },
+      { step: "answer", endpoint: endpointId, wall_ms: 900 },
+    ],
+    endpoint: { endpoint_id: endpointId, name: endpointId === BASE ? "vanilla" : "adaptive" },
+    ...extra,
+  });
+  const column = (name: string) => screen.getByRole("article", { name });
+
+  it("asks on the chosen endpoint and the baseline, shows each answer first and folds the SQL", async () => {
+    const ask = vi.fn(async (_q: string, endpointId: string) => timed(endpointId));
+    open("node2", fakeApi({ ask }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /^Q1/ }));
+    expect(ask).toHaveBeenCalledWith(Q1, FAST);
+    expect(ask).toHaveBeenCalledWith(Q1, BASE); // the baseline always runs too
+    expect(ask).toHaveBeenCalledTimes(2);
+    await screen.findAllByText("Tổng chi tiêu tháng 08/2020 là 3.912.548 đồng.");
+    expect(screen.getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual(["vanilla", "adaptive"]);
+
+    const adaptive = column("adaptive");
+    expect(within(adaptive).getByText("Đã trả lời")).toBeInTheDocument();
+    expect(within(adaptive).getByText("3 s")).toBeInTheDocument(); // 2,1 s + 0,9 s
+    expect(within(adaptive).getByText("15 ms")).toBeInTheDocument();
+    expect(within(within(adaptive).getByRole("table", { name: "Kết quả SQL" })).getByText("3.912.548")).toBeInTheDocument();
+    const sql = within(adaptive).getByLabelText("Câu SQL");
+    expect(sql).not.toBeVisible();
+    await user.click(within(adaptive).getByText("Câu SQL"));
+    expect(sql).toBeVisible();
+    expect(sql).toHaveTextContent("SUM(total_amount_value)");
+    expect(within(adaptive).getByText("Chỉ đọc (một câu SELECT)")).toBeVisible();
+
+    const compare = screen.getByRole("table", { name: "So với mốc vanilla" });
+    expect(compare).toHaveTextContent("Giống mốc");
+    expect(compare).toHaveTextContent("1/1 dòng kết quả giống");
+    expect(compare).toHaveTextContent("Nhanh hơn 1,33×");
+    // gone: the lead text and the question list repeated under the sample buttons
+    expect(screen.queryByText(/Node 2 đổi câu hỏi/)).toBeNull();
+    expect(screen.getAllByText(Q1, { exact: false }).filter((el) => el.tagName === "LI")).toHaveLength(0);
+  });
+
+  it("marks the rows that differ from the baseline", async () => {
+    const ask = vi.fn(async (_q: string, endpointId: string) =>
+      endpointId === BASE ? timed(endpointId) : timed(endpointId, { rows: [[3912000]], answer: "Tổng chi tiêu là 3.912.000 đồng." }));
+    open("node2", fakeApi({ ask }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Q1/ }));
+    await screen.findByText("Tổng chi tiêu là 3.912.000 đồng.");
+    const adaptive = column("adaptive");
+    expect(within(adaptive).getByText("1 dòng khác mốc")).toBeInTheDocument();
+    expect(within(adaptive).getByText("3.912.000").closest("tr")).toHaveAttribute("data-diff", "true");
+    expect(within(column("vanilla")).getByText("3.912.548").closest("tr")).not.toHaveAttribute("data-diff");
+    const compare = screen.getByRole("table", { name: "So với mốc vanilla" });
+    expect(compare).toHaveTextContent("Khác mốc");
+    expect(compare).toHaveTextContent("1/1 dòng khác");
+  });
+
+  it("asks a typed question with Enter", async () => {
     const api = fakeApi();
     open("node2", api);
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Q1" }));
-    expect(await screen.findByLabelText("Câu SQL")).toHaveTextContent("SUM(total_amount_value)");
-    expect(api.ask).toHaveBeenCalledWith("Tổng chi tiêu trong tháng 08/2020 là bao nhiêu?", FAST);
-    expect(screen.getByText("Đã trả lời")).toBeInTheDocument();
-    expect(screen.getByText("Chỉ đọc (một câu SELECT)")).toBeInTheDocument();
-    expect(within(screen.getByRole("table", { name: "Kết quả SQL" })).getByText("3.912.548")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Sinh SQL 2,1 s/ })).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Câu hỏi"), "Có bao nhiêu hoá đơn?{Enter}");
+    expect(api.ask).toHaveBeenCalledWith("Có bao nhiêu hoá đơn?", FAST);
+  });
+
+  it("runs only the chosen endpoint when there is no baseline", async () => {
+    const endpoints = vi.fn(async () => ({ endpoints: [endpoint(FAST, "adaptive")] }));
+    const api = fakeApi({ endpoints });
+    open("node2", api);
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Q1/ }));
+    await screen.findByText("Đã trả lời");
+    expect(api.ask).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("table", { name: /So với mốc/ })).toBeNull();
+  });
+
+  it("keeps the other column when one endpoint fails", async () => {
+    const ask = vi.fn(async (_q: string, endpointId: string) => {
+      if (endpointId === BASE) throw new ApiError(429, "Too many");
+      return timed(endpointId);
+    });
+    open("node2", fakeApi({ ask }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Q1/ }));
+    expect(await within(await screen.findByRole("article", { name: "vanilla" })).findByText("Đã hỏi quá nhiều trong ít phút, thử lại sau.")).toBeInTheDocument();
+    expect(await within(column("adaptive")).findByText("Đã trả lời")).toBeInTheDocument();
   });
 
   it("says how a text filter was matched against the unaccented data", async () => {
     const ask = vi.fn(async () => question({ text_rewrites: [{ column: "seller_name", from: "%Nhà sách Cẩm Phả%", to: "%nha%sach%cam%pha%" }] }));
     open("node2", fakeApi({ ask }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Q1" }));
-    expect(await screen.findByText(/Khớp chữ không dấu/)).toHaveTextContent("%Nhà sách Cẩm Phả% → %nha%sach%cam%pha%");
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Q1/ }));
+    expect((await screen.findAllByText(/Khớp chữ không dấu/))[0]).toHaveTextContent("%Nhà sách Cẩm Phả% → %nha%sach%cam%pha%");
   });
 
   it("shows a flawed answer as written, with its flags", async () => {
@@ -538,19 +614,32 @@ describe("node 2", () => {
       answer: "Tổng tiền là 76.000. beğen", warning: "foreign_text", foreign_words: ["beğen"], ungrounded_numbers: ["76.000"],
     }));
     open("node2", fakeApi({ ask }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Q1" }));
-    expect(await screen.findByText("Tổng tiền là 76.000. beğen")).toBeInTheDocument();
-    expect(screen.getByText(/Chữ không phải tiếng Việt/)).toHaveTextContent("beğen");
-    expect(screen.getByText(/Số không có trong kết quả SQL/)).toHaveTextContent("76.000");
-    expect(screen.queryByText(/nên không hiện/)).not.toBeInTheDocument();
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Q1/ }));
+    expect((await screen.findAllByText("Tổng tiền là 76.000. beğen"))[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Chữ không phải tiếng Việt/)[0]).toHaveTextContent("beğen");
+    expect(screen.getAllByText(/Số không có trong kết quả SQL/)[0]).toHaveTextContent("76.000");
   });
 
-  it("shows a blocked query with its reason", async () => {
+  it("shows a blocked query with its reason and its SQL open", async () => {
     const ask = vi.fn(async () => question({ status: "error", error: "JOIN_FANOUT: cộng trùng hoá đơn", rows: [], columns: [], repairs: 1 }));
     open("node2", fakeApi({ ask }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Q3" }));
-    expect(await screen.findByText("Bị chặn")).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("JOIN_FANOUT");
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Q3/ }));
+    const adaptive = await screen.findByRole("article", { name: "adaptive" });
+    expect(await within(adaptive).findByText("Bị chặn")).toBeInTheDocument();
+    expect(within(adaptive).getByRole("alert")).toHaveTextContent("JOIN_FANOUT");
+    expect(within(adaptive).getByLabelText("Câu SQL")).toBeVisible();
+    expect(screen.getByRole("table", { name: "So với mốc vanilla" })).toHaveTextContent("Cùng bị chặn");
+  });
+
+  it("lists the views that can be asked in a side panel", async () => {
+    open("node2", fakeApi());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Dữ liệu có thể hỏi" }));
+    const drawer = screen.getByRole("dialog", { name: "Dữ liệu có thể hỏi" });
+    expect(drawer).toHaveTextContent("v_invoice_facts");
+    expect(drawer).toHaveTextContent("total_amount_value");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 

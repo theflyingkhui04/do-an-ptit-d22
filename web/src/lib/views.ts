@@ -28,11 +28,12 @@ export const VIEWS: { name: string; about: string; columns: string[] }[] = [
   { name: "v_upload_facts", about: "Hoá đơn tải lên từ web", columns: ["invoice_id", "source", "uploaded_at", "uploaded_date"] },
 ];
 
-export const QUESTIONS: { id: string; question: string }[] = [
-  { id: "Q1", question: "Tổng chi tiêu trong tháng 08/2020 là bao nhiêu?" },
-  { id: "Q2", question: "Mặt hàng nào được mua nhiều nhất?" },
-  { id: "Q3", question: "Cửa hàng nào có tổng giá trị hóa đơn cao nhất?" },
-  { id: "Q4", question: "Có bao nhiêu hóa đơn có phát sinh VAT?" },
-  { id: "Q5", question: "Tổng tiền theo từng ngày lập hóa đơn là bao nhiêu?" },
-  { id: "Q6", question: "Mức thuế suất và tổng tiền thuế theo từng loại thuế là bao nhiêu?" },
+// `short` is the label on the sample button; the full question goes to Node 2 unchanged.
+export const QUESTIONS: { id: string; short: string; question: string }[] = [
+  { id: "Q1", short: "Tổng chi tiêu tháng 08/2020", question: "Tổng chi tiêu trong tháng 08/2020 là bao nhiêu?" },
+  { id: "Q2", short: "Mặt hàng mua nhiều nhất", question: "Mặt hàng nào được mua nhiều nhất?" },
+  { id: "Q3", short: "Cửa hàng có tổng giá trị cao nhất", question: "Cửa hàng nào có tổng giá trị hóa đơn cao nhất?" },
+  { id: "Q4", short: "Số hoá đơn có VAT", question: "Có bao nhiêu hóa đơn có phát sinh VAT?" },
+  { id: "Q5", short: "Tổng tiền theo ngày", question: "Tổng tiền theo từng ngày lập hóa đơn là bao nhiêu?" },
+  { id: "Q6", short: "Thuế theo từng loại", question: "Mức thuế suất và tổng tiền thuế theo từng loại thuế là bao nhiêu?" },
 ];

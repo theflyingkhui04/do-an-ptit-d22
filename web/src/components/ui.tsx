@@ -351,34 +351,37 @@ export function Dot({ color, className }: { color: string; className?: string })
   return <i aria-hidden className={cx("inline-block size-2.5 shrink-0 rounded-full", className)} style={{ background: color }} />;
 }
 
-export function EndpointChips({ endpoints, selected, onToggle, single }: {
+export function EndpointChips({ endpoints, selected, onToggle, single, alwaysOn = [] }: {
   endpoints: Endpoint[];
   selected: string[];
   onToggle: (endpointId: string) => void;
   single?: boolean;
+  alwaysOn?: string[]; // runs every time (the baseline on Node 2): shown on and locked
 }) {
   const colors = endpointColors(endpoints);
   return (
     <div className="flex flex-wrap gap-2" role={single ? "radiogroup" : "group"} aria-label="Chạy trên endpoint">
       {endpoints.map((e) => {
-        const on = selected.includes(e.endpoint_id);
+        const locked = alwaysOn.includes(e.endpoint_id) && e.status !== "down";
+        const on = locked || selected.includes(e.endpoint_id);
         return (
           <button
             key={e.endpoint_id}
             type="button"
             role={single ? "radio" : "checkbox"}
             aria-checked={on}
-            disabled={e.status === "down"}
+            disabled={e.status === "down" || locked}
             onClick={() => onToggle(e.endpoint_id)}
-            title={e.status === "down" ? (e.status_message ?? "Endpoint đã dừng") : e.base_url}
+            title={e.status === "down" ? (e.status_message ?? "Endpoint đã dừng") : locked ? "Endpoint mốc luôn chạy kèm để so sánh" : e.base_url}
             className={cx(
-              "inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-[13.5px] disabled:opacity-50",
+              "inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-[13.5px]",
+              e.status === "down" && "opacity-50", locked && "cursor-default",
               on ? "border-ink font-semibold shadow-[0_0_0_1px_var(--ink)]" : "border-line bg-surface",
             )}
           >
             <Dot color={colors[e.endpoint_id]} />
             <span className="truncate">{e.name}</span>
-            {e.is_baseline && <span className="rounded-md border border-line px-1.5 text-[11.5px] font-normal text-ink-3">mốc</span>}
+            {e.is_baseline && <span className="rounded-md border border-line px-1.5 text-[11.5px] font-normal text-ink-3">{locked ? "mốc, luôn chạy" : "mốc"}</span>}
             {e.status === "down" && <span className="text-[11.5px] font-normal text-ink-3">đã dừng</span>}
           </button>
         );
@@ -439,11 +442,12 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: {
   );
 }
 
-export function ResultTable({ columns, rows, max = 50, flag }: {
+export function ResultTable({ columns, rows, max = 50, flag, differs }: {
   columns: string[];
   rows: unknown[][];
   max?: number;
   flag?: (row: unknown[]) => string | null;
+  differs?: (index: number) => boolean; // rows that differ from the baseline are tinted
 }) {
   if (rows.length === 0) return <p className="text-ink-3">Không có dòng nào.</p>;
   return (
@@ -459,7 +463,7 @@ export function ResultTable({ columns, rows, max = 50, flag }: {
           {rows.slice(0, max).map((row, i) => {
             const note = flag?.(row) ?? null;
             return (
-              <tr key={i} className="border-t border-line">
+              <tr key={i} data-diff={differs?.(i) || undefined} className={cx("border-t border-line", differs?.(i) && "bg-warn-tint")}>
                 {row.map((cell, j) => (
                   <td key={j} className={cx("px-3 py-1.5", typeof cell === "number" && "text-right")}>{formatCell(cell)}</td>
                 ))}

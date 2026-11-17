@@ -93,6 +93,8 @@
 
 /* Feedback motion: a new line eases in; a checked row flashes its outcome once. */
 @theme {
+  /* Full side bar from here; between md and wide it is a 68px icon rail (design D15). */
+  --breakpoint-wide: 68.75rem; /* 1100px */
   --animate-fade-in: fade-in 160ms ease-out;
   --animate-row-good: row-good 1.4s ease-out;
   --animate-row-bad: row-bad 1.4s ease-out;

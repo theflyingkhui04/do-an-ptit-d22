@@ -141,30 +141,33 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
   const groups = [...new Set(PAGES.map((p) => p.group))];
 
   return (
-    <div className="min-h-screen text-[14.5px] leading-[1.55] lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:bg-[linear-gradient(to_right,var(--rail)_248px,transparent_248px)]">
-      <nav aria-label="Điều hướng" className="flex flex-col gap-5 bg-rail px-3 py-[18px] text-rail-ink lg:sticky lg:top-0 lg:h-screen">
-        <div className="flex items-center gap-2.5 px-2">
+    // Side bar (design D15): full from 1100px, a 68px icon rail from 768px, a scrolling top row on phones.
+    <div className="min-h-screen text-[14.5px] leading-[1.55] md:grid md:grid-cols-[68px_minmax(0,1fr)] md:bg-[linear-gradient(to_right,var(--rail)_68px,transparent_68px)] wide:grid-cols-[248px_minmax(0,1fr)] wide:bg-[linear-gradient(to_right,var(--rail)_248px,transparent_248px)]">
+      <nav aria-label="Điều hướng" className="flex items-center gap-3 overflow-x-auto bg-rail px-3 py-2.5 text-rail-ink md:sticky md:top-0 md:h-screen md:flex-col md:items-stretch md:gap-5 md:overflow-x-visible md:overflow-y-auto md:px-2.5 md:py-[18px] wide:px-3">
+        <div className="flex shrink-0 items-center gap-2.5 md:justify-center wide:justify-start wide:px-2">
           <BrandMark size={32} />
-          <div className="leading-tight">
+          <div className="hidden leading-tight wide:block">
             <b className="block text-base text-white">FlexSDS</b>
             <span className="text-xs">Console đồ án D22, PTIT</span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-4 lg:grid">
+        <div className="flex gap-1 md:grid md:gap-4">
           {groups.map((group) => (
-            <div key={group} className="grid min-w-[200px] gap-0.5">
-              <div className="px-2.5 pb-1.5 text-xs text-[#7d8a97]">{group}</div>
+            <div key={group} className="flex gap-1 md:grid md:gap-0.5">
+              <div className="hidden px-2.5 pb-1.5 text-xs text-[#7d8a97] wide:block">{group}</div>
               {PAGES.filter((p) => p.group === group).map((p) => (
                 <a
                   key={p.id}
                   href={`#${p.id}`}
                   aria-current={page === p.id ? "page" : undefined}
+                  title={p.label}
                   onClick={(event) => {
                     event.preventDefault();
                     go(p.id);
                   }}
                   className={cx(
-                    "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 hover:bg-rail-active hover:text-white",
+                    "group flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-2 hover:bg-rail-active hover:text-white",
+                    "md:h-10 md:justify-center md:px-0 wide:h-auto wide:justify-start wide:px-2.5",
                     page === p.id && "bg-rail-active font-semibold text-white",
                   )}
                 >
@@ -182,21 +185,30 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
                   ) : (
                     <Server aria-hidden className="size-5 shrink-0" />
                   )}
-                  {p.label}
+                  <span className="md:sr-only wide:not-sr-only">{p.label}</span>
                   {p.id === "endpoints" && endpoints && (
-                    <span className="ml-auto rounded-md border border-[#2c3a48] px-1.5 text-[11.5px] text-[#8796a5]">{list.length}</span>
+                    <span className="ml-auto hidden rounded-md border border-[#2c3a48] px-1.5 text-[11.5px] text-[#8796a5] wide:inline">{list.length}</span>
                   )}
                 </a>
               ))}
             </div>
           ))}
         </div>
-        <div className="mt-auto hidden gap-2 rounded-xl bg-rail-active p-3 text-[13px] lg:grid">
+        <div className="mt-auto hidden gap-2 rounded-xl bg-rail-active p-3 text-[13px] wide:grid">
           <p>Web không bật hay tắt GPU. Endpoint do lệnh <code className="font-mono text-white">flexsds serve</code> tạo ra.</p>
           <button type="button" onClick={onSignOut} className="flex items-center gap-2 text-[#8796a5] hover:text-white">
             <LogOut aria-hidden className="size-4" /> Thoát
           </button>
         </div>
+        <button
+          type="button"
+          onClick={onSignOut}
+          title="Thoát"
+          aria-label="Thoát"
+          className="mt-auto hidden size-10 place-items-center self-center rounded-lg text-[#8796a5] hover:bg-rail-active hover:text-white md:grid wide:hidden"
+        >
+          <LogOut aria-hidden className="size-4" />
+        </button>
       </nav>
 
       <div className="flex min-w-0 flex-col">
