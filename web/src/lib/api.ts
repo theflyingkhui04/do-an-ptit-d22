@@ -31,7 +31,8 @@ export interface Endpoint {
   max_model_len: number | null;
   meta: EndpointMeta;
   is_baseline: boolean;
-  status: "ok" | "down";
+  // starting: the last check found a sleeping GPU waking up (HTTP 503 or no answer yet), down: it failed.
+  status: "ok" | "starting" | "down";
   status_message: string | null;
   checked_at: string;
   created_at: string;

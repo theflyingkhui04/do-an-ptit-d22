@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -276,6 +276,98 @@ describe("endpoints", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Kiểm tra vanilla" }));
     expect(await within(rowOf("vanilla")).findByText(/Không gọi được máy chủ/)).toBeInTheDocument();
+  });
+
+  const WAKING: Endpoint = { ...ENDPOINTS[0], status: "starting",
+    status_message: "Endpoint chưa sẵn sàng (HTTP 503): GPU đang khởi động hoặc đang ngủ, hoặc phiên flexsds serve đã dừng." };
+
+  it("keeps asking a waking GPU every 20 s until it answers", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const answers: Endpoint[] = [WAKING, { ...ENDPOINTS[0], checked_at: new Date().toISOString() }];
+      const checkEndpoint = vi.fn(async () => answers.shift() ?? WAKING);
+      const api = fakeApi({ checkEndpoint });
+      open("endpoints", api);
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(await screen.findByRole("button", { name: "Kiểm tra vanilla" }));
+      const row = rowOf("vanilla");
+      expect(await within(row).findByText(/Đang khởi động GPU/)).toBeInTheDocument();
+      expect(within(row).getByText(/tối đa 5 phút/)).toBeInTheDocument();
+      expect(within(row).queryByText("Đã dừng")).toBeNull();
+      expect(within(row).queryByText("Đang chạy")).toBeNull();
+      expect(checkEndpoint).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(checkEndpoint).toHaveBeenCalledTimes(2);
+      expect(await within(row).findByText("Đang chạy")).toBeInTheDocument();
+      expect(within(row).getByText(/Kiểm tra vừa xong, mất/)).toBeInTheDocument();
+      expect(within(row).queryByText(/Đang khởi động GPU/)).toBeNull();
+      expect(api.endpoints).toHaveBeenCalledTimes(2); // first load + one reload
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops asking after 5 minutes and says the GPU never came up", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const checkEndpoint = vi.fn(async () => WAKING);
+      open("endpoints", fakeApi({ checkEndpoint }));
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(await screen.findByRole("button", { name: "Kiểm tra vanilla" }));
+      const row = rowOf("vanilla");
+      await within(row).findByText(/Đang khởi động GPU/);
+      for (let i = 0; i < 16; i++) {
+        await act(async () => {
+          vi.advanceTimersByTime(20_000);
+        });
+      }
+      expect(await within(row).findByText("Đã dừng")).toBeInTheDocument();
+      expect(within(row).getByText(/chưa lên sau 5 phút/)).toBeInTheDocument();
+      const calls = checkEndpoint.mock.calls.length;
+      expect(calls).toBeGreaterThanOrEqual(10);
+      expect(calls).toBeLessThanOrEqual(16);
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(checkEndpoint).toHaveBeenCalledTimes(calls);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops asking a waking GPU once the page is closed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const checkEndpoint = vi.fn(async () => WAKING);
+      open("endpoints", fakeApi({ checkEndpoint }));
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(await screen.findByRole("button", { name: "Kiểm tra vanilla" }));
+      await within(rowOf("vanilla")).findByText(/Đang khởi động GPU/);
+      cleanup();
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(checkEndpoint).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a saved waking endpoint as not ready yet, not as stopped", async () => {
+    const endpoints = vi.fn(async () => ({ endpoints: [WAKING, ENDPOINTS[1]] }));
+    open("endpoints", fakeApi({ endpoints }));
+    const row = await screen.findByRole("article", { name: "vanilla" });
+    expect(within(row).getByText("Chưa sẵn sàng")).toBeInTheDocument();
+    expect(within(row).getByText("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeInTheDocument();
+    expect(within(row).queryByText("Đã dừng")).toBeNull();
+    const user = userEvent.setup();
+    await user.click(within(row).getByRole("button", { name: "Sửa vanilla" }));
+    const drawer = screen.getByRole("dialog", { name: "Sửa endpoint" });
+    expect(within(drawer).getByText(/, chưa sẵn sàng \(GPU đang ngủ hoặc khởi động\)/)).toBeInTheDocument();
+    expect(within(drawer).getByText(WAKING.status_message!)).toBeInTheDocument();
   });
 
   it("edits name, address, key, notes and baseline in the drawer, sending only what changed", async () => {

@@ -123,6 +123,22 @@ def test_check_marks_a_stopped_session_and_recovers():
     assert make(store)[0].check(ep["endpoint_id"])["status"] == "ok"
 
 
+@pytest.mark.parametrize("waking", [
+    lambda request: httpx.Response(503, json={"error": "no container ready"}),
+    lambda request: (_ for _ in ()).throw(httpx.RemoteProtocolError("closed before a response", request=request)),
+    lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("no answer yet", request=request)),
+], ids=["http-503", "reset-before-response", "read-timeout"])
+def test_check_says_starting_while_a_sleeping_gpu_wakes_up(waking):
+    store = FakeStore()
+    ep = make(store)[0].add(items(VANILLA, key=KEY))["saved"][0]
+    sleeping = EndpointRegistry(store, httpx.Client(transport=httpx.MockTransport(waking)), resolve=public_dns,
+                                now=lambda: "2026-11-18T14:42:00+00:00")
+    checked = sleeping.check(ep["endpoint_id"])
+    assert checked["status"] == "starting" and "khởi động" in checked["status_message"]
+    assert checked["checked_at"] == "2026-11-18T14:42:00+00:00"
+    assert make(store)[0].check(ep["endpoint_id"])["status"] == "ok"  # the next check finds it up
+
+
 def test_the_model_behind_the_served_name_is_kept_for_fair_comparisons():
     store = FakeStore()
     registry, _ = make(store)

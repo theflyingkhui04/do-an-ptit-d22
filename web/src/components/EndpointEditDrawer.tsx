@@ -14,6 +14,11 @@ type KeyMode = "keep" | "set" | "clear";
 const field = "w-full min-w-0 rounded-lg border border-line bg-surface px-3 py-2";
 const label = "text-[13px] font-semibold text-ink-2";
 const hint = "text-[12.5px] text-ink-3";
+const STATUS_WORDS: Record<Endpoint["status"], string> = {
+  ok: "đang chạy",
+  starting: "chưa sẵn sàng (GPU đang ngủ hoặc khởi động)",
+  down: "đã dừng",
+};
 
 function Fact({ term, children, tone }: { term: string; children: React.ReactNode; tone?: "bad" }) {
   return (
@@ -145,9 +150,11 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
             <Fact term="Ngữ cảnh tối đa">{e.max_model_len ? `${e.max_model_len.toLocaleString("vi-VN")} token` : "Chưa rõ"}</Fact>
             <Fact term="Thêm lúc">{new Date(e.created_at).toLocaleString("vi-VN")}</Fact>
             <Fact term="Kiểm tra lần cuối">
-              {new Date(e.checked_at).toLocaleString("vi-VN")}, {e.status === "ok" ? "đang chạy" : "đã dừng"}
+              {new Date(e.checked_at).toLocaleString("vi-VN")}, {STATUS_WORDS[e.status]}
             </Fact>
-            {e.status === "down" && e.status_message && <Fact term="Kết quả" tone="bad">{e.status_message}</Fact>}
+            {e.status !== "ok" && e.status_message && (
+              <Fact term="Kết quả" tone={e.status === "down" ? "bad" : undefined}>{e.status_message}</Fact>
+            )}
           </dl>
         </fieldset>
 

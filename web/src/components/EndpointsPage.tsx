@@ -1,20 +1,26 @@
 "use client";
 
 import { Pencil, Plus, RefreshCw, Server, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import EndpointEditDrawer from "@/components/EndpointEditDrawer";
 import { Button, ConfirmDialog, CopyButton, Dot, EmptyState, Notice, PageHead, Pill, baseModel, cx, endpointColors, secondsSince, useNow } from "@/components/ui";
 import type { Api, Endpoint } from "@/lib/api";
 import { agoVi, detailLine, setupLine, shortReason, shortUrl } from "@/lib/endpoints";
 import { formatMs } from "@/lib/format";
+import { durationVi } from "@/lib/liveness";
 
-// What the last check of a row found in this session (the server keeps only checked_at).
+// A sleeping GPU on Modal answers 503 for the 2-3 minutes it takes to start: ask again until it is up.
+export const WAKE_RETRY_MS = 20_000;
+export const WAKE_LIMIT_MS = 5 * 60_000;
+
+// What the last check of a row found in this session; fresher than the list, which is reloaded once at the end.
 interface CheckOutcome {
   at: number;
   ms: number;
-  ok: boolean;
+  status: Endpoint["status"] | "error"; // error: the backend itself could not be called
   message: string | null;
+  gaveUp?: boolean; // still waking after WAKE_LIMIT_MS
 }
 
 function without<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -60,12 +66,24 @@ function Onboarding({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-function StatusCell({ endpoint: e, checkingFor, outcome, now }: {
+function StatusCell({ endpoint: e, checkingFor, waking, outcome, now }: {
   endpoint: Endpoint;
   checkingFor: number | null; // seconds this check has been waiting, or null when idle
+  waking: boolean; // the GPU answered "starting" and is being asked again
   outcome?: CheckOutcome;
   now: number;
 }) {
+  if (checkingFor !== null && waking) {
+    return (
+      <>
+        <Pill tone="warn">
+          <span aria-hidden className="size-2 animate-pulse rounded-full bg-warn" />
+          Đang khởi động GPU, {durationVi(checkingFor)}
+        </Pill>
+        <span className="text-[12.5px] text-ink-3">Tự kiểm tra lại mỗi {WAKE_RETRY_MS / 1000} s tới khi GPU lên, tối đa {WAKE_LIMIT_MS / 60_000} phút.</span>
+      </>
+    );
+  }
   if (checkingFor !== null) {
     return (
       <Pill tone="idle">
@@ -74,13 +92,22 @@ function StatusCell({ endpoint: e, checkingFor, outcome, now }: {
       </Pill>
     );
   }
+  const fresh = outcome && outcome.status !== "error" ? outcome : null;
+  const status = fresh ? fresh.status : e.status;
+  const reason = fresh ? fresh.message : e.status_message;
   const checkedAt = outcome ? new Date(outcome.at).toISOString() : e.checked_at;
-  const failedCall = outcome && !outcome.ok && outcome.message && outcome.message !== e.status_message ? outcome.message : null;
+  const failedCall = outcome?.status === "error" ? outcome.message : null;
   return (
     <>
-      {e.status === "ok" ? <Pill tone="good">Đang chạy</Pill> : <Pill tone="bad">Đã dừng</Pill>}
-      {e.status === "down" && e.status_message && (
-        <span className="text-[12.5px] text-bad" title={e.status_message}>{shortReason(e.status_message)}</span>
+      {status === "ok" && <Pill tone="good">Đang chạy</Pill>}
+      {status === "starting" && !fresh?.gaveUp && <Pill tone="warn">Chưa sẵn sàng</Pill>}
+      {(status === "down" || fresh?.gaveUp) && <Pill tone="bad">Đã dừng</Pill>}
+      {fresh?.gaveUp ? (
+        <span className="text-[12.5px] text-bad">
+          GPU chưa lên sau {WAKE_LIMIT_MS / 60_000} phút. Xem lại phiên flexsds serve rồi bấm Kiểm tra.
+        </span>
+      ) : status !== "ok" && reason && (
+        <span className={cx("text-[12.5px]", status === "down" ? "text-bad" : "text-ink-2")} title={reason}>{shortReason(reason)}</span>
       )}
       <span className="num text-[12.5px] text-ink-3">
         Kiểm tra {agoVi(checkedAt, now)}{outcome ? `, mất ${formatMs(outcome.ms)}` : ""}
@@ -99,7 +126,16 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
   onCheckingChange?: (count: number) => void;
 }) {
   const [checking, setChecking] = useState<Record<string, number>>({});
+  const [waking, setWaking] = useState<Record<string, true>>({});
   const [outcome, setOutcome] = useState<Record<string, CheckOutcome>>({});
+  // Waking GPUs are asked again only while this page is open.
+  const open = useRef(true);
+  useEffect(() => {
+    open.current = true;
+    return () => {
+      open.current = false;
+    };
+  }, []);
   const [flash, setFlash] = useState<Record<string, "good" | "bad">>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -121,25 +157,41 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
   const confirming = endpoints.find((e) => e.endpoint_id === confirm);
   const closeEditor = useCallback(() => setEditing(null), []);
 
+  // Asks again every WAKE_RETRY_MS while the GPU says it is starting, for at most WAKE_LIMIT_MS.
   async function checkOne(id: string) {
     const started = Date.now();
     setChecking((current) => ({ ...current, [id]: started }));
     let found: CheckOutcome;
-    try {
-      const checked = await api.checkEndpoint(id);
-      found = { at: Date.now(), ms: Date.now() - started, ok: checked.status === "ok", message: checked.status === "ok" ? null : checked.status_message };
-    } catch (exc) {
-      found = { at: Date.now(), ms: Date.now() - started, ok: false, message: (exc as Error).message };
+    for (;;) {
+      let checked: Endpoint;
+      try {
+        checked = await api.checkEndpoint(id);
+      } catch (exc) {
+        found = { at: Date.now(), ms: Date.now() - started, status: "error", message: (exc as Error).message };
+        break;
+      }
+      const at = Date.now();
+      if (checked.status === "starting" && at - started < WAKE_LIMIT_MS && open.current) {
+        setWaking((current) => ({ ...current, [id]: true }));
+        await new Promise((resolve) => setTimeout(resolve, WAKE_RETRY_MS));
+        if (!open.current) return;
+        continue;
+      }
+      found = { at, ms: at - started, status: checked.status, message: checked.status === "ok" ? null : checked.status_message,
+                gaveUp: checked.status === "starting" };
+      break;
     }
+    if (!open.current) return;
     setOutcome((current) => ({ ...current, [id]: found }));
-    setFlash((current) => ({ ...current, [id]: found.ok ? "good" : "bad" }));
+    setFlash((current) => ({ ...current, [id]: found.status === "ok" ? "good" : "bad" }));
+    setWaking((current) => without(current, id));
     setChecking((current) => without(current, id));
   }
 
   // Checks run side by side; the list is reloaded once, after the last one answers.
   async function check(ids: string[]) {
     await Promise.all(ids.map(checkOne));
-    await onChange();
+    if (open.current) await onChange();
   }
 
   async function remove(id: string) {
@@ -224,6 +276,7 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
                   <StatusCell
                     endpoint={e}
                     checkingFor={busy ? secondsSince(checking[e.endpoint_id], now) : null}
+                    waking={waking[e.endpoint_id] === true}
                     outcome={outcome[e.endpoint_id]}
                     now={now}
                   />

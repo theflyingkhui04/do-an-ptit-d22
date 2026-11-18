@@ -99,6 +99,10 @@ def probe(url: str, api_key: str | None, client: httpx.Client) -> dict[str, Any]
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         response = client.get(f"{url}/models", headers=headers, timeout=PROBE_TIMEOUT_S)
+    except (httpx.ReadTimeout, httpx.RemoteProtocolError) as exc:
+        # The server took the call but did not answer: a GPU waking up on Modal does this before its 503s.
+        raise EndpointError("not_ready", f"Endpoint chưa trả lời ({type(exc).__name__}): GPU có thể đang khởi động. "
+                                         "Chờ vài phút rồi kiểm tra lại.") from exc
     except httpx.HTTPError as exc:
         raise EndpointError("unreachable", f"Không kết nối được ({type(exc).__name__}). Kiểm tra phiên "
                                            "flexsds serve còn chạy không.") from exc
@@ -268,11 +272,13 @@ class EndpointRegistry:
         return row
 
     def check(self, endpoint_id: str) -> dict[str, Any]:
+        """One ``GET /v1/models``: ``ok``, ``starting`` (a sleeping GPU is waking up; the web asks again) or ``down``."""
         row = self._require(endpoint_id, with_key=True)
         try:
             found = probe(row["base_url"], row.get("api_key"), self._client)
         except EndpointError as exc:
-            fields = {"status": "down", "status_message": exc.message, "checked_at": self._now()}
+            status = "starting" if exc.code == "not_ready" else "down"
+            fields = {"status": status, "status_message": exc.message, "checked_at": self._now()}
         else:
             fields = {"status": "ok", "status_message": None, "checked_at": self._now(), "model_id": found["model_id"]}
             if found["root"]:
