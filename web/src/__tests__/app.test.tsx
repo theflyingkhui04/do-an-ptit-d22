@@ -103,7 +103,8 @@ describe("endpoints", () => {
     const vanilla = rowOf("vanilla");
     expect(within(vanilla).getByText("Mốc")).toBeInTheDocument();
     expect(within(vanilla).getByText("Đã dừng")).toBeInTheDocument();
-    expect(within(vanilla).getByText("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeInTheDocument();
+    expect(within(vanilla).queryByText("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeNull(); // only in the tooltip
+    expect(within(vanilla).getByTitle("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeInTheDocument();
     expect(within(vanilla).queryByText(/Model endpoint báo/)).toBeNull(); // same as its name
     expect(within(vanilla).queryByText(/Chưa rõ GPU/)).toBeNull();
     const adaptive = rowOf("adaptive");
@@ -119,7 +120,7 @@ describe("endpoints", () => {
     expect(screen.queryByText("Endpoint trên máy cá nhân")).toBeNull();
   });
 
-  it("adds by address only: checks each one, explains a local one and saves the usable one under the typed name", async () => {
+  it("adds one address at a time: explains a local one, then saves a usable one under the typed name", async () => {
     const modal = "https://acct--flexsds-serve.modal.run/v1";
     const local = "http://127.0.0.1:8000/v1";
     const found: Record<string, DetectResult> = {
@@ -135,19 +136,24 @@ describe("endpoints", () => {
     const drawer = screen.getByRole("dialog", { name: "Thêm endpoint" });
     expect(within(drawer).queryByLabelText(/Khoá API/)).toBeNull();
     expect(within(drawer).queryByText(/serving_config/)).toBeNull();
-    await user.type(within(drawer).getByLabelText("Địa chỉ API"), `${modal}\n${local}`);
+    const address = within(drawer).getByLabelText("Địa chỉ API");
+    expect(address.tagName).toBe("INPUT"); // one endpoint per add (Canva review 19/11)
+    expect(within(drawer).queryByText(/mỗi dòng/)).toBeNull();
+
+    await user.type(address, local);
     await user.click(within(drawer).getByRole("button", { name: "Kiểm tra" }));
     expect(await within(drawer).findByText("Cần mở đường hầm")).toBeInTheDocument();
     expect(within(drawer).getByText("cloudflared tunnel --url http://127.0.0.1:8000")).toBeInTheDocument();
-    // Each address is checked on its own, so one slow GPU does not hold back the others.
-    expect(detectEndpoints).toHaveBeenCalledWith([modal], undefined);
-    expect(detectEndpoints).toHaveBeenCalledWith([local], undefined);
+    expect(within(drawer).queryByRole("button", { name: /Thêm \d endpoint/ })).toBeNull();
 
-    const name = within(drawer).getByLabelText(`Tên hiển thị cho ${modal}`);
+    // The whole "- API: …" line printed by the CLI can be pasted; Enter checks it.
+    await user.clear(address);
+    await user.type(address, `- API: ${modal}{Enter}`);
+    expect(detectEndpoints).toHaveBeenLastCalledWith([modal], undefined);
+    const name = await within(drawer).findByLabelText(`Tên hiển thị cho ${modal}`);
     expect(name).toHaveValue("Qwen/Qwen2.5-7B-Instruct");
     await user.clear(name);
     await user.type(name, "adaptive L4");
-    expect(within(drawer).getByText("Bỏ qua 1 địa chỉ lỗi")).toBeInTheDocument();
     await user.click(within(drawer).getByRole("button", { name: "Thêm 1 endpoint" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(addEndpoints).toHaveBeenCalledWith([{ url: modal, name: "adaptive L4", api_key: undefined }]);
@@ -175,45 +181,40 @@ describe("endpoints", () => {
     expect(addEndpoints).toHaveBeenCalledWith([{ url, name: undefined, api_key: "k-1" }]);
   });
 
-  it("says an address is already in the list and skips it", async () => {
+  it("says an address is already in the list", async () => {
     const saved = "https://acct--vanilla.modal.run/v1";
-    const fresh = "https://acct--static.modal.run/v1";
-    const detectEndpoints = vi.fn(async (urls: string[]) => ({
-      results: [urls[0] === saved
-        ? { ...refused(saved, "exists", "Đã có trong danh sách với tên vanilla, không cần thêm lại."), endpoint_id: BASE, name: "vanilla" }
-        : ok(fresh, "qwen2.5-7b-static")],
+    const detectEndpoints = vi.fn(async () => ({
+      results: [{ ...refused(saved, "exists", "Đã có trong danh sách với tên vanilla, không cần thêm lại."), endpoint_id: BASE, name: "vanilla" }],
     }));
     open("endpoints", fakeApi({ detectEndpoints }));
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Thêm endpoint" }));
     const drawer = screen.getByRole("dialog", { name: "Thêm endpoint" });
-    await user.type(within(drawer).getByLabelText("Địa chỉ API"), `${saved}\n${fresh}`);
+    await user.type(within(drawer).getByLabelText("Địa chỉ API"), saved);
     await user.click(within(drawer).getByRole("button", { name: "Kiểm tra" }));
     expect(await within(drawer).findByText("Đã có trong danh sách với tên vanilla, không cần thêm lại.")).toBeInTheDocument();
-    expect(await within(drawer).findByRole("button", { name: "Thêm 1 endpoint" })).toBeEnabled();
-    expect(within(drawer).getByText("Bỏ qua 1 địa chỉ đã có")).toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: /Thêm \d endpoint/ })).toBeNull();
   });
 
-  it("shows each address while it is checked, its own result as soon as it answers, and a hint for slow GPUs", async () => {
+  it("shows the address while it is checked, its result as soon as it answers, and a hint for slow GPUs", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const a = "https://acct--a.modal.run/v1";
-      const b = "https://acct--b.modal.run/v1";
-      const answer: Record<string, (value: { results: DetectResult[] }) => void> = {};
-      const detectEndpoints = vi.fn((urls: string[]) => new Promise<{ results: DetectResult[] }>((resolve) => {
-        answer[urls[0]] = resolve;
+      let answer: (value: { results: DetectResult[] }) => void = () => undefined;
+      const detectEndpoints = vi.fn(() => new Promise<{ results: DetectResult[] }>((resolve) => {
+        answer = resolve;
       }));
       open("endpoints", fakeApi({ detectEndpoints }));
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       await user.click(await screen.findByRole("button", { name: "Thêm endpoint" }));
       const drawer = screen.getByRole("dialog", { name: "Thêm endpoint" });
-      await user.type(within(drawer).getByLabelText("Địa chỉ API"), `${a}\n${b}`);
+      await user.type(within(drawer).getByLabelText("Địa chỉ API"), a);
       await user.click(within(drawer).getByRole("button", { name: "Kiểm tra" }));
 
       const button = within(drawer).getByRole("button", { name: /Đang kiểm tra/ });
       expect(button).toHaveAttribute("aria-busy", "true");
       expect(within(button).getByTestId("spinner")).toBeInTheDocument();
-      expect(within(drawer).getAllByTestId("check-running")).toHaveLength(2);
+      expect(within(drawer).getAllByTestId("check-running")).toHaveLength(1);
       expect(within(drawer).queryByText(/đang ngủ/)).toBeNull();
 
       await act(async () => {
@@ -223,10 +224,10 @@ describe("endpoints", () => {
       expect(within(drawer).getByText(/đang ngủ/)).toBeInTheDocument();
 
       await act(async () => {
-        answer[a]({ results: [ok(a, "Qwen/Qwen2.5-7B-Instruct-AWQ")] });
+        answer({ results: [ok(a, "Qwen/Qwen2.5-7B-Instruct-AWQ")] });
       });
       expect(within(drawer).getByLabelText(`Tên hiển thị cho ${a}`)).toHaveValue("Qwen/Qwen2.5-7B-Instruct-AWQ");
-      expect(within(drawer).getAllByTestId("check-running")).toHaveLength(1); // b is still waking up
+      expect(within(drawer).queryAllByTestId("check-running")).toHaveLength(0);
     } finally {
       vi.useRealTimers();
     }
@@ -361,7 +362,7 @@ describe("endpoints", () => {
     open("endpoints", fakeApi({ endpoints }));
     const row = await screen.findByRole("article", { name: "vanilla" });
     expect(within(row).getByText("Chưa sẵn sàng")).toBeInTheDocument();
-    expect(within(row).getByText("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeInTheDocument();
+    expect(within(row).getByTitle("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeInTheDocument();
     expect(within(row).queryByText("Đã dừng")).toBeNull();
     const user = userEvent.setup();
     await user.click(within(row).getByRole("button", { name: "Sửa vanilla" }));
@@ -486,7 +487,7 @@ describe("node 1", () => {
     open("node1", api);
     const user = userEvent.setup();
     await user.upload(await screen.findByLabelText("Ảnh hoá đơn"), jpegFile());
-    await user.click(screen.getByRole("button", { name: "Chạy Node 1" }));
+    await user.click(screen.getByRole("button", { name: "Bắt đầu" }));
     return { api, user };
   }
 
@@ -586,8 +587,8 @@ describe("node 1", () => {
     open("node1", fakeApi({ job: vi.fn(async () => failed) }));
     const user = userEvent.setup();
     await user.upload(await screen.findByLabelText("Ảnh hoá đơn"), jpegFile());
-    await user.click(screen.getByRole("button", { name: "Chạy Node 1" }));
-    expect(await screen.findByText(/Model chép sai thông tin nguồn/)).toHaveTextContent("Chạy Node 1 lần nữa");
+    await user.click(screen.getByRole("button", { name: "Bắt đầu" }));
+    expect(await screen.findByText(/Model chép sai thông tin nguồn/)).toHaveTextContent("Bắt đầu lần nữa");
   });
 
   it("rejects a file that is not a JPEG or PNG before uploading", async () => {
@@ -595,7 +596,7 @@ describe("node 1", () => {
     open("node1", api);
     await userEvent.setup({ applyAccept: false }).upload(await screen.findByLabelText("Ảnh hoá đơn"), jpegFile("a.pdf", "application/pdf"));
     expect(await screen.findByText("Chỉ nhận ảnh JPEG hoặc PNG.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Chạy Node 1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Bắt đầu" })).toBeDisabled();
   });
 
   it("asks for an endpoint when none exists", async () => {
@@ -858,12 +859,65 @@ describe("node 3", () => {
   it("lists the input tables of the last report in a side panel", async () => {
     open("node3", fakeApi());
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Số liệu đầu vào" }));
+    expect(screen.getByRole("dialog", { name: "Số liệu đầu vào" })).not.toHaveTextContent(/truy vấn|báo cáo/); // empty before a report
+    await user.click(screen.getByRole("button", { name: "Đóng" }));
     await user.click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
     await screen.findByLabelText("Số tổng của phạm vi");
     await user.click(screen.getByRole("button", { name: "Số liệu đầu vào" }));
     const drawer = screen.getByRole("dialog", { name: "Số liệu đầu vào" });
     expect(drawer).toHaveTextContent("Tổng tiền theo cửa hàng");
-    expect(drawer).toHaveTextContent("truy vấn cố định");
+    expect(drawer).not.toHaveTextContent("truy vấn cố định");
+  });
+});
+
+describe("Canva review 19/11", () => {
+  it("names the app FlexSDS Benchmark and keeps the side bar to the pages and Thoát", async () => {
+    open("node1", fakeApi());
+    const nav = await screen.findByRole("navigation", { name: "Điều hướng" });
+    expect(within(nav).getByText("FlexSDS Benchmark")).toBeInTheDocument();
+    expect(within(nav).queryByText(/Console đồ án/)).toBeNull();
+    expect(within(nav).queryByText(/Web không bật hay tắt GPU/)).toBeNull();
+    expect(within(nav).getByRole("link", { name: /Truy vấn SQL/ })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: /Hỏi bằng SQL/ })).toBeNull();
+    expect(within(nav).getAllByRole("button", { name: "Thoát" }).length).toBeGreaterThan(0);
+  });
+
+  it("keeps Node 1 to the choices it needs and marks a stopped LLM with a red dot", async () => {
+    const endpoints = vi.fn(async () => ({ endpoints: [ENDPOINTS[0], endpoint(FAST, "adaptive", { status: "down", status_message: "HTTP 503" })] }));
+    open("node1", fakeApi({ endpoints }));
+    expect(await screen.findByText("Chọn ảnh")).toBeInTheDocument();
+    expect(screen.getByText("JPEG hoặc PNG, tối đa 10 MB.")).toBeInTheDocument();
+    expect(screen.getByText("Lựa chọn LLM")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bắt đầu" })).toBeInTheDocument();
+    for (const gone of [/ảnh mẫu trong devset/, /luôn chạy kèm/, /Output của từng endpoint/, /ảnh tải lên hiện trước/, /Chạy trên/]) {
+      expect(screen.queryByText(gone)).toBeNull();
+    }
+    const stopped = screen.getByRole("checkbox", { name: /adaptive/ });
+    expect(stopped).toBeDisabled();
+    expect(within(stopped).getByText("đã dừng")).toHaveClass("sr-only"); // read aloud, not shown
+    expect(stopped.querySelector("i")?.getAttribute("style")).toContain("var(--bad)");
+    const running = screen.getByRole("checkbox", { name: /vanilla/ });
+    expect(running.querySelector("i")?.getAttribute("style")).not.toContain("var(--bad)");
+  });
+
+  it("asks without examples on Node 2 and lists the views without notes", async () => {
+    open("node2", fakeApi());
+    expect(await screen.findByRole("heading", { name: "Truy vấn SQL" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Hỏi về dữ liệu hoá đơn")).toBeInTheDocument();
+    expect(screen.getByText("Lựa chọn LLM")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Dữ liệu có thể hỏi" }));
+    const drawer = screen.getByRole("dialog", { name: "Dữ liệu có thể hỏi" });
+    expect(within(drawer).getByText("Các SQL view có thể truy vấn bao gồm")).toBeInTheDocument();
+    expect(within(drawer).getByText("v_invoice_facts")).toBeInTheDocument();
+    expect(drawer).not.toHaveTextContent(/Một dòng mỗi|bị chặn/);
+  });
+
+  it("asks without an example on Node 3", async () => {
+    open("node3", fakeApi());
+    expect(await screen.findByPlaceholderText("Bạn cần báo cáo gì")).toBeInTheDocument();
+    expect(screen.getByText("Lựa chọn LLM")).toBeInTheDocument();
   });
 });
 

@@ -697,7 +697,7 @@ export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; e
             </div>
           )}
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
-            <span className="text-[13px] text-ink-3">Chạy trên</span>
+            <span className="text-[13px] text-ink-3">Lựa chọn LLM</span>
             <EndpointChips
               endpoints={endpoints}
               selected={selected}

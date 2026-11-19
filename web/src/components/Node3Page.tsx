@@ -282,17 +282,14 @@ function DataDrawer({ result, onClose }: { result?: ReportResult; onClose: () =>
   return (
     <Drawer title="Số liệu đầu vào" onClose={onClose}>
       <div className="grid gap-4">
-        <p className="text-[13.5px] text-ink-2">
-          Node 3 nhận số liệu qua 6 truy vấn cố định, chạy trên role chỉ đọc; model không viết SQL. Mọi số trên dashboard lấy từ các bảng này.
-        </p>
-        {result ? result.tables.map((t) => (
+        {result?.tables.map((t) => (
           <section key={t.key} className="grid gap-1.5">
             <h3 className="flex flex-wrap items-baseline gap-2 text-[14px] font-semibold">
               {t.title}<code className="font-mono text-[12px] font-normal text-ink-3">{t.key}, {t.rows.length} dòng</code>
             </h3>
             <ResultTable columns={t.columns} rows={t.rows} max={20} flag={quantityFlag(t)} />
           </section>
-        )) : <p className="text-[13.5px] text-ink-3">Tạo một báo cáo để xem các bảng của phạm vi đã chọn.</p>}
+        ))}
       </div>
     </Drawer>
   );
@@ -378,7 +375,7 @@ export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints:
                 run(request, Date.now());
               }
             }}
-            placeholder="Bạn cần báo cáo gì, ví dụ: báo cáo chi tiêu và dashboard của các hoá đơn gần nhất"
+            placeholder="Bạn cần báo cáo gì"
             className="block min-h-[60px] w-full resize-none bg-transparent px-4 pb-1.5 pt-3.5 text-base leading-snug outline-none"
           />
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 px-3 pb-2.5 pl-4">
@@ -398,7 +395,7 @@ export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints:
                 </button>
               ))}
             </div>
-            <span className="text-[13px] text-ink-3">Chạy trên</span>
+            <span className="text-[13px] text-ink-3">Lựa chọn LLM</span>
             <EndpointChips
               endpoints={endpoints}
               selected={selected}
@@ -428,9 +425,6 @@ export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints:
             </button>
           ))}
         </div>
-        {baseline && !baseLive && (
-          <p className="text-[12.5px] text-ink-3">Mốc {baseline.name} đang dừng nên lượt này không có số so sánh.</p>
-        )}
       </section>
 
       {round && (

@@ -11,7 +11,6 @@ import { formatMs } from "@/lib/format";
 const EXAMPLE = "https://<tài-khoản>--flexsds-serving-serve.modal.run/v1";
 // After this long a check is most likely waiting for a sleeping GPU to start.
 export const SLOW_HINT_S = 10;
-const MAX_ADDRESSES = 10;
 
 // One pasted address, checked on its own so a slow GPU does not hold back the others (design D14).
 interface Check {
@@ -173,7 +172,9 @@ export default function AddEndpointDrawer({ api, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const urls = [...new Set(text.split(/\s+/).map((u) => u.trim()).filter(Boolean))];
+  // One endpoint per add (Canva review 19/11). A pasted "- API: https://…" line keeps only the address.
+  const url = text.trim().split(/\s+/).find((t) => /^https?:\/\//i.test(t)) ?? text.trim();
+  const urls = url ? [url] : [];
   const running = (checks ?? []).filter((c) => !c.result);
   const busy = running.length > 0;
   const now = useNow(busy);
@@ -201,7 +202,7 @@ export default function AddEndpointDrawer({ api, onClose, onSaved }: {
   function checkAll() {
     setError(null);
     const before = new Map((checks ?? []).map((c) => [c.input, c]));
-    const next = urls.slice(0, MAX_ADDRESSES).map((input) => ({
+    const next = urls.map((input) => ({
       input, started: Date.now(), name: before.get(input)?.name, key: before.get(input)?.key,
     }));
     setChecks(next);
@@ -258,24 +259,27 @@ export default function AddEndpointDrawer({ api, onClose, onSaved }: {
       <div className="grid content-start gap-4">
         <div className="grid gap-1.5">
           <label htmlFor="endpoint-urls" className="text-[13.5px] font-semibold">Địa chỉ API</label>
-          <textarea
+          <input
             id="endpoint-urls"
+            type="text"
+            inputMode="url"
             autoFocus
-            rows={3}
-            wrap="off"
             spellCheck={false}
+            autoComplete="off"
             value={text}
             onChange={(e) => {
               setText(e.target.value);
               setChecks(null);
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !busy && urls.length > 0) {
+                e.preventDefault();
+                checkAll();
+              }
+            }}
             placeholder={EXAMPLE}
-            className="resize-y rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[13px]"
+            className="w-full min-w-0 rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[13px]"
           />
-          <small className="text-[12.5px] text-ink-3">
-            Dòng <b>API</b> mà <code className="font-mono">flexsds serve</code> in ra sau “Endpoint LLM created”. Nhiều địa chỉ thì mỗi dòng một địa chỉ
-            {urls.length > MAX_ADDRESSES ? `; chỉ kiểm tra ${MAX_ADDRESSES} địa chỉ đầu.` : "."}
-          </small>
         </div>
 
         {checks && checks.length > 0 && (

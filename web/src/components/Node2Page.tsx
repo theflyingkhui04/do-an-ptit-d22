@@ -244,12 +244,11 @@ function ViewsDrawer({ onClose }: { onClose: () => void }) {
   return (
     <Drawer title="Dữ liệu có thể hỏi" onClose={onClose}>
       <div className="grid gap-4">
-        <p className="text-[13.5px] text-ink-2">Node 2 chỉ đọc 4 view dưới đây; câu lệnh ghi, xoá hoặc bảng khác đều bị chặn. Chữ trong dữ liệu được lưu không dấu.</p>
+        <p className="text-[13.5px] text-ink-2">Các SQL view có thể truy vấn bao gồm</p>
         {VIEWS.map((v) => (
           <section key={v.name} className="grid gap-1.5">
-            <h3 className="flex flex-wrap items-baseline gap-2 text-[14px]">
+            <h3 className="text-[14px]">
               <code className="font-mono text-[13px] font-semibold">{v.name}</code>
-              <span className="text-[13px] font-normal text-ink-3">{v.about}</span>
             </h3>
             <div className="flex flex-wrap gap-1">
               {v.columns.map((c) => <code key={c} className="rounded-md bg-sunken px-1.5 font-mono text-[12px] text-ink-2">{c}</code>)}
@@ -305,11 +304,11 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
     })
     : [];
 
-  if (endpoints.length === 0) return <><PageHead title="Hỏi bằng SQL" /><NeedEndpoint what="Node 2" onGo={() => go("endpoints")} /></>;
+  if (endpoints.length === 0) return <><PageHead title="Truy vấn SQL" /><NeedEndpoint what="Node 2" onGo={() => go("endpoints")} /></>;
 
   return (
     <>
-      <PageHead title="Hỏi bằng SQL" actions={<Button variant="ghost" icon={DatabaseZap} onClick={() => setViews(true)}>Dữ liệu có thể hỏi</Button>} />
+      <PageHead title="Truy vấn SQL" actions={<Button variant="ghost" icon={DatabaseZap} onClick={() => setViews(true)}>Dữ liệu có thể hỏi</Button>} />
 
       <section aria-label="Đặt câu hỏi" className="grid gap-3.5 rounded-xl border border-line bg-surface p-[18px]">
         <form
@@ -332,11 +331,11 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
                 ask(question, Date.now());
               }
             }}
-            placeholder="Hỏi về dữ liệu hoá đơn, ví dụ: cửa hàng nào có tổng giá trị hoá đơn cao nhất?"
+            placeholder="Hỏi về dữ liệu hoá đơn"
             className="block min-h-[60px] w-full resize-none bg-transparent px-4 pb-1.5 pt-3.5 text-base leading-snug outline-none"
           />
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 px-3 pb-2.5 pl-4">
-            <span className="text-[13px] text-ink-3">Chạy trên</span>
+            <span className="text-[13px] text-ink-3">Lựa chọn LLM</span>
             <EndpointChips
               endpoints={endpoints}
               selected={selected}
@@ -366,9 +365,6 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
             </button>
           ))}
         </div>
-        {baseline && !baseLive && (
-          <p className="text-[12.5px] text-ink-3">Mốc {baseline.name} đang dừng nên lượt hỏi này không có số so sánh.</p>
-        )}
       </section>
 
       {round && (

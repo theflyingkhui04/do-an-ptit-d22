@@ -99,15 +99,16 @@ function StatusCell({ endpoint: e, checkingFor, waking, outcome, now }: {
   const failedCall = outcome?.status === "error" ? outcome.message : null;
   return (
     <>
-      {status === "ok" && <Pill tone="good">Đang chạy</Pill>}
-      {status === "starting" && !fresh?.gaveUp && <Pill tone="warn">Chưa sẵn sàng</Pill>}
-      {(status === "down" || fresh?.gaveUp) && <Pill tone="bad">Đã dừng</Pill>}
-      {fresh?.gaveUp ? (
+      {/* The reason stays in the tooltip only (Canva review 19/11: no reason line under the pill). */}
+      <span className="inline-flex" title={status !== "ok" && reason ? shortReason(reason) : undefined}>
+        {status === "ok" && <Pill tone="good">Đang chạy</Pill>}
+        {status === "starting" && !fresh?.gaveUp && <Pill tone="warn">Chưa sẵn sàng</Pill>}
+        {(status === "down" || fresh?.gaveUp) && <Pill tone="bad">Đã dừng</Pill>}
+      </span>
+      {fresh?.gaveUp && (
         <span className="text-[12.5px] text-bad">
           GPU chưa lên sau {WAKE_LIMIT_MS / 60_000} phút. Xem lại phiên flexsds serve rồi bấm Kiểm tra.
         </span>
-      ) : status !== "ok" && reason && (
-        <span className={cx("text-[12.5px]", status === "down" ? "text-bad" : "text-ink-2")} title={reason}>{shortReason(reason)}</span>
       )}
       <span className="num text-[12.5px] text-ink-3">
         Kiểm tra {agoVi(checkedAt, now)}{outcome ? `, mất ${formatMs(outcome.ms)}` : ""}

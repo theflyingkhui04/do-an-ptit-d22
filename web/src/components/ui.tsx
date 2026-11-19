@@ -360,7 +360,7 @@ export function EndpointChips({ endpoints, selected, onToggle, single, alwaysOn 
 }) {
   const colors = endpointColors(endpoints);
   return (
-    <div className="flex flex-wrap gap-2" role={single ? "radiogroup" : "group"} aria-label="Chạy trên endpoint">
+    <div className="flex flex-wrap gap-2" role={single ? "radiogroup" : "group"} aria-label="Lựa chọn LLM">
       {endpoints.map((e) => {
         const locked = alwaysOn.includes(e.endpoint_id) && e.status !== "down";
         const on = locked || selected.includes(e.endpoint_id);
@@ -375,14 +375,15 @@ export function EndpointChips({ endpoints, selected, onToggle, single, alwaysOn 
             title={e.status === "down" ? (e.status_message ?? "Endpoint đã dừng") : locked ? "Endpoint mốc luôn chạy kèm để so sánh" : e.base_url}
             className={cx(
               "inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-[13.5px]",
-              e.status === "down" && "opacity-50", locked && "cursor-default",
+              // A stopped LLM: muted text, but its dot stays a full red (Canva review 19/11).
+              e.status === "down" && "cursor-not-allowed text-ink-3", locked && "cursor-default",
               on ? "border-ink font-semibold shadow-[0_0_0_1px_var(--ink)]" : "border-line bg-surface",
             )}
           >
-            <Dot color={colors[e.endpoint_id]} />
+            <Dot color={e.status === "down" ? "var(--bad)" : colors[e.endpoint_id]} />
             <span className="truncate">{e.name}</span>
             {e.is_baseline && <span className="rounded-md border border-line px-1.5 text-[11.5px] font-normal text-ink-3">{locked ? "mốc, luôn chạy" : "mốc"}</span>}
-            {e.status === "down" && <span className="text-[11.5px] font-normal text-ink-3">đã dừng</span>}
+            {e.status === "down" && <span className="sr-only">đã dừng</span>}
           </button>
         );
       })}

@@ -153,7 +153,7 @@ function SavedInvoices({ api, refresh }: { api: Api; refresh: number }) {
   }, [api, refresh]);
 
   return (
-    <Panel title="Hoá đơn đã lưu" icon={Database} meta={rows && <span>{rows.length} hoá đơn, ảnh tải lên hiện trước</span>} bodyClassName="p-0 gap-0">
+    <Panel title="Hoá đơn đã lưu" icon={Database} bodyClassName="p-0 gap-0">
       {error && <div className="p-[18px]"><Notice tone="bad">{error}</Notice></div>}
       {rows && rows.length === 0 && <p className="p-[18px] text-ink-3">Chưa có hoá đơn nào.</p>}
       {rows && rows.length > 0 && (
@@ -338,7 +338,6 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
   if (endpoints.length === 0) return <><PageHead title="Trích xuất hoá đơn" /><NeedEndpoint what="Node 1" onGo={() => go("endpoints")} /></>;
 
   const colors = endpointColors(endpoints);
-  const baseline = endpoints.find((e) => e.is_baseline);
   const result = job?.result;
   const runs = result?.runs ?? {};
   const baselineId = result?.baseline ?? null;
@@ -449,8 +448,8 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
 
           <div className="grid min-w-0 gap-3">
             <div>
-              <b className="block truncate text-[15px]">{file ? file.name : "Chưa chọn ảnh"}</b>
-              <span className="text-[13px] text-ink-3">JPEG hoặc PNG, tối đa 10 MB. Hoặc dùng ảnh mẫu trong devset:</span>
+              <b className="block truncate text-[15px]">{file ? file.name : "Chọn ảnh"}</b>
+              <span className="text-[13px] text-ink-3">JPEG hoặc PNG, tối đa 10 MB.</span>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 {SAMPLES.map((s) => (
                   <button key={s.id} type="button" onClick={() => pickSample(s)} className="flex items-center gap-2 rounded-lg border border-line py-1 pl-1 pr-2.5 text-left text-[12.5px] text-ink-2 hover:bg-sunken">
@@ -462,23 +461,18 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
               </div>
             </div>
             <div className="grid gap-1.5">
-              <span className="text-[13.5px] font-semibold">Chạy trên</span>
+              <span className="text-[13.5px] font-semibold">Lựa chọn LLM</span>
               <EndpointChips
                 endpoints={endpoints}
                 selected={selected}
                 onToggle={(id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id].slice(-6)))}
               />
-              <small className="text-[12.5px] text-ink-3">
-                {baseline
-                  ? `Mốc ${baseline.name} luôn chạy kèm để so sánh. Hoá đơn lưu lấy kết quả của endpoint chọn đầu tiên.`
-                  : "Chưa có endpoint mốc nên chỉ hiện số tuyệt đối. Hoá đơn lưu lấy kết quả của endpoint chọn đầu tiên."}
-              </small>
             </div>
           </div>
 
           <div className="grid gap-2 lg:min-w-[190px]">
             <Button icon={Play} loading={busy} disabled={!file || selected.length === 0 || busy} onClick={run}>
-              {busy ? "Đang chạy" : "Chạy Node 1"}
+              {busy ? "Đang chạy" : "Bắt đầu"}
             </Button>
           </div>
         </div>
@@ -507,9 +501,7 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
 
       <Panel title="Kết quả" icon={ScanText} meta={job && <span>Job {job.job_id}</span>} bodyClassName="p-0 gap-0">
         {!job ? (
-          <p className="p-[18px] text-ink-3">
-            {busy ? "Đang gửi ảnh lên máy chủ…" : "Chọn ảnh và bấm “Chạy Node 1”. Output của từng endpoint, so với mốc và log hiện ở đây."}
-          </p>
+          busy && <p className="p-[18px] text-ink-3">Đang gửi ảnh lên máy chủ…</p>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-line px-[18px] py-3">
@@ -563,7 +555,7 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
                   {job.error?.includes("SOURCE_BINDING") && (
                     <p className="mt-1.5 text-ink-2">
                       Model chép sai thông tin nguồn của ảnh (mã hoặc đường dẫn) mà luồng Node 1 bắt phải chép y nguyên. Lỗi này
-                      thỉnh thoảng xảy ra với model 7B; bấm Chạy Node 1 lần nữa.
+                      thỉnh thoảng xảy ra với model 7B; bấm Bắt đầu lần nữa.
                     </p>
                   )}
                 </Notice>

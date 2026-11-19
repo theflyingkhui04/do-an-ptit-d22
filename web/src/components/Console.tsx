@@ -17,7 +17,7 @@ export type PageId = "node1" | "node2" | "node3" | "result" | "endpoints";
 
 const PAGES: { id: PageId; label: string; step?: number; group: string }[] = [
   { id: "node1", label: "Trích xuất hoá đơn", step: 1, group: "Pipeline hoá đơn" },
-  { id: "node2", label: "Hỏi bằng SQL", step: 2, group: "Pipeline hoá đơn" },
+  { id: "node2", label: "Truy vấn SQL", step: 2, group: "Pipeline hoá đơn" },
   { id: "node3", label: "Báo cáo và dashboard", step: 3, group: "Pipeline hoá đơn" },
   { id: "result", label: "Đo và so sánh", group: "Đánh giá" },
   { id: "endpoints", label: "Endpoint", group: "Hệ thống" },
@@ -146,10 +146,7 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
       <nav aria-label="Điều hướng" className="flex items-center gap-3 overflow-x-auto bg-rail px-3 py-2.5 text-rail-ink md:sticky md:top-0 md:h-screen md:flex-col md:items-stretch md:gap-5 md:overflow-x-visible md:overflow-y-auto md:px-2.5 md:py-[18px] wide:px-3">
         <div className="flex shrink-0 items-center gap-2.5 md:justify-center wide:justify-start wide:px-2">
           <BrandMark size={32} />
-          <div className="hidden leading-tight wide:block">
-            <b className="block text-base text-white">FlexSDS</b>
-            <span className="text-xs">Console đồ án D22, PTIT</span>
-          </div>
+          <b className="hidden text-base leading-tight text-white wide:block">FlexSDS Benchmark</b>
         </div>
         <div className="flex gap-1 md:grid md:gap-4">
           {groups.map((group) => (
@@ -195,7 +192,6 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
           ))}
         </div>
         <div className="mt-auto hidden gap-2 rounded-xl bg-rail-active p-3 text-[13px] wide:grid">
-          <p>Web không bật hay tắt GPU. Endpoint do lệnh <code className="font-mono text-white">flexsds serve</code> tạo ra.</p>
           <button type="button" onClick={onSignOut} className="flex items-center gap-2 text-[#8796a5] hover:text-white">
             <LogOut aria-hidden className="size-4" /> Thoát
           </button>
