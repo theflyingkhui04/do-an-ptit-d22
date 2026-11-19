@@ -1,5 +1,5 @@
 {
-  "flexsds_version": "0.2.3",
+  "flexsds_version": "0.3.4",
   "action": "serve",
   "backend": "modal",
   "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",

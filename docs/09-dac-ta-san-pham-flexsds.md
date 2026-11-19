@@ -136,13 +136,13 @@ flexsds [HÀNH_ĐỘNG] [TÙY_CHỌN]
 
 ---
 
-## 5. Kế hoạch phát triển hệ sinh thái: AI Agent Skill (Mở rộng)
+## 5. FlexSDS Assistant
 
-Nhằm mở rộng tính ứng dụng của FlexSDS vào các công cụ lập trình AI thế hệ mới (Antigravity CLI, Claude Code), nhóm quy hoạch một Agent Skill mang tên `flexsds-advisor`:
-* **Kênh phân phối:** Phát hành qua nền tảng `skills.sh`.
+Nhằm mở rộng tính ứng dụng của FlexSDS vào các công cụ lập trình AI thế hệ mới (Antigravity CLI, Claude Code), nhóm quy hoạch skill **FlexSDS Assistant** (`flexsds-assistant`):
+* **Kênh phân phối:** Chia sẻ bundle qua repository GitHub. Codex và Antigravity dùng thư mục skill trong repo. Claude có thể dùng bản ZIP hoặc thư mục project của Claude Code.
 * **Năng lực của Skill:**
   1. *Tư vấn tương thích trước triển khai:* Đánh giá cấu hình phần cứng của người dùng và đề xuất cặp mô hình Target-Draft tối ưu nhất.
-  2. *Bản đồ quyết định tác vụ (Use-case Advisor):* Hướng dẫn người dùng khi nào NÊN bật suy luận phỏng đoán (các tác vụ có độ trễ quan trọng như agent loop, OCR, coding, trích xuất hóa đơn) và khi nào KHÔNG NÊN bật (tác vụ batch throughput quá lớn hoặc input dài mà output ngắn).
+  2. *Tư vấn theo tác vụ:* Hướng dẫn người dùng khi nào NÊN bật suy luận phỏng đoán (các tác vụ có độ trễ quan trọng như agent loop, OCR, coding, trích xuất hóa đơn) và khi nào KHÔNG NÊN bật (tác vụ batch throughput quá lớn hoặc input dài mà output ngắn).
   3. *Tự động tích hợp mã nguồn:* Quét mã nguồn Python của dự án người dùng, tự động refactor các lời gọi `openai.OpenAI()` để trỏ về endpoint của FlexSDS.
   4. *Chẩn đoán log hiệu năng:* Đọc dữ liệu telemetry của request để giải thích nguyên nhân tăng tốc hoặc sụt giảm tốc độ.
 

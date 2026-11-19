@@ -1,9 +1,9 @@
 ---
-name: flexsds-advisor
+name: flexsds-assistant
 description: Inspect FlexSDS hardware/profile selection, check target/draft serving setup, construct safe FlexSDS commands, and diagnose FlexSDS CLI errors from model IDs, environment facts or command output. Return observed results, caveats and exact next actions. Use for FlexSDS setup/advisory requests; exclude generic Python, vLLM scheduling, speculative-decoding theory and unrelated GPU advice.
 ---
 
-# FlexSDS Advisor
+# FlexSDS Assistant
 
 Use the actual CLI for execution; keep reasoning and recommendations here. Support
 hardware/profile inspection, serving configuration previews and CLI diagnosis.
