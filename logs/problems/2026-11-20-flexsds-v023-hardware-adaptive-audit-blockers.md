@@ -1,45 +1,49 @@
-# FlexSDS v0.2.3 Hardware-Adaptive Audit — Runtime, Correctness và Scientific-Validity Blockers
+﻿# FlexSDS v0.2.3 Hardware-Adaptive Audit â€” Runtime, Correctness vÃ  Scientific-Validity Blockers
 
-- **Mã vấn đề:** `PROB-FLEXSDS-V023-HWADAPT-AUDIT-BLOCKERS`
-- **Ngày tổng hợp:** 20/11/2026
-- **Owner audit:** Bùi Thiên Đại / `daijestic`
+- **MÃ£ váº¥n Ä‘á»:** `PROB-FLEXSDS-V023-HWADAPT-AUDIT-BLOCKERS`
+- **NgÃ y tá»•ng há»£p:** 20/11/2026
+- **Owner audit:** BÃ¹i ThiÃªn Äáº¡i / `daijestic`
 - **Repository:** `theflyingkhui04/do-an-ptit-d22`
-- **Phạm vi:** FlexSDS CLI → serving runner → speculative runtime → Hardware-Adaptive scheduler/planner/controller → verifier feedback → telemetry.
-- **Primary audit baseline:** `develop@8006205a6f19790a776d67155a377def053d2736`
-- **Package metadata tại primary baseline:** `0.2.3`
-- **Historical release identity cần phân biệt:** Git tag `v0.2.3@450bf200498a699ae5442f14e502d0159a127f1e`, internal package metadata `0.2.2`.
-- **Trạng thái:** `PARTIALLY VERIFIED — SCIENTIFIC CLOSURE BLOCKED`
-- **Không benchmark hiệu năng trong problem log này.**
-- **Không sửa controller/scheduler/planner để làm audit xanh.**
-- **Negative result được giữ nguyên làm evidence.**
+- **Pháº¡m vi:** FlexSDS CLI â†’ serving runner â†’ speculative runtime â†’ Hardware-Adaptive scheduler/planner/controller â†’ verifier feedback â†’ telemetry.
+- **Primary audit baseline / SOURCE_COMMIT:** `develop@8006205a6f19790a776d67155a377def053d2736`
+- **Package metadata táº¡i primary baseline:** `0.2.3`
+- **Evidence branch:** `audit/flexsds-v023-hardwareadaptive-20261120`
+- **EVIDENCE_COMMIT:** `1eb7e59`
+- **GitHub relation observed immediately after initial handoff (`1eb7e59`):** `1 commit ahead / 7 commits behind main`; historical observation, not a permanent branch-state invariant
+- **Historical release identity cáº§n phÃ¢n biá»‡t:** Git tag `v0.2.3@450bf200498a699ae5442f14e502d0159a127f1e`, internal package metadata `0.2.2`.
+- **Tráº¡ng thÃ¡i:** `PARTIALLY VERIFIED â€” SCIENTIFIC CLOSURE BLOCKED`
+- **Branch policy:** audit evidence branch Ä‘Æ°á»£c giá»¯ riÃªng; khÃ´ng merge/rebase chá»‰ Ä‘á»ƒ xÃ³a tráº¡ng thÃ¡i `behind`.
+- **KhÃ´ng benchmark hiá»‡u nÄƒng trong problem log nÃ y.**
+- **KhÃ´ng sá»­a controller/scheduler/planner Ä‘á»ƒ lÃ m audit xanh.**
+- **Negative result Ä‘Æ°á»£c giá»¯ nguyÃªn lÃ m evidence.**
 
-> File này ghi các **vấn đề/blocker và root-cause findings** phát hiện trong quá trình audit Hardware-Adaptive.  
-> Báo cáo bàn giao theo 8 tiêu chí PM nằm riêng trong `logs/daijestic/`; problem log này không thay thế worklog/report đó.
+> File nÃ y ghi cÃ¡c **váº¥n Ä‘á»/blocker vÃ  root-cause findings** phÃ¡t hiá»‡n trong quÃ¡ trÃ¬nh audit Hardware-Adaptive.  
+> BÃ¡o cÃ¡o bÃ n giao theo 8 tiÃªu chÃ­ PM náº±m riÃªng trong `logs/daijestic/`; problem log nÃ y khÃ´ng thay tháº¿ worklog/report Ä‘Ã³.
 
 ---
 
-## 1. Bối cảnh
+## 1. Bá»‘i cáº£nh
 
-Task audit yêu cầu kiểm chứng Hardware-Adaptive theo ba tầng:
+Task audit yÃªu cáº§u kiá»ƒm chá»©ng Hardware-Adaptive theo ba táº§ng:
 
 ```text
 SOURCE
-→ UNIT / INTEGRATION
-→ GPU RUNTIME
+â†’ UNIT / INTEGRATION
+â†’ GPU RUNTIME
 ```
 
-với tám nhóm yêu cầu:
+vá»›i tÃ¡m nhÃ³m yÃªu cáº§u:
 
-1. CLI → serving runner → scheduler → planner → controller.
-2. Verification feedback → drafted/accepted → request/step → EMA/warmup.
-3. Dynamic K → selected → scheduled → proposal → actual drafted.
-4. Memory guard → live VRAM/KV → threshold → cooldown → recovery.
-5. Fallback/probing → K=0 → probe → recovery; residual EAGLE cost.
-6. Hardware profile → validation → measured cost consumption → K decision.
-7. Request/batch state → per-request state → batch aggregation.
-8. Telemetry → decision → schedule → draft → verify → feedback.
+1. CLI â†’ serving runner â†’ scheduler â†’ planner â†’ controller.
+2. Verification feedback â†’ drafted/accepted â†’ request/step â†’ EMA/warmup.
+3. Dynamic K â†’ selected â†’ scheduled â†’ proposal â†’ actual drafted.
+4. Memory guard â†’ live VRAM/KV â†’ threshold â†’ cooldown â†’ recovery.
+5. Fallback/probing â†’ K=0 â†’ probe â†’ recovery; residual EAGLE cost.
+6. Hardware profile â†’ validation â†’ measured cost consumption â†’ K decision.
+7. Request/batch state â†’ per-request state â†’ batch aggregation.
+8. Telemetry â†’ decision â†’ schedule â†’ draft â†’ verify â†’ feedback.
 
-Audit không được suy performance trước correctness.
+Audit khÃ´ng Ä‘Æ°á»£c suy performance trÆ°á»›c correctness.
 
 ---
 
@@ -47,7 +51,7 @@ Audit không được suy performance trước correctness.
 
 ### Observation
 
-Trong lịch sử hiện có hai đối tượng thường được gọi bằng từ “v0.2.3” nhưng không phải cùng một revision:
+Trong lá»‹ch sá»­ hiá»‡n cÃ³ hai Ä‘á»‘i tÆ°á»£ng thÆ°á»ng Ä‘Æ°á»£c gá»i báº±ng tá»« â€œv0.2.3â€ nhÆ°ng khÃ´ng pháº£i cÃ¹ng má»™t revision:
 
 ```text
 Primary audit baseline:
@@ -55,7 +59,7 @@ develop@8006205
 package metadata = 0.2.3
 ```
 
-và:
+vÃ :
 
 ```text
 Historical Git tag:
@@ -63,29 +67,29 @@ v0.2.3@450bf200498a699ae5442f14e502d0159a127f1e
 internal package metadata = 0.2.2
 ```
 
-Ngoài ra, các fix lịch sử sau không cùng ancestry:
+NgoÃ i ra, cÃ¡c fix lá»‹ch sá»­ sau khÃ´ng cÃ¹ng ancestry:
 
 ```text
-Có trong ancestry của 8006205:
+CÃ³ trong ancestry cá»§a 8006205:
 94edea2  scalar adaptive budget integration
 5563e16  async feedback lineage binding
 
-Không nằm trong ancestry của 8006205:
+KhÃ´ng náº±m trong ancestry cá»§a 8006205:
 59f18a9  acceptance floor + warm-up guard + reason counts
 0d4a9fa  batch-K hysteresis + per-request K counts
 ```
 
 ### Impact
 
-Không thể gọi một cách chính xác:
+KhÃ´ng thá»ƒ gá»i má»™t cÃ¡ch chÃ­nh xÃ¡c:
 
 ```text
 "patched FlexSDS v0.2.3"
 ```
 
-nếu chưa freeze exact SHA chứa behavior muốn kiểm thử.
+náº¿u chÆ°a freeze exact SHA chá»©a behavior muá»‘n kiá»ƒm thá»­.
 
-Nếu lấy evidence từ một revision nhưng report dưới revision khác, traceability và reproducibility bị phá.
+Náº¿u láº¥y evidence tá»« má»™t revision nhÆ°ng report dÆ°á»›i revision khÃ¡c, traceability vÃ  reproducibility bá»‹ phÃ¡.
 
 ### Classification
 
@@ -96,22 +100,111 @@ TECHNICAL REVIEW REQUIRED
 
 ### Fix criterion
 
-Trước post-audit validation phải có:
+TrÆ°á»›c post-audit validation pháº£i cÃ³:
 
 ```text
 SOURCE_COMMIT=<exact SHA>
 EVIDENCE_COMMIT=<exact SHA storing artifacts>
 ```
 
-và mọi patch mới phải được ghi là post-baseline validation, không hồi tố vào historical evidence.
+vÃ  má»i patch má»›i pháº£i Ä‘Æ°á»£c ghi lÃ  post-baseline validation, khÃ´ng há»“i tá»‘ vÃ o historical evidence.
+
+### Current frozen identities after handoff
+
+Sau commit/push audit:
+
+```text
+SOURCE_COMMIT=8006205a6f19790a776d67155a377def053d2736
+EVIDENCE_BRANCH=audit/flexsds-v023-hardwareadaptive-20261120
+EVIDENCE_COMMIT=1eb7e59
+```
+
+Äiá»u Ä‘Ã£ freeze lÃ  **current audit source/evidence identity**. Äiá»u **chÆ°a freeze** lÃ  source cho má»™t possible patched-validation phase sau khi review `59f18a9` vÃ  `0d4a9fa`.
 
 ---
 
-## 3. Historical Problem A — Modal client / image-builder incompatibility
+## 2.1. Branch divergence at handoff
+
+### Observation
+
+Táº¡i thá»i Ä‘iá»ƒm handoff, GitHub hiá»ƒn thá»‹ branch:
+
+```text
+audit/flexsds-v023-hardwareadaptive-20261120
+â†’ 1 commit ahead of main
+â†’ 7 commits behind main
+```
+
+Audit commit Ä‘Ã£ push:
+
+```text
+1eb7e59
+audit(flexsds): preserve v0.2.3 HardwareAdaptive findings, fixes, and evidence
+```
+
+Branch audit Ä‘Æ°á»£c táº¡o trá»±c tiáº¿p tá»«:
+
+```text
+8006205a6f19790a776d67155a377def053d2736
+```
+
+### Interpretation
+
+`ahead/behind` á»Ÿ Ä‘Ã¢y lÃ  quan há»‡ commit giá»¯a branch audit vÃ  `main`:
+
+- `1 ahead`: audit branch cÃ³ commit evidence/handoff `1eb7e59` mÃ  `main` khÃ´ng cÃ³.
+- `7 behind`: `main` Ä‘Ã£ tiáº¿n thÃªm cÃ¡c commit mÃ  branch audit khÃ´ng chá»©a.
+- ÄÃ¢y lÃ  há»‡ quáº£ dá»± kiáº¿n cá»§a viá»‡c freeze audit branch tá»« source baseline cÅ© hÆ¡n.
+- Tráº¡ng thÃ¡i nÃ y **khÃ´ng chá»©ng minh code audit sai**, khÃ´ng chá»©ng minh push thiáº¿u, vÃ  khÃ´ng pháº£i test failure.
+
+### Why not update the branch just to remove "behind"
+
+Náº¿u merge hoáº·c rebase `main` vÃ o audit branch sau khi evidence Ä‘Ã£ Ä‘Æ°á»£c thu:
+
+```text
+source ancestry changes
+â†’ branch no longer represents exactly the audited source lineage
+â†’ historical evidence can be mis-associated with newer code
+```
+
+Do Ä‘Ã³ khÃ´ng sync branch chá»‰ Ä‘á»ƒ lÃ m GitHub háº¿t hiá»ƒn thá»‹ `7 behind`.
+
+Náº¿u team muá»‘n validation trÃªn current `main` hoáº·c source má»›i hÆ¡n:
+
+```text
+create/freeze a NEW validation branch/SHA
+â†’ rerun relevant tests/evidence
+â†’ keep old evidence mapped to 8006205/1eb7e59
+```
+
+### Classification
+
+```text
+PROVENANCE / BRANCH DIVERGENCE
+EXPECTED FOR FROZEN AUDIT BRANCH
+NOT A CORRECTNESS FAILURE
+NOT A PUSH FAILURE
+```
+
+### Status
+
+```text
+ACCEPTED HANDOFF STATE
+```
+
+### Fix criterion
+
+KhÃ´ng cÃ³ "fix" báº¯t buá»™c cho current audit branch.
+
+Chá»‰ cáº§n thay Ä‘á»•i ancestry khi PM/technical owner quyáº¿t Ä‘á»‹nh má»Ÿ **new validation baseline**; khi Ä‘Ã³ pháº£i táº¡o source/evidence identity má»›i thay vÃ¬ sá»­a lá»‹ch sá»­ evidence hiá»‡n táº¡i.
+
+---
+
+## 3. Historical Problem A â€” Modal client / image-builder incompatibility
 
 ### Symptom
 
-Một calibration attempt dừng trước measurement với:
+Má»™t calibration attempt dá»«ng trÆ°á»›c measurement vá»›i:
 
 ```text
 VersionError:
@@ -127,7 +220,7 @@ modal-calibration-kietgor0.log
 
 ### Root cause
 
-Local Modal client quá cũ so với image-builder generation được runtime yêu cầu.
+Local Modal client quÃ¡ cÅ© so vá»›i image-builder generation Ä‘Æ°á»£c runtime yÃªu cáº§u.
 
 ### Classification
 
@@ -135,7 +228,7 @@ Local Modal client quá cũ so với image-builder generation được runtime y
 ENVIRONMENT / TOOLCHAIN COMPATIBILITY
 ```
 
-Không phải:
+KhÃ´ng pháº£i:
 
 ```text
 GPU incompatibility
@@ -145,7 +238,7 @@ Hardware-Adaptive algorithm failure
 
 ### Resolution
 
-Modal client được upgrade và calibration có thể tiến tiếp.
+Modal client Ä‘Æ°á»£c upgrade vÃ  calibration cÃ³ thá»ƒ tiáº¿n tiáº¿p.
 
 ### Status
 
@@ -155,17 +248,17 @@ RESOLVED HISTORICAL BLOCKER
 
 ---
 
-## 4. Historical Problem B — Raw Windows path truyền trực tiếp qua JSON environment
+## 4. Historical Problem B â€” Raw Windows path truyá»n trá»±c tiáº¿p qua JSON environment
 
 ### Symptom
 
-Một serving attempt dùng raw JSON environment:
+Má»™t serving attempt dÃ¹ng raw JSON environment:
 
 ```text
 FLEXSDS_SERVING_CONFIG='... "profile_path": "C:\Users\..." ...'
 ```
 
-và container fail khi import:
+vÃ  container fail khi import:
 
 ```text
 JSONDecodeError: Invalid \escape
@@ -179,11 +272,11 @@ modal-serving-5m98xkkh.log
 
 ### Root cause
 
-Windows backslashes được truyền qua JSON text không có encoding/escaping layer đủ an toàn.
+Windows backslashes Ä‘Æ°á»£c truyá»n qua JSON text khÃ´ng cÃ³ encoding/escaping layer Ä‘á»§ an toÃ n.
 
 ### Resolution direction
 
-Serving config sau đó được đưa qua encoded transport (`FLEXSDS_SERVING_CONFIG_B64`) thay vì raw JSON path.
+Serving config sau Ä‘Ã³ Ä‘Æ°á»£c Ä‘Æ°a qua encoded transport (`FLEXSDS_SERVING_CONFIG_B64`) thay vÃ¬ raw JSON path.
 
 ### Classification
 
@@ -197,15 +290,15 @@ SERIALIZATION / CROSS-PLATFORM RUNTIME BUG
 RESOLVED HISTORICAL BLOCKER
 ```
 
-Không dùng failure này để kết luận scheduler/controller sai.
+KhÃ´ng dÃ¹ng failure nÃ y Ä‘á»ƒ káº¿t luáº­n scheduler/controller sai.
 
 ---
 
-## 5. Historical Problem C — Packaging / runtime source mismatch
+## 5. Historical Problem C â€” Packaging / runtime source mismatch
 
 ### Observation
 
-Các Modal serving attempts cho thấy image phải có đủ:
+CÃ¡c Modal serving attempts cho tháº¥y image pháº£i cÃ³ Ä‘á»§:
 
 ```text
 src/flexsds/server
@@ -215,9 +308,9 @@ experiments
 hardware profile
 ```
 
-để custom Adaptive scheduler/executor và supporting lineage code import được.
+Ä‘á»ƒ custom Adaptive scheduler/executor vÃ  supporting lineage code import Ä‘Æ°á»£c.
 
-Runtime logs sau correction ghi rõ checkout source được upload, ví dụ:
+Runtime logs sau correction ghi rÃµ checkout source Ä‘Æ°á»£c upload, vÃ­ dá»¥:
 
 ```text
 D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src
@@ -226,11 +319,11 @@ D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\experiments
 
 ### Problem
 
-Pristine packaging path trước đó không bảo đảm toàn bộ sibling modules của Adaptive runtime có trong image.
+Pristine packaging path trÆ°á»›c Ä‘Ã³ khÃ´ng báº£o Ä‘áº£m toÃ n bá»™ sibling modules cá»§a Adaptive runtime cÃ³ trong image.
 
 ### Impact
 
-Server có thể fail trước inference dù source classes tồn tại trên developer machine.
+Server cÃ³ thá»ƒ fail trÆ°á»›c inference dÃ¹ source classes tá»“n táº¡i trÃªn developer machine.
 
 ### Classification
 
@@ -244,13 +337,13 @@ RUNTIME PACKAGING CONTRACT BUG
 FIXED LOCALLY FOR AUDIT RUNTIME
 ```
 
-Local packaging fix phải được tách khỏi Hardware-Adaptive algorithm semantics.
+Local packaging fix pháº£i Ä‘Æ°á»£c tÃ¡ch khá»i Hardware-Adaptive algorithm semantics.
 
 ---
 
 ## 6. Verified runtime wiring after infrastructure fixes
 
-Sau các infrastructure fixes, Adaptive ON log cho thấy vLLM nhận trực tiếp:
+Sau cÃ¡c infrastructure fixes, Adaptive ON log cho tháº¥y vLLM nháº­n trá»±c tiáº¿p:
 
 ```text
 scheduler_cls =
@@ -263,7 +356,7 @@ async_scheduling = True
 enforce_eager = True
 ```
 
-và speculative config:
+vÃ  speculative config:
 
 ```text
 method = eagle3
@@ -284,9 +377,9 @@ modal-serving-m2_r5sqq.log
 
 ### Interpretation
 
-Hardware-Adaptive serving path không phải orphan code.
+Hardware-Adaptive serving path khÃ´ng pháº£i orphan code.
 
-Tuy nhiên:
+Tuy nhiÃªn:
 
 ```text
 runtime wiring works
@@ -296,7 +389,7 @@ all Hardware-Adaptive requirements are correct
 
 ---
 
-# 7. Current Major Problem 1 — Adaptive ON/OFF không policy-isolated
+# 7. Current Major Problem 1 â€” Adaptive ON/OFF khÃ´ng policy-isolated
 
 ## 7.1 Adaptive ON
 
@@ -311,7 +404,7 @@ compilation mode = NONE
 CUDAGraph mode = NONE
 ```
 
-Runtime log còn ghi trực tiếp:
+Runtime log cÃ²n ghi trá»±c tiáº¿p:
 
 ```text
 Enforce eager set, disabling torch.compile and CUDAGraphs.
@@ -378,21 +471,21 @@ MAJOR
 
 ### Impact
 
-As-shipped comparison hiện chỉ hỗ trợ claim:
+As-shipped comparison hiá»‡n chá»‰ há»— trá»£ claim:
 
 > Adaptive ON treatment was faster/slower than Adaptive OFF under the measured environment.
 
-Không hỗ trợ causal claim:
+KhÃ´ng há»— trá»£ causal claim:
 
 > Adaptive policy itself caused the performance difference.
 
 ### Fix criterion
 
-Muốn claim policy-only effect phải có controlled policy-isolation treatment hoặc phải giữ claim ở mức whole-treatment.
+Muá»‘n claim policy-only effect pháº£i cÃ³ controlled policy-isolation treatment hoáº·c pháº£i giá»¯ claim á»Ÿ má»©c whole-treatment.
 
 ---
 
-# 8. Current Major Problem 2 — Hardware profile được load nhưng measured costs không drive K
+# 8. Current Major Problem 2 â€” Hardware profile Ä‘Æ°á»£c load nhÆ°ng measured costs khÃ´ng drive K
 
 ## Observation
 
@@ -400,19 +493,19 @@ Planner path:
 
 ```text
 profile path
-→ validate measured profile
-→ parse cost_matrix_ms
-→ construct EmpiricalCostProfile
-→ inject into controller kwargs
+â†’ validate measured profile
+â†’ parse cost_matrix_ms
+â†’ construct EmpiricalCostProfile
+â†’ inject into controller kwargs
 ```
 
-Nhưng active runtime controller:
+NhÆ°ng active runtime controller:
 
 ```text
 AdaptiveDraftController.select_budget()
 ```
 
-chọn K theo:
+chá»n K theo:
 
 ```text
 acceptance EMA / threshold rules
@@ -420,17 +513,17 @@ acceptance EMA / threshold rules
 memory pressure guard
 ```
 
-không query measured latency matrix trong active selection path.
+khÃ´ng query measured latency matrix trong active selection path.
 
 ### Current scalar policy
 
 Observed source behavior:
 
 ```text
-alpha < 0.65       → K=0
-0.65 <= alpha < .8 → K=2
-.8 <= alpha < .9   → K=3
-alpha >= .9        → K=4
+alpha < 0.65       â†’ K=0
+0.65 <= alpha < .8 â†’ K=2
+.8 <= alpha < .9   â†’ K=3
+alpha >= .9        â†’ K=4
 ```
 
 ### Scientific distinction
@@ -446,34 +539,34 @@ profile used to choose K
 ```text
 PROFILE-LOADED-BUT-COST-IGNORED
 MAJOR
-R6 = CHƯA ĐẠT
+R6 = CHÆ¯A Äáº T
 ```
 
 ### Impact
 
-Không được claim:
+KhÃ´ng Ä‘Æ°á»£c claim:
 
 > Hardware-Adaptive chooses K from measured hardware latency cost.
 
-Allowed claim hiện tại:
+Allowed claim hiá»‡n táº¡i:
 
 > FlexSDS validates a measured hardware profile, while active Adaptive K selection is driven primarily by acceptance thresholds and memory signals.
 
 ### Fix criterion
 
-Nếu DoD yêu cầu hardware-cost-driven selection:
+Náº¿u DoD yÃªu cáº§u hardware-cost-driven selection:
 
 ```text
 measured profile
-→ explicit runtime cost decision
-→ selected K
+â†’ explicit runtime cost decision
+â†’ selected K
 ```
 
-phải được trace và test end-to-end.
+pháº£i Ä‘Æ°á»£c trace vÃ  test end-to-end.
 
 ---
 
-# 9. Current Problem 3 — Memory guard chưa closed-loop trên GPU
+# 9. Current Problem 3 â€” Memory guard chÆ°a closed-loop trÃªn GPU
 
 ## Source behavior
 
@@ -483,7 +576,7 @@ Current audit finding:
 free VRAM < 1500 MiB
 OR
 KV occupancy > 90%
-→ K=0
+â†’ K=0
 ```
 
 Cooldown:
@@ -504,49 +597,49 @@ Missing VRAM telemetry:
 fail-open
 ```
 
-vì missing reading được thay bằng sentinel free-VRAM lớn.
+vÃ¬ missing reading Ä‘Æ°á»£c thay báº±ng sentinel free-VRAM lá»›n.
 
 ## Evidence
 
-Historical GPU logs cho thấy live GPU runtime tồn tại, nhưng retained campaign chưa chứng minh đầy đủ:
+Historical GPU logs cho tháº¥y live GPU runtime tá»“n táº¡i, nhÆ°ng retained campaign chÆ°a chá»©ng minh Ä‘áº§y Ä‘á»§:
 
 ```text
 normal state
-→ threshold crossed
-→ K restricted
-→ cooldown
-→ telemetry recovers
-→ K restored
+â†’ threshold crossed
+â†’ K restricted
+â†’ cooldown
+â†’ telemetry recovers
+â†’ K restored
 ```
 
 ### Classification
 
 ```text
 PARTIAL IMPLEMENTATION EVIDENCE
-R4 = ĐẠT MỘT PHẦN
+R4 = Äáº T Má»˜T PHáº¦N
 ```
 
 ### Open question
 
-Fail-open khi VRAM telemetry mất có phải intended safety contract không?
+Fail-open khi VRAM telemetry máº¥t cÃ³ pháº£i intended safety contract khÃ´ng?
 
-Đây là technical decision/review, không phải PM correctness source.
+ÄÃ¢y lÃ  technical decision/review, khÃ´ng pháº£i PM correctness source.
 
 ---
 
-# 10. Current Problem 4 — Fallback/probing có bằng chứng nhưng recovery chưa đóng
+# 10. Current Problem 4 â€” Fallback/probing cÃ³ báº±ng chá»©ng nhÆ°ng recovery chÆ°a Ä‘Ã³ng
 
 ## Source behavior
 
 ```text
 low acceptance
-→ K=0
+â†’ K=0
 
 periodic probe
-→ K=2
+â†’ K=2
 ```
 
-Historical runtime evidence đã thấy:
+Historical runtime evidence Ä‘Ã£ tháº¥y:
 
 ```text
 K=0 fallback
@@ -555,14 +648,14 @@ K=2 probe
 
 ## Gap
 
-Chưa có complete trace:
+ChÆ°a cÃ³ complete trace:
 
 ```text
 fallback
-→ probe
-→ good verification feedback
-→ exit fallback
-→ stable nonzero K
+â†’ probe
+â†’ good verification feedback
+â†’ exit fallback
+â†’ stable nonzero K
 ```
 
 ### Important semantic distinction
@@ -573,7 +666,7 @@ K=0 != target-only
 K=0 != zero EAGLE treatment overhead
 ```
 
-K=0 có nghĩa no draft token produced cho step tương ứng, nhưng treatment vẫn có thể giữ:
+K=0 cÃ³ nghÄ©a no draft token produced cho step tÆ°Æ¡ng á»©ng, nhÆ°ng treatment váº«n cÃ³ thá»ƒ giá»¯:
 
 ```text
 draft model residency
@@ -586,55 +679,55 @@ telemetry
 ### Classification
 
 ```text
-R5 = ĐẠT MỘT PHẦN
+R5 = Äáº T Má»˜T PHáº¦N
 ```
 
 ---
 
-# 11. Current Problem 5 — Batch/client concurrency chưa chứng minh heterogeneous runtime batching
+# 11. Current Problem 5 â€” Batch/client concurrency chÆ°a chá»©ng minh heterogeneous runtime batching
 
 ## Source behavior
 
-Per-request controller state tồn tại.
+Per-request controller state tá»“n táº¡i.
 
-Planner tổng hợp:
+Planner tá»•ng há»£p:
 
 ```text
 batch_k = max(k_i)
 ```
 
-và scheduler có row cap/per-request trimming.
+vÃ  scheduler cÃ³ row cap/per-request trimming.
 
 ## Gap
 
-Historical campaign có client concurrency >1 nhưng effective planning batch từng vẫn bằng 1.
+Historical campaign cÃ³ client concurrency >1 nhÆ°ng effective planning batch tá»«ng váº«n báº±ng 1.
 
-Do đó không được suy:
+Do Ä‘Ã³ khÃ´ng Ä‘Æ°á»£c suy:
 
 ```text
 client concurrency = 2
-⇒ runtime batch = 2
+â‡’ runtime batch = 2
 ```
 
-Chưa có GPU evidence kiểu:
+ChÆ°a cÃ³ GPU evidence kiá»ƒu:
 
 ```text
 same effective batch:
-request A → K=2
-request B → K=4
+request A â†’ K=2
+request B â†’ K=4
 ```
 
-rồi trace actual drafted rows tương ứng.
+rá»“i trace actual drafted rows tÆ°Æ¡ng á»©ng.
 
 ### Classification
 
 ```text
-R7 = ĐẠT MỘT PHẦN
+R7 = Äáº T Má»˜T PHáº¦N
 ```
 
 ---
 
-# 12. Current Problem 6 — Correctness / lossless chưa đóng
+# 12. Current Problem 6 â€” Correctness / lossless chÆ°a Ä‘Ã³ng
 
 ## Canonical retained observation
 
@@ -646,7 +739,7 @@ Adaptive ON token 8 = 11174
 Static OFF token 8  = 11174
 ```
 
-và:
+vÃ :
 
 ```text
 Adaptive ON == Static OFF
@@ -661,13 +754,13 @@ Target-only != Adaptive == Static
 
 ## Interpretation
 
-Evidence hiện tại không ủng hộ hypothesis:
+Evidence hiá»‡n táº¡i khÃ´ng á»§ng há»™ hypothesis:
 
 ```text
-HardwareAdaptive riêng gây divergence
+HardwareAdaptive riÃªng gÃ¢y divergence
 ```
 
-vì Static EAGLE khi Adaptive OFF vẫn match Adaptive ON.
+vÃ¬ Static EAGLE khi Adaptive OFF váº«n match Adaptive ON.
 
 ### Classification
 
@@ -676,7 +769,7 @@ KNOWN SHARED SPECULATIVE CORRECTNESS LIMITATION
 LOSSLESS = NOT CLOSED
 ```
 
-Không được claim:
+KhÃ´ng Ä‘Æ°á»£c claim:
 
 ```text
 Adaptive is incorrect
@@ -687,20 +780,20 @@ distribution preservation is verified
 
 ### Required next diagnostic
 
-Tách:
+TÃ¡ch:
 
 ```text
 baseline repeatability
-→ target-only
-→ fixed speculative
-→ adaptive
+â†’ target-only
+â†’ fixed speculative
+â†’ adaptive
 ```
 
-trên cùng source/runtime contract trước khi localize root cause.
+trÃªn cÃ¹ng source/runtime contract trÆ°á»›c khi localize root cause.
 
 ---
 
-# 13. Current Problem 7 — Forensic observer perturbation
+# 13. Current Problem 7 â€” Forensic observer perturbation
 
 ## Observation
 
@@ -711,7 +804,7 @@ uninstrumented target token 8 = 3015
 instrumented target token 8   = 11174
 ```
 
-Observer capture từng ghi:
+Observer capture tá»«ng ghi:
 
 ```text
 logit(11174) = 24.75
@@ -719,7 +812,7 @@ logit(3015)  = 24.625
 margin       = 0.125
 ```
 
-nhưng instrumentation tự làm đổi execution trajectory.
+nhÆ°ng instrumentation tá»± lÃ m Ä‘á»•i execution trajectory.
 
 ### Classification
 
@@ -731,15 +824,15 @@ MAJOR FOR FORENSIC CLAIMS
 
 ### Impact
 
-Captured logits chỉ mô tả instrumented execution.
+Captured logits chá»‰ mÃ´ táº£ instrumented execution.
 
-Không được ghi:
+KhÃ´ng Ä‘Æ°á»£c ghi:
 
 > canonical target margin = 0.125
 
 ### Fix criterion
 
-Forensic instrumentation phải pass:
+Forensic instrumentation pháº£i pass:
 
 ```text
 instrumented output tokens
@@ -747,39 +840,39 @@ instrumented output tokens
 uninstrumented output tokens
 ```
 
-trước khi dùng logits/intermediate states làm canonical evidence.
+trÆ°á»›c khi dÃ¹ng logits/intermediate states lÃ m canonical evidence.
 
 ---
 
 # 14. Telemetry status
 
-Historical retained evidence đã có khả năng reconstruct nhiều step:
+Historical retained evidence Ä‘Ã£ cÃ³ kháº£ nÄƒng reconstruct nhiá»u step:
 
 ```text
 plan
-→ schedule
-→ proposal birth
-→ verification feedback
-→ controller update
+â†’ schedule
+â†’ proposal birth
+â†’ verification feedback
+â†’ controller update
 ```
 
-và runtime wiring xác nhận custom scheduler/executor thực sự được load.
+vÃ  runtime wiring xÃ¡c nháº­n custom scheduler/executor thá»±c sá»± Ä‘Æ°á»£c load.
 
-Tuy nhiên full telemetry contract vẫn thiếu nhất quán ở một số trường như consuming verifier schedule/incarnation.
+Tuy nhiÃªn full telemetry contract váº«n thiáº¿u nháº¥t quÃ¡n á»Ÿ má»™t sá»‘ trÆ°á»ng nhÆ° consuming verifier schedule/incarnation.
 
 ### Classification
 
 ```text
-R8 = ĐẠT MỘT PHẦN
+R8 = Äáº T Má»˜T PHáº¦N
 ```
 
-Telemetry đủ cho một số lineage joins, chưa đủ để gọi mọi request/step fully traceable.
+Telemetry Ä‘á»§ cho má»™t sá»‘ lineage joins, chÆ°a Ä‘á»§ Ä‘á»ƒ gá»i má»i request/step fully traceable.
 
 ---
 
 # 15. Test evidence
 
-Focused audit reconstruction tại primary baseline ghi nhận các nhóm non-overlapping:
+Focused audit reconstruction táº¡i primary baseline ghi nháº­n cÃ¡c nhÃ³m non-overlapping:
 
 ```text
 controller / planner / scheduler / memory:
@@ -787,7 +880,7 @@ controller / planner / scheduler / memory:
 61 skipped
 ```
 
-và:
+vÃ :
 
 ```text
 lineage / lifecycle / transitions / modal config:
@@ -795,14 +888,14 @@ lineage / lifecycle / transitions / modal config:
 27 skipped
 ```
 
-Tổng hai nhóm:
+Tá»•ng hai nhÃ³m:
 
 ```text
 203 passed
 88 skipped
 ```
 
-Một broader set:
+Má»™t broader set:
 
 ```text
 198 passed
@@ -810,7 +903,7 @@ Một broader set:
 2 failed
 ```
 
-Hai failure bị environment/network model-metadata resolution chặn trước expected profile-guard assertion; hiện không đủ evidence để gọi chúng là Hardware-Adaptive controller regression.
+Hai failure bá»‹ environment/network model-metadata resolution cháº·n trÆ°á»›c expected profile-guard assertion; hiá»‡n khÃ´ng Ä‘á»§ evidence Ä‘á»ƒ gá»i chÃºng lÃ  Hardware-Adaptive controller regression.
 
 ### Interpretation
 
@@ -826,14 +919,14 @@ GPU closed-loop PASS
 
 | # | Requirement | Current verdict | Main open gap |
 |---|---|---|---|
-| 1 | CLI → runner → scheduler → planner → controller | **Đạt một phần** | exact source/deployment provenance |
-| 2 | Verification feedback / EMA / warmup | **Đạt một phần** | full warmup + lifecycle edge cases |
-| 3 | Dynamic K → actual drafting | **Đạt một phần** | K=4 + heterogeneous effective batch |
-| 4 | VRAM/KV memory guard | **Đạt một phần** | GPU pressure/cooldown/recovery |
-| 5 | Fallback / probing / recovery | **Đạt một phần** | fallback exit + residual cost |
-| 6 | Measured hardware cost drives K | **Chưa đạt** | active policy ignores measured cost matrix |
-| 7 | Per-request state / batch aggregation | **Đạt một phần** | mixed-K same runtime batch |
-| 8 | Telemetry traceability | **Đạt một phần** | complete verifier lineage fields |
+| 1 | CLI â†’ runner â†’ scheduler â†’ planner â†’ controller | **Äáº¡t má»™t pháº§n** | exact source/deployment provenance |
+| 2 | Verification feedback / EMA / warmup | **Äáº¡t má»™t pháº§n** | full warmup + lifecycle edge cases |
+| 3 | Dynamic K â†’ actual drafting | **Äáº¡t má»™t pháº§n** | K=4 + heterogeneous effective batch |
+| 4 | VRAM/KV memory guard | **Äáº¡t má»™t pháº§n** | GPU pressure/cooldown/recovery |
+| 5 | Fallback / probing / recovery | **Äáº¡t má»™t pháº§n** | fallback exit + residual cost |
+| 6 | Measured hardware cost drives K | **ChÆ°a Ä‘áº¡t** | active policy ignores measured cost matrix |
+| 7 | Per-request state / batch aggregation | **Äáº¡t má»™t pháº§n** | mixed-K same runtime batch |
+| 8 | Telemetry traceability | **Äáº¡t má»™t pháº§n** | complete verifier lineage fields |
 
 Correctness:
 
@@ -855,11 +948,11 @@ NOT READY FOR POLICY-ISOLATED PERFORMANCE CLAIM
 
 ```text
 modal-calibration-kietgor0.log
-  → Modal client/image-builder VersionError
+  â†’ Modal client/image-builder VersionError
 
 modal-calibration-w0_y6wan.log
 modal-calibration-tbn8czbm.log
-  → calibration/runtime attempts, eager execution, resource behavior
+  â†’ calibration/runtime attempts, eager execution, resource behavior
 ```
 
 ## Adaptive ON serving
@@ -921,8 +1014,8 @@ vLLM documents:
 
 ```text
 enforce_eager=True
-→ disables torch.compile
-→ disables CUDA Graphs
+â†’ disables torch.compile
+â†’ disables CUDA Graphs
 ```
 
 This matches the Adaptive ON runtime logs.
@@ -962,7 +1055,9 @@ It also does not rewrite historical failed runs as successes.
 
 | Finding | Type | Severity | Status |
 |---|---|---:|---|
-| `v0.2.3` source identity ambiguity | provenance | MAJOR | OPEN |
+| Current audit source/evidence identity | provenance | INFO | FROZEN: `8006205` / `1eb7e59` |
+| Possible patched-validation source identity | provenance | MAJOR | OPEN |
+| Audit branch relation immediately after `1eb7e59`: `1 ahead / 7 behind main` | provenance / branch divergence | INFO | HISTORICAL HANDOFF OBSERVATION |
 | Modal client/image-builder mismatch | environment | BLOCKER historically | RESOLVED |
 | Windows JSON path escaping | serialization | BLOCKER historically | RESOLVED |
 | Adaptive runtime packaging omission | deployment | BLOCKER historically | FIXED FOR AUDIT |
@@ -999,35 +1094,41 @@ Not allowed:
 # 22. Exactly one next action
 
 ```text
-Freeze the exact source identity intended for the next validation phase,
-then review divergent fixes 59f18a9 and 0d4a9fa against 8006205
-before creating any patched baseline.
+Keep the current audit evidence frozen at:
+SOURCE_COMMIT=8006205...
+EVIDENCE_COMMIT=1eb7e59
+
+Then technically review divergent fixes
+59f18a9 + 0d4a9fa against 8006205
+before deciding whether to create a NEW patched-validation baseline.
 ```
 
 Acceptance criteria:
 
 ```text
-1. Exact SOURCE_COMMIT recorded.
-2. Every integrated diff classified.
-3. No historical evidence rewritten.
-4. Focused regression tests rerun.
-5. Only then run bounded GPU checks for remaining R1–R8 gaps.
-6. Lossless validation remains separate from performance.
+1. Do not rebase/merge main into the current audit branch merely to remove "behind".
+2. Review each divergent fix for correctness, compatibility and intended semantics.
+3. If integration is required, create/freeze a NEW SOURCE_COMMIT.
+4. Every integrated diff classified.
+5. No historical evidence rewritten or reassigned to new code.
+6. Focused regression tests rerun.
+7. Only then run bounded GPU checks for remaining R1â€“R8 gaps.
+8. Lossless validation remains separate from performance.
 ```
 
 ---
 
 # 23. Relationship to other logs
 
-Đọc cùng các historical problem/work logs đã có trong repo, đặc biệt:
+Äá»c cÃ¹ng cÃ¡c historical problem/work logs Ä‘Ã£ cÃ³ trong repo, Ä‘áº·c biá»‡t:
 
 ```text
 logs/problems/2026-11-14-flexsds-cli-modal-calibration-and-serving.md
 ```
 
-Log đó ghi integration/calibration/Modal/GPU history trước đây.
+Log Ä‘Ã³ ghi integration/calibration/Modal/GPU history trÆ°á»›c Ä‘Ã¢y.
 
-File hiện tại tập trung vào:
+File hiá»‡n táº¡i táº­p trung vÃ o:
 
 ```text
 Hardware-Adaptive v0.2.3 audit
@@ -1039,18 +1140,34 @@ runtime-contract differences
 correctness/provenance gaps
 ```
 
-Nó không phủ định historical A10G/L4 smoke; mỗi claim phải gắn đúng source, hardware, runtime config và evidence của run tương ứng.
+NÃ³ khÃ´ng phá»§ Ä‘á»‹nh historical A10G/L4 smoke; má»—i claim pháº£i gáº¯n Ä‘Ãºng source, hardware, runtime config vÃ  evidence cá»§a run tÆ°Æ¡ng á»©ng.
 
 ---
 
-# 24. One-line status
+# 24. Handoff branch state
+
+```text
+SOURCE_COMMIT    = 8006205a6f19790a776d67155a377def053d2736
+EVIDENCE_BRANCH  = audit/flexsds-v023-hardwareadaptive-20261120
+EVIDENCE_COMMIT  = 1eb7e59
+GITHUB RELATION  = 1 ahead / 7 behind main immediately after initial handoff `1eb7e59`
+MERGE STATUS     = NOT MERGED
+INTERPRETATION   = HISTORICAL HANDOFF OBSERVATION; EXPECTED FROZEN-AUDIT DIVERGENCE
+```
+
+Do not merge/rebase this branch solely to make the GitHub ahead/behind counters look clean. The counters can change after later commits; provenance is anchored by the exact source/evidence SHAs.
+
+---
+
+# 25. One-line status
 
 ```text
 RUNTIME WIRING EXISTS
-→ PARTIAL CLOSED-LOOP EVIDENCE EXISTS
-→ PROFILE COST IS NOT ACTIVE K POLICY
-→ ON/OFF IS WHOLE-TREATMENT, NOT POLICY-ISOLATED
-→ TARGET-ONLY != ADAPTIVE == STATIC REMAINS UNRESOLVED
-→ OBSERVER IS NOT NEUTRAL
-→ LOSSLESS/PERFORMANCE CLAIMS REMAIN BLOCKED
+â†’ PARTIAL CLOSED-LOOP EVIDENCE EXISTS
+â†’ PROFILE COST IS NOT ACTIVE K POLICY
+â†’ ON/OFF IS WHOLE-TREATMENT, NOT POLICY-ISOLATED
+â†’ TARGET-ONLY != ADAPTIVE == STATIC REMAINS UNRESOLVED
+â†’ OBSERVER IS NOT NEUTRAL
+â†’ LOSSLESS/PERFORMANCE CLAIMS REMAIN BLOCKED
 ```
+
