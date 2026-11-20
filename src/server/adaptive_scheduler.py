@@ -46,6 +46,8 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         self._schedule_sequence = 0
         self._lineage_registration = registration
         self._lineage = registration.ledger
+        if self._planner.replacement_policy:
+            self._lineage.on_policy_draft = self._planner.record_draft_birth
         self._retiring = None
         observe("scheduler_initialized", registration=registration,
                 scheduler_class=f"{type(self).__module__}.{type(self).__name__}")
@@ -70,6 +72,9 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
 
     def schedule(self, *args, **kwargs):
         self._schedule_sequence += 1
+        if self._planner.replacement_policy:
+            # The pinned hook receives the actual scheduled cohort.
+            return super().schedule(*args, **kwargs)
         try:
             decode_ids = [r.request_id for r in self.running if not r.is_prefill_chunk]
             self._plan = self._planner.plan_step(
@@ -94,7 +99,9 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         _pb177_control(self, scheduler_output)
         super()._update_after_schedule(scheduler_output)
         scheduled = scheduler_output.num_scheduled_tokens
-        if self._planner.per_request:
+        if self._planner.replacement_policy:
+            self._apply_replacement_plan(scheduler_output)
+        elif self._planner.per_request:
             for req_id, k in self._plan.per_request_k.items():
                 request = self.requests.get(req_id)
                 if request is None or req_id not in scheduled or request.is_prefill_chunk:
@@ -105,6 +112,8 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         try:
             for req_id in scheduled:
                 request = self.requests.get(req_id)
+                if self._planner.replacement_policy and req_id not in self._plan.per_request_k:
+                    continue
                 if request is not None and not request.is_prefill_chunk:
                     self._planner.record_scheduled_budget(
                         req_id, scheduler_output.num_spec_tokens_to_schedule,
@@ -123,6 +132,31 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                 raise
             logger.exception("AdaptiveAsyncScheduler: lineage registration failed")
         _pb279_observe("early_schedule", self, scheduler_output)
+
+    def _apply_replacement_plan(self, output) -> None:
+        # The base hook has settled prefill flags and snapshotted the drafts this
+        # output verifies. Set K and placeholders for the NEXT draft generation.
+        requests = [self.requests[rid] for rid in output.num_scheduled_tokens]
+        eligible = [r for r in requests if not r.is_prefill_chunk
+                    and not getattr(r, "num_stale_output_tokens", 0)
+                    and not getattr(r, "is_finished", lambda: False)()]
+        try:
+            for request in eligible:
+                self._planner.bind_request(request.request_id, self._lineage.request_key(request))
+            self._plan = self._planner.plan_step(
+                [r.request_id for r in eligible], batch_size=len(eligible),
+                kv_usage=self.get_kv_cache_usage(), free_vram_mb=self._free_vram_mb(),
+            )
+        except Exception:
+            if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
+                raise
+            logger.exception("AdaptiveAsyncScheduler: replacement planning failed, forcing K=0")
+            self._planner.reset_recovery()
+            self._plan = StepPlan(batch_k=0)
+
+        output.num_spec_tokens_to_schedule = self._plan.worker_k
+        for request in requests:
+            request.spec_token_ids = [-1] * self._plan.per_request_k.get(request.request_id, 0)
 
     def update_from_output(self, scheduler_output, model_runner_output):
         previous = self._retiring
@@ -174,8 +208,17 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             if binding is None:
                 self._planner.record_lineage_failure(request_id, reason)
             elif drafted > 0:
-                self._planner.record_verification(
-                    request_id, drafted, num_accepted_tokens, source=binding[0])
+                origin = binding[0]
+                if self._planner.replacement_policy:
+                    rejection = self._lineage.claim_policy_feedback(origin)
+                    if rejection is not None:
+                        self._planner.record_lineage_failure(request_id, rejection)
+                    else:
+                        self._planner.record_verification(
+                            request_id, drafted, num_accepted_tokens, source=origin, attributed=True)
+                else:
+                    self._planner.record_verification(
+                        request_id, drafted, num_accepted_tokens, source=origin)
         except Exception:
             logger.exception("AdaptiveAsyncScheduler: feedback failed for %s", request_id)
         return super().make_spec_decoding_stats(
@@ -187,6 +230,11 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         )
 
     def _free_request(self, request, *args, **kwargs):
+        current = self.requests.get(request.request_id)
+        if self._planner.replacement_policy and current is not None and current is not request:
+            # Native cleanup frees KV and removes the request by ID.
+            logger.warning("Ignoring cleanup for a replaced request: %s", request.request_id)
+            return None, None
         try:
             self._planner.finish_request(request.request_id)
         except Exception:
@@ -195,6 +243,7 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             self._lineage.finish_request(request)
             # Drop request-owned snapshots even when aggregate I/O fails.
             self._plan.per_request_k.pop(request.request_id, None)
+            self._plan.per_request_selected_k.pop(request.request_id, None)
             self._plan.per_request_node_count.pop(request.request_id, None)
             self._plan.per_request_decisions.pop(request.request_id, None)
             observe("request_cleanup", registration=self._lineage_registration,
@@ -207,6 +256,9 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         try:
             return super().shutdown()
         finally:
+            if self._planner.replacement_policy:
+                self._lineage.on_policy_draft = None
+                self._planner.reset_recovery()
             release_ledger(self._lineage_registration)
 
     def _free_vram_mb(self) -> Optional[float]:

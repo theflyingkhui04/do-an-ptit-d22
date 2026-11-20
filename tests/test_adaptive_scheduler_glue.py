@@ -101,8 +101,9 @@ class FakeAsyncScheduler:
             runner.prev_positions.np = [old_rows.index(rid) if rid in old_rows else -1
                                         for rid in scheduled]
             self._lineage.prepared(out, runner, previous)
-            runner._draft_token_ids = SimpleNamespace(shape=(len(scheduled), k))
-            runner.prev_num_spec_tokens = k
+            worker_k = out.num_spec_tokens_to_schedule
+            runner._draft_token_ids = SimpleNamespace(shape=(len(scheduled), worker_k))
+            runner.prev_num_spec_tokens = worker_k
             self._lineage.produced(out, runner)
         return out
 

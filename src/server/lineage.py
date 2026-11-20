@@ -6,7 +6,7 @@ No token values, GPU tensors or mutable Requests are stored in origins.
 """
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from weakref import ref
+from weakref import WeakSet, WeakValueDictionary, ref
 from threading import RLock, current_thread
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -21,6 +21,11 @@ class DraftOrigin:
     schedule_sequence: int
     request_k: int
     batch_k: int
+    physical_draft_width: int | None = field(default=None, compare=False)
+
+    @property
+    def planned_worker_k(self) -> int:
+        return self.batch_k
 
 
 @dataclass
@@ -36,6 +41,9 @@ class LineageLedger:
         self.active = {}
         self._incarnation = 0
         self.generation = None
+        self.on_policy_draft = None
+        self._issued_origins = WeakValueDictionary()
+        self._counted_origins = WeakSet()
 
     def request_key(self, request):
         current = self.active.get(request.request_id)
@@ -49,6 +57,8 @@ class LineageLedger:
         producers = {}
         for rid in output.num_scheduled_tokens:
             req = requests.get(rid)
+            if self.on_policy_draft is not None and rid not in plan.per_request_k:
+                continue
             if req is not None and not req.is_prefill_chunk:
                 producers[rid] = DraftOrigin(
                     rid, self.request_key(req),
@@ -68,12 +78,25 @@ class LineageLedger:
         rows = tuple(runner.input_batch.req_ids)
         if zeros_only or entry is None or len(shape) != 2 or shape[1] <= 0:
             return
-        if shape[0] != len(rows) or shape[1] != output.num_spec_tokens_to_schedule:
+        if shape[0] != len(rows):
             return
         origins = tuple(entry.producers.get(rid) for rid in rows)
+        for origin in origins:
+            if origin is not None:
+                # Measurement is attached to the same immutable identity witness.
+                # Excluding it from equality/hash preserves weak-set membership.
+                object.__setattr__(origin, "physical_draft_width", int(shape[1]))
+                if self.on_policy_draft is not None:
+                    self.on_policy_draft(origin, int(shape[1]))
+        if shape[1] != output.num_spec_tokens_to_schedule:
+            return  # Preserve mismatch telemetry without accepting its feedback.
         # Buffer id is only an immediate witness; each call stamps a NEW birth,
         # even if the allocator/proposer reuses the same tensor object.
         self.generation = (id(buffer), int(shape[1]), rows, origins)
+        if self.on_policy_draft is not None:
+            for origin in origins:
+                if origin is not None:
+                    self._issued_origins[(origin.incarnation, origin.schedule_sequence)] = origin
         observe("draft_produced", batch_k=int(shape[1]),
                 rows=[dict(request_id=rid, plan_sequence=origin.plan_sequence,
                            schedule_sequence=origin.schedule_sequence,
@@ -115,6 +138,16 @@ class LineageLedger:
                               for rid, origin in zip(rows, origins))
             self.generation = (witness, width, rows, remaining) if any(remaining) else None
 
+    def claim_policy_feedback(self, origin: DraftOrigin) -> str | None:
+        """Accept a real birth once while any in-flight output still retains it."""
+        key = (origin.incarnation, origin.schedule_sequence)
+        if self._issued_origins.get(key) is not origin:
+            return "unknown-producer-origin"
+        if origin in self._counted_origins:
+            return "duplicate-origin"
+        self._counted_origins.add(origin)
+        return None
+
     def retire(self, output):
         if self.get(output) is not None:
             del self.executions[id(output)]
@@ -123,6 +156,8 @@ class LineageLedger:
         self.executions.clear()
         self.active.clear()
         self.generation = None
+        self._issued_origins.clear()
+        self._counted_origins.clear()
 
 
 # Process-local rendezvous only: config identity indexes a slot, never ownership.

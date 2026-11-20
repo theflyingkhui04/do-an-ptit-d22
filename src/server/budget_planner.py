@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, Mapping, Optional, Set, Tuple
 
 from src.proposer.adapter import AdaptiveProposerAdapter
-from src.proposer.controller import BudgetDecision
+from src.proposer.controller import AdaptiveDraftController, BudgetDecision
 
 # Free VRAM value passed to the controller when no reading is available,
 # so the VRAM guard never fires on a missing signal.
@@ -37,6 +37,15 @@ class StepPlan:
     per_request_node_count: Dict[str, int] = field(default_factory=dict)
     per_request_decisions: Dict[str, BudgetDecision] = field(default_factory=dict)
     plan_sequence: Optional[int] = None
+    per_request_selected_k: Dict[str, int] = field(default_factory=dict)
+    fresh_max_k: int = 0
+    recovery_cap_k: int = 0
+    pending_target_k: Optional[int] = None
+    pending_streak: int = 0
+
+    @property
+    def worker_k(self) -> int:
+        return self.batch_k
 
 
 class AdaptiveBudgetPlanner:
@@ -51,23 +60,72 @@ class AdaptiveBudgetPlanner:
         per_request: bool = True,
         telemetry_path: Optional[str] = None,
         step_telemetry_path: Optional[str] = None,
+        replacement_policy: bool = False,
+        recovery_hold_steps: int = 0,
     ):
         if max_k < 0 or min_batch_k < 0:
             raise ValueError("max_k and min_batch_k must be non-negative")
+        if type(recovery_hold_steps) is not int or recovery_hold_steps < 0:
+            raise ValueError("recovery_hold_steps must be a non-negative integer")
+        if replacement_policy and not per_request:
+            raise ValueError("The replacement policy requires per-request budgeting")
+        if recovery_hold_steps and not replacement_policy:
+            raise ValueError("Recovery hold requires the replacement policy")
         if (telemetry_path and step_telemetry_path
                 and os.path.normcase(os.path.realpath(telemetry_path))
                 == os.path.normcase(os.path.realpath(step_telemetry_path))):
             raise ValueError("Step and aggregate telemetry must use separate paths")
         self.adapter = adapter or AdaptiveProposerAdapter()
+        if replacement_policy and not issubclass(self.adapter.controller_cls, AdaptiveDraftController):
+            raise ValueError("The replacement policy requires the scalar adaptive controller")
         self.max_k = max_k
         self.min_batch_k = min_batch_k
         self.per_request = per_request
         self.telemetry_path = telemetry_path
         self.step_telemetry_path = step_telemetry_path
+        self.replacement_policy = replacement_policy
+        self.recovery_hold_steps = recovery_hold_steps
         self._known_requests: Set[str] = set()
+        self._request_incarnations: Dict[str, int] = {}
         self._last_decisions: Dict[str, dict] = {}
         self._scheduled_runtime_modes: Dict[str, str] = {}
         self._plan_sequence = 0
+        self.reset_recovery()
+
+    def reset_recovery(self) -> None:
+        """Clear the cap and pending increase for the next eligible cohort."""
+        self._recovery_cap_k: Optional[int] = None
+        self._pending_target_k: Optional[int] = None
+        self._pending_streak = 0
+        self._cohort: Set[Tuple[str, Optional[int]]] = set()
+
+    def bind_request(self, req_id: str, incarnation: int) -> None:
+        """Retire policy state when a different request object takes the same ID."""
+        previous = self._request_incarnations.get(req_id)
+        if previous is not None and previous != incarnation:
+            self.finish_request(req_id)
+        self._request_incarnations[req_id] = incarnation
+
+    def _recovery_cap(self, selected: Dict[str, int], fresh_max_k: int) -> int:
+        cohort = {(rid, self._request_incarnations.get(rid)) for rid in selected}
+        if self._cohort.isdisjoint(cohort):
+            self.reset_recovery()
+        self._cohort = cohort
+        if not cohort:
+            return 0
+
+        if (self._recovery_cap_k is None or fresh_max_k <= self._recovery_cap_k
+                or self.recovery_hold_steps <= 1):
+            self._recovery_cap_k = fresh_max_k
+            self._pending_target_k, self._pending_streak = None, 0
+        else:
+            if self._pending_target_k != fresh_max_k:
+                self._pending_target_k, self._pending_streak = fresh_max_k, 0
+            self._pending_streak += 1
+            if self._pending_streak >= self.recovery_hold_steps:
+                self._recovery_cap_k = fresh_max_k
+                self._pending_target_k, self._pending_streak = None, 0
+        return self._recovery_cap_k
 
     def plan_step(
         self,
@@ -87,6 +145,8 @@ class AdaptiveBudgetPlanner:
         nodes: Dict[str, int] = {}
         decisions: Dict[str, BudgetDecision] = {}
         alpha_signals: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
+        if self.replacement_policy and self.max_k == 0:
+            decode_req_ids = ()
         for req_id in decode_req_ids:
             self._known_requests.add(req_id)
             controller = self.adapter.get_controller(req_id)
@@ -101,15 +161,27 @@ class AdaptiveBudgetPlanner:
                                      effective_alpha() if callable(effective_alpha) else None)
             nodes[req_id] = max(0, getattr(decision, "num_nodes", decision.k))
             per_request_k[req_id] = min(nodes[req_id], self.max_k)
+            if self.replacement_policy:
+                # A runtime maximum may cut through a sparse candidate set.
+                limit = per_request_k[req_id]
+                per_request_k[req_id] = max(
+                    (k for k in controller.candidate_budgets if 0 < k <= limit), default=0)
 
-        if not per_request_k:
+        if not per_request_k and not self.replacement_policy:
             return StepPlan(batch_k=0, per_request_k={})
 
-        batch_k = max(max(per_request_k.values()), self.min_batch_k)
-        batch_k = min(batch_k, self.max_k)
-        if not self.per_request:
-            per_request_k = {req_id: batch_k for req_id in per_request_k}
-        batch_node_count = max(nodes.values())
+        selected = per_request_k
+        fresh_max_k = max(selected.values(), default=0)
+        if self.replacement_policy:
+            cap = self._recovery_cap(selected, fresh_max_k)
+            per_request_k = {rid: min(k, cap) for rid, k in selected.items()}
+            batch_k = max(per_request_k.values(), default=0)
+        else:
+            batch_k = min(max(fresh_max_k, self.min_batch_k), self.max_k)
+            cap = batch_k
+            if not self.per_request:
+                per_request_k = {rid: batch_k for rid in per_request_k}
+        batch_node_count = max(nodes.values(), default=0)
         self._plan_sequence += 1
         for req_id, decision in decisions.items():
             raw_alpha, effective_alpha = alpha_signals[req_id]
@@ -119,11 +191,32 @@ class AdaptiveBudgetPlanner:
                           controller_class=f"{type(self.adapter.get_controller(req_id)).__module__}.{type(self.adapter.get_controller(req_id)).__name__}",
                           plan_sequence=self._plan_sequence, scalar_runtime_budget=per_request_k[req_id],
                           batch_scalar_budget=batch_k, batch_node_count=batch_node_count)
+            if self.replacement_policy:
+                record.update(
+                    request_incarnation=self._request_incarnations.get(req_id),
+                    plan_id=self._plan_sequence, selected_k=selected[req_id],
+                    applied_k=per_request_k[req_id], reason=decision.reason,
+                    rule_alpha=getattr(decision, "rule_alpha", None),
+                    warmup_active=getattr(decision, "warmup_active", False),
+                    verification_sample_count=getattr(decision, "verification_sample_count", 0),
+                    memory_state=getattr(decision, "memory_state", None),
+                )
             self._last_decisions[req_id] = record
             self._write_step(record)
+        if self.replacement_policy:
+            self._write_step(dict(
+                record_type="batch_policy", lane="adaptive", plan_id=self._plan_sequence,
+                fresh_max_k=fresh_max_k, recovery_cap_k=cap, worker_k=batch_k,
+                planned_worker_k=batch_k,
+                eligible_batch_size=len(selected), pending_target_k=self._pending_target_k,
+                pending_streak=self._pending_streak, required_hold_steps=self.recovery_hold_steps,
+            ))
         return StepPlan(batch_k=batch_k, per_request_k=per_request_k,
                         batch_node_count=batch_node_count, per_request_node_count=nodes,
-                        per_request_decisions=decisions, plan_sequence=self._plan_sequence)
+                        per_request_decisions=decisions, plan_sequence=self._plan_sequence,
+                        per_request_selected_k=dict(selected), fresh_max_k=fresh_max_k,
+                        recovery_cap_k=cap, pending_target_k=self._pending_target_k,
+                        pending_streak=self._pending_streak)
 
     def record_scheduled_budget(self, req_id: str, batch_k: int, placeholder_k: int,
                                 *, dynamic: bool, schedule_sequence: int,
@@ -140,6 +233,7 @@ class AdaptiveBudgetPlanner:
                           "lane": "adaptive", "executed_runtime_mode": "unverified",
                           "scheduled_runtime_mode": mode,
                           "scheduled_scalar_k": batch_k,
+                          "planned_worker_k": batch_k,
                           "schedule_sequence": schedule_sequence, "plan_sequence": plan_sequence,
                           "budget_target": "drafts_for_future_verification",
                           # Compatibility aliases: 'next' refers to verification,
@@ -164,26 +258,46 @@ class AdaptiveBudgetPlanner:
                           "source_plan_sequence": None, "source_schedule_sequence": None,
                           "tree_execution_verified": False})
 
+    def record_draft_birth(self, origin, width: int) -> None:
+        if not self.step_telemetry_path:
+            return
+        self._write_step(dict(
+            record_type="draft_policy_produced", lane="adaptive",
+            request_id=origin.request_id, request_incarnation=origin.incarnation,
+            producer_plan_id=origin.plan_sequence, producer_schedule_id=origin.schedule_sequence,
+            applied_k=origin.request_k, worker_k=origin.batch_k,
+            planned_worker_k=origin.planned_worker_k, physical_draft_width=width,
+        ))
+
     def record_verification(self, req_id: str, num_drafted: int, num_accepted: int,
-                            *, source=None) -> None:
+                            *, source=None, attributed: bool = False) -> None:
         """Feeds one verification result back to the request's controller.
 
-        Direct planner callers supply synchronous counts. Production scheduler
-        callers MUST validate execution provenance before invoking this method.
-        A newly completed prefill may have an exact schedule but no decode plan.
+        Legacy direct callers may supply synchronous counts. The replacement
+        scheduler must validate and claim the exact consumed origin before
+        passing attributed=True.
         """
         if num_drafted <= 0:
+            return
+        if self.replacement_policy and (not attributed or source is None
+                or source.request_id != req_id
+                or source.incarnation != self._request_incarnations.get(req_id)
+                or not 0 <= num_accepted <= num_drafted <= source.request_k):
+            self.record_lineage_failure(req_id, "unvalidated-policy-feedback")
             return
         self._known_requests.add(req_id)
         alpha_before = (self.adapter.get_telemetry(req_id)["alpha_ema"]
                         if self.step_telemetry_path else None)
+        options = {"attributed": True} if self.replacement_policy else {}
         self.adapter.on_verification_completed(
             request_id=req_id,
             num_accepted=num_accepted,
             num_drafted=num_drafted,
+            **options,
         )
         if self.step_telemetry_path:
-            self._write_step({
+            telemetry = self.adapter.get_telemetry(req_id)
+            record = {
                 "record_type": "verification_feedback", "request_id": req_id,
                 "lane": "adaptive", "executed_draft_token_count": num_drafted,
                 "accepted_draft_token_count": num_accepted,
@@ -194,12 +308,28 @@ class AdaptiveBudgetPlanner:
                 "source_batch_scalar_k": source.batch_k if source else None,
                 "lineage_status": "attributed" if source else "unverified",
                 "tree_execution_verified": False,
-                "alpha_ema": self.adapter.get_telemetry(req_id)["alpha_ema"],
+                "alpha_ema": telemetry["alpha_ema"],
                 "alpha_ema_before": alpha_before,
-            })
+            }
+            if self.replacement_policy:
+                record.update(
+                    request_incarnation=source.incarnation,
+                    producer_plan_id=source.plan_sequence, producer_schedule_id=source.schedule_sequence,
+                    drafted_tokens=num_drafted, accepted_tokens=num_accepted,
+                    applied_k=source.request_k, worker_k=source.batch_k,
+                    planned_worker_k=source.planned_worker_k,
+                    physical_draft_width=source.physical_draft_width,
+                    feedback_counted_for_warmup=True,
+                    verification_sample_count=telemetry["verification_sample_count"],
+                )
+            self._write_step(record)
 
     def finish_request(self, req_id: str) -> Optional[dict]:
         """Releases the request session and appends its telemetry as one JSONL line."""
+        incarnation = self._request_incarnations.pop(req_id, None)
+        self._cohort.discard((req_id, incarnation))
+        if not self._cohort:
+            self.reset_recovery()
         if req_id not in self._known_requests:
             return None
         self._known_requests.discard(req_id)
@@ -234,6 +364,9 @@ class AdaptiveBudgetPlanner:
             raise ValueError(f"ADAPTIVE_CONTROLLER_KWARGS is not valid JSON: {exc}") from exc
         if not isinstance(controller_kwargs, dict):
             raise ValueError("ADAPTIVE_CONTROLLER_KWARGS must be a JSON object")
+        replacement_policy = _env_flag(env.get("ADAPTIVE_REPLACEMENT_POLICY", "0"))
+        if not replacement_policy and any(controller_kwargs.get(key) for key in ("min_k", "min_warmup_samples")):
+            raise ValueError("Acceptance floor and warmup require the replacement policy")
 
         profile_path = env.get("FLEXSDS_PROFILE_PATH")
         if profile_path:
@@ -260,6 +393,8 @@ class AdaptiveBudgetPlanner:
             per_request=_env_flag(env.get("ADAPTIVE_PER_REQUEST", "1")),
             telemetry_path=env.get("ADAPTIVE_TELEMETRY_PATH") or None,
             step_telemetry_path=env.get("ADAPTIVE_STEP_TELEMETRY_PATH") or None,
+            replacement_policy=replacement_policy,
+            recovery_hold_steps=int(env.get("ADAPTIVE_RECOVERY_HOLD_STEPS", "0")),
         )
 
 

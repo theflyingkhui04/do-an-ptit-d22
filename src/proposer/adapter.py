@@ -107,13 +107,19 @@ class AdaptiveProposerAdapter:
         request_id: str,
         num_accepted: int,
         num_drafted: int,
+        *,
+        attributed: bool = False,
     ) -> float:
         """Receives verification telemetry from Target model and updates rolling alpha."""
         controller = self.get_controller(request_id)
         if request_id not in self._accepted_history:
             self._accepted_history[request_id] = []
+        if attributed and (num_drafted <= 0 or not 0 <= num_accepted <= num_drafted):
+            return controller.get_rolling_alpha()
         if num_drafted > 0:
             self._accepted_history[request_id].append(num_accepted)
+        if attributed and isinstance(controller, AdaptiveDraftController):
+            return controller.record_attributed_verification(num_accepted, num_drafted)
         return controller.update(num_accepted=num_accepted, num_drafted=num_drafted)
 
     def get_telemetry(self, request_id: str) -> dict:
@@ -141,6 +147,9 @@ class AdaptiveProposerAdapter:
             telemetry["is_warmed_up"] = stats["is_warmed_up"]
         if "topologies" in stats:
             telemetry["topologies"] = stats["topologies"]
+        for key in ("verification_sample_count", "reason_counts"):
+            if key in stats:
+                telemetry[key] = stats[key]
         return telemetry
 
     def end_request(self, request_id: str) -> dict:

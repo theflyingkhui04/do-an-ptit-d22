@@ -6,6 +6,16 @@ from typing import Dict, Tuple, List, Optional
 from collections import deque
 
 
+_ACCEPTANCE_REASON_CATEGORIES = {
+    "Low acceptance floor": "floor",
+    "Low acceptance fallback": "fallback",
+    "Periodic probe": "probe",
+    "High acceptance": "high",
+    "High acceptance (aggressive)": "high",
+    "Mid acceptance": "mid",
+}
+
+
 @dataclass
 class BudgetDecision:
     """Represents a budget selection decision made by BudgetController."""
@@ -13,6 +23,15 @@ class BudgetDecision:
     alpha_ema: float
     expected_tokens: float
     reason: str
+
+
+@dataclass
+class AdaptiveDraftDecision(BudgetDecision):
+    effective_alpha: float
+    rule_alpha: Optional[float]
+    warmup_active: bool
+    verification_sample_count: int
+    memory_state: str
 
 
 @dataclass
@@ -230,6 +249,8 @@ class AdaptiveDraftController(BudgetController):
         memory_cooldown_steps: int = 3,
         enable_vram_guard: bool = True,
         history_limit: Optional[int] = None,
+        min_k: int = 0,
+        min_warmup_samples: int = 0,
     ):
         super().__init__(
             window_size=window_size,
@@ -249,24 +270,39 @@ class AdaptiveDraftController(BudgetController):
             )
         if memory_cooldown_steps < 1:
             raise ValueError("memory_cooldown_steps must be >= 1")
+        if type(min_k) is not int or min_k < 0:
+            raise ValueError("min_k must be a non-negative integer")
+        if type(min_warmup_samples) is not int or min_warmup_samples < 0:
+            raise ValueError("min_warmup_samples must be a non-negative integer")
 
-        self.step_count = 0
+        # Round a positive floor up to the smallest supported candidate.
+        self.min_k = 0
+        if min_k:
+            self.min_k = min((k for k in self.candidate_budgets if k >= min_k), default=0)
+        if min_k and self.min_k == 0:
+            raise ValueError("min_k exceeds the supported candidate budgets")
+        self.min_warmup_samples = min_warmup_samples
         self.probe_interval = probe_interval
         self.probe_k = probe_k
-        self.consecutive_fallback_steps = 0
         self.kv_cache_high_pct = kv_cache_high_pct
         self.kv_cache_recover_pct = kv_cache_recover_pct
         self.memory_cooldown_steps = memory_cooldown_steps
         self.enable_vram_guard = enable_vram_guard
 
-        # Hysteresis state: steps spent at k=0 since the last memory trigger
-        self._memory_pressure_active = False
-        self._memory_pressure_steps = 0
+        self.reset()
 
     def update(self, num_accepted: int, num_drafted: int) -> float:
         """Updates rolling window and EMA telemetry from the latest step verification."""
         self.step_count += 1
         return super().update(num_accepted=num_accepted, num_drafted=num_drafted)
+
+    def record_attributed_verification(self, num_accepted: int, num_drafted: int) -> float:
+        """Apply one event whose live lineage and uniqueness the scheduler validated."""
+        if num_drafted <= 0 or not 0 <= num_accepted <= num_drafted:
+            return self.alpha_ema
+        alpha = self.update(num_accepted, num_drafted)
+        self.verification_sample_count += 1
+        return alpha
 
     def get_window_samples(self) -> List[float]:
         """Returns the list of raw alpha samples in the current sliding window."""
@@ -384,6 +420,9 @@ class AdaptiveDraftController(BudgetController):
         - alpha < fallback_threshold (0.65): fallback to k=0 with periodic probing (k=probe_k every probe_interval steps)
         """
         if alpha < self.fallback_threshold:
+            if self.min_k:
+                return (self.min_k,
+                        f"Low acceptance floor: alpha {alpha:.3f} < threshold {self.fallback_threshold:.3f}, k={self.min_k}")
             self.consecutive_fallback_steps += 1
             if self.probe_interval > 0 and self.consecutive_fallback_steps >= self.probe_interval:
                 # Kích hoạt probing để thoát bẫy kẹt Vanilla vĩnh viễn
@@ -417,48 +456,49 @@ class AdaptiveDraftController(BudgetController):
         batch_size: int = 1,
         free_vram_mb: float = 16000.0,
         kv_cache_usage_pct: float = 0.0,
-    ) -> BudgetDecision:
+    ) -> AdaptiveDraftDecision:
         """Selects optimal budget k* using unbiased alpha and modular rules."""
         effective_alpha = self.get_effective_alpha()
-
-        # 1. Memory Pressure Rule (Chống OOM)
+        warmup_active = self.verification_sample_count < self.min_warmup_samples
         mem_decision = self.apply_memory_pressure_rule(
             free_vram_mb=free_vram_mb,
             kv_cache_usage_pct=kv_cache_usage_pct,
         )
         if mem_decision is not None:
             k, reason = mem_decision
-            decision = BudgetDecision(
-                k=k,
-                alpha_ema=effective_alpha,
-                expected_tokens=1.0,
-                reason=reason,
-            )
-            self._history.append({"k": k, "alpha": effective_alpha, "reason": reason})
-            return decision
+            rule_alpha = None
+            category = "memory"
+            memory_state = "pressure" if self._memory_pressure_steps == 1 else "cooldown"
+        else:
+            rule_alpha = self.initial_alpha if warmup_active else effective_alpha
+            k, reason = self.apply_budget_rule(alpha=rule_alpha)
+            category = _ACCEPTANCE_REASON_CATEGORIES.get(reason.split(":", 1)[0], "other")
+            memory_state = "clear"
 
-        # 2. Budget Rule (Co giãn k theo alpha kết hợp Periodic Probing)
-        k, reason = self.apply_budget_rule(alpha=effective_alpha)
-        e_tau = self.estimate_expected_tokens(k, effective_alpha)
-
-        decision = BudgetDecision(
+        decision = AdaptiveDraftDecision(
             k=k,
             alpha_ema=effective_alpha,
-            expected_tokens=e_tau,
+            expected_tokens=self.estimate_expected_tokens(k, effective_alpha),
             reason=reason,
+            effective_alpha=effective_alpha,
+            rule_alpha=rule_alpha,
+            warmup_active=warmup_active,
+            verification_sample_count=self.verification_sample_count,
+            memory_state=memory_state,
         )
         self._history.append({"k": k, "alpha": effective_alpha, "reason": reason})
+        self._reason_counts[category] = self._reason_counts.get(category, 0) + 1
         return decision
 
     def reset(self, initial_alpha: Optional[float] = None) -> None:
         """Resets controller state when beginning a new sequence/prompt."""
-        super().reset(initial_alpha=initial_alpha)
-        if initial_alpha is not None:
-            self.initial_alpha = initial_alpha
+        super().reset(initial_alpha=self.initial_alpha if initial_alpha is None else initial_alpha)
         self.step_count = 0
+        self.verification_sample_count = 0
         self.consecutive_fallback_steps = 0
         self._memory_pressure_active = False
         self._memory_pressure_steps = 0
+        self._reason_counts: Dict[str, int] = {}
 
     def get_stats(self) -> dict:
         """Exports runtime telemetry matching Interface A contract plus adaptive diagnostics."""
@@ -468,6 +508,8 @@ class AdaptiveDraftController(BudgetController):
         base_stats["step_count"] = self.step_count
         base_stats["consecutive_fallback_steps"] = self.consecutive_fallback_steps
         base_stats["memory_pressure_active"] = self._memory_pressure_active
+        base_stats["verification_sample_count"] = self.verification_sample_count
+        base_stats["reason_counts"] = dict(self._reason_counts)
         return base_stats
 
 
