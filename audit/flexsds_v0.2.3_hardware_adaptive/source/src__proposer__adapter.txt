@@ -1,0 +1,155 @@
+1: """Adaptive Speculative Proposer Adapter for vLLM."""
+2: from __future__ import annotations
+3: 
+4: from dataclasses import dataclass, field
+5: from collections import deque
+6: from typing import Dict, List, Optional, Callable, Any
+7: from src.proposer.controller import (
+8:     BudgetController,
+9:     AdaptiveDraftController,
+10:     BudgetDecision,
+11:     CostProfile,
+12: )
+13: 
+14: 
+15: @dataclass
+16: class ProposalOutput:
+17:     """Output bundle from adapter proposal step."""
+18:     draft_tokens: List[int]
+19:     budget_k: int
+20:     skipped_draft: bool
+21:     reason: str
+22:     topology_name: Optional[str] = None
+23: 
+24: 
+25: 
+26: class AdaptiveProposerAdapter:
+27:     """Hooks into vLLM speculative proposal loop and manages per-request BudgetControllers."""
+28: 
+29:     def __init__(
+30:         self,
+31:         controller_kwargs: Optional[dict] = None,
+32:         controller_cls: type[BudgetController] = AdaptiveDraftController,
+33:     ):
+34:         self.controller_kwargs = controller_kwargs or {}
+35:         self.controller_cls = controller_cls
+36:         self._active_sessions: Dict[str, BudgetController] = {}
+37:         self._accepted_history: Dict[str, List[int]] = {}
+38: 
+39:     @property
+40:     def active_request_count(self) -> int:
+41:         return len(self._active_sessions)
+42: 
+43:     def start_request(
+44:         self,
+45:         request_id: str,
+46:         initial_alpha: Optional[float] = None,
+47:     ) -> BudgetController:
+48:         """Initializes a new BudgetController session for a given request."""
+49:         kwargs = dict(self.controller_kwargs)
+50:         if initial_alpha is not None:
+51:             kwargs["initial_alpha"] = initial_alpha
+52:         controller = self.controller_cls(**kwargs)
+53:         self._active_sessions[request_id] = controller
+54:         limit = kwargs.get("history_limit")
+55:         self._accepted_history[request_id] = [] if limit is None else deque(maxlen=limit)
+56:         return controller
+57: 
+58:     def get_controller(self, request_id: str) -> BudgetController:
+59:         """Gets active controller for request, or lazily initializes one."""
+60:         if request_id not in self._active_sessions:
+61:             return self.start_request(request_id)
+62:         return self._active_sessions[request_id]
+63: 
+64:     def propose(
+65:         self,
+66:         request_id: str,
+67:         draft_generator: Callable[[int], List[int]],
+68:         batch_size: int = 1,
+69:         free_vram_mb: float = 16000.0,
+70:         kv_cache_usage_pct: float = 0.0,
+71:     ) -> ProposalOutput:
+72:         """Executes one adaptive speculative proposal step.
+73:         
+74:         Queries BudgetController for optimal k*.
+75:         If k* == 0 (Vanilla Fallback), completely skips draft_generator to save GPU compute.
+76:         If k* > 0, executes draft_generator(k*) and packages the tokens.
+77:         """
+78:         controller = self.get_controller(request_id)
+79:         decision: BudgetDecision = controller.select_budget(
+80:             batch_size=batch_size,
+81:             free_vram_mb=free_vram_mb,
+82:             kv_cache_usage_pct=kv_cache_usage_pct,
+83:         )
+84: 
+85:         topo = getattr(decision, "topology_name", None)
+86: 
+87:         if decision.k == 0:
+88:             return ProposalOutput(
+89:                 draft_tokens=[],
+90:                 budget_k=0,
+91:                 skipped_draft=True,
+92:                 reason=decision.reason,
+93:                 topology_name=topo,
+94:             )
+95: 
+96:         draft_tokens = draft_generator(decision.k)
+97:         return ProposalOutput(
+98:             draft_tokens=draft_tokens,
+99:             budget_k=decision.k,
+100:             skipped_draft=False,
+101:             reason=decision.reason,
+102:             topology_name=topo,
+103:         )
+104: 
+105:     def on_verification_completed(
+106:         self,
+107:         request_id: str,
+108:         num_accepted: int,
+109:         num_drafted: int,
+110:     ) -> float:
+111:         """Receives verification telemetry from Target model and updates rolling alpha."""
+112:         controller = self.get_controller(request_id)
+113:         if request_id not in self._accepted_history:
+114:             self._accepted_history[request_id] = []
+115:         if num_drafted > 0:
+116:             self._accepted_history[request_id].append(num_accepted)
+117:         return controller.update(num_accepted=num_accepted, num_drafted=num_drafted)
+118: 
+119:     def get_telemetry(self, request_id: str) -> dict:
+120:         """Extracts runtime telemetry snapshot matching Interface A contract."""
+121:         controller = self.get_controller(request_id)
+122:         stats = controller.get_stats()
+123:         accepted_records = self._accepted_history.get(request_id, [])
+124:         mean_accept_len = (
+125:             float(sum(accepted_records) / len(accepted_records))
+126:             if accepted_records
+127:             else 0.0
+128:         )
+129:         telemetry = {
+130:             "request_id": request_id,
+131:             "lane": "adaptive",
+132:             "alpha_ema": stats["alpha_ema"],
+133:             "tree_budgets": stats["tree_budgets"],
+134:             "mean_accept_len": mean_accept_len,
+135:             "mean_k": stats.get("mean_k", 0.0),
+136:             "step_count": stats["step_count"],
+137:         }
+138:         if "effective_alpha" in stats:
+139:             telemetry["effective_alpha"] = stats["effective_alpha"]
+140:         if "is_warmed_up" in stats:
+141:             telemetry["is_warmed_up"] = stats["is_warmed_up"]
+142:         if "topologies" in stats:
+143:             telemetry["topologies"] = stats["topologies"]
+144:         return telemetry
+145: 
+146:     def end_request(self, request_id: str) -> dict:
+147:         """Finalizes request, returns full Interface A telemetry, and releases session memory."""
+148:         telemetry = self.get_telemetry(request_id)
+149:         if request_id in self._active_sessions:
+150:             del self._active_sessions[request_id]
+151:         if request_id in self._accepted_history:
+152:             del self._accepted_history[request_id]
+153:         return telemetry
+154: 
+155: 

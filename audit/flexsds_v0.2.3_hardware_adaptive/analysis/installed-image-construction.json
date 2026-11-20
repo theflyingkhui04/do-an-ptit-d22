@@ -1,0 +1,21 @@
+{
+  "project_root": "D:\\ProgramFiles\\Python3_11\\Lib",
+  "directory_mounts": [
+    {
+      "local": "D:\\ProgramFiles\\Python3_11\\Lib\\site-packages\\flexsds",
+      "remote": "/root/project/src/flexsds"
+    }
+  ],
+  "file_mounts": [
+    {
+      "local": "C:\\Users\\daibu\\.flexsds\\profiles\\profile_sm_89_remote_l4_fcda5486b12d_full.json",
+      "remote": "/root/project/hardware_profile.json"
+    }
+  ],
+  "required_but_unmounted": [
+    "/root/project/src/server",
+    "/root/project/src/proposer",
+    "/root/project/experiments"
+  ],
+  "evidence_level": "LOCAL MOCKED IMAGE CONSTRUCTION; no cloud calls"
+}

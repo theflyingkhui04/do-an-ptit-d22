@@ -1,0 +1,205 @@
+1: """Modal cloud serving runner for FlexSDS (BYOC, ephemeral, and persistent deploy)."""
+2: from __future__ import annotations
+3: 
+4: import os
+5: import json
+6: import shutil
+7: import subprocess
+8: import re
+9: import time
+10: from contextlib import contextmanager, nullcontext
+11: from pathlib import Path
+12: from typing import Any, Dict, List, Optional
+13: 
+14: try:
+15:     from flexsds.cli.output import print_output as print
+16:     from flexsds.core.credentials import CredentialsManager
+17: except ModuleNotFoundError:
+18:     from src.flexsds.cli.output import print_output as print
+19:     from src.flexsds.core.credentials import CredentialsManager
+20: 
+21: 
+22: @contextmanager
+23: def deployment_logs(output, env):
+24:     """Follow runtime logs while checking a published app; never stop the app."""
+25:     from flexsds.server.modal_auth import modal_command
+26:     child = reader = None
+27:     try:
+28:         try:
+29:             child = subprocess.Popen(
+30:                 [*modal_command(), 'app', 'logs', ModalServingRunner.DEFAULT_APP_NAME, '--follow'],
+31:                 env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+32:                 stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', bufsize=1)
+33:         except OSError as exc:
+34:             output.notice(f'Cannot follow runtime logs: {exc}. Endpoint verification continues.')
+35:         if child is not None:
+36:             reader = output.capture(child)
+37:             output.notice('Deployment published. Following GPU startup logs; first startup may take several minutes.')
+38:         yield
+39:     finally:
+40:         if child is not None:
+41:             if child.poll() is None:
+42:                 child.terminate()
+43:                 try:
+44:                     child.wait(timeout=10)
+45:                 except subprocess.TimeoutExpired:
+46:                     child.kill()
+47:                     child.wait(timeout=5)
+48:             if reader is not None:
+49:                 reader.join(timeout=5)
+50:             if child.stdout is not None:
+51:                 child.stdout.close()
+52: 
+53: 
+54: class ModalServingRunner:
+55:     """Quản lý triển khai FlexSDS Serverless trên nền tảng đám mây Modal.com."""
+56: 
+57:     DEFAULT_APP_NAME = "flexsds-serving"
+58: 
+59:     def __init__(self, credentials_manager: Optional[CredentialsManager] = None) -> None:
+60:         self.cred_mgr = credentials_manager or CredentialsManager()
+61: 
+62:     def check_credentials(self) -> bool:
+63:         """Kiểm tra thông tin định danh Modal qua CredentialsManager, biến môi trường hoặc ~/.modal.toml."""
+64:         from flexsds.server.modal_auth import prepare_modal_auth
+65:         return prepare_modal_auth(self.cred_mgr)
+66: 
+67:     def build_modal_command(self, config: Dict[str, Any], deploy: bool = False) -> List[str]:
+68:         """Tạo danh sách đối số dòng lệnh gọi công cụ CLI modal tới modal_app.py."""
+69:         from flexsds.server.modal_auth import modal_command
+70:         app_path = str(Path(__file__).parent / "modal_app.py")
+71:         return [*modal_command(), "deploy" if deploy else "serve", app_path]
+72: 
+73:     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
+74:         """Forward non-secret serving settings and package paths for app construction."""
+75:         cfg = config.get("serving", config)
+76:         keys = ("target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
+77:                 "target_revision", "draft_revision", "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
+78:         if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
+79:             # Calibration also uses this method without the serving launch preflight.
+80:             from flexsds.server.modal_auth import prepare_modal_auth
+81:             prepare_modal_auth(self.cred_mgr)
+82:         env = dict(os.environ)
+83:         # Redirected Python output on Windows otherwise uses the ANSI code page.
+84:         # Modal emits Unicode status symbols, so both ends of the pipe use UTF-8.
+85:         env["PYTHONIOENCODING"] = "utf-8"
+86:         env["PYTHONUTF8"] = "1"
+87:         env["FLEXSDS_SERVING_CONFIG"] = json.dumps({k: cfg[k] for k in keys if k in cfg})
+88: 
+89:         # Modal can use another pipx interpreter; forward project source only,
+90:         # never the launcher's third-party packages or interpreter directories.
+91:         package_root = Path(__file__).resolve().parents[2]
+92:         env['PYTHONPATH'] = os.pathsep.join((str(package_root), str(package_root.parent)))
+93:         return env
+94: 
+95:     def launch(
+96:         self,
+97:         config: Dict[str, Any],
+98:         deploy: bool = False,
+99:         dry_run: bool = False,
+100:     ) -> Optional[subprocess.Popen]:
+101:         """Khởi chạy ứng dụng Modal serverless."""
+102:         if not dry_run:
+103:             from flexsds.server.modal_auth import ensure_modal
+104:             ensure_modal()
+105:         if not dry_run and not self.check_credentials():
+106:             print("\n\033[31m[Authentication Error]\033[0m Modal credentials not configured.")
+107:             print("  Please run: flexsds auth login --provider modal")
+108:             print("  Or configure via: modal setup")
+109:             return None
+110: 
+111:         cfg = config.get('serving', config)
+112:         if cfg.get('enable_adaptive', False):
+113:             from flexsds.server.local_runner import LocalServingRunner
+114:             LocalServingRunner().build_command(config)
+115:             LocalServingRunner().setup_environment(config)
+116: 
+117:         cmd = self.build_modal_command(config, deploy=deploy)
+118: 
+119:         if dry_run:
+120:             mode_desc = "Persistent Deploy" if deploy else "Ephemeral Run"
+121:             print(f"\n[FlexSDS Modal] Dry-run command ({mode_desc}):")
+122:             print(" ".join(cmd))
+123:             print(f"Serving configuration: {self.setup_environment(config)['FLEXSDS_SERVING_CONFIG']}")
+124:             return None
+125: 
+126:         try:
+127:             from flexsds.cli.process_progress import ProcessProgress
+128:             output = ProcessProgress('serving')
+129:             proc = None
+130:             try:
+131:                 proc = subprocess.Popen(cmd, env=self.setup_environment(config), stdin=subprocess.DEVNULL,
+132:                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+133:                                         text=True, encoding='utf-8', errors='replace', bufsize=1)
+134:                 output.start()
+135:             except BaseException:
+136:                 if proc is not None and proc.poll() is None:
+137:                     proc.terminate()
+138:                     try: proc.wait(timeout=15)
+139:                     except subprocess.TimeoutExpired:
+140:                         proc.kill(); proc.wait()
+141:                 output.close()
+142:                 raise
+143:             endpoint = []
+144:             def observe_endpoint(line):
+145:                 match = re.search(r"https://[a-zA-Z0-9.-]+\.modal\.run", line)
+146:                 if match and not endpoint:
+147:                     endpoint.append(match.group())
+148:             deploy_reader = output.capture(proc, on_line=observe_endpoint, close_on_exit=not deploy)
+149:             proc._flexsds_output = output
+150:             logs_done = output.done
+151:             def ready():
+152:                 from flexsds.server.readiness import verify_endpoint
+153:                 deadline = time.monotonic() + 900
+154:                 while not endpoint:
+155:                     code = proc.poll()
+156:                     if code is not None and logs_done.is_set() and not endpoint:
+157:                         raise RuntimeError(f"Modal exited before exposing endpoint (exit {code})")
+158:                     if time.monotonic() >= deadline:
+159:                         raise RuntimeError("Timed out waiting for Modal endpoint URL")
+160:                     time.sleep(0.2)
+161:                 if deploy:
+162:                     # A URL is printed before publication finishes. Do not verify
+163:                     # a previous version while the new deployment is still uploading.
+164:                     while proc.poll() is None:
+165:                         if time.monotonic() >= deadline:
+166:                             raise RuntimeError('Timed out waiting for Modal deployment to finish')
+167:                         time.sleep(0.2)
+168:                     deploy_reader.join(timeout=5)
+169:                     if proc.returncode:
+170:                         raise RuntimeError(f'Modal deployment failed (exit {proc.returncode})')
+171:                 output.notice(f"Endpoint: {endpoint[0]}")
+172:                 output.update('Waiting for GPU cold start and endpoint readiness',15)
+173:                 with deployment_logs(output, self.setup_environment(config)) if deploy else nullcontext():
+174:                     model = verify_endpoint(endpoint[0], process=proc, deployed=deploy,
+175:                                             timeout=max(0.1, deadline-time.monotonic()),
+176:                                             on_status=output.update)
+177:                 proc._flexsds_session = dict(endpoint=endpoint[0].rstrip('/')+'/v1', model=model,
+178:                                             config=cfg, deploy=deploy)
+179:                 output.notice(f"Inference verified: {endpoint[0]}/v1 (model={model})")
+180:                 output.update('Serving ready' if not deploy else 'Deployment verified',100)
+181:                 if deploy:
+182:                     output.close()
+183:             proc._flexsds_readiness = ready
+184:             return proc
+185:         except FileNotFoundError:
+186:             print("Modal could not be started. Check the Python environment and retry.")
+187:             return None
+188: 
+189:     def check_process_status(self, proc: subprocess.Popen) -> tuple[bool, Optional[int]]:
+190:         """Kiểm tra trạng thái tiến trình Modal; phát hiện sớm nếu ứng dụng dừng bất ngờ."""
+191:         code = proc.poll()
+192:         if code is None:
+193:             return True, None
+194:         return False, code
+195: 
+196:     def stop(self, app_name: str = DEFAULT_APP_NAME) -> bool:
+197:         """Dừng ứng dụng đang chạy trên hạ tầng Modal Cloud."""
+198:         from flexsds.server.modal_auth import ensure_modal, modal_command
+199:         try:
+200:             ensure_modal()
+201:             cmd = [*modal_command(), "app", "stop", app_name]
+202:             res = subprocess.run(cmd, capture_output=True, text=True)
+203:             return res.returncode == 0
+204:         except Exception:
+205:             return False

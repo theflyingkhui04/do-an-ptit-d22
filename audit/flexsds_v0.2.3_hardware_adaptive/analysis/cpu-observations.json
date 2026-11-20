@@ -1,0 +1,33 @@
+{
+  "evidence_level": "CPU SIMULATION ONLY; not GPU counters",
+  "cost_query_probe": "get_cost replaced on this audit instance only with raising sentinel; no call occurred",
+  "transitions": [
+    {
+      "evidence": "CPU SIMULATION ONLY",
+      "accepted": 0,
+      "drafted": 3,
+      "before": 0.8,
+      "after": 0.6400000000000001,
+      "effective": 0.0,
+      "selected_k": 0
+    },
+    {
+      "evidence": "CPU SIMULATION ONLY",
+      "accepted": 2,
+      "drafted": 2,
+      "before": 0.6400000000000001,
+      "after": 0.7120000000000001,
+      "effective": 0.5555555555555556,
+      "selected_k": 0
+    },
+    {
+      "evidence": "CPU SIMULATION ONLY",
+      "accepted": 2,
+      "drafted": 2,
+      "before": 0.7120000000000001,
+      "after": 0.7696000000000001,
+      "effective": 0.7377049180327869,
+      "selected_k": 2
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "decision": "STOP BEFORE GPU",
+  "reason": [
+    "CLI metadata preflight blocked by sandbox socket denial",
+    "Installed Modal image construction omits required src.server/src.proposer/experiments",
+    "ON eager/compilation settings differ from OFF defaults"
+  ],
+  "paid_serving_launches": 0,
+  "calibrations": 0,
+  "deployments": 0,
+  "app_ids": [],
+  "chosen_gpu": "L4 intended; not allocated or frozen",
+  "gpu_fallback": false,
+  "stop_actions": "None required: this audit launched no Modal resource",
+  "account_wide_container_state": "UNKNOWN; not queried; no unrelated resource stopped"
+}

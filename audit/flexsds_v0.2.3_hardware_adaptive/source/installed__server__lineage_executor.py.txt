@@ -1,0 +1,158 @@
+1: """Exact-source-gated observation of vLLM 0.30.0 UniProc draft rows.
+2: 
+3: No worker/result schema changes and no added tensor reads or synchronization.
+4: Unknown source/configuration is rejected before enabling this executor.
+5: """
+6: import hashlib
+7: import json
+8: import logging
+9: from pathlib import Path
+10: 
+11: import vllm
+12: from vllm.v1.executor.uniproc_executor import UniProcExecutor
+13: 
+14: from src.server.lineage import register_lineage_executor, release_ledger
+15: from src.server.lineage_startup import install_enginecore_startup_binding
+16: 
+17: logger = logging.getLogger(__name__)
+18: 
+19: 
+20: def verify_sources():
+21:     if vllm.__version__ != "0.30.0":
+22:         raise RuntimeError("Async lineage requires vLLM 0.30.0")
+23:     manifest = Path(__file__).resolve().parents[2] / "experiments/scalar_vllm_source_manifest.json"
+24:     root = Path(vllm.__file__).resolve().parent.parent
+25:     records = {r["path"]: r for r in json.loads(manifest.read_text())["files"]}
+26:     for path in records:
+27:         if hashlib.sha256((root / path).read_bytes()).hexdigest() != records[path]["sha256"]:
+28:             raise RuntimeError(f"Unsupported async lineage source: {path}")
+29: 
+30: 
+31: def verify_eagle_sources():
+32:     root = Path(vllm.__file__).resolve().parent.parent
+33:     manifest = Path(__file__).resolve().parents[2] / "experiments/m4_eagle_source_manifest.json"
+34:     for record in json.loads(manifest.read_text())["files"]:
+35:         if hashlib.sha256((root / record["path"]).read_bytes()).hexdigest() != record["sha256"]:
+36:             raise RuntimeError(f"Unsupported EAGLE lineage source: {record['path']}")
+37: 
+38: 
+39: def verify_legacy_eagle_sources():
+40:     root = Path(vllm.__file__).resolve().parent.parent
+41:     manifest = Path(__file__).resolve().parents[2] / "experiments/eagle_legacy_source_manifest.json"
+42:     for record in json.loads(manifest.read_text())["files"]:
+43:         if hashlib.sha256((root / record["path"]).read_bytes()).hexdigest() != record["sha256"]:
+44:             raise RuntimeError(f"Unsupported legacy EAGLE source: {record['path']}")
+45: 
+46: 
+47: def validate_speculator_contract(spec):
+48:     """The EAGLE extension is narrower than arbitrary vLLM speculation support."""
+49:     if spec is None or spec.method not in ("draft_model", "eagle", "eagle3"):
+50:         raise RuntimeError("Async lineage requires draft_model, eagle or eagle3")
+51:     if spec.method in ("eagle", "eagle3"):
+52:         verify_eagle_sources()
+53:         if spec.method == "eagle":
+54:             verify_legacy_eagle_sources()
+55:         if (getattr(spec, "parallel_drafting", False)
+56:                 or not getattr(spec, "num_speculative_tokens_per_batch_size", None)):
+57:             raise RuntimeError("EAGLE lineage requires sequential dynamic-K drafting")
+58: 
+59: 
+60: class LineageUniProcExecutor(UniProcExecutor):
+61:     def _init_executor(self):
+62:         verify_sources()
+63:         config = self.vllm_config
+64:         parallel = config.parallel_config
+65:         spec = config.speculative_config
+66:         validate_speculator_contract(spec)
+67:         if (parallel.world_size != 1 or parallel.data_parallel_size != 1
+68:                 or not config.scheduler_config.async_scheduling
+69:                 or spec.disable_padded_drafter_batch):
+70:             raise RuntimeError("Async lineage supports only single-worker async padded drafting")
+71:         super()._init_executor()
+72:         runner = self.driver_worker.worker.model_runner
+73:         if (type(runner).__module__ != "vllm.v1.worker.gpu_model_runner"
+74:                 or type(runner).__name__ != "GPUModelRunner" or not runner.use_async_scheduling):
+75:             raise RuntimeError("Async lineage requires the pinned V1 GPUModelRunner")
+76:         self._lineage_runner = runner
+77:         self._lineage_pending = None
+78:         self._lineage_sampling = None
+79:         original = runner._copy_draft_token_ids_to_cpu
+80: 
+81:         def observe_birth(output, zeros_only=False):
+82:             result = original(output, zeros_only=zeros_only)
+83:             # Called by sample_tokens only after actual proposal or synthetic
+84:             # zeros. This distinguishes a real generation from a shape guess.
+85:             try:
+86:                 if output is self._lineage_sampling:
+87:                     self._lineage.produced(output, runner, zeros_only)
+88:                 else:
+89:                     self._lineage.generation = None
+90:                     logger.warning("Draft birth outside a paired sampling call; provenance unavailable")
+91:             except Exception:
+92:                 self._lineage.clear()
+93:                 logger.exception("Draft provenance observation failed; adaptive feedback disabled")
+94:             return result
+95: 
+96:         runner._copy_draft_token_ids_to_cpu = observe_birth
+97:         # Publish only after source/config/runner checks and observer installation.
+98:         # EngineCore constructs its scheduler later with the same config object.
+99:         self._lineage_registration = register_lineage_executor(config, self)
+100:         self._lineage = self._lineage_registration.ledger
+101: 
+102:     def execute_model(self, scheduler_output, non_block=False):
+103:         runner = self._lineage_runner
+104:         generation = self._lineage.generation
+105:         try:
+106:             result = super().execute_model(scheduler_output, non_block=non_block)
+107:             state = runner.execute_model_state
+108:             if state is not None and state[0] is scheduler_output:
+109:                 try:
+110:                     self._lineage.prepared(scheduler_output, runner, generation)
+111:                 except Exception:
+112:                     self._lineage.clear()
+113:                     logger.exception("Draft consumption observation failed; adaptive feedback disabled")
+114:                 self._lineage_pending = scheduler_output
+115:             else:
+116:                 self._lineage_pending = None
+117:             return self._watch(result)
+118:         except BaseException:
+119:             self._lineage.clear()
+120:             self._lineage_pending = None
+121:             raise
+122: 
+123:     def sample_tokens(self, grammar_output, non_block=False):
+124:         output = self._lineage_pending
+125:         self._lineage_pending = None
+126:         state = self._lineage_runner.execute_model_state
+127:         self._lineage_sampling = output if state is not None and state[0] is output else None
+128:         # Even a K=0/no-proposal sample replaces the preceding generation.
+129:         self._lineage.generation = None
+130:         try:
+131:             result = super().sample_tokens(grammar_output, non_block=non_block)
+132:             return self._watch(result)
+133:         except BaseException:
+134:             self._lineage.clear()
+135:             raise
+136:         finally:
+137:             self._lineage_sampling = None
+138: 
+139:     def _watch(self, result):
+140:         # AsyncOutputFuture materializes on .result(); its completion callback
+141:         # also handles exceptions/cancellation without waiting for feedback.
+142:         if hasattr(result, "add_done_callback"):
+143:             def terminal(future):
+144:                 if future.cancelled() or future.exception() is not None:
+145:                     self._lineage.clear()
+146:             result.add_done_callback(terminal)
+147:         return result
+148: 
+149:     def shutdown(self):
+150:         try:
+151:             return super().shutdown()
+152:         finally:
+153:             release_ledger(getattr(self, "_lineage_registration", None))
+154: 
+155: 
+156: # Pinned executor resolution happens before EngineCore.__init__. If a caller
+157: # bypasses that boundary, publication fails closed rather than inventing a lease.
+158: install_enginecore_startup_binding()

@@ -1,0 +1,156 @@
+1: """Modal cloud serving runner for FlexSDS (BYOC, ephemeral, and persistent deploy)."""
+2: from __future__ import annotations
+3: 
+4: import os
+5: import json
+6: import shutil
+7: import subprocess
+8: import re
+9: import time
+10: from pathlib import Path
+11: from typing import Any, Dict, List, Optional
+12: 
+13: try:
+14:     from flexsds.cli.output import print_output as print
+15:     from flexsds.core.credentials import CredentialsManager
+16: except ModuleNotFoundError:
+17:     from src.flexsds.cli.output import print_output as print
+18:     from src.flexsds.core.credentials import CredentialsManager
+19: 
+20: 
+21: class ModalServingRunner:
+22:     """Quản lý triển khai FlexSDS Serverless trên nền tảng đám mây Modal.com."""
+23: 
+24:     DEFAULT_APP_NAME = "flexsds-serving"
+25: 
+26:     def __init__(self, credentials_manager: Optional[CredentialsManager] = None) -> None:
+27:         self.cred_mgr = credentials_manager or CredentialsManager()
+28: 
+29:     def check_credentials(self) -> bool:
+30:         """Kiểm tra thông tin định danh Modal qua CredentialsManager, biến môi trường hoặc ~/.modal.toml."""
+31:         from flexsds.server.modal_auth import prepare_modal_auth
+32:         return prepare_modal_auth(self.cred_mgr)
+33: 
+34:     def build_modal_command(self, config: Dict[str, Any], deploy: bool = False) -> List[str]:
+35:         """Tạo danh sách đối số dòng lệnh gọi công cụ CLI modal tới modal_app.py."""
+36:         modal_bin = shutil.which("modal") or "modal"
+37:         app_path = str(Path(__file__).parent / "modal_app.py")
+38:         return [modal_bin, "deploy" if deploy else "serve", app_path]
+39: 
+40:     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
+41:         """Forward non-secret serving settings and package paths for app construction."""
+42:         cfg = config.get("serving", config)
+43:         keys = ("target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
+44:                 "target_revision", "draft_revision", "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
+45:         if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
+46:             # Calibration also uses this method without the serving launch preflight.
+47:             from flexsds.server.modal_auth import prepare_modal_auth
+48:             prepare_modal_auth(self.cred_mgr)
+49:         env = dict(os.environ)
+50:         # Redirected Python output on Windows otherwise uses the ANSI code page.
+51:         # Modal emits Unicode status symbols, so both ends of the pipe use UTF-8.
+52:         env["PYTHONIOENCODING"] = "utf-8"
+53:         env["PYTHONUTF8"] = "1"
+54:         env["FLEXSDS_SERVING_CONFIG"] = json.dumps({k: cfg[k] for k in keys if k in cfg})
+55: 
+56:         # Modal can use another pipx interpreter; forward project source only,
+57:         # never the launcher's third-party packages or interpreter directories.
+58:         package_root = Path(__file__).resolve().parents[2]
+59:         env['PYTHONPATH'] = os.pathsep.join((str(package_root), str(package_root.parent)))
+60:         return env
+61: 
+62:     def launch(
+63:         self,
+64:         config: Dict[str, Any],
+65:         deploy: bool = False,
+66:         dry_run: bool = False,
+67:     ) -> Optional[subprocess.Popen]:
+68:         """Khởi chạy ứng dụng Modal serverless."""
+69:         if not dry_run and not self.check_credentials():
+70:             print("\n\033[31m[Authentication Error]\033[0m Modal credentials not configured.")
+71:             print("  Please run: flexsds auth login --provider modal")
+72:             print("  Or configure via: modal setup")
+73:             return None
+74: 
+75:         cfg = config.get('serving', config)
+76:         if cfg.get('enable_adaptive', False):
+77:             from flexsds.server.local_runner import LocalServingRunner
+78:             LocalServingRunner().build_command(config)
+79:             LocalServingRunner().setup_environment(config)
+80: 
+81:         cmd = self.build_modal_command(config, deploy=deploy)
+82: 
+83:         if dry_run:
+84:             mode_desc = "Persistent Deploy" if deploy else "Ephemeral Run"
+85:             print(f"\n[FlexSDS Modal] Dry-run command ({mode_desc}):")
+86:             print(" ".join(cmd))
+87:             print(f"Serving configuration: {self.setup_environment(config)['FLEXSDS_SERVING_CONFIG']}")
+88:             return None
+89: 
+90:         try:
+91:             from flexsds.cli.process_progress import ProcessProgress
+92:             output = ProcessProgress('serving')
+93:             proc = None
+94:             try:
+95:                 proc = subprocess.Popen(cmd, env=self.setup_environment(config), stdin=subprocess.DEVNULL,
+96:                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+97:                                         text=True, encoding='utf-8', errors='replace', bufsize=1)
+98:                 output.start()
+99:             except BaseException:
+100:                 if proc is not None and proc.poll() is None:
+101:                     proc.terminate()
+102:                     try: proc.wait(timeout=15)
+103:                     except subprocess.TimeoutExpired:
+104:                         proc.kill(); proc.wait()
+105:                 output.close()
+106:                 raise
+107:             endpoint = []
+108:             def observe_endpoint(line):
+109:                 match = re.search(r"https://[a-zA-Z0-9.-]+\.modal\.run", line)
+110:                 if match and not endpoint:
+111:                     endpoint.append(match.group())
+112:             output.capture(proc, on_line=observe_endpoint, close_on_exit=not deploy)
+113:             proc._flexsds_output = output
+114:             logs_done = output.done
+115:             def ready():
+116:                 from flexsds.server.readiness import verify_endpoint
+117:                 deadline = time.monotonic() + 900
+118:                 while not endpoint:
+119:                     code = proc.poll()
+120:                     if code is not None and logs_done.is_set() and not endpoint:
+121:                         raise RuntimeError(f"Modal exited before exposing endpoint (exit {code})")
+122:                     if time.monotonic() >= deadline:
+123:                         raise RuntimeError("Timed out waiting for Modal endpoint URL")
+124:                     time.sleep(0.2)
+125:                 output.notice(f"Endpoint: {endpoint[0]}")
+126:                 output.update('Waiting for endpoint readiness',15)
+127:                 model = verify_endpoint(endpoint[0], process=proc, deployed=deploy,
+128:                                         timeout=max(0.1, deadline-time.monotonic()))
+129:                 proc._flexsds_session = dict(endpoint=endpoint[0].rstrip('/')+'/v1', model=model,
+130:                                             config=cfg, deploy=deploy)
+131:                 output.notice(f"Inference verified: {endpoint[0]}/v1 (model={model})")
+132:                 output.update('Serving ready' if not deploy else 'Deployment verified',100)
+133:                 if deploy:
+134:                     output.close()
+135:             proc._flexsds_readiness = ready
+136:             return proc
+137:         except FileNotFoundError:
+138:             print("\n\033[31m[Error]\033[0m 'modal' CLI not found. Install with: pip install modal")
+139:             return None
+140: 
+141:     def check_process_status(self, proc: subprocess.Popen) -> tuple[bool, Optional[int]]:
+142:         """Kiểm tra trạng thái tiến trình Modal; phát hiện sớm nếu ứng dụng dừng bất ngờ."""
+143:         code = proc.poll()
+144:         if code is None:
+145:             return True, None
+146:         return False, code
+147: 
+148:     def stop(self, app_name: str = DEFAULT_APP_NAME) -> bool:
+149:         """Dừng ứng dụng đang chạy trên hạ tầng Modal Cloud."""
+150:         modal_bin = shutil.which("modal") or "modal"
+151:         cmd = [modal_bin, "app", "stop", app_name]
+152:         try:
+153:             res = subprocess.run(cmd, capture_output=True, text=True)
+154:             return res.returncode == 0
+155:         except Exception:
+156:             return False

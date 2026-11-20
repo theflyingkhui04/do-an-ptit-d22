@@ -1,0 +1,225 @@
+1: """Lane 3 adaptive scheduler for vLLM v0.30.0 (loaded via ``--scheduler-cls``).
+2: 
+3: Thin glue between vLLM's ``AsyncScheduler`` and ``AdaptiveBudgetPlanner``:
+4: 
+5: - ``schedule``                : plan k_i for decoding requests, write K = max(k_i)
+6:                                 into ``dynamic_sd_lookup`` for this output's proposer pass
+7:                                 (its drafts are verified in a later scheduling step).
+8: - ``_update_after_schedule``  : trim each request's draft placeholders to k_i
+9:                                 (vLLM trims real drafts to the placeholder length).
+10: - ``make_spec_decoding_stats``: per-request (drafted, accepted) feedback to the controller.
+11: - ``_free_request``           : finish the request session and write its telemetry line.
+12: 
+13: Lanes 1/2 run with async scheduling (auto-enabled for ``draft_model``), so this
+14: class extends ``AsyncScheduler`` to keep the comparison fair. Requires the
+15: speculative config to set ``num_speculative_tokens_per_batch_size`` so that
+16: ``dynamic_sd_lookup`` exists. See logs/Duong/M2-02/M2-02-openspec.md Part C.
+17: """
+18: from __future__ import annotations
+19: 
+20: import os
+21: from typing import Optional
+22: 
+23: from vllm.logger import init_logger
+24: from vllm.v1.core.sched.async_scheduler import AsyncScheduler
+25: 
+26: from src.server.budget_planner import AdaptiveBudgetPlanner, StepPlan, _env_flag
+27: from src.server.lineage import require_lineage_executor, release_ledger
+28: from src.server.lineage_diagnostics import observe
+29: from experiments.protocol_b_boundary_observer import observe as _pb279_observe
+30: from experiments.protocol_b_boundary_observer import control_producer as _pb177_control
+31: 
+32: logger = init_logger(__name__)
+33: 
+34: 
+35: class AdaptiveAsyncScheduler(AsyncScheduler):
+36:     def __init__(self, *args, **kwargs) -> None:
+37:         config = kwargs.get("vllm_config", args[0] if args else None)
+38:         # Fail before base scheduler initialization/readiness or any feedback.
+39:         # The pinned EngineCore has already initialized its executor here.
+40:         registration = require_lineage_executor(config)
+41:         super().__init__(*args, **kwargs)
+42:         self._planner = AdaptiveBudgetPlanner.from_env()
+43:         self._planner.max_k = min(self._planner.max_k, self.num_spec_tokens)
+44:         self._read_vram = _env_flag(os.environ.get("ADAPTIVE_ENABLE_VRAM_GUARD", "1"))
+45:         self._plan = StepPlan(batch_k=0, per_request_k={})
+46:         self._schedule_sequence = 0
+47:         self._lineage_registration = registration
+48:         self._lineage = registration.ledger
+49:         self._retiring = None
+50:         observe("scheduler_initialized", registration=registration,
+51:                 scheduler_class=f"{type(self).__module__}.{type(self).__name__}")
+52: 
+53:         if self.dynamic_sd_lookup is None:
+54:             if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
+55:                 raise RuntimeError("Strict Adaptive requires dynamic speculative budget plumbing")
+56:             logger.warning(
+57:                 "AdaptiveAsyncScheduler: num_speculative_tokens_per_batch_size is not set, "
+58:                 "batch K stays fixed at %d; only per-request trimming is active.",
+59:                 self.num_spec_tokens,
+60:             )
+61:         logger.info(
+62:             "AdaptiveAsyncScheduler ready: max_k=%d min_batch_k=%d per_request=%s "
+63:             "vram_guard=%s telemetry=%s",
+64:             self._planner.max_k,
+65:             self._planner.min_batch_k,
+66:             self._planner.per_request,
+67:             self._read_vram,
+68:             self._planner.telemetry_path,
+69:         )
+70: 
+71:     def schedule(self, *args, **kwargs):
+72:         self._schedule_sequence += 1
+73:         try:
+74:             decode_ids = [r.request_id for r in self.running if not r.is_prefill_chunk]
+75:             self._plan = self._planner.plan_step(
+76:                 decode_ids,
+77:                 batch_size=len(self.running),
+78:                 kv_usage=self.get_kv_cache_usage(),
+79:                 free_vram_mb=self._free_vram_mb(),
+80:             )
+81:             lookup = self.dynamic_sd_lookup
+82:             if lookup is not None:
+83:                 for batch_size in range(1, len(lookup)):
+84:                     lookup[batch_size] = self._plan.batch_k
+85:         except Exception:
+86:             if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
+87:                 raise
+88:             # Never take the engine down over a planning error: keep the previous K.
+89:             logger.exception("AdaptiveAsyncScheduler: planning failed, keeping previous K")
+90:             self._plan = StepPlan(batch_k=self._plan.batch_k, per_request_k={})
+91:         return super().schedule(*args, **kwargs)
+92: 
+93:     def _update_after_schedule(self, scheduler_output) -> None:
+94:         _pb177_control(self, scheduler_output)
+95:         super()._update_after_schedule(scheduler_output)
+96:         scheduled = scheduler_output.num_scheduled_tokens
+97:         if self._planner.per_request:
+98:             for req_id, k in self._plan.per_request_k.items():
+99:                 request = self.requests.get(req_id)
+100:                 if request is None or req_id not in scheduled or request.is_prefill_chunk:
+101:                     continue
+102:                 # Only shrink: these placeholders reserve drafts for later verification.
+103:                 if k < len(request.spec_token_ids):
+104:                     request.spec_token_ids = [-1] * k
+105:         try:
+106:             for req_id in scheduled:
+107:                 request = self.requests.get(req_id)
+108:                 if request is not None and not request.is_prefill_chunk:
+109:                     self._planner.record_scheduled_budget(
+110:                         req_id, scheduler_output.num_spec_tokens_to_schedule,
+111:                         len(request.spec_token_ids), dynamic=self.dynamic_sd_lookup is not None,
+112:                         schedule_sequence=self._schedule_sequence,
+113:                         plan_sequence=(self._plan.plan_sequence
+114:                                        if req_id in self._plan.per_request_k else None),
+115:                     )
+116:         except Exception:
+117:             logger.exception("AdaptiveAsyncScheduler: scheduled-budget telemetry failed")
+118:         try:
+119:             self._lineage.register(scheduler_output, self._plan, self._schedule_sequence, self.requests)
+120:         except Exception:
+121:             self._lineage.clear()
+122:             if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
+123:                 raise
+124:             logger.exception("AdaptiveAsyncScheduler: lineage registration failed")
+125:         _pb279_observe("early_schedule", self, scheduler_output)
+126: 
+127:     def update_from_output(self, scheduler_output, model_runner_output):
+128:         previous = self._retiring
+129:         # Upstream may deliver stale statistics after preemption. Preserve them
+130:         # upstream, but do not adapt from a discarded execution incarnation.
+131:         stale = {rid for rid in scheduler_output.num_scheduled_tokens
+132:                  if getattr(self.requests.get(rid), "num_stale_output_tokens", 0) > 0}
+133:         self._retiring = (self._lineage.get(scheduler_output), model_runner_output, stale)
+134:         try:
+135:             return super().update_from_output(scheduler_output, model_runner_output)
+136:         finally:
+137:             self._retiring = previous
+138:             self._lineage.retire(scheduler_output)
+139: 
+140:     def make_spec_decoding_stats(
+141:         self,
+142:         spec_decoding_stats,
+143:         num_draft_tokens: int,
+144:         num_accepted_tokens: int,
+145:         num_invalid_spec_tokens,
+146:         request_id: str,
+147:     ):
+148:         try:
+149:             drafted = num_draft_tokens
+150:             if num_invalid_spec_tokens:
+151:                 drafted -= num_invalid_spec_tokens.get(request_id, 0)
+152:             binding = None
+153:             reason = "missing-lineage"
+154:             if self._retiring is not None:
+155:                 entry, result, stale = self._retiring
+156:                 if entry is not None:
+157:                     binding = entry.consumed.pop(request_id, None)
+158:                 if binding is not None:
+159:                     origin, expected = binding
+160:                     current = self._lineage.active.get(request_id)
+161:                     index = result.req_id_to_index.get(request_id)
+162:                     valid = (current is not None and self.requests.get(request_id) is current[0]
+163:                              and current[1] == origin.incarnation
+164:                              and origin.request_id == request_id
+165:                              and index is not None and 0 <= index < len(result.req_ids)
+166:                              and result.req_ids[index] == request_id
+167:                              and expected == num_draft_tokens
+168:                              and 0 <= num_accepted_tokens <= drafted <= expected
+169:                              and request_id not in stale
+170:                              and not getattr(current[0], "is_finished", lambda: False)())
+171:                     if not valid:
+172:                         binding = None
+173:                         reason = "stale-or-mismatched-lineage"
+174:             if binding is None:
+175:                 self._planner.record_lineage_failure(request_id, reason)
+176:             elif drafted > 0:
+177:                 self._planner.record_verification(
+178:                     request_id, drafted, num_accepted_tokens, source=binding[0])
+179:         except Exception:
+180:             logger.exception("AdaptiveAsyncScheduler: feedback failed for %s", request_id)
+181:         return super().make_spec_decoding_stats(
+182:             spec_decoding_stats,
+183:             num_draft_tokens,
+184:             num_accepted_tokens,
+185:             num_invalid_spec_tokens,
+186:             request_id,
+187:         )
+188: 
+189:     def _free_request(self, request, *args, **kwargs):
+190:         try:
+191:             self._planner.finish_request(request.request_id)
+192:         except Exception:
+193:             logger.exception("AdaptiveAsyncScheduler: telemetry failed for %s", request.request_id)
+194:         finally:
+195:             self._lineage.finish_request(request)
+196:             # Drop request-owned snapshots even when aggregate I/O fails.
+197:             self._plan.per_request_k.pop(request.request_id, None)
+198:             self._plan.per_request_node_count.pop(request.request_id, None)
+199:             self._plan.per_request_decisions.pop(request.request_id, None)
+200:             observe("request_cleanup", registration=self._lineage_registration,
+201:                     request_id=request.request_id,
+202:                     active_sessions=self._planner.adapter.active_request_count,
+203:                     active_lineage=len(self._lineage.active))
+204:         return super()._free_request(request, *args, **kwargs)
+205: 
+206:     def shutdown(self):
+207:         try:
+208:             return super().shutdown()
+209:         finally:
+210:             release_ledger(self._lineage_registration)
+211: 
+212:     def _free_vram_mb(self) -> Optional[float]:
+213:         if not self._read_vram:
+214:             return None
+215:         try:
+216:             import torch
+217: 
+218:             # With the single-GPU "uni" executor the worker shares this process, so
+219:             # CUDA is already initialized. Never create a new context just to read VRAM.
+220:             if not torch.cuda.is_initialized():
+221:                 return None
+222:             free_bytes, _ = torch.cuda.mem_get_info()
+223:             return free_bytes / (1024 * 1024)
+224:         except Exception:
+225:             return None

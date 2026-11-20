@@ -1,0 +1,619 @@
+1: """Hardware cost model loader and dynamic break-even solver for FlexSDS."""
+2: from __future__ import annotations
+3: 
+4: import json
+5: import math
+6: from dataclasses import dataclass, field
+7: from datetime import datetime, timezone
+8: from pathlib import Path
+9: from typing import Any, Dict, List, Optional, Tuple, Union
+10: 
+11: try:
+12:     from flexsds.core.hardware import HardwareInfo
+13:     from flexsds.core.tree_topology import (
+14:         TreeTopology,
+15:         CANONICAL_TOPOLOGIES,
+16:         get_tree_topology,
+17:     )
+18: except ModuleNotFoundError:
+19:     from src.flexsds.core.hardware import HardwareInfo
+20:     from src.flexsds.core.tree_topology import (
+21:         TreeTopology,
+22:         CANONICAL_TOPOLOGIES,
+23:         get_tree_topology,
+24:     )
+25: 
+26: PROFILES_DIR = Path(__file__).resolve().parent.parent / "profiles"
+27: USER_PROFILES_DIR = Path.home() / ".flexsds" / "profiles"
+28: 
+29: 
+30: @dataclass(frozen=True)
+31: class SolverResult:
+32:     """Represents the outcome of a break-even acceptance rate solver."""
+33:     alpha_star: Optional[float]
+34:     is_feasible: bool
+35:     status: str  # "converged" | "always_profitable" | "infeasible"
+36:     cost_ratio: float
+37:     residual: float
+38:     iterations: int
+39:     topology_name: str
+40:     batch_size: int
+41: 
+42: 
+43: class FlexCostModel:
+44:     """Hardware cost model evaluating forward latencies and dynamic break-even alpha*(T, B)."""
+45: 
+46:     def __init__(
+47:         self,
+48:         cost_matrix: Optional[Dict[Tuple[Union[str, int], int], float]] = None,
+49:         forward_target: Optional[Dict[int, float]] = None,
+50:         forward_draft: Optional[Dict[int, float]] = None,
+51:         metadata: Optional[dict] = None,
+52:         provenance: str = "analytical",
+53:     ):
+54:         self.matrix: Dict[Tuple[Union[str, int], int], float] = dict(cost_matrix) if cost_matrix else {}
+55:         self.forward_target: Dict[int, float] = forward_target or {}
+56:         self.forward_draft: Dict[int, float] = forward_draft or {}
+57:         self.metadata: Dict[str, Any] = metadata or {}
+58:         self.provenance: str = provenance
+59:         self._cache_alpha_star: Dict[Tuple[str, int], SolverResult] = {}
+60: 
+61:     @classmethod
+62:     def from_json(cls, path_or_dict: Union[str, Path, dict]) -> FlexCostModel:
+63:         """Loads cost model from a profile JSON file."""
+64:         if isinstance(path_or_dict, (str, Path)):
+65:             with open(path_or_dict, "r", encoding="utf-8") as f:
+66:                 data = json.load(f)
+67:         else:
+68:             data = path_or_dict
+69: 
+70:         matrix: Dict[Tuple[Union[str, int], int], float] = {}
+71:         for key_str, val in data.get("cost_matrix_ms", {}).items():
+72:             parts = key_str.split("_")
+73:             # Parse topo_{name}_b{b}
+74:             if len(parts) == 3 and parts[0] == "topo" and parts[2].startswith("b"):
+75:                 topo_name = parts[1].upper()
+76:                 b_val = int(parts[2][1:])
+77:                 matrix[(topo_name, b_val)] = float(val)
+78:             # Parse k{k}_b{b}
+79:             elif len(parts) == 2 and parts[0].startswith("k") and parts[1].startswith("b"):
+80:                 k_val = int(parts[0][1:])
+81:                 b_val = int(parts[1][1:])
+82:                 matrix[(k_val, b_val)] = float(val)
+83:                 # Alias canonical linear chains or base T0
+84:                 if k_val == 0:
+85:                     matrix[("T0", b_val)] = float(val)
+86:                 elif f"T{k_val}" in CANONICAL_TOPOLOGIES:
+87:                     matrix[(f"T{k_val}", b_val)] = float(val)
+88: 
+89:         c_target: Dict[int, float] = {}
+90:         f_costs = data.get("forward_costs_median_ms", {})
+91:         for b_str, val in f_costs.get("target_c_t", {}).items():
+92:             c_target[int(b_str)] = float(val)
+93:         if not c_target and "forward_target" in data:
+94:             for b_str, val in data["forward_target"].items():
+95:                 c_target[int(b_str)] = float(val)
+96: 
+97:         c_draft: Dict[int, float] = {}
+98:         for b_str, val in f_costs.get("draft_c_d", {}).items():
+99:             c_draft[int(b_str)] = float(val)
+100:         if not c_draft and "forward_draft" in data:
+101:             for b_str, val in data["forward_draft"].items():
+102:                 c_draft[int(b_str)] = float(val)
+103: 
+104:         return cls(
+105:             cost_matrix=matrix,
+106:             forward_target=c_target,
+107:             forward_draft=c_draft,
+108:             metadata=data.get("metadata", {}),
+109:             provenance="measured",
+110:         )
+111: 
+112:     def _resolve_topology(self, topo: Union[str, TreeTopology, int]) -> TreeTopology:
+113:         """Normalizes string name, TreeTopology instance, or integer budget k into a TreeTopology."""
+114:         if isinstance(topo, TreeTopology):
+115:             return topo
+116: 
+117:         if isinstance(topo, int):
+118:             if topo <= 0:
+119:                 return get_tree_topology("T0")
+120:             canonical_name = f"T{topo}"
+121:             if canonical_name in CANONICAL_TOPOLOGIES:
+122:                 return get_tree_topology(canonical_name)
+123:             # Ephemeral linear chain for non-canonical integer k (e.g. k=2, 3)
+124:             return TreeTopology(
+125:                 name=canonical_name,
+126:                 num_tokens=topo,
+127:                 depth=topo,
+128:                 layer_distribution=[1] * (topo + 1),
+129:                 parent_indices=[-1] + list(range(topo)),
+130:             )
+131: 
+132:         if isinstance(topo, str):
+133:             clean_name = topo.strip().upper()
+134:             return get_tree_topology(clean_name)
+135: 
+136:         raise TypeError(f"Invalid topology specification: {topo} (expected str, TreeTopology, or int)")
+137: 
+138:     def get_forward_costs(self, batch_size: int = 1) -> Tuple[float, float]:
+139:         """Returns (C_T, C_D) in ms for the closest matching batch size."""
+140:         if not self.forward_target:
+141:             return 20.0, 5.0
+142:         closest_b = min(self.forward_target.keys(), key=lambda b: abs(b - batch_size))
+143:         c_t = self.forward_target[closest_b]
+144:         c_d = self.forward_draft.get(closest_b, c_t * 0.25)
+145:         return c_t, c_d
+146: 
+147:     def get_step_cost(self, topo: Union[str, TreeTopology, int] = "T0", batch_size: int = 1) -> float:
+148:         """Gets step execution latency C(T, B) in milliseconds."""
+149:         resolved = self._resolve_topology(topo)
+150: 
+151:         # 1. Exact lookup in matrix
+152:         if (resolved.name, batch_size) in self.matrix:
+153:             return self.matrix[(resolved.name, batch_size)]
+154:         if isinstance(topo, int) and (topo, batch_size) in self.matrix:
+155:             return self.matrix[(topo, batch_size)]
+156:         if resolved.name == "T0" and (0, batch_size) in self.matrix:
+157:             return self.matrix[(0, batch_size)]
+158: 
+159:         if self.metadata.get("scalar_only"):
+160:             raise ValueError("Measured scalar profile has no exact cost for this topology/batch")
+161: 
+162:         # 2. Analytical Fallback calculation
+163:         c_t, c_d = self.get_forward_costs(batch_size=batch_size)
+164:         if resolved.num_tokens == 0:
+165:             return c_t
+166: 
+167:         n_tokens = resolved.num_tokens
+168:         attn_verify_factor = float(self.metadata.get("attn_verify_factor", 0.008))
+169:         c_v = c_t * (1.0 + attn_verify_factor * max(0, n_tokens - 1))
+170:         t_draft = n_tokens * c_d
+171:         return t_draft + c_v
+172: 
+173:     def evaluate_speedup(
+174:         self,
+175:         topo: Union[str, TreeTopology, int],
+176:         batch_size: int = 1,
+177:         alpha: float = 0.0,
+178:     ) -> float:
+179:         """Calculates theoretical predicted speedup S(T, B, alpha)."""
+180:         resolved = self._resolve_topology(topo)
+181:         c_vanilla = self.get_step_cost("T0", batch_size=batch_size)
+182:         c_spec = self.get_step_cost(resolved, batch_size=batch_size)
+183:         e_tau = resolved.expected_acceptance(alpha)
+184:         return (e_tau * c_vanilla) / max(c_spec, 1e-4)
+185: 
+186:     def solve_alpha_star(
+187:         self,
+188:         topo: Union[str, TreeTopology, int],
+189:         batch_size: int = 1,
+190:         max_iter: int = 50,
+191:     ) -> SolverResult:
+192:         """Solves break-even acceptance rate alpha*(T, B) where Speedup == 1.0."""
+193:         resolved = self._resolve_topology(topo)
+194:         cache_key = (resolved.name, batch_size)
+195: 
+196:         if cache_key in self._cache_alpha_star:
+197:             return self._cache_alpha_star[cache_key]
+198: 
+199:         c_vanilla = self.get_step_cost("T0", batch_size=batch_size)
+200:         c_spec = self.get_step_cost(resolved, batch_size=batch_size)
+201:         cost_ratio = c_spec / max(c_vanilla, 1e-4)
+202:         depth = resolved.depth
+203: 
+204:         # Boundary condition 1: R <= 1.0 (always profitable, even at alpha=0)
+205:         if cost_ratio <= 1.0:
+206:             result = SolverResult(
+207:                 alpha_star=0.0,
+208:                 is_feasible=True,
+209:                 status="always_profitable",
+210:                 cost_ratio=round(cost_ratio, 4),
+211:                 residual=abs(1.0 - cost_ratio),
+212:                 iterations=0,
+213:                 topology_name=resolved.name,
+214:                 batch_size=batch_size,
+215:             )
+216:             self._cache_alpha_star[cache_key] = result
+217:             return result
+218: 
+219:         # Boundary condition 2 (Review R2 S08): R > 1 + d (infeasible across all alpha in [0, 1])
+220:         if cost_ratio > 1.0 + float(depth):
+221:             result = SolverResult(
+222:                 alpha_star=None,
+223:                 is_feasible=False,
+224:                 status="infeasible",
+225:                 cost_ratio=round(cost_ratio, 4),
+226:                 residual=float("inf"),
+227:                 iterations=0,
+228:                 topology_name=resolved.name,
+229:                 batch_size=batch_size,
+230:             )
+231:             self._cache_alpha_star[cache_key] = result
+232:             return result
+233: 
+234:         # Converged region: 1.0 < R <= 1 + d (unique root via IVT)
+235:         low, high = 0.0, 1.0
+236:         for _ in range(max_iter):
+237:             mid = (low + high) / 2.0
+238:             y = resolved.expected_acceptance(mid)
+239:             if y < cost_ratio:
+240:                 low = mid
+241:             else:
+242:                 high = mid
+243: 
+244:         alpha_star = (low + high) / 2.0
+245:         expected_tokens = resolved.expected_acceptance(alpha_star)
+246:         residual = abs(expected_tokens - cost_ratio)
+247: 
+248:         result = SolverResult(
+249:             alpha_star=round(alpha_star, 4),
+250:             is_feasible=True,
+251:             status="converged",
+252:             cost_ratio=round(cost_ratio, 4),
+253:             residual=residual,
+254:             iterations=max_iter,
+255:             topology_name=resolved.name,
+256:             batch_size=batch_size,
+257:         )
+258:         self._cache_alpha_star[cache_key] = result
+259:         return result
+260: 
+261:     def select_optimal_topology(
+262:         self,
+263:         alpha: float,
+264:         batch_size: int = 1,
+265:         candidate_topologies: Optional[List[Union[str, TreeTopology]]] = None,
+266:     ) -> Tuple[str, float]:
+267:         """Finds topology maximizing predicted speedup with catalog-wide fallback gate to T0."""
+268:         candidates = candidate_topologies or ["T0", "T4", "T8", "T16", "T32"]
+269:         best_topo = "T0"
+270:         best_speedup = 1.0
+271: 
+272:         for cand in candidates:
+273:             resolved = self._resolve_topology(cand)
+274:             if resolved.name == "T0":
+275:                 continue
+276:             speedup = self.evaluate_speedup(resolved, batch_size=batch_size, alpha=alpha)
+277:             if speedup > best_speedup:
+278:                 best_speedup = speedup
+279:                 best_topo = resolved.name
+280: 
+281:         # Catalog-wide fallback gate (Review R2 S09)
+282:         if best_speedup <= 1.0:
+283:             return "T0", 1.0
+284: 
+285:         return best_topo, round(best_speedup, 3)
+286: 
+287:     # --------------------------------------------------------------------------
+288:     # Backward Compatibility Wrappers (for v0.1 baseline and controllers)
+289:     # --------------------------------------------------------------------------
+290: 
+291:     def calculate_alpha_star(
+292:         self,
+293:         k: Union[int, str] = 1,
+294:         batch_size: int = 1,
+295:         iterations: int = 50,
+296:     ) -> float:
+297:         """Solves break-even acceptance rate (backward-compatible float return)."""
+298:         res = self.solve_alpha_star(topo=k, batch_size=batch_size, max_iter=iterations)
+299:         if res.alpha_star is not None:
+300:             return res.alpha_star
+301:         return 1.0
+302: 
+303:     @staticmethod
+304:     def estimate_expected_tokens(k: int, alpha: float) -> float:
+305:         """Calculates expected accepted tokens per step (linear chain v0.1)."""
+306:         if k <= 0:
+307:             return 1.0
+308:         alpha_clamped = min(max(alpha, 0.0), 1.0)
+309:         gain = 1.0
+310:         term = 1.0
+311:         for _ in range(k):
+312:             term *= alpha_clamped
+313:             gain += term
+314:         return gain
+315: 
+316:     def select_optimal_budget(
+317:         self,
+318:         alpha: float,
+319:         batch_size: int = 1,
+320:         candidate_budgets: Optional[List[int]] = None,
+321:     ) -> Tuple[int, float]:
+322:         """Finds k* maximizing speedup (backward-compatible integer budget return)."""
+323:         candidates = candidate_budgets or [0, 2, 3, 4]
+324:         c_vanilla = self.get_step_cost(0, batch_size=batch_size)
+325:         best_k = 0
+326:         best_speedup = 1.0
+327: 
+328:         for cand_k in candidates:
+329:             if cand_k == 0:
+330:                 continue
+331:             c_cand = self.get_step_cost(cand_k, batch_size=batch_size)
+332:             e_tau = self.estimate_expected_tokens(k=cand_k, alpha=alpha)
+333:             speedup = (e_tau * c_vanilla) / max(c_cand, 1e-4)
+334:             if speedup > best_speedup:
+335:                 best_speedup = speedup
+336:                 best_k = cand_k
+337: 
+338:         return best_k, round(best_speedup, 3)
+339: 
+340: 
+341: def save_hardware_profile(
+342:     profile_data: dict,
+343:     sm_architecture: str,
+344:     device_name: str = "",
+345:     target_dir: Optional[Path] = None,
+346: ) -> Path:
+347:     """Saves a newly calibrated hardware latency profile to disk."""
+348:     save_dir = target_dir or USER_PROFILES_DIR
+349:     save_dir.mkdir(parents=True, exist_ok=True)
+350:     slug = (
+351:         device_name.lower().replace(" ", "_").replace("-", "_")
+352:         if device_name
+353:         else sm_architecture
+354:     )
+355:     filename = f"profile_{sm_architecture}_{slug}.json" if device_name else f"profile_{sm_architecture}.json"
+356:     file_path = save_dir / filename
+357:     import os
+358:     import tempfile
+359:     temporary = None
+360:     try:
+361:         with tempfile.NamedTemporaryFile(mode='w', dir=save_dir, delete=False, encoding='utf-8') as f:
+362:             temporary = Path(f.name)
+363:             json.dump(profile_data, f, indent=2, allow_nan=False)
+364:         os.replace(temporary, file_path)
+365:     finally:
+366:         if temporary and temporary.exists():
+367:             temporary.unlink()
+368:     return file_path
+369: 
+370: 
+371: def resolve_profile_path(name: str) -> Path:
+372:     for directory in (USER_PROFILES_DIR, PROFILES_DIR):
+373:         path = directory / name
+374:         if path.is_file():
+375:             return path.resolve()
+376:     raise FileNotFoundError(f"Profile artifact missing: {name}")
+377: 
+378: 
+379: def validate_measured_profile(data, hardware=None, target_model=None, draft_model=None):
+380:     """Reproduce scalar matrix from preserved worker samples, not a measured label."""
+381:     from flexsds.core.calibration import build_profile, SCHEMA
+382:     meta = data.get('metadata', {})
+383:     if meta.get('schema') != SCHEMA or meta.get('measurement_status') != 'measured':
+384:         raise ValueError('Profile lacks verified empirical evidence; recalibrate')
+385:     evidence = data.get('evidence', {})
+386:     config = evidence.get('config', {})
+387:     try:
+388:         rebuilt = build_profile(config, evidence['groups'], data['grid']['batches'])
+389:     except (KeyError, TypeError, IndexError) as exc:
+390:         raise ValueError('Malformed calibration evidence') from exc
+391:     for field in ('cost_matrix_ms', 'models', 'draft_method', 'grid'):
+392:         if data.get(field) != rebuilt[field]:
+393:             raise ValueError(f'Profile {field} differs from worker evidence')
+394:     for field in ('raw_sha256', 'device', 'sm_architecture', 'cost_semantics', 'vllm_version'):
+395:         if meta.get(field) != rebuilt['metadata'][field]:
+396:             raise ValueError(f'Profile {field} identity mismatch')
+397:     if hardware and meta['sm_architecture'] != hardware.sm_architecture:
+398:         raise ValueError('Profile GPU architecture mismatch')
+399:     if hardware and hardware.is_cuda_available:
+400:         from flexsds.core.hardware import matches_gpu_label
+401:         if not matches_gpu_label(hardware.device_name.removeprefix('Remote '), meta['device']):
+402:             raise ValueError('Profile GPU model mismatch')
+403:     if target_model and data['models']['target'] != target_model:
+404:         raise ValueError('Profile target model mismatch')
+405:     if draft_model and data['models']['draft'] != draft_model:
+406:         raise ValueError('Profile draft model mismatch')
+407:     return data
+408: 
+409: 
+410: def load_profile_for_hardware(
+411:     hw_info: Optional[HardwareInfo] = None,
+412:     custom_profile_path: Optional[Union[str, Path]] = None,
+413:     strict: bool = False,
+414:     target_model: Optional[str] = None,
+415:     draft_model: Optional[str] = None,
+416: ) -> Tuple[Optional[FlexCostModel], str]:
+417:     """Loads hardware cost profile using a hierarchical resolution strategy.
+418: 
+419:     Resolution order:
+420:     1. Explicit custom profile path.
+421:     2. User profile repository (~/.flexsds/profiles/).
+422:     3. Built-in vendor profiles.
+423:     4. Conservative analytical fallback for non-A100 hardware when strict=False.
+424: 
+425:     A100/sm80 is fail-closed: it requires a measured scalar profile_sm80.json
+426:     with the exact frozen M4 B/K grid and never falls back to L4/analytical data.
+427:     """
+428:     sm_arch = hw_info.sm_architecture if hw_info else "sm_89"
+429:     if strict and sm_arch == "cpu":
+430:         return None, ""
+431: 
+432:     def load_checked(path: Path) -> Tuple[FlexCostModel, str]:
+433:         data = json.loads(path.read_text(encoding="utf-8"))
+434:         if strict and data.get("metadata", {}).get("schema") == "flexsds-component-v2":
+435:             validate_measured_profile(data, hw_info, target_model, draft_model)
+436:         elif strict and sm_arch != "sm_80":
+437:             raise ValueError("Profile has no verified worker measurements; recalibrate or use static mode")
+438:         if sm_arch == "sm_80" and data.get("metadata", {}).get("schema") != "flexsds-component-v2":
+439:             meta = data.get("metadata", {})
+440:             matrix = data.get("cost_matrix_ms", {})
+441: 
+442:             expected = {
+443:                 f"k{k}_b{b}"
+444:                 for k in range(5)
+445:                 for b in (1, 2, 4, 8, 16, 32)
+446:             }
+447: 
+448:             if (
+449:                 meta.get("sm_architecture") != "sm_80"
+450:                 or meta.get("scalar_only") is not True
+451:                 or meta.get("measurement_status") != "measured"
+452:                 or set(matrix) != expected
+453:                 or any(
+454:                     type(v) not in (int, float)
+455:                     or not math.isfinite(v)
+456:                     or v <= 0
+457:                     for v in matrix.values()
+458:                 )
+459:             ):
+460:                 raise ValueError("Malformed/unmeasured A100 scalar profile")
+461: 
+462:         return FlexCostModel.from_json(path), path.name
+463: 
+464:     # Tier 1: explicit custom profile.
+465:     if custom_profile_path:
+466:         custom_p = Path(custom_profile_path)
+467:         if custom_p.exists():
+468:             return load_checked(custom_p)
+469: 
+470:     # Tier 2: user profile store.
+471:     if USER_PROFILES_DIR.exists():
+472:         user_direct = USER_PROFILES_DIR / f"profile_{sm_arch}.json"
+473:         if user_direct.exists():
+474:             try:
+475:                 return load_checked(user_direct)
+476:             except ValueError:
+477:                 if not strict:
+478:                     raise
+479: 
+480:         matches = sorted(USER_PROFILES_DIR.glob(f"profile_{sm_arch}*.json"),
+481:                          key=lambda path: (path.stem.endswith("_fast"), path.name))
+482:         for match in matches:
+483:             try:
+484:                 return load_checked(match)
+485:             except ValueError:
+486:                 if not strict:
+487:                     raise
+488: 
+489:     # M4 invariant: A100 must use the measured scalar profile.
+490:     if sm_arch == "sm_80":
+491:         profile_path = PROFILES_DIR / "profile_sm80.json"
+492: 
+493:         if profile_path.exists():
+494:             return load_checked(profile_path)
+495: 
+496:         raise FileNotFoundError(
+497:             "A100 requires a measured profile_sm80.json; "
+498:             "no L4/analytical substitution"
+499:         )
+500: 
+501:     # Packaged measured artifacts use the same evidence checks as user profiles.
+502:     for path in sorted(PROFILES_DIR.glob(f"profile_{sm_arch}*.json")):
+503:         try:
+504:             return load_checked(path)
+505:         except ValueError:
+506:             continue
+507: 
+508:     # Tier 3: built-in vendor profiles for non-A100 hardware.
+509:     arch_map = {
+510:         "sm_89": "profile_sm89_l4.json",
+511:         "sm_75": "profile_sm75_t4.json",
+512:         "cpu": "profile_sm89_l4.json",
+513:     }
+514: 
+515:     built_in_filename = arch_map.get(sm_arch)
+516: 
+517:     if built_in_filename:
+518:         built_in_path = PROFILES_DIR / built_in_filename
+519:         if built_in_path.exists():
+520:             try:
+521:                 return load_checked(built_in_path)
+522:             except ValueError:
+523:                 if not strict:
+524:                     raise
+525: 
+526:     # Develop behavior: strict mode fails closed.
+527:     if strict:
+528:         return None, ""
+529: 
+530:     # Conservative analytical fallback for non-A100 hardware only.
+531:     default_target = {
+532:         1: 20.0,
+533:         2: 20.5,
+534:         4: 21.0,
+535:         8: 22.0,
+536:         16: 25.0,
+537:         32: 32.0,
+538:     }
+539: 
+540:     default_draft = {
+541:         1: 3.6,
+542:         2: 3.8,
+543:         4: 4.0,
+544:         8: 4.5,
+545:         16: 5.2,
+546:         32: 6.0,
+547:     }
+548: 
+549:     fallback_meta = {
+550:         "fallback_mode": True,
+551:         "k_max_safe": 3,
+552:         "reason": (
+553:             f"No profile found for '{sm_arch}'. "
+554:             "Conservative analytical fallback applied."
+555:         ),
+556:     }
+557: 
+558:     return (
+559:         FlexCostModel(
+560:             forward_target=default_target,
+561:             forward_draft=default_draft,
+562:             metadata=fallback_meta,
+563:             provenance="conservative_analytical_fallback",
+564:         ),
+565:         "conservative_analytical_fallback",
+566:     )
+567: 
+568: 
+569: def run_hardware_micro_benchmark(
+570:     hw_info: HardwareInfo,
+571:     target_model: str = "Qwen/Qwen2.5-7B-Instruct-AWQ",
+572:     draft_model: str = "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+573:     batch_sizes: Optional[List[int]] = None,
+574:     target_dir: Optional[Path] = None,
+575:     backend: str = "local",
+576:     measurement_mode: str = "full",
+577: ) -> Tuple[FlexCostModel, Path]:
+578:     """Measure actual vLLM worker components; never substitute analytical costs.
+579: 
+580:     Remote hardware must be dispatched explicitly with backend='modal'.
+581:     """
+582:     from flexsds.core.calibration import BATCHES, KS, build_profile, run_local_group
+583:     from flexsds.core.compatibility import check_compatibility
+584:     from flexsds.core.calibration import measurement_settings
+585:     measurement_settings({'measurement_mode': measurement_mode})
+586:     batches = BATCHES if batch_sizes is None else sorted(set(batch_sizes))
+587:     if not batches or any(type(b) is not int or b not in BATCHES for b in batches):
+588:         raise ValueError("Invalid calibration batch grid")
+589:     if backend == "local" and hw_info.device_name.startswith("Remote "):
+590:         raise ValueError("Remote GPU calibration requires backend='modal'")
+591:     if backend == "local" and not hw_info.is_cuda_available:
+592:         raise RuntimeError("Calibration requires a real CUDA GPU; use --backend modal --gpu A10G")
+593:     report = check_compatibility(target_model, draft_model, hw_info.free_vram_mb)
+594:     if report.draft_method == "unsupported" or not report.is_compatible:
+595:         raise ValueError("Calibration blocked: " + "; ".join(report.blocking_reasons))
+596:     config = dict(target_model=target_model, draft_model=draft_model,
+597:                   draft_method=report.draft_method, sm_architecture=hw_info.sm_architecture,
+598:                   measurement_mode=measurement_mode)
+599:     for key in ('target_revision', 'draft_revision'):
+600:         revision = getattr(report, key, None)
+601:         if revision and revision != 'local':
+602:             config[key] = revision
+603:     if backend == "modal":
+604:         from flexsds.server.modal_runner import ModalServingRunner
+605:         from flexsds.server.modal_calibration import calibrate
+606:         if not ModalServingRunner().check_credentials():
+607:             raise RuntimeError("Modal credentials missing; run flexsds auth login --provider modal")
+608:         config['target_gpu'] = hw_info.device_name.removeprefix('Remote ')
+609:         groups = calibrate(config, batches)
+610:     elif backend == "local":
+611:         groups = [run_local_group(config, k, batches) for k in KS]
+612:     else:
+613:         raise ValueError("Calibration supports local CUDA or Modal, not Colab guidance")
+614:     data = build_profile(config, groups, batches)
+615:     import hashlib
+616:     identity = hashlib.sha256(json.dumps(data['models'], sort_keys=True).encode()).hexdigest()[:12]
+617:     saved_path = save_hardware_profile(data, hw_info.sm_architecture,
+618:                                        f"{hw_info.device_name}_{identity}_{measurement_mode}", target_dir)
+619:     return FlexCostModel.from_json(saved_path), saved_path

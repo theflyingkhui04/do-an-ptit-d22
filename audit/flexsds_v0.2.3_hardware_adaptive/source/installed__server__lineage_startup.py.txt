@@ -1,0 +1,47 @@
+1: """Project-owned, exact-source-gated boundary around pinned EngineCore startup.
+2: 
+3: Importing the custom executor installs this before EngineCore construction:
+4: pinned LLMEngine/AsyncLLM resolve Executor.get_class before creating the client.
+5: No upstream package files are modified. All constructor invocations get a fresh
+6: context, including plain executors, so nested construction cannot inherit one.
+7: Ordinary engines do not publish or require lineage state.
+8: """
+9: from functools import wraps
+10: import hashlib
+11: import json
+12: from pathlib import Path
+13: from threading import RLock
+14: 
+15: from src.server.lineage import _engine_startup
+16: from src.server.lineage_diagnostics import observe
+17: 
+18: 
+19: _installation_lock = RLock()
+20: 
+21: 
+22: def install_enginecore_startup_binding():
+23:     import vllm
+24:     from vllm.v1.engine.core import EngineCore
+25: 
+26:     with _installation_lock:
+27:         original = EngineCore.__init__
+28:         if getattr(original, "_lineage_startup_binding", False):
+29:             return
+30:         manifest = Path(__file__).resolve().parents[2] / "experiments/scalar_vllm_source_manifest.json"
+31:         record = next(r for r in json.loads(manifest.read_text())["files"]
+32:                       if r["path"] == "vllm/v1/engine/core.py")
+33:         path = Path(vllm.__file__).resolve().parent / "v1/engine/core.py"
+34:         if (vllm.__version__ != "0.30.0"
+35:                 or Path(original.__code__.co_filename).resolve() != path
+36:                 or hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]):
+37:             raise RuntimeError("Unsupported EngineCore source for lineage startup binding")
+38: 
+39:         @wraps(original)
+40:         def initialize(self, vllm_config, executor_class, *args, **kwargs):
+41:             observe("enginecore_wrapper_entered", executor_class=f"{executor_class.__module__}.{executor_class.__name__}")
+42:             with _engine_startup(vllm_config):
+43:                 return original(self, vllm_config, executor_class, *args, **kwargs)
+44: 
+45:         initialize._lineage_startup_binding = True
+46:         EngineCore.__init__ = initialize
+47:         observe("hook_installed", vllm_version=vllm.__version__, enginecore_sha256=record["sha256"])

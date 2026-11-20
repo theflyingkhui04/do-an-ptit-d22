@@ -1,0 +1,32 @@
+✓ Initialized. View run at 
+https://modal.com/apps/daibui1208/main/ap-l4FtcaDTylSEmfiSoEY0Eg
+Building image im-7l3yRxsEFNxpEz3ZvaXTth
+
+=> Step 0: FROM base
+
+=> Step 1: ENV PYTHONPATH=/root/project:/root/project/src
+
+=> Step 2: ENV FLEXSDS_SERVING_CONFIG_B64=eyJ0YXJnZXRfbW9kZWwiOiAiUXdlbi9Rd2VuMi41LTdCLUluc3RydWN0LUFXUSIsICJkcmFmdF9tb2RlbCI6ICJkdWNraG9pL3F3ZW4yLjUtN2ItZWFnbGUzLjEtc3BlY3VsYXRvciIsICJkcmFmdF9tZXRob2QiOiAiZWFnbGUzIiwgInVzZV9oZXRlcm9nZW5lb3VzX3ZvY2FiIjogZmFsc2UsICJ0YXJnZXRfcmV2aXNpb24iOiAiYjI1MDM3NTQzZTkzOTRiODE4ZmRmY2E2N2FiMmEwMGVjYzdkZDY0MSIsICJkcmFmdF9yZXZpc2lvbiI6ICJkOTAxNmMzODYwZjQyY2MzZjMzYTg3ZmE1ZDM0NmZlZTc2OGY2MjkwIiwgInBvcnQiOiA4MDAwLCAiZW5hYmxlX2FkYXB0aXZlIjogZmFsc2UsICJ0YXJnZXRfZ3B1IjogIkw0IiwgIm1heF9tb2RlbF9sZW4iOiAyMDQ4LCAibWF4X251bV9zZXFzIjogOCwgInByb2ZpbGVfcGF0aCI6IG51bGx9
+Saving image...
+Image saved, took 1.15s
+
+Built image im-7l3yRxsEFNxpEz3ZvaXTth in 7.70s
+
+
+✓ Created objects.
+├── ✓ Uploaded 
+│   D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src\flexsds\server
+│   \modal_app.py
+├── ✓ Uploaded 
+│   D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\experiments
+├── ✓ Uploaded D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src
+└── ✓ Created Function serve
+    └── https://daibui1208--flexsds-serving-serve-dev.us-east.modal.run 
+        (unauthenticated)
+️️⚡️ Serving... hit Ctrl-C to stop!
+├── Watching 
+│   D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src\flexsds\server
+│   .
+├── Watching 
+│   D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\experiments.
+└── Watching D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src.

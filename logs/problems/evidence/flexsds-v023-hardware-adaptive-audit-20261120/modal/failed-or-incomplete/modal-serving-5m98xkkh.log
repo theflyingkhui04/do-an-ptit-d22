@@ -1,0 +1,70 @@
+✓ Initialized. View run at 
+https://modal.com/apps/daibui1208/main/ap-M3mC6V85YiJojBpflHJFjf
+Building image im-HLoedXht0WFln8Tqnefdam
+
+=> Step 0: FROM base
+
+=> Step 1: ENV PYTHONPATH=/root/project:/root/project/src
+
+=> Step 2: ENV FLEXSDS_SERVING_CONFIG='{"target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ", "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator", "draft_method": "eagle3", "use_heterogeneous_vocab": false, "target_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641", "draft_revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290", "enable_adaptive": true, "target_gpu": "L4", "max_model_len": 2048, "max_num_seqs": 8, "profile_path": "C:\\Users\\daibu\\.flexsds\\profiles\\profile_sm_89_remote_l4_fcda5486b12d_full.json"}'
+Saving image...
+Image saved, took 1.61s
+
+Built image im-HLoedXht0WFln8Tqnefdam in 7.98s
+
+
+✓ Created objects.
+├── ✓ Uploaded 
+│   D:\ProgramFiles\Python3_11\Lib\site-packages\flexsds\server\modal_app.py
+├── ✓ Uploaded 
+│   C:\Users\daibu\.flexsds\profiles\profile_sm_89_remote_l4_fcda5486b12d_full.
+│   json
+├── ✓ Uploaded D:\ProgramFiles\Python3_11\Lib\site-packages\flexsds
+└── ✓ Created Function serve
+    └── https://daibui1208--flexsds-serving-serve-dev.us-east.modal.run 
+        (unauthenticated)
+️️⚡️ Serving... hit Ctrl-C to stop!
+├── Watching D:\ProgramFiles\Python3_11\Lib\site-packages\flexsds\server.
+├── Watching D:\ProgramFiles\Python3_11\Lib\site-packages\flexsds.
+└── Watching C:\Users\daibu\.flexsds\profiles.
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 96, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/root/modal_app.py", line 34, in <module>
+    SERVING_CONFIG = json.loads(os.environ.get("FLEXSDS_SERVING_CONFIG", "{}"))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Invalid \escape: line 1 column 398 (char 397)
+Function fu-NZdg0pDp0YXQ4BzShrS134 failed during startup.
+Runner failed with exception: JSONDecodeError('Invalid \\escape: line 1 column 398 (char 397)')
+Disconnecting from Modal - This will terminate your Modal app in a few seconds.
+
+Stopping app - keyboard interrupt received. Use `modal run --detach` to prevent KeyboardInterrupts from killing apps.
+✓ App aborted. View run at 
+https://modal.com/apps/daibui1208/main/ap-M3mC6V85YiJojBpflHJFjf

@@ -1,0 +1,72 @@
+1: """Worker-local, eager vLLM 0.30 component timings; never times frontend RPCs."""
+2: from __future__ import annotations
+3: import time
+4: 
+5: 
+6: class CalibrationWorker:
+7:     def calibration_install(self):
+8:         import torch
+9:         import vllm
+10:         if vllm.__version__ != '0.30.0':
+11:             raise RuntimeError('Calibration requires vLLM 0.30.0')
+12:         runner = self.model_runner
+13:         if getattr(self, 'use_v2_model_runner', False):
+14:             raise RuntimeError('Calibration requires the V1 model runner')
+15:         state = dict(active=False, samples={}, shapes=[])
+16:         self._flex_calibration = state
+17:         execute = runner.execute_model
+18: 
+19:         def execute_observed(output, *args, **kwargs):
+20:             state['scheduled'] = dict(output.num_scheduled_tokens)
+21:             state['preempted'] = bool(output.preempted_req_ids)
+22:             return execute(output, *args, **kwargs)
+23:         runner.execute_model = execute_observed
+24: 
+25:         def before(module, args):
+26:             state['eligible'] = False
+27:             if not state['active']:
+28:                 return
+29:             batch = runner.input_batch
+30:             counts = [state['scheduled'].get(r, 0) for r in batch.req_ids]
+31:             contexts = [int(v) for v in batch.num_computed_tokens_cpu[:batch.num_reqs]]
+32:             state['eligible'] = (batch.num_reqs == state['batch'] and
+33:                                  counts == [state['k'] + 1] * state['batch'] and
+34:                                  contexts == [state['context']] * state['batch'] and
+35:                                  not state['preempted'])
+36:             if state['eligible'] and 'target' not in state['samples']:
+37:                 state['shapes'].append(dict(batch=batch.num_reqs, query=counts, context=contexts))
+38:                 torch.cuda.synchronize()
+39:                 state['start'] = time.perf_counter()
+40: 
+41:         def after(module, args, output):
+42:             if state['active'] and state['eligible'] and 'target' not in state['samples']:
+43:                 torch.cuda.synchronize()
+44:                 state['samples']['target'] = (time.perf_counter() - state['start']) * 1000
+45:         runner.model.register_forward_pre_hook(before)
+46:         runner.model.register_forward_hook(after)
+47:         if runner.speculative_config is not None:
+48:             propose = runner.drafter.propose
+49: 
+50:             def propose_observed(*args, **kwargs):
+51:                 if not (state['active'] and state.get('eligible') and 'draft' not in state['samples']):
+52:                     return propose(*args, **kwargs)
+53:                 torch.cuda.synchronize()
+54:                 start = time.perf_counter()
+55:                 result = propose(*args, **kwargs)
+56:                 torch.cuda.synchronize()
+57:                 elapsed = (time.perf_counter() - start) * 1000
+58:                 # Do not silently accept a different speculative budget.
+59:                 if tuple(result.shape) != (state['batch'], state['k']):
+60:                     raise RuntimeError('Calibration proposal shape mismatch')
+61:                 state['samples']['draft'] = elapsed
+62:                 return result
+63:             runner.drafter.propose = propose_observed
+64: 
+65:     def calibration_begin(self, batch, k, context):
+66:         self._flex_calibration.update(active=True, batch=batch, k=k, context=context,
+67:                                       samples={}, shapes=[], eligible=False)
+68: 
+69:     def calibration_finish(self):
+70:         state = self._flex_calibration
+71:         state['active'] = False
+72:         return dict(samples=state['samples'], shapes=state['shapes'])

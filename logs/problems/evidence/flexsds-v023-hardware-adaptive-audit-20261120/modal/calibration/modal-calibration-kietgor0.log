@@ -1,0 +1,10 @@
+✓ Initialized. View run at 
+https://modal.com/apps/daibui1208/main/ap-PujtHCz2yYnjf2FyVnEkWz
+Stopping app - uncaught exception raised locally: VersionError("This version of the modal client supports the following image builder versions: {'2024.04', '2024.10', '2023.12', '2025.06'}.\n\nYou are using '2026.10'. Please update your client library (pip install --upgrade modal).").
+┌─ Error ─────────────────────────────────────────────────────────────────────┐
+│ This version of the modal client supports the following image builder       │
+│ versions: {'2024.04', '2024.10', '2023.12', '2025.06'}.                     │
+│                                                                             │
+│ You are using '2026.10'. Please update your client library (pip install     │
+│ --upgrade modal).                                                           │
+└─────────────────────────────────────────────────────────────────────────────┘

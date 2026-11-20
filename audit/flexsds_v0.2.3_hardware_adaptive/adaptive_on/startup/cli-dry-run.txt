@@ -1,0 +1,15 @@
+  +---------+   ______ _           ____  ____  ____  
+  |  PTIT   |  |  ____| |         / ___||  _ \/ ___| 
+  | D22-04  |  | |__  | | _____ _| |__  | | | \___ \ 
+  +---------+  |  __| | |/ _ \ \/ \___ \| | | |___) |
+               |_|    |_|\___/_/\_\____/|____/|____/ 
+
+  FlexSDS | Hardware-Adaptive EAGLE Serving Engine | v0.2.3
+  PTIT | Posts and Telecommunications Institute of Technology | D22 Thesis Team
+  Hardware: NVIDIA GeForce RTX 3050 Ti Laptop GPU (sm_86) | VRAM: 3.21/4.0 GB Free
+  Engine: HardwareAdaptive v0.2
+  Backend: Not yet configured
+Compatibility: WARNING/INCOMPATIBLE | Speculation: Unknown | Family: Unknown | VRAM estimate: Not evaluated / Budget: 22.5 GiB | Vocabulary: Unknown
+Cannot verify draft metadata/checkpoint: Cannot resolve model metadata for duckhoi/qwen2.5-7b-eagle3.1-speculator: <urlopen error [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions>
+Launch blocked: Cannot verify draft metadata/checkpoint: Cannot resolve model metadata for duckhoi/qwen2.5-7b-eagle3.1-speculator: <urlopen error [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions>
+Remote L4 memory budget is estimated, not measured free VRAM.

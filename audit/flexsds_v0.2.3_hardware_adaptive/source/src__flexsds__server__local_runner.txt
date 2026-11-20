@@ -1,0 +1,312 @@
+1: """Local serving runner and zero-zombie process management."""
+2: from __future__ import annotations
+3: 
+4: import json
+5: import os
+6: import signal
+7: import socket
+8: import subprocess
+9: from pathlib import Path
+10: from typing import Any, Dict, List, Optional
+11: 
+12: try:
+13:     from flexsds.cli.output import print_output as print
+14: except ModuleNotFoundError:
+15:     from src.flexsds.cli.output import print_output as print
+16: 
+17: 
+18: def finish_launch(proc, background: bool = False) -> int:
+19:     """Propagate startup/foreground failure without equating a process with readiness."""
+20:     if proc is None:
+21:         print("Launch failed; no serving readiness established.")
+22:         return 1
+23:     output = getattr(proc, '__dict__', {}).get('_flexsds_output')
+24:     if output is None:
+25:         print("Serving process started; verifying endpoint readiness...")
+26:     readiness = getattr(proc, '__dict__', {}).get('_flexsds_readiness')
+27:     try:
+28:         if readiness is not None:
+29:             readiness()
+30:         else:
+31:             print("Endpoint readiness is not verified for this process.")
+32:         session = getattr(proc, '__dict__', {}).get('_flexsds_session')
+33:         if session and output:
+34:             from flexsds.cli.serving_session import present_session
+35:             present_session(proc, output, **session)
+36:         code = proc.poll() if background else proc.wait()
+37:         return code if isinstance(code, int) else 0
+38:     except (RuntimeError, OSError, ValueError) as exc:
+39:         if output:
+40:             output.update('Serving failed')
+41:             output.close()
+42:             print(f"Full details: {output.log_path}")
+43:         print(f"Serving readiness failed: {exc}")
+44:         proc.terminate()
+45:         try:
+46:             proc.wait(timeout=15)
+47:         except subprocess.TimeoutExpired:
+48:             proc.kill()
+49:             proc.wait()
+50:         return 1
+51:     except KeyboardInterrupt:
+52:         proc.terminate()
+53:         try:
+54:             proc.wait(timeout=15)
+55:         except subprocess.TimeoutExpired:
+56:             proc.kill()
+57:             proc.wait()
+58:         return 130
+59:     finally:
+60:         if output:
+61:             output.close()
+62: 
+63: 
+64: class LocalServingRunner:
+65:     """Khởi chạy và quản lý vòng đời máy chủ vLLM cục bộ với FlexSDS."""
+66: 
+67:     def build_command(self, config: Dict[str, Any], port: Optional[int] = None) -> List[str]:
+68:         """Tạo danh sách đối số dòng lệnh chạy vLLM phục vụ mô hình."""
+69:         serving_cfg = config.get("serving", config)
+70:         target_model = serving_cfg.get("target_model", "Qwen/Qwen2.5-7B-Instruct-AWQ")
+71:         draft_model = serving_cfg.get("draft_model", "duckhoi/qwen2.5-7b-eagle3.1-speculator")
+72:         draft_method = serving_cfg.get("draft_method", "eagle3")
+73:         use_hetero = serving_cfg.get("use_heterogeneous_vocab", False)
+74: 
+75:         effective_port = port if port is not None else serving_cfg.get("port", 8000)
+76:         target_lower = target_model.lower()
+77: 
+78:         # Xác định quantization và dtype
+79:         if "awq" in target_lower:
+80:             quantization = "awq_marlin"
+81:             dtype = "bfloat16"
+82:         elif "gptq" in target_lower:
+83:             quantization = "gptq"
+84:             dtype = "float16"
+85:         else:
+86:             quantization = serving_cfg.get("quantization", "none")
+87:             dtype = serving_cfg.get("dtype", "bfloat16")
+88: 
+89:         profile_data = None
+90:         if serving_cfg.get('profile_path'):
+91:             profile_data = json.loads(Path(serving_cfg['profile_path']).read_text())
+92:         if draft_method not in {'eagle', 'eagle3', 'draft_model'}:
+93:             raise ValueError('Unsupported draft method')
+94:         is_eagle = draft_method in {"eagle", "eagle3"}
+95: 
+96:         speculative_config: Dict[str, Any] = {
+97:             "method": draft_method,
+98:             "model": draft_model,
+99:             "num_speculative_tokens": 4,
+100:             "draft_sample_method": "greedy",
+101:         }
+102:         if serving_cfg.get("enable_adaptive", True) or not is_eagle:
+103:             speculative_config["num_speculative_tokens_per_batch_size"] = [[1, 32, 4]]
+104: 
+105:         if use_hetero:
+106:             speculative_config["use_heterogeneous_vocab"] = True
+107: 
+108:         cmd: List[str] = [
+109:             "vllm",
+110:             "serve",
+111:             target_model,
+112:             "--host",
+113:             "0.0.0.0",
+114:             "--port",
+115:             str(effective_port),
+116:             "--served-model-name",
+117:             serving_cfg.get("served_model_name", "qwen2.5-7b-adaptive"),
+118:             "--dtype",
+119:             dtype,
+120:             "--generation-config",
+121:             "vllm",
+122:             "--gpu-memory-utilization",
+123:             str(serving_cfg.get("gpu_memory_utilization", 0.85)),
+124:             "--max-model-len",
+125:             str(serving_cfg.get("max_model_len", 4096)),
+126:             "--max-num-seqs",
+127:             str(serving_cfg.get("max_num_seqs", 32)),
+128:         ]
+129: 
+130:         if serving_cfg.get("enable_adaptive", True):
+131:             cmd.extend(["--enforce-eager", "--compilation-config", json.dumps({"mode": 0})])
+132: 
+133:         if quantization != "none":
+134:             cmd.extend(["--quantization", quantization])
+135: 
+136:         target_revision = serving_cfg.get('target_revision')
+137:         draft_revision = serving_cfg.get('draft_revision')
+138:         if target_revision and target_revision != 'local':
+139:             cmd.extend(['--revision', target_revision])
+140:         if draft_revision and draft_revision != 'local':
+141:             speculative_config['revision'] = draft_revision
+142:         if profile_data and serving_cfg.get('enable_adaptive', True):
+143:             if target_revision and target_revision != 'local':
+144:                 if target_revision != profile_data['models']['target_revision']:
+145:                     raise ValueError('Inspected target revision does not match the measured profile; recalibrate')
+146:             else:
+147:                 cmd.extend(['--revision', profile_data['models']['target_revision']])
+148:             if draft_revision and draft_revision != 'local' and draft_revision != profile_data['models']['draft_revision']:
+149:                 raise ValueError('Inspected draft revision does not match the measured profile; recalibrate')
+150:             speculative_config['revision'] = profile_data['models']['draft_revision']
+151:         # EAGLE uses the same pinned sequential dynamic-K path as the M4 treatment.
+152:         if serving_cfg.get("enable_adaptive", True):
+153:             cmd.extend([
+154:                 "--speculative-config", json.dumps(speculative_config),
+155:                 "--async-scheduling",
+156:                 "--scheduler-cls", "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
+157:                 "--distributed-executor-backend", "src.server.lineage_executor.LineageUniProcExecutor",
+158:                 "--per-request-spec-decode-metrics", "summary",
+159:             ])
+160:         else:
+161:             cmd.extend([
+162:                 "--speculative-config", json.dumps(speculative_config),
+163:                 "--per-request-spec-decode-metrics", "summary",
+164:             ])
+165: 
+166:         return cmd
+167: 
+168:     def check_port_available(self, port: int) -> bool:
+169:         """Kiểm tra xem cổng port có đang khả dụng không."""
+170:         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+171:             try:
+172:                 s.bind(("", port))
+173:                 return True
+174:             except OSError:
+175:                 return False
+176: 
+177:     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
+178:         """Thiết lập các biến môi trường cho FlexSDS Adaptive Scheduler."""
+179:         serving_cfg = config.get("serving", config)
+180:         env = dict(os.environ)
+181:         resolved = Path(__file__).resolve()
+182:         project_root = str(resolved.parents[3]) if len(resolved.parents) > 3 else "/root/project"
+183:         existing_pythonpath = env.get("PYTHONPATH", "")
+184:         if project_root not in existing_pythonpath:
+185:             env["PYTHONPATH"] = f"{project_root}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else project_root
+186:         # Never inherit a different profile/controller from the launcher's shell.
+187:         if serving_cfg.get("enable_adaptive", True):
+188:             from flexsds.core.cost_model import validate_measured_profile
+189:             path = Path(serving_cfg.get("profile_path") or "")
+190:             if not path.is_file():
+191:                 raise ValueError("Adaptive requires a measured profile artifact")
+192:             data = json.loads(path.read_text())
+193:             validate_measured_profile(data, target_model=serving_cfg.get("target_model"),
+194:                                       draft_model=serving_cfg.get("draft_model"))
+195:             if data.get('draft_method') != serving_cfg.get('draft_method', 'eagle3'):
+196:                 raise ValueError('Profile draft method mismatch')
+197:             max_seqs = int(serving_cfg.get('max_num_seqs', 32))
+198:             if not 1 <= max_seqs <= 32:
+199:                 raise ValueError('Adaptive profile supports at most 32 concurrent sequences')
+200:             canonical = [1, 2, 4, 8, 16, 32]
+201:             upper = next(b for b in canonical if b >= max_seqs)
+202:             required = {b for b in canonical if b <= upper}
+203:             if not required <= set(data['grid']['batches']):
+204:                 raise ValueError(f'Profile batch grid does not cover max_num_seqs={max_seqs}; recalibrate')
+205:             env["FLEXSDS_PROFILE_PATH"] = str(path.resolve())
+206:             env["ADAPTIVE_STRICT"] = "1"
+207:             env["VLLM_USE_V2_MODEL_RUNNER"] = "0"
+208:         else:
+209:             env.pop("FLEXSDS_PROFILE_PATH", None)
+210:         env["ADAPTIVE_ENABLE_VRAM_GUARD"] = "1"
+211:         env["ADAPTIVE_TELEMETRY_PATH"] = os.path.abspath(
+212:             serving_cfg.get("telemetry_path", "telemetry/serving_trace.jsonl")
+213:         )
+214:         if serving_cfg.get('enable_adaptive', True):
+215:             trace_dir = Path(env['ADAPTIVE_TELEMETRY_PATH']).parent
+216:             trace_dir.mkdir(parents=True, exist_ok=True)
+217:             env['ADAPTIVE_STEP_TELEMETRY_PATH'] = str(trace_dir / 'serving_steps.jsonl')
+218:             env['ADAPTIVE_STARTUP_TELEMETRY_PATH'] = str(trace_dir / 'serving_lineage.jsonl')
+219:         env["ADAPTIVE_MAX_K"] = str(serving_cfg.get("max_k", 4))
+220:         env["ADAPTIVE_MIN_BATCH_K"] = "0"
+221:         env["ADAPTIVE_PER_REQUEST"] = "1"
+222:         return env
+223: 
+224:     def launch(
+225:         self,
+226:         config: Dict[str, Any],
+227:         port: Optional[int] = None,
+228:         background: bool = False,
+229:         pid_file: str = ".flexsds.pid",
+230:         dry_run: bool = False,
+231:     ) -> Optional[subprocess.Popen]:
+232:         """Khởi chạy tiến trình máy chủ cục bộ."""
+233:         effective_port = port if port is not None else config.get("serving", config).get("port", 8000)
+234:         if not dry_run and not self.check_port_available(effective_port):
+235:             print(f"[Error] Port {effective_port} is already in use; choose another port or run flexsds stop.")
+236:             return None
+237:         cmd = self.build_command(config, port=effective_port)
+238:         env = self.setup_environment(config)
+239: 
+240:         if dry_run:
+241:             print("\n[FlexSDS] Dry-run execution command:")
+242:             print(" ".join(cmd))
+243:             print(f"Environment: ADAPTIVE_ENABLE_VRAM_GUARD={env.get('ADAPTIVE_ENABLE_VRAM_GUARD')}")
+244:             return None
+245: 
+246:         if config.get('serving', config).get('enable_adaptive', True):
+247:             from flexsds.core.hardware import detect_hardware, matches_gpu_label
+248:             actual = detect_hardware()
+249:             data = json.loads(Path(config.get('serving', config)['profile_path']).read_text())
+250:             if not actual.is_cuda_available or (actual.sm_architecture != data['metadata']['sm_architecture']
+251:                                                or not matches_gpu_label(data['metadata']['device'], actual.device_name)):
+252:                 raise ValueError('Profile differs from actual serving GPU')
+253: 
+254:         if background and os.name == "nt":
+255:             print("Background process-group serving is unsupported on Windows; use foreground serving.")
+256:             return None
+257: 
+258:         try:
+259:             if background:
+260:                 log_path = "flexsds_server.log"
+261:                 log_file = open(log_path, "a", encoding="utf-8")
+262:                 proc = subprocess.Popen(
+263:                     cmd,
+264:                     env=env,
+265:                     preexec_fn=os.setsid,
+266:                     stdout=log_file,
+267:                     stderr=subprocess.STDOUT,
+268:                 )
+269:                 with open(pid_file, "w", encoding="utf-8") as f:
+270:                     f.write(f"{proc.pid}\n")
+271:                 print(f"[FlexSDS] Server started in background (PID: {proc.pid}, Log: {log_path})")
+272:                 from flexsds.server.readiness import verify_endpoint
+273:                 def ready():
+274:                     model = verify_endpoint(f"http://127.0.0.1:{effective_port}", process=proc)
+275:                     print(f"Inference verified: http://127.0.0.1:{effective_port}/v1 (model={model})")
+276:                 proc._flexsds_readiness = ready
+277:                 return proc
+278:             else:
+279:                 proc = subprocess.Popen(cmd, env=env)
+280:                 from flexsds.server.readiness import verify_endpoint
+281:                 def ready():
+282:                     model = verify_endpoint(f"http://127.0.0.1:{effective_port}", process=proc)
+283:                     print(f"Inference verified: http://127.0.0.1:{effective_port}/v1 (model={model})")
+284:                 proc._flexsds_readiness = ready
+285:                 return proc
+286:         except FileNotFoundError:
+287:             print("\n\033[31m[Error]\033[0m Server binary not found in PATH.")
+288:             return None
+289: 
+290:     def stop(self, pid_file: str = ".flexsds.pid") -> bool:
+291:         """Dừng nhóm tiến trình máy chủ vLLM và dọn dẹp sạch tiến trình con."""
+292:         if os.name == "nt":
+293:             print("Local process-group stop is unsupported on Windows; stop the foreground session.")
+294:             return False
+295:         if not os.path.exists(pid_file):
+296:             return False
+297: 
+298:         try:
+299:             with open(pid_file, "r", encoding="utf-8") as f:
+300:                 content = f.read().strip()
+301:                 if not content:
+302:                     return False
+303:                 pid = int(content)
+304: 
+305:             os.killpg(pid, signal.SIGTERM)
+306:         except (ProcessLookupError, ValueError):
+307:             pass
+308:         finally:
+309:             if os.path.exists(pid_file):
+310:                 os.remove(pid_file)
+311: 
+312:         return True

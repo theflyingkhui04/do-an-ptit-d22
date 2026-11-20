@@ -1,0 +1,19 @@
+✓ Initialized. View run at 
+https://modal.com/apps/daibui1208/main/ap-8xzPMVtjQE6ZJP660NaPYq
+✓ Created objects.
+├── ✓ Uploaded 
+│   D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src\flexsds\server
+│   \modal_app.py
+├── ✓ Uploaded 
+│   D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\experiments
+├── ✓ Uploaded D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src
+└── ✓ Created Function serve
+    └── https://daibui1208--flexsds-serving-serve-dev.us-east.modal.run 
+        (unauthenticated)
+️️⚡️ Serving... hit Ctrl-C to stop!
+├── Watching D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src.
+├── Watching 
+│   D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\src\flexsds\server
+│   .
+└── Watching 
+    D:\Document\Four-year\do_an\do-an-ptit-d22-flexsds-audit\experiments.

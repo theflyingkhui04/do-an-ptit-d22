@@ -1,0 +1,111 @@
+1: """Modal HTTP app; configuration is passed by the CLI, never embedded credentials.
+2: 
+3: Development: modal serve. Persistent service: modal deploy.
+4: The web_server decorator owns startup readiness and endpoint exposure.
+5: """
+6: from __future__ import annotations
+7: import json
+8: import base64
+9: import os
+10: import sys
+11: import subprocess
+12: from pathlib import Path
+13: 
+14: # Ensure flexsds package root is in sys.path when executed directly by modal CLI
+15: resolved = Path(__file__).resolve()
+16: if len(resolved.parents) > 2 and (resolved.parents[2] / "flexsds").exists():
+17:     _pkg_root = str(resolved.parents[2])
+18:     PROJECT_ROOT = resolved.parents[3]
+19: else:
+20:     _pkg_root = "/root/project/src"
+21:     PROJECT_ROOT = Path("/root/project")
+22: 
+23: if _pkg_root not in sys.path:
+24:     sys.path.insert(0, _pkg_root)
+25: 
+26: try:
+27:     from flexsds.server.local_runner import LocalServingRunner
+28: except ModuleNotFoundError:
+29:     try:
+30:         from src.flexsds.server.local_runner import LocalServingRunner
+31:     except ModuleNotFoundError:
+32:         from local_runner import LocalServingRunner
+33: 
+34: APP_NAME = "flexsds-serving"
+35: # Image.env becomes a Dockerfile ENV instruction. Raw JSON containing Windows
+36: # paths can lose a layer of backslash escaping there. The local CLI still sends
+37: # raw JSON; only the image transport uses base64 to survive Dockerfile parsing.
+38: _encoded_config = os.environ.get("FLEXSDS_SERVING_CONFIG_B64")
+39: SERVING_CONFIG = json.loads(
+40:     base64.b64decode(_encoded_config, validate=True).decode("utf-8")
+41:     if _encoded_config is not None else os.environ.get("FLEXSDS_SERVING_CONFIG", "{}")
+42: )
+43: PORT = int(SERVING_CONFIG.get("port", 8000))
+44: GPU = SERVING_CONFIG.get("target_gpu", "L4")
+45: if GPU not in {"L4", "T4", "A10G"} or not 1 <= PORT <= 65535:
+46:     raise ValueError("Unsupported Modal GPU or serving port")
+47: 
+48: try:
+49:     import modal
+50: except ImportError:
+51:     modal = None
+52: 
+53: if modal is not None:
+54:     from flexsds.server.modal_image import serving_image
+55:     app = modal.App(APP_NAME)
+56:     container_config = dict(SERVING_CONFIG)
+57:     if container_config.get("profile_path"):
+58:         container_config["profile_path"] = "/root/project/hardware_profile.json"
+59:     image = (
+60:         serving_image()
+61:         .env({"PYTHONPATH": "/root/project:/root/project/src",
+62:               "FLEXSDS_SERVING_CONFIG_B64": base64.b64encode(
+63:                   json.dumps(container_config).encode("utf-8")).decode("ascii")})
+64:     )
+65:     if modal.is_local():
+66:         src_dir = PROJECT_ROOT / "src"
+67:         if src_dir.exists():
+68:             image = image.add_local_dir(str(src_dir), remote_path="/root/project/src")
+69:         else:
+70:             flexsds_dir = resolved.parents[1] if len(resolved.parents) > 1 else Path("/root/project/src/flexsds")
+71:             image = image.add_local_dir(str(flexsds_dir), remote_path="/root/project/src/flexsds")
+72: 
+73:         experiments_dir = PROJECT_ROOT / "experiments"
+74:         if experiments_dir.exists():
+75:             image = image.add_local_dir(str(experiments_dir), remote_path="/root/project/experiments",
+76:                                        ignore=["runs/**", "results/**", "__pycache__/**", "*.ipynb"])
+77:         selected_profile = SERVING_CONFIG.get("profile_path")
+78:         if selected_profile:
+79:             profile = Path(selected_profile)
+80:             if not profile.is_file():
+81:                 raise ValueError("Selected hardware profile artifact is missing")
+82:             image = image.add_local_file(str(profile), remote_path="/root/project/hardware_profile.json")
+83: 
+84:     volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)
+85: 
+86:     @app.function(image=image, gpu=GPU, max_containers=1,
+87:                   volumes={"/root/.cache/huggingface": volume}, timeout=3600)
+88:     @modal.web_server(PORT, startup_timeout=600)
+89:     def serve():
+90:         runtime_config = dict(SERVING_CONFIG)
+91:         if runtime_config.get("profile_path"):
+92:             runtime_config["profile_path"] = "/root/project/hardware_profile.json"
+93:         if runtime_config.get("enable_adaptive", True):
+94:             import torch
+95:             from flexsds.core.hardware import HardwareInfo, matches_gpu_label
+96:             from flexsds.core.cost_model import validate_measured_profile
+97:             sm = 'sm_%d%d' % torch.cuda.get_device_capability(0)
+98:             data = json.loads(Path(runtime_config['profile_path']).read_text())
+99:             if not matches_gpu_label(data['metadata']['device'], torch.cuda.get_device_name(0)):
+100:                 raise ValueError('Profile differs from actual Modal GPU')
+101:             hardware = HardwareInfo(device_name=f"Remote {GPU}", sm_architecture=sm,
+102:                                     total_vram_mb=0, free_vram_mb=0, cuda_version=torch.version.cuda,
+103:                                     is_cuda_available=True)
+104:             validate_measured_profile(data, hardware, runtime_config.get('target_model'), runtime_config.get('draft_model'))
+105:         runner = LocalServingRunner()
+106:         # Do not use the laptop's preflight here: the CLI evaluated the remote budget.
+107:         # vLLM and Modal's web-server startup check remain the runtime authorities.
+108:         subprocess.Popen(runner.build_command(runtime_config),
+109:                          env=runner.setup_environment(runtime_config))
+110: else:
+111:     app = None

@@ -1,0 +1,38 @@
+1: """Opt-in, best-effort startup observations; never used for authorization."""
+2: import json
+3: import multiprocessing
+4: import os
+5: import time
+6: import uuid
+7: from threading import RLock
+8: from weakref import WeakKeyDictionary
+9: 
+10: _lock = RLock()
+11: _attempts = WeakKeyDictionary()
+12: _generations = WeakKeyDictionary()
+13: 
+14: 
+15: def observe(event, *, attempt=None, registration=None, **fields):
+16:     path = os.environ.get("ADAPTIVE_STARTUP_TELEMETRY_PATH")
+17:     if not path:
+18:         return
+19:     try:
+20:         with _lock:
+21:             if registration is not None:
+22:                 attempt = registration.attempt
+23:                 if registration not in _generations:
+24:                     _generations[registration] = (uuid.uuid4().hex, uuid.uuid4().hex)
+25:                 fields["generation_id"], fields["ledger_id"] = _generations[registration]
+26:             if attempt is not None:
+27:                 if attempt not in _attempts:
+28:                     _attempts[attempt] = uuid.uuid4().hex
+29:                 fields["attempt_id"] = _attempts[attempt]
+30:             record = dict(event=event, pid=os.getpid(), ppid=os.getppid(),
+31:                           process_name=multiprocessing.current_process().name,
+32:                           start_method=multiprocessing.get_start_method(allow_none=True),
+33:                           timestamp=time.time(), **fields)
+34:             with open(path, "a", encoding="utf-8") as stream:
+35:                 stream.write(json.dumps(record, allow_nan=False) + "\n")
+36:     except Exception:
+37:         # Diagnostics must not turn successful startup into failure.
+38:         pass

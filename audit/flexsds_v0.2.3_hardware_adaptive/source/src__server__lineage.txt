@@ -1,0 +1,295 @@
+1: """Process-local provenance for pinned V1/UniProc scalar draft consumption.
+2: 
+3: The verifier output is an identity anchor, not the producer of its drafts.
+4: Only the executor's observed row-copy binding can supply a producer origin.
+5: No token values, GPU tensors or mutable Requests are stored in origins.
+6: """
+7: from dataclasses import dataclass, field
+8: from types import MappingProxyType
+9: from weakref import ref
+10: from threading import RLock, current_thread
+11: from contextlib import contextmanager
+12: from contextvars import ContextVar
+13: from src.server.lineage_diagnostics import observe
+14: 
+15: 
+16: @dataclass(frozen=True)
+17: class DraftOrigin:
+18:     request_id: str
+19:     incarnation: int
+20:     plan_sequence: int | None
+21:     schedule_sequence: int
+22:     request_k: int
+23:     batch_k: int
+24: 
+25: 
+26: @dataclass
+27: class Execution:
+28:     output: object  # Strong identity witness; released at retirement/error.
+29:     producers: object
+30:     consumed: dict = field(default_factory=dict)
+31: 
+32: 
+33: class LineageLedger:
+34:     def __init__(self):
+35:         self.executions = {}
+36:         self.active = {}
+37:         self._incarnation = 0
+38:         self.generation = None
+39: 
+40:     def request_key(self, request):
+41:         current = self.active.get(request.request_id)
+42:         if current is None or current[0] is not request:
+43:             self._incarnation += 1
+44:             current = (request, self._incarnation)
+45:             self.active[request.request_id] = current
+46:         return current[1]
+47: 
+48:     def register(self, output, plan, sequence, requests):
+49:         producers = {}
+50:         for rid in output.num_scheduled_tokens:
+51:             req = requests.get(rid)
+52:             if req is not None and not req.is_prefill_chunk:
+53:                 producers[rid] = DraftOrigin(
+54:                     rid, self.request_key(req),
+55:                     plan.plan_sequence if rid in plan.per_request_k else None,
+56:                     sequence, len(req.spec_token_ids), output.num_spec_tokens_to_schedule)
+57:         self.executions[id(output)] = Execution(output, MappingProxyType(producers))
+58: 
+59:     def get(self, output):
+60:         entry = self.executions.get(id(output))
+61:         return entry if entry is not None and entry.output is output else None
+62: 
+63:     def produced(self, output, runner, zeros_only=False):
+64:         self.generation = None
+65:         entry = self.get(output)
+66:         buffer = runner._draft_token_ids
+67:         shape = getattr(buffer, "shape", ())
+68:         rows = tuple(runner.input_batch.req_ids)
+69:         if zeros_only or entry is None or len(shape) != 2 or shape[1] <= 0:
+70:             return
+71:         if shape[0] != len(rows) or shape[1] != output.num_spec_tokens_to_schedule:
+72:             return
+73:         origins = tuple(entry.producers.get(rid) for rid in rows)
+74:         # Buffer id is only an immediate witness; each call stamps a NEW birth,
+75:         # even if the allocator/proposer reuses the same tensor object.
+76:         self.generation = (id(buffer), int(shape[1]), rows, origins)
+77:         observe("draft_produced", batch_k=int(shape[1]),
+78:                 rows=[dict(request_id=rid, plan_sequence=origin.plan_sequence,
+79:                            schedule_sequence=origin.schedule_sequence,
+80:                            request_k=origin.request_k, batch_k=origin.batch_k)
+81:                       for rid, origin in zip(rows, origins) if origin is not None])
+82: 
+83:     def prepared(self, output, runner, generation):
+84:         entry = self.get(output)
+85:         if entry is None:
+86:             return
+87:         entry.consumed.clear()
+88:         if generation is None or runner.input_batch.prev_sampled_token_ids is None:
+89:             return
+90:         witness, width, rows, origins = generation
+91:         if id(runner._draft_token_ids) != witness or runner.prev_num_spec_tokens != width:
+92:             return
+93:         for index, rid in enumerate(runner.input_batch.req_ids):
+94:             count = len(output.scheduled_spec_decode_tokens.get(rid, ()))
+95:             old = int(runner.prev_positions.np[index])
+96:             if count <= 0 or count > width or not 0 <= old < len(rows):
+97:                 continue
+98:             origin = origins[old]
+99:             if (rows[old] == rid and origin is not None
+100:                     and count <= origin.request_k):
+101:                 entry.consumed[rid] = (origin, count)
+102: 
+103:     def finish_request(self, request):
+104:         current = self.active.get(request.request_id)
+105:         if current is not None and current[0] is request:
+106:             self.active.pop(request.request_id)
+107:         # Remove all references for this request without affecting other rows.
+108:         for entry in self.executions.values():
+109:             entry.consumed.pop(request.request_id, None)
+110:             entry.producers = MappingProxyType({rid: origin for rid, origin in entry.producers.items()
+111:                                                if rid != request.request_id})
+112:         if self.generation is not None:
+113:             witness, width, rows, origins = self.generation
+114:             remaining = tuple(None if rid == request.request_id else origin
+115:                               for rid, origin in zip(rows, origins))
+116:             self.generation = (witness, width, rows, remaining) if any(remaining) else None
+117: 
+118:     def retire(self, output):
+119:         if self.get(output) is not None:
+120:             del self.executions[id(output)]
+121: 
+122:     def clear(self):
+123:         self.executions.clear()
+124:         self.active.clear()
+125:         self.generation = None
+126: 
+127: 
+128: # Process-local rendezvous only: config identity indexes a slot, never ownership.
+129: # Pinned EngineCore constructs exactly one scheduler after its executor on the
+130: # same initialization thread and inside one project-owned startup boundary.
+131: # A publication can be consumed exactly once by that attempt. Live same-config
+132: # overlap is rejected; failure revokes the orphan and success requires release.
+133: _registry = {}
+134: _registry_lock = RLock()
+135: _startup = ContextVar("lineage_engine_startup", default=None)
+136: 
+137: 
+138: @dataclass(frozen=True, eq=False)
+139: class StartupAttempt:
+140:     config: object
+141:     publisher_thread: object
+142:     token: object
+143: 
+144: 
+145: @dataclass
+146: class _StartupState:
+147:     attempt: StartupAttempt
+148:     active: bool = True
+149:     registration: object = None
+150: 
+151: 
+152: @contextmanager
+153: def _engine_startup(config):
+154:     """One EngineCore.__init__ invocation, never a config/thread-scoped lease.
+155: 
+156:     The pinned constructor wrapper owns this boundary. Failed construction and
+157:     successful construction without consumption both revoke their exact handle.
+158:     A copied context cannot reactivate a completed attempt. Nested constructors
+159:     get fresh identities and restore the outer context in finally.
+160:     """
+161:     with _registry_lock:
+162:         state = _StartupState(StartupAttempt(config, current_thread(), object()))
+163:         context_token = _startup.set(state)
+164:     succeeded = False
+165:     observe("attempt_created", attempt=state.attempt)
+166:     try:
+167:         yield state.attempt
+168:         succeeded = True
+169:     finally:
+170:         try:
+171:             with _registry_lock:
+172:                 state.active = False
+173:                 registration = state.registration
+174:                 current = _registry.get(id(config))
+175:                 if registration is not None and (
+176:                         not succeeded or (current is not None
+177:                         and current.registration is registration and not current.consumed)):
+178:                     release_ledger(registration)
+179:         finally:
+180:             _startup.reset(context_token)
+181:             observe("attempt_closed", attempt=state.attempt, registration=state.registration,
+182:                     succeeded=succeeded, context_reset=_startup.get() is not state,
+183:                     registration_retained=(state.registration is not None
+184:                         and (current := _registry.get(id(config))) is not None
+185:                         and current.registration is state.registration),
+186:                     consumed=(current.consumed if state.registration is not None
+187:                               and (current := _registry.get(id(config))) is not None
+188:                               and current.registration is state.registration else False))
+189: 
+190: 
+191: @dataclass(frozen=True, eq=False)
+192: class LineageRegistration:
+193:     config: object
+194:     ledger: LineageLedger
+195:     owner: object  # weak reference; never retain the executor through the registry
+196:     publisher_thread: object
+197:     token: object
+198:     attempt: StartupAttempt
+199: 
+200: 
+201: @dataclass
+202: class _RegistrationState:
+203:     registration: LineageRegistration
+204:     consumed: bool = False
+205: 
+206: 
+207: def _expire_registration(key, token):
+208:     # Callback closes over only an integer key and an opaque generation token.
+209:     # Neither the config, owner nor registration participates in a strong cycle.
+210:     with _registry_lock:
+211:         state = _registry.get(key)
+212:         if state is not None and state.registration.token is token:
+213:             del _registry[key]
+214:             state.registration.ledger.clear()
+215: 
+216: 
+217: def register_lineage_executor(config, executor):
+218:     """Publish one successfully initialized executor generation; return its handle.
+219: 
+220:     Publication allocates a fresh ledger; the executor retains it from the handle.
+221:     Only that handle authorizes teardown. A config/backend name is not evidence
+222:     of ownership, and an active registration cannot be replaced implicitly.
+223:     """
+224:     if config is None or executor.vllm_config is not config:
+225:         raise RuntimeError("Lineage executor registration requires its exact VllmConfig")
+226:     with _registry_lock:
+227:         startup = _startup.get()
+228:         if (startup is None or not startup.active
+229:                 or startup.attempt.config is not config
+230:                 or startup.attempt.publisher_thread is not current_thread()):
+231:             raise RuntimeError("Lineage publication requires an active EngineCore startup attempt")
+232:         if startup.registration is not None:
+233:             raise RuntimeError("A lineage generation was already published by this startup attempt")
+234:         if id(config) in _registry:
+235:             raise RuntimeError("A lineage executor generation is already registered for this VllmConfig; release it first")
+236:         ledger = LineageLedger()
+237:         token = object()
+238:         id_key = id(config)
+239:         owner = ref(executor, lambda unused: _expire_registration(id_key, token))
+240:         registration = LineageRegistration(config, ledger, owner, current_thread(), token,
+241:                                            startup.attempt)
+242:         _registry[id_key] = _RegistrationState(registration)
+243:         startup.registration = registration
+244:         observe("executor_published", registration=registration,
+245:                 executor_class=f"{type(executor).__module__}.{type(executor).__name__}")
+246:         return registration
+247: 
+248: 
+249: def require_lineage_executor(config):
+250:     """Atomically consume readiness for one pinned executor-before-scheduler init.
+251: 
+252:     No ledger is created on failure. Keeping a bound scheduler/owner alive cannot
+253:     make its consumed readiness reusable by another engine sharing the config.
+254:     """
+255:     with _registry_lock:
+256:         state = _registry.get(id(config)) if config is not None else None
+257:         registration = state.registration if state is not None else None
+258:         owner = registration.owner() if registration is not None else None
+259:         reason = "no ready executor registration was found"
+260:         if (owner is not None and registration.config is config
+261:                 and owner.vllm_config is config
+262:                 and getattr(owner, "_lineage", None) is registration.ledger):
+263:             if state.consumed:
+264:                 reason = "registration already consumed by another scheduler initialization"
+265:             elif registration.publisher_thread is not current_thread():
+266:                 reason = "registration belongs to another initialization thread"
+267:             elif ((startup := _startup.get()) is None or not startup.active
+268:                     or startup.attempt is not registration.attempt):
+269:                 reason = "registration belongs to another EngineCore startup attempt"
+270:             else:
+271:                 state.consumed = True
+272:                 observe("scheduler_consumed", registration=registration, consumed=state.consumed,
+273:                         same_active_attempt=startup.attempt is registration.attempt)
+274:                 return registration
+275:         backend = getattr(getattr(config, "parallel_config", None),
+276:                           "distributed_executor_backend", "<missing VllmConfig/backend>")
+277:         raise RuntimeError(
+278:             "Adaptive async lineage requires a lineage-capable executor initialized "
+279:             f"with this exact VllmConfig; {reason}. "
+280:             f"Observed distributed_executor_backend={backend!r}. Configure "
+281:             "src.server.lineage_executor.LineageUniProcExecutor.")
+282: 
+283: 
+284: def release_ledger(registration):
+285:     """Revoke/clear only the supplied generation, including on repeated teardown."""
+286:     if registration is None:  # executor initialization failed before publication
+287:         return
+288:     if not isinstance(registration, LineageRegistration):
+289:         raise TypeError("Lineage release requires a registration handle, not a config")
+290:     with _registry_lock:
+291:         state = _registry.get(id(registration.config))
+292:         if state is not None and state.registration is registration:
+293:             del _registry[id(registration.config)]
+294:         # A stale handle can clear only its own ledger, never a replacement's.
+295:         registration.ledger.clear()
