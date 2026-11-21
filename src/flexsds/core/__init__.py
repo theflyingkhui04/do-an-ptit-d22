@@ -1,44 +1,16 @@
-"""FlexSDS Core module."""
-try:
-    from flexsds.core.tree_topology import (
-        TreeTopology,
-        CANONICAL_TOPOLOGIES,
-        get_tree_topology,
-        list_available_topologies,
-    )
-    from flexsds.core.cost_model import (
-        FlexCostModel,
-        SolverResult,
-        load_profile_for_hardware,
-        save_hardware_profile,
-        run_hardware_micro_benchmark,
-        USER_PROFILES_DIR,
-    )
-except ModuleNotFoundError:
-    from src.flexsds.core.tree_topology import (
-        TreeTopology,
-        CANONICAL_TOPOLOGIES,
-        get_tree_topology,
-        list_available_topologies,
-    )
-    from src.flexsds.core.cost_model import (
-        FlexCostModel,
-        SolverResult,
-        load_profile_for_hardware,
-        save_hardware_profile,
-        run_hardware_micro_benchmark,
-        USER_PROFILES_DIR,
-    )
+"""Core exports, loaded on demand so scalar serving does not import tree code."""
+from importlib import import_module
 
-__all__ = [
-    "TreeTopology",
-    "CANONICAL_TOPOLOGIES",
-    "get_tree_topology",
-    "list_available_topologies",
-    "FlexCostModel",
-    "SolverResult",
-    "load_profile_for_hardware",
-    "save_hardware_profile",
-    "run_hardware_micro_benchmark",
-    "USER_PROFILES_DIR",
-]
+_EXPORTS = {
+    "tree_topology": ("TreeTopology", "CANONICAL_TOPOLOGIES", "get_tree_topology", "list_available_topologies"),
+    "cost_model": ("FlexCostModel", "SolverResult", "load_profile_for_hardware", "save_hardware_profile", "run_hardware_micro_benchmark", "USER_PROFILES_DIR"),
+}
+__all__ = [name for names in _EXPORTS.values() for name in names]
+
+def __getattr__(name):
+    for module, names in _EXPORTS.items():
+        if name in names:
+            value = getattr(import_module(f"{__name__}.{module}"), name)
+            globals()[name] = value
+            return value
+    raise AttributeError(name)

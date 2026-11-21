@@ -22,6 +22,8 @@ class DraftOrigin:
     request_k: int
     batch_k: int
     physical_draft_width: int | None = field(default=None, compare=False)
+    source_base_k: int | None = None
+    source_decision_mode: str | None = None
 
     @property
     def planned_worker_k(self) -> int:
@@ -33,6 +35,7 @@ class Execution:
     output: object  # Strong identity witness; released at retirement/error.
     producers: object
     consumed: dict = field(default_factory=dict)
+    schedule_sequence: int | None = None
 
 
 class LineageLedger:
@@ -63,8 +66,10 @@ class LineageLedger:
                 producers[rid] = DraftOrigin(
                     rid, self.request_key(req),
                     plan.plan_sequence if rid in plan.per_request_k else None,
-                    sequence, len(req.spec_token_ids), output.num_spec_tokens_to_schedule)
-        self.executions[id(output)] = Execution(output, MappingProxyType(producers))
+                    sequence, len(req.spec_token_ids), output.num_spec_tokens_to_schedule,
+                    source_base_k=getattr(plan, "per_request_base_k", {}).get(rid),
+                    source_decision_mode=getattr(plan, "per_request_source_modes", {}).get(rid))
+        self.executions[id(output)] = Execution(output, MappingProxyType(producers), schedule_sequence=sequence)
 
     def get(self, output):
         entry = self.executions.get(id(output))

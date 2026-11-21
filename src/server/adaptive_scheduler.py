@@ -26,6 +26,7 @@ from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 from src.server.budget_planner import AdaptiveBudgetPlanner, StepPlan, _env_flag
 from src.server.lineage import require_lineage_executor, release_ledger
 from src.server.lineage_diagnostics import observe
+from src.server.decision_state import capture_decision_state, observe_runtime_identity
 from experiments.protocol_b_boundary_observer import observe as _pb279_observe
 from experiments.protocol_b_boundary_observer import control_producer as _pb177_control
 
@@ -40,6 +41,13 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         registration = require_lineage_executor(config)
         super().__init__(*args, **kwargs)
         self._planner = AdaptiveBudgetPlanner.from_env()
+        executor = registration.owner()
+        self._planner.bind_runtime_identity(observe_runtime_identity(
+            config, runner=getattr(executor, "_lineage_runner", None),
+            scheduler_class=f"{type(self).__module__}.{type(self).__qualname__}",
+            executor_class=(f"{type(executor).__module__}.{type(executor).__qualname__}"
+                            if executor is not None else None),
+        ))
         self._planner.max_k = min(self._planner.max_k, self.num_spec_tokens)
         self._read_vram = _env_flag(os.environ.get("ADAPTIVE_ENABLE_VRAM_GUARD", "1"))
         self._plan = StepPlan(batch_k=0, per_request_k={})
@@ -141,11 +149,18 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                     and not getattr(r, "num_stale_output_tokens", 0)
                     and not getattr(r, "is_finished", lambda: False)()]
         try:
+            incarnations = {r.request_id: self._lineage.request_key(r) for r in requests}
             for request in eligible:
-                self._planner.bind_request(request.request_id, self._lineage.request_key(request))
+                self._planner.bind_request(request.request_id, incarnations[request.request_id])
+            state = capture_decision_state(
+                self._schedule_sequence, requests, [r.request_id for r in eligible],
+                {r.request_id: len(output.scheduled_spec_decode_tokens.get(r.request_id, ()))
+                 for r in requests}, incarnations, self._planner.runtime_identity.runtime_mode_id,
+            )
             self._plan = self._planner.plan_step(
                 [r.request_id for r in eligible], batch_size=len(eligible),
                 kv_usage=self.get_kv_cache_usage(), free_vram_mb=self._free_vram_mb(),
+                decision_state=state,
             )
         except Exception:
             if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
@@ -166,7 +181,15 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                  if getattr(self.requests.get(rid), "num_stale_output_tokens", 0) > 0}
         self._retiring = (self._lineage.get(scheduler_output), model_runner_output, stale)
         try:
-            return super().update_from_output(scheduler_output, model_runner_output)
+            result = super().update_from_output(scheduler_output, model_runner_output)
+            self._planner.finalize_cost_feedback(
+                getattr(self._retiring[0], "schedule_sequence", None), result)
+            return result
+        except BaseException:
+            self._planner.finalize_cost_feedback(
+                getattr(self._retiring[0], "schedule_sequence", None), None,
+                invalid_status="AMBIGUOUS_INVALID")
+            raise
         finally:
             self._retiring = previous
             self._lineage.retire(scheduler_output)
@@ -184,14 +207,24 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             if num_invalid_spec_tokens:
                 drafted -= num_invalid_spec_tokens.get(request_id, 0)
             binding = None
+            observed_origin = None
+            verifier_id = None
+            invalid_status = "AMBIGUOUS_INVALID"
             reason = "missing-lineage"
             if self._retiring is not None:
                 entry, result, stale = self._retiring
                 if entry is not None:
+                    verifier_id = entry.schedule_sequence
                     binding = entry.consumed.pop(request_id, None)
                 if binding is not None:
                     origin, expected = binding
+                    observed_origin = origin
                     current = self._lineage.active.get(request_id)
+                    request = self.requests.get(request_id)
+                    if getattr(getattr(request, "status", None), "name", None) == "PREEMPTED":
+                        invalid_status = "PREEMPTED_INVALID"
+                    elif request_id in stale or current is None or current[1] != origin.incarnation:
+                        invalid_status = "STALE_INVALID"
                     index = result.req_id_to_index.get(request_id)
                     valid = (current is not None and self.requests.get(request_id) is current[0]
                              and current[1] == origin.incarnation
@@ -206,6 +239,9 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                         binding = None
                         reason = "stale-or-mismatched-lineage"
             if binding is None:
+                self._planner.record_cost_feedback_invalid(
+                    request_id, drafted, num_accepted_tokens, source=observed_origin,
+                    verifier_id=verifier_id, status=invalid_status)
                 self._planner.record_lineage_failure(request_id, reason)
             elif drafted > 0:
                 origin = binding[0]
@@ -214,8 +250,11 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                     if rejection is not None:
                         self._planner.record_lineage_failure(request_id, rejection)
                     else:
+                        feedback_options = dict(source=origin, attributed=True)
+                        if self._planner.cost_governor.mode != "off":
+                            feedback_options["verifier_id"] = verifier_id
                         self._planner.record_verification(
-                            request_id, drafted, num_accepted_tokens, source=origin, attributed=True)
+                            request_id, drafted, num_accepted_tokens, **feedback_options)
                 else:
                     self._planner.record_verification(
                         request_id, drafted, num_accepted_tokens, source=origin)
@@ -236,7 +275,16 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             logger.warning("Ignoring cleanup for a replaced request: %s", request.request_id)
             return None, None
         try:
-            self._planner.finish_request(request.request_id)
+            if self._planner.cost_governor.mode == "off":
+                self._planner.finish_request(request.request_id)
+            else:
+                status_name = getattr(getattr(request, "status", None), "name", None)
+                status = ("ABORTED_INVALID" if status_name == "FINISHED_ABORTED"
+                          else "TERMINAL_CENSORED" if status_name in (
+                              "FINISHED_STOPPED", "FINISHED_LENGTH_CAPPED", "FINISHED_REPETITION")
+                          else "AMBIGUOUS_INVALID")
+                verifier = getattr(self._retiring[0], "schedule_sequence", None) if self._retiring else None
+                self._planner.finish_request(request.request_id, feedback_status=status, defer_verifier=verifier)
         except Exception:
             logger.exception("AdaptiveAsyncScheduler: telemetry failed for %s", request.request_id)
         finally:
