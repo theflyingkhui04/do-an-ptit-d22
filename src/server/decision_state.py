@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import re
+import subprocess
 import sys
 from typing import Optional
 
@@ -105,12 +106,70 @@ def _revision(model):
     return None
 
 
+def _local_runner_device(config, runner, device):
+    """Restrict host queries to the pinned, in-process UniProc worker binding.
+
+    The scheduler obtains this runner from its consumed executor registration;
+    config names or a remote executor proxy are not ownership evidence.
+    """
+    return (type(runner).__module__ == "vllm.v1.worker.gpu_model_runner"
+            and type(runner).__name__ == "GPUModelRunner"
+            and getattr(runner, "vllm_config", None) is config
+            and getattr(runner, "model_config", None) is getattr(config, "model_config", None)
+            and getattr(getattr(runner, "device", None), "type", None) == "cuda"
+            and getattr(runner.device, "index", None) == device)
+
+
+def _observe_driver_version():
+    """Read this worker host's driver, never CUDA build/configured metadata.
+
+    Called once at startup only after the local initialized runner check. Driver
+    identity is system-wide; multiple GPU rows must agree. No CUDA work or
+    synchronization is requested. Absence, timeout or malformed output is unknown.
+    """
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=2, check=False,
+        )
+        versions = set(result.stdout.splitlines())
+        if result.returncode == 0 and len(versions) == 1:
+            version = versions.pop()
+            if re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", version):
+                return version
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def _observe_loaded_quantizer(runner):
+    """Name on the unwrapped, loaded target model; no configured fallback.
+
+    Missing quant_config does not prove an unquantized model. A composed online
+    quantizer also cannot be represented by the checkpoint quantizer name alone.
+    These cases remain unknown under the existing scalar identity contract.
+    """
+    try:
+        loaded = runner.get_model()
+        quantizer = getattr(loaded, "quant_config", None)
+        if quantizer is None or getattr(quantizer, "online_quantization_config", None) is not None:
+            return None
+        name = quantizer.get_name()
+        if isinstance(name, str) and name and name.strip() == name:
+            return str(name)
+    except Exception:
+        # Model metadata access must not turn an unsupported identity into a
+        # startup crash or substitute the requested model.quantization value.
+        pass
+    return None
+
+
 def observe_runtime_identity(config, *, runner=None, scheduler_class=None, executor_class=None,
                              torch_module=None, vllm_module=None):
     """Read already-loaded runtime/config metadata, never import/init CUDA.
 
-    Configured quantization is not proof of a loaded quantizer, and no current
-    driver-version observation is installed. Those observed fields stay null.
+    Driver/loaded target quantizer observations require the existing pinned
+    local runner binding. Unknown or unsupported metadata remains null.
     """
     model = getattr(config, "model_config", None)
     spec = getattr(config, "speculative_config", None)
@@ -165,6 +224,9 @@ def observe_runtime_identity(config, *, runner=None, scheduler_class=None, execu
             observed.update(gpu_name=cuda.get_device_name(device),
                             sm_architecture=f"sm_{major}{minor}",
                             vram_total_mb=cuda.get_device_properties(device).total_memory / 2**20)
+            if _local_runner_device(config, runner, device):
+                observed["driver_version"] = _observe_driver_version()
+                observed["effective_quantization"] = _observe_loaded_quantizer(runner)
     except Exception:
         # Observation failure is an unsupported identity, not startup failure.
         observed.update(gpu_name=None, sm_architecture=None, vram_total_mb=None)
