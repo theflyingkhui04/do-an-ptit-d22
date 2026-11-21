@@ -324,7 +324,8 @@ class EagleRWCollector:
         key = scores[0]["decision_state_key_json"] if len(scores) == 1 else None
         if key != keys.get(selected):
             key = None
-        payload = dict(capture_phase="pre_action_plan_return", decision_state=state.to_record(),
+        payload = dict(capture_phase="pre_action_plan_return", plan_sequence=result.plan_sequence,
+            schedule_sequence=state.scheduler_sequence, decision_state=state.to_record(),
             decision_state_key=key, decision=decision, request_incarnations=dict(state.request_incarnations),
             K_base=dict(result.per_request_base_k), selected_cost_cap=selected,
             K_governed=dict(result.per_request_governed_k), K_applied=dict(result.per_request_k),
@@ -644,7 +645,7 @@ class EagleRWCollector:
 
 
 def _record_errors(row):
-    required = ("source_git_sha", "profile_protocol_version", "runtime_config_hash", "collection_plan_hash",
+    required = ("record_schema_version", "plan_sequence", "schedule_sequence", "source_git_sha", "profile_protocol_version", "runtime_config_hash", "collection_plan_hash",
                 "runtime_identity_snapshot", "cohort_id", "retirement_window_id", "decision_state_key",
                 "request_incarnations", "K_base", "selected_cost_cap", "K_governed", "K_applied",
                 "planned_worker_k", "old_verification_width", "actual_useful_emitted_tokens",
@@ -654,6 +655,9 @@ def _record_errors(row):
         return errors
     if not _sha(row["source_git_sha"]):
         errors.append("invalid_source_sha")
+    if (row["record_schema_version"] != "eagle_rw_retirement_v1"
+            or any(type(row[k]) is not int or row[k] <= 0 for k in ("plan_sequence","schedule_sequence"))):
+        errors.append("invalid_record_schema_or_sequence")
     identity = RuntimeIdentitySnapshotV1(**row["runtime_identity_snapshot"])
     try:
         if row["runtime_config_hash"] != runtime_config_hash(identity):
@@ -673,7 +677,7 @@ def _record_errors(row):
     if not row["cohort_id"] or row["cohort_id"] != row.get("cohort_descriptor",{}).get("cohort_id"):
         errors.append("cohort_provenance_mismatch")
     binding = row["decision_binding"]
-    for name in ("decision_state_key","request_incarnations","K_base","selected_cost_cap",
+    for name in ("plan_sequence","schedule_sequence","decision_state_key","request_incarnations","K_base","selected_cost_cap",
                  "K_governed","K_applied","planned_worker_k","old_verification_width"):
         if row[name] != binding.get(name):
             errors.append("binding_mismatch:"+name)
@@ -698,7 +702,8 @@ def _record_errors(row):
         errors.append("policy_key_mismatch")
     key = json.loads(row["decision_state_key"])
     ids = binding["decision_state"]["eligible_decode_request_ids"]
-    if (key["runtime_identity_key"] != identity.identity_key or key["runtime_mode_id"] != identity.runtime_mode_id
+    if (row["schedule_sequence"] != binding["decision_state"]["scheduler_sequence"]
+            or key["runtime_identity_key"] != identity.identity_key or key["runtime_mode_id"] != identity.runtime_mode_id
             or key["candidate_future_widths"] != [row["K_applied"][r] for r in ids]
             or key["old_verification_widths"] != [row["old_verification_width"][r] for r in ids]
             or row["planned_worker_k"] != max(row["K_applied"].values())

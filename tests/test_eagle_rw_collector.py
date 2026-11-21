@@ -123,7 +123,8 @@ def rewrite(data,mutate):
     return data
 
 
-@pytest.mark.parametrize("field",["decision_state_key","source_git_sha","runtime_config_hash","cohort_id",
+@pytest.mark.parametrize("field",["record_schema_version","plan_sequence","schedule_sequence",
+    "decision_state_key","source_git_sha","runtime_config_hash","cohort_id",
     "runtime_identity_snapshot","collection_plan_hash","K_base","selected_cost_cap","K_governed",
     "K_applied","planned_worker_k","old_verification_width","actual_useful_emitted_tokens",
     "feedback_verifier_origin"])
