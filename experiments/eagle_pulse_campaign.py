@@ -570,7 +570,8 @@ def summary(plan, state):
 
 def verify_source(root, plan):
     package = read_json(safe(root, "source/package-manifest.json"))
-    require(package["schema"] == "pulse-source-package-v1" and package["branch"] == BRANCH, "package_schema_branch")
+    require(package["schema"] == "pulse-source-package-v1" and package["branch"] == BRANCH
+            and package["source_normalization"] == "git_lf_text_v1", "package_schema_branch")
     require(package["source_git_sha"] == plan["source_git_sha"], "package_source")
     require(sha_file(safe(root, "source/reviewed-source.bundle")) == package["bundle_sha256"], "bundle_hash")
     require(package["bundle_sha256"] == safe(root, "source/bundle.sha256").read_text().strip(), "bundle_hash_link")

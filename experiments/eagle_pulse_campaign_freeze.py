@@ -40,15 +40,17 @@ def freeze(campaign_dir, max_allocations, synthetic=False):
             if Path(name).suffix not in (".py", ".json", ".toml"):
                 continue
             committed = subprocess.check_output(["git", "-c", "safe.directory=" + ROOT.as_posix(), "show", sha + ":" + name], cwd=ROOT)
+            committed = committed.replace(b"\r\n", b"\n")
             loaded = (ROOT / name).read_bytes().replace(b"\r\n", b"\n")
             require(committed == loaded == (checkout / name).read_bytes().replace(b"\r\n", b"\n"), "source_manifest:" + name)
             files[name] = hashlib.sha256(committed).hexdigest()
         package = dict(schema="pulse-source-package-v1", source_git_sha=sha, branch=BRANCH,
-                       bundle_sha256=sha_file(bundle), bundle_bytes=bundle.stat().st_size, files=files)
+                       bundle_sha256=sha_file(bundle), bundle_bytes=bundle.stat().st_size,
+                       source_normalization="git_lf_text_v1", files=files)
         verdict = dict(source_git_sha=sha, verified=True, bundle_verify=True, empty_reconstruction=True,
                        exact_head=True, clean_checkout=True, fsck_full=True, no_alternates=True,
                        runtime_manifest_files=len(files), bundle_sha256=package["bundle_sha256"], bundle_bytes=package["bundle_bytes"])
-        verdict.update(reconstruction_started_empty=True, reconstruction_head=git(checkout, "rev-parse", "HEAD"),
+        verdict.update(source_normalization="git_lf_text_v1", reconstruction_started_empty=True, reconstruction_head=git(checkout, "rev-parse", "HEAD"),
                        reconstruction_status=git(checkout, "status", "--short"),
                        bundle_verify_output=bundle_output, fsck_output=fsck_output)
         plan = make_plan(sha, max_allocations, synthetic)

@@ -49,8 +49,10 @@ class ModalExecutor:
                 subprocess.run(["git", "-C", str(project), "fsck", "--full"], check=True)
                 if (project / ".git/objects/info/alternates").exists():
                     raise RuntimeError("remote_alternates")
+                if package["source_normalization"] != "git_lf_text_v1":
+                    raise RuntimeError("remote_source_normalization")
                 for name, expected in package["files"].items():
-                    if hashlib.sha256((project / name).read_bytes()).hexdigest() != expected:
+                    if hashlib.sha256((project / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest() != expected:
                         raise RuntimeError("remote_source_file:" + name)
                 sys.path[:0] = [str(project), str(project / "src")]
                 from experiments.eagle_pulse_campaign_worker import LiveWorker
