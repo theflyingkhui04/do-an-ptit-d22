@@ -1,0 +1,323 @@
+{
+  "identities": {
+    "NVIDIA A10": {
+      "observed": [
+        [
+          "gpu_name",
+          "NVIDIA A10"
+        ],
+        [
+          "sm_architecture",
+          "sm_86"
+        ],
+        [
+          "vram_total_mb",
+          22587.0
+        ],
+        [
+          "vllm_version",
+          "0.30.0"
+        ],
+        [
+          "torch_version",
+          "2.13.0+cu130"
+        ],
+        [
+          "cuda_version",
+          "13.0"
+        ],
+        [
+          "driver_version",
+          "610.57.04"
+        ],
+        [
+          "effective_dtype",
+          "torch.bfloat16"
+        ],
+        [
+          "effective_quantization",
+          "auto_awq"
+        ]
+      ],
+      "configured": [
+        [
+          "target_model",
+          "Qwen/Qwen2.5-7B-Instruct-AWQ"
+        ],
+        [
+          "target_revision",
+          "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+        ],
+        [
+          "draft_model",
+          "duckhoi/qwen2.5-7b-eagle3.1-speculator"
+        ],
+        [
+          "draft_revision",
+          "d9016c3860f42cc3f33a87fa5d346fee768f6290"
+        ],
+        [
+          "draft_method",
+          "eagle3"
+        ],
+        [
+          "scheduler_class",
+          "src.server.adaptive_scheduler.AdaptiveAsyncScheduler"
+        ],
+        [
+          "executor_class",
+          "src.server.lineage_executor.LineageUniProcExecutor"
+        ],
+        [
+          "tensor_parallel_size",
+          1
+        ],
+        [
+          "async_scheduling",
+          true
+        ],
+        [
+          "enforce_eager",
+          true
+        ],
+        [
+          "compilation_mode",
+          0
+        ],
+        [
+          "prefix_caching",
+          true
+        ],
+        [
+          "chunked_prefill",
+          true
+        ],
+        [
+          "max_model_len",
+          2048
+        ],
+        [
+          "max_num_seqs",
+          8
+        ],
+        [
+          "gpu_memory_utilization",
+          0.85
+        ],
+        [
+          "cudagraph_mode",
+          "NONE"
+        ],
+        [
+          "cache_dtype",
+          "auto"
+        ],
+        [
+          "cache_block_size",
+          16
+        ],
+        [
+          "speculative_ceiling",
+          4
+        ],
+        [
+          "disable_padded_drafter_batch",
+          false
+        ],
+        [
+          "max_num_batched_tokens",
+          2048
+        ],
+        [
+          "configured_quantization",
+          "auto_awq"
+        ],
+        [
+          "configured_dtype",
+          "torch.bfloat16"
+        ]
+      ],
+      "schema_version": "runtime_identity_snapshot_v1"
+    },
+    "NVIDIA A10G": {
+      "observed": [
+        [
+          "gpu_name",
+          "NVIDIA A10G"
+        ],
+        [
+          "sm_architecture",
+          "sm_86"
+        ],
+        [
+          "vram_total_mb",
+          22609.1875
+        ],
+        [
+          "vllm_version",
+          "0.30.0"
+        ],
+        [
+          "torch_version",
+          "2.13.0+cu130"
+        ],
+        [
+          "cuda_version",
+          "13.0"
+        ],
+        [
+          "driver_version",
+          "620.70.06"
+        ],
+        [
+          "effective_dtype",
+          "torch.bfloat16"
+        ],
+        [
+          "effective_quantization",
+          "auto_awq"
+        ]
+      ],
+      "configured": [
+        [
+          "target_model",
+          "Qwen/Qwen2.5-7B-Instruct-AWQ"
+        ],
+        [
+          "target_revision",
+          "b25037543e9394b818fdfca67ab2a00ecc7dd641"
+        ],
+        [
+          "draft_model",
+          "duckhoi/qwen2.5-7b-eagle3.1-speculator"
+        ],
+        [
+          "draft_revision",
+          "d9016c3860f42cc3f33a87fa5d346fee768f6290"
+        ],
+        [
+          "draft_method",
+          "eagle3"
+        ],
+        [
+          "scheduler_class",
+          "src.server.adaptive_scheduler.AdaptiveAsyncScheduler"
+        ],
+        [
+          "executor_class",
+          "src.server.lineage_executor.LineageUniProcExecutor"
+        ],
+        [
+          "tensor_parallel_size",
+          1
+        ],
+        [
+          "async_scheduling",
+          true
+        ],
+        [
+          "enforce_eager",
+          true
+        ],
+        [
+          "compilation_mode",
+          0
+        ],
+        [
+          "prefix_caching",
+          true
+        ],
+        [
+          "chunked_prefill",
+          true
+        ],
+        [
+          "max_model_len",
+          2048
+        ],
+        [
+          "max_num_seqs",
+          8
+        ],
+        [
+          "gpu_memory_utilization",
+          0.85
+        ],
+        [
+          "cudagraph_mode",
+          "NONE"
+        ],
+        [
+          "cache_dtype",
+          "auto"
+        ],
+        [
+          "cache_block_size",
+          16
+        ],
+        [
+          "speculative_ceiling",
+          4
+        ],
+        [
+          "disable_padded_drafter_batch",
+          false
+        ],
+        [
+          "max_num_batched_tokens",
+          2048
+        ],
+        [
+          "configured_quantization",
+          "auto_awq"
+        ],
+        [
+          "configured_dtype",
+          "torch.bfloat16"
+        ]
+      ],
+      "schema_version": "runtime_identity_snapshot_v1"
+    }
+  },
+  "engine_args": {
+    "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "dtype": "bfloat16",
+    "quantization": "awq_marlin",
+    "generation_config": "vllm",
+    "max_num_seqs": 8,
+    "max_model_len": 2048,
+    "gpu_memory_utilization": 0.85,
+    "enforce_eager": true,
+    "compilation_config": {
+      "mode": 0
+    },
+    "tensor_parallel_size": 1,
+    "async_scheduling": true,
+    "scheduler_cls": "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
+    "distributed_executor_backend": "src.server.lineage_executor.LineageUniProcExecutor",
+    "speculative_config": {
+      "method": "eagle3",
+      "model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+      "revision": "d9016c3860f42cc3f33a87fa5d346fee768f6290",
+      "num_speculative_tokens": 4,
+      "draft_sample_method": "greedy",
+      "num_speculative_tokens_per_batch_size": [
+        [
+          1,
+          32,
+          4
+        ]
+      ]
+    },
+    "enable_prefix_caching": true,
+    "enable_chunked_prefill": true,
+    "max_num_batched_tokens": 2048,
+    "block_size": 16,
+    "kv_cache_dtype": "auto"
+  },
+  "prompt": "Count from 1 to 20, writing each number on a new line.",
+  "max_tokens": 64,
+  "max_engine_steps": 128,
+  "seed": 731
+}
