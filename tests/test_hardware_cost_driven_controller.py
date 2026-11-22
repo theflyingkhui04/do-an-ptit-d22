@@ -200,3 +200,44 @@ def test_cost_driven_handles_intermediate_batch_size_via_closest_grid_point():
     ).select_budget(batch_size=2)
     assert d3.k == d2.k
     assert d3.cost_k_ms == pytest.approx(d2.cost_k_ms)
+
+
+def test_planner_from_env_records_cost_driven_telemetry_and_warns_non_monotonic(tmp_path, caplog):
+    """AC-05: Planner nạp FLEXSDS_PROFILE_PATH, log cảnh báo không đơn điệu và ghi telemetry R6/R8."""
+    import logging
+    from src.server.budget_planner import AdaptiveBudgetPlanner
+
+    step_path = tmp_path / "serving_steps.jsonl"
+    with caplog.at_level(logging.WARNING, logger="src.server.budget_planner"):
+        planner = AdaptiveBudgetPlanner.from_env(
+            {
+                "FLEXSDS_PROFILE_PATH": str(A10G_PROFILE_PATH),
+                "ADAPTIVE_STEP_TELEMETRY_PATH": str(step_path),
+                "ADAPTIVE_CONTROLLER_KWARGS": json.dumps({"initial_alpha": 0.70}),
+            }
+        )
+
+    assert "non-monotonic" in caplog.text.lower()
+
+    plan_b1 = planner.plan_step(["req-a"], batch_size=1, kv_usage=0.1, free_vram_mb=16000.0)
+    plan_b32 = planner.plan_step(["req-b"], batch_size=32, kv_usage=0.1, free_vram_mb=16000.0)
+    assert plan_b1.batch_k == 4
+    assert plan_b32.batch_k == 0
+
+    lines = [json.loads(line) for line in step_path.read_text(encoding="utf-8").splitlines()]
+    rec_b1, rec_b32 = lines[0], lines[1]
+
+    assert rec_b1["decision_policy"] == "cost_model"
+    assert rec_b1["hardware_profile"]["device"] == "NVIDIA A10"
+    assert rec_b1["hardware_profile"]["sm_architecture"] == "sm_86"
+    assert rec_b1["hardware_profile"]["sha256"]
+    assert rec_b1["theoretical_speedup"] > 1.05
+    assert rec_b1["dynamic_alpha_star"] is not None
+    assert rec_b1["cost_k_ms"] > 0
+    assert rec_b1["cost_baseline_ms"] > 0
+    assert rec_b1["cost_ref_ms"] > 0
+    assert rec_b1["non_monotonic_cost"] is True
+
+    assert rec_b32["decision_policy"] == "cost_model"
+    assert rec_b32["scalar_runtime_budget"] == 0
+    assert rec_b32["non_monotonic_cost"] is False

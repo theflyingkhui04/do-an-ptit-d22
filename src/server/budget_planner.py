@@ -51,6 +51,7 @@ class AdaptiveBudgetPlanner:
         per_request: bool = True,
         telemetry_path: Optional[str] = None,
         step_telemetry_path: Optional[str] = None,
+        hardware_profile: Optional[dict] = None,
     ):
         if max_k < 0 or min_batch_k < 0:
             raise ValueError("max_k and min_batch_k must be non-negative")
@@ -64,6 +65,7 @@ class AdaptiveBudgetPlanner:
         self.per_request = per_request
         self.telemetry_path = telemetry_path
         self.step_telemetry_path = step_telemetry_path
+        self.hardware_profile = deepcopy(hardware_profile) if hardware_profile else None
         self._known_requests: Set[str] = set()
         self._last_decisions: Dict[str, dict] = {}
         self._scheduled_runtime_modes: Dict[str, str] = {}
@@ -114,7 +116,8 @@ class AdaptiveBudgetPlanner:
         for req_id, decision in decisions.items():
             raw_alpha, effective_alpha = alpha_signals[req_id]
             record = _decision_record(decision, nodes[req_id], batch_size, kv_pct, free_vram_mb,
-                                      raw_alpha=raw_alpha, effective_alpha=effective_alpha)
+                                      raw_alpha=raw_alpha, effective_alpha=effective_alpha,
+                                      hardware_profile=self.hardware_profile)
             record.update(request_id=req_id, lane="adaptive", record_type="planned_decision",
                           controller_class=f"{type(self.adapter.get_controller(req_id)).__module__}.{type(self.adapter.get_controller(req_id)).__name__}",
                           plan_sequence=self._plan_sequence, scalar_runtime_budget=per_request_k[req_id],
@@ -236,10 +239,14 @@ class AdaptiveBudgetPlanner:
             raise ValueError("ADAPTIVE_CONTROLLER_KWARGS must be a JSON object")
 
         profile_path = env.get("FLEXSDS_PROFILE_PATH")
+        hardware_profile: Optional[dict] = None
         if profile_path:
             import hashlib
             from pathlib import Path
-            from flexsds.core.cost_model import validate_measured_profile
+            from flexsds.core.cost_model import (
+                inspect_cost_matrix_monotonicity,
+                validate_measured_profile,
+            )
             from src.proposer.controller import EmpiricalCostProfile
             raw = Path(profile_path).read_bytes()
             data = validate_measured_profile(json.loads(raw))
@@ -247,8 +254,25 @@ class AdaptiveBudgetPlanner:
                       for key, value in data['cost_matrix_ms'].items()}
             controller_kwargs['cost_profile'] = EmpiricalCostProfile(matrix=matrix)
             controller_kwargs['candidate_budgets'] = data['grid']['candidate_budgets']
-            logger.info("Loaded empirical hardware profile %s sha256=%s", profile_path,
-                        hashlib.sha256(raw).hexdigest())
+            digest = hashlib.sha256(raw).hexdigest()
+            anomalies = inspect_cost_matrix_monotonicity(data['cost_matrix_ms'])
+            below_k0 = [item for item in anomalies if item['below_k0']]
+            if below_k0:
+                logger.warning(
+                    "Measured hardware profile %s has %d non-monotonic cost cells "
+                    "(C(k, B) < C(0, B)); lower-bound reference C_ref(B) normalization is active.",
+                    profile_path,
+                    len(below_k0),
+                )
+            metadata = data.get("metadata", {})
+            hardware_profile = {
+                "name": Path(profile_path).name,
+                "sha256": digest,
+                "device": metadata.get("device"),
+                "sm_architecture": metadata.get("sm_architecture"),
+                "non_monotonic_cell_count": len(anomalies),
+            }
+            logger.info("Loaded empirical hardware profile %s sha256=%s", profile_path, digest)
 
         if "ADAPTIVE_ENABLE_VRAM_GUARD" in env:
             controller_kwargs["enable_vram_guard"] = _env_flag(env["ADAPTIVE_ENABLE_VRAM_GUARD"])
@@ -260,6 +284,7 @@ class AdaptiveBudgetPlanner:
             per_request=_env_flag(env.get("ADAPTIVE_PER_REQUEST", "1")),
             telemetry_path=env.get("ADAPTIVE_TELEMETRY_PATH") or None,
             step_telemetry_path=env.get("ADAPTIVE_STEP_TELEMETRY_PATH") or None,
+            hardware_profile=hardware_profile,
         )
 
 
@@ -269,7 +294,8 @@ def _env_flag(value: str) -> bool:
 
 def _decision_record(decision: BudgetDecision, nodes: int, batch_size: int,
                      kv_pct: float, free_vram_mb: Optional[float], *,
-                     raw_alpha: Optional[float], effective_alpha: Optional[float]) -> dict:
+                     raw_alpha: Optional[float], effective_alpha: Optional[float],
+                     hardware_profile: Optional[dict] = None) -> dict:
     """Additive Interface A v0.2 decision fields (spec §4.6).
 
     Never derive a topology from a scalar count. Unknown identities keep their
@@ -287,7 +313,8 @@ def _decision_record(decision: BudgetDecision, nodes: int, batch_size: int,
                     "depth_d": None, "parent_indices": None}
     status = getattr(decision, "status", None)
     return {
-        "engine_version": None, "hardware_profile": None,
+        "engine_version": None,
+        "hardware_profile": deepcopy(hardware_profile) if hardware_profile else None,
         "concurrency_batch_b": batch_size, "acceptance_rate_ema": finite(raw_alpha),
         "effective_alpha": finite(effective_alpha),
         "dynamic_alpha_star": finite(getattr(decision, "alpha_star", None)),
@@ -295,6 +322,11 @@ def _decision_record(decision: BudgetDecision, nodes: int, batch_size: int,
         "mean_accepted_tokens_tau": None,
         "theoretical_speedup": finite(getattr(decision, "speedup", None)),
         "actual_step_latency_ms": None,
+        "decision_policy": getattr(decision, "decision_policy", None),
+        "cost_k_ms": finite(getattr(decision, "cost_k_ms", None)),
+        "cost_baseline_ms": finite(getattr(decision, "cost_baseline_ms", None)),
+        "cost_ref_ms": finite(getattr(decision, "cost_ref_ms", None)),
+        "non_monotonic_cost": bool(getattr(decision, "non_monotonic_cost", False)),
         "memory_status": {"free_vram_mb": finite(free_vram_mb),
                           "kv_cache_usage_pct": finite(kv_pct),
                           "guard_triggered": status == "memory_guard" if status else None},
