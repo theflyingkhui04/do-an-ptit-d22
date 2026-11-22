@@ -45,3 +45,40 @@ def test_local_source_handoff(handoff, identifier):
     elif identifier == "CAM-N10":
         assert c.sha_file(bundle) == package["bundle_sha256"] == verdict["bundle_sha256"]
         assert bundle.stat().st_size == package["bundle_bytes"] == verdict["bundle_bytes"]
+
+
+def test_freeze_normalizes_windows_checkout(tmp_path, monkeypatch):
+    """Git may check out CRLF while committed canonical text uses LF."""
+    import subprocess
+    import shutil
+    import experiments.eagle_pulse_campaign_freeze as f
+    original_root = c.ROOT
+    repo = tmp_path / "source"
+    repo.mkdir()
+    (repo / "experiments").mkdir()
+    (repo / "src").mkdir()
+    shutil.copyfile(original_root / "experiments/eagle_pulse_campaign_contract.json",
+                    repo / "experiments/eagle_pulse_campaign_contract.json")
+    (repo / "src/example.py").write_bytes(b"VALUE = 1\r\n")
+    (repo / "pyproject.toml").write_bytes(b"[project]\r\nname = 'cpu-source-fixture'\r\n")
+    (repo / ".gitattributes").write_text("* text eol=crlf\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.longpaths")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+    def git(*args):
+        return subprocess.check_output(["git", "-c", "safe.directory=" + repo.as_posix(),
+            "-c", "user.name=CPU Fixture", "-c", "user.email=cpu@example.invalid",
+            "-c", "commit.gpgsign=false", "-C", str(repo), *args])
+    git("init", "--quiet", "--initial-branch=" + c.BRANCH)
+    git("add", "--", ".gitattributes", "src/example.py", "pyproject.toml",
+        "experiments/eagle_pulse_campaign_contract.json")
+    git("commit", "--quiet", "-m", "CPU source fixture")
+    assert b"\r\n" not in git("show", "HEAD:src/example.py")
+    monkeypatch.setattr(c, "ROOT", repo)
+    monkeypatch.setattr(f, "ROOT", repo)
+    monkeypatch.setattr(f, "validate", lambda root: c.validate(root, checkout=repo))
+    result = f.freeze(tmp_path / "campaign", 1, synthetic=True)
+    assert result["verified"] and result["clean_checkout"]
+    assert result["empty_reconstruction"] and result["no_alternates"]
+    plan, state = c.validate(tmp_path / "campaign", checkout=repo)
+    assert state["status"] == "READY" and state["allocation_count"] == 0

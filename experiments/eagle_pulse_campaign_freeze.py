@@ -41,7 +41,7 @@ def freeze(campaign_dir, max_allocations, synthetic=False):
                 continue
             committed = subprocess.check_output(["git", "-c", "safe.directory=" + ROOT.as_posix(), "show", sha + ":" + name], cwd=ROOT)
             loaded = (ROOT / name).read_bytes().replace(b"\r\n", b"\n")
-            require(committed == loaded == (checkout / name).read_bytes(), "source_manifest:" + name)
+            require(committed == loaded == (checkout / name).read_bytes().replace(b"\r\n", b"\n"), "source_manifest:" + name)
             files[name] = hashlib.sha256(committed).hexdigest()
         package = dict(schema="pulse-source-package-v1", source_git_sha=sha, branch=BRANCH,
                        bundle_sha256=sha_file(bundle), bundle_bytes=bundle.stat().st_size, files=files)
