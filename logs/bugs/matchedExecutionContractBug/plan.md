@@ -44,7 +44,7 @@
   - `LocalServingRunner.build_command(config, port=None) -> List[str]` và `LocalServingRunner.setup_environment(config) -> Dict[str, str]` áp dụng đúng FR-01 và FR-02.
   - `LocalServingRunner.launch(..., dry_run=True)` in thêm dòng `Execution contract: <label>`.
 
-- [ ] **Bước 1: Viết các bài test thất bại cho AC-01, AC-02, AC-03 và Review Focus #1–#3**
+- [x] **Bước 1: Viết các bài test thất bại cho AC-01, AC-02, AC-03 và Review Focus #1–#3**
 
 Tạo `do-an-ptit-d22/tests/test_matched_execution_contract.py`:
 ```python
@@ -204,12 +204,12 @@ def test_static_k_customization_and_invalid_option_rejection():
             runner.setup_environment(bad)
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy từ `do-an-ptit-d22/`: `PYTHONPATH=src:. pytest tests/test_matched_execution_contract.py -v`
 Kết quả mong đợi: `FAIL` (do `LocalServingRunner` chưa có `describe_execution_contract` và chưa xử lý 4 trường mới).
 
-- [ ] **Bước 3: Triển khai FR-01 và FR-02 trong `src/flexsds/server/local_runner.py`**
+- [x] **Bước 3: Triển khai FR-01 và FR-02 trong `src/flexsds/server/local_runner.py`**
 
 1. Thêm method nội bộ `_validate_execution_options(self, serving_cfg: Dict[str, Any]) -> None` kiểm tra các điều kiện mâu thuẫn (`disable_speculative` + `enable_adaptive`, `static_k` với `enable_adaptive`/`disable_speculative`, `static_k` không phải `int` không-`bool` trong `1..8`).
 2. Thêm method `describe_execution_contract(self, config: Dict[str, Any]) -> str` trả đúng chuỗi nhãn như khối **Interfaces**.
@@ -226,12 +226,12 @@ Kết quả mong đợi: `FAIL` (do `LocalServingRunner` chưa có `describe_exe
    - Ở nhánh `else` (`enable_adaptive=False`): xóa `FLEXSDS_PROFILE_PATH`, `ADAPTIVE_STRICT`, `ADAPTIVE_STEP_TELEMETRY_PATH`, `ADAPTIVE_STARTUP_TELEMETRY_PATH`, `ADAPTIVE_CONTROLLER_KWARGS`; nếu `match_adaptive_runtime=True` đặt `env["VLLM_USE_V2_MODEL_RUNNER"] = "0"`, ngược lại `env.pop("VLLM_USE_V2_MODEL_RUNNER", None)`.
 5. Trong `launch(..., dry_run=True)`: in thêm dòng `Execution contract: {self.describe_execution_contract(config)}`.
 
-- [ ] **Bước 4: Chạy test mới và `test_local_runner.py` xác nhận pass**
+- [x] **Bước 4: Chạy test mới và `test_local_runner.py` xác nhận pass**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_matched_execution_contract.py tests/test_local_runner.py -v`
 Kết quả mong đợi: 100% PASS.
 
-- [ ] **Bước 5: Commit Tác vụ 1**
+- [x] **Bước 5: Commit Tác vụ 1**
 
 ```bash
 git add src/flexsds/server/local_runner.py tests/test_matched_execution_contract.py
@@ -252,7 +252,7 @@ git commit -m "feat(runner): add matched execution contract, vanilla mode, and e
   - `ModalServingRunner.setup_environment()` chuyển tiếp thêm 4 khóa `"match_adaptive_runtime"`, `"disable_speculative"`, `"disable_prefix_caching"`, `"static_k"` vào `FLEXSDS_SERVING_CONFIG`.
   - `ModalServingRunner.launch()` xác thực cấu hình sớm trên host khi có bất kỳ cờ đối chứng nào và in `Execution contract:` khi `dry_run=True`.
 
-- [ ] **Bước 1: Viết bài test thất bại cho AC-04 và Review Focus #4**
+- [x] **Bước 1: Viết bài test thất bại cho AC-04 và Review Focus #4**
 
 Bổ sung vào `do-an-ptit-d22/tests/test_matched_execution_contract.py`:
 ```python
@@ -288,24 +288,24 @@ def test_modal_runner_forwards_matched_contract_keys_and_validates_early(capsys)
         runner.launch(invalid_cfg, deploy=False, dry_run=True)
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_matched_execution_contract.py::test_modal_runner_forwards_matched_contract_keys_and_validates_early -v`
 Kết quả mong đợi: FAIL (`KeyError: 'match_adaptive_runtime'`).
 
-- [ ] **Bước 3: Cập nhật `src/flexsds/server/modal_runner.py`**
+- [x] **Bước 3: Cập nhật `src/flexsds/server/modal_runner.py`**
 
 1. Trong `setup_environment()` (dòng 76–77), thêm `"match_adaptive_runtime"`, `"disable_speculative"`, `"disable_prefix_caching"`, `"static_k"` vào tuple `keys`.
 2. Trong `launch()` (dòng 111–125):
    - Khi `cfg.get("enable_adaptive", False)` hoặc bất kỳ khóa nào trong `("match_adaptive_runtime", "disable_speculative", "disable_prefix_caching")` bật hoặc `cfg.get("static_k") is not None`: gọi `LocalServingRunner().build_command(config)` và `LocalServingRunner().setup_environment(config)` để fail-fast ngay trên máy host.
    - Ở nhánh `if dry_run:`, in thêm `print(f"Execution contract: {LocalServingRunner().describe_execution_contract(config)}")`.
 
-- [ ] **Bước 4: Chạy test mới và bộ test Modal offline**
+- [x] **Bước 4: Chạy test mới và bộ test Modal offline**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_matched_execution_contract.py tests/test_modal_runner_cli.py tests/test_modal_app_container_paths.py -v`
 Kết quả mong đợi: 100% PASS.
 
-- [ ] **Bước 5: Commit Tác vụ 2**
+- [x] **Bước 5: Commit Tác vụ 2**
 
 ```bash
 git add src/flexsds/server/modal_runner.py tests/test_matched_execution_contract.py
@@ -327,7 +327,7 @@ git commit -m "feat(modal_runner): forward and pre-validate matched execution co
   - Validation fail-fast trả exit code `2` ngay trước khi gọi preflight mạng.
   - Luồng `--vanilla` khởi chạy trực tiếp chỉ cần `--target` (hoặc `--dry-run` với `--backend`/`--gpu`), bỏ qua kiểm tra draft model và hardware profile.
 
-- [ ] **Bước 1: Viết bài test thất bại cho AC-05 và Review Focus #5**
+- [x] **Bước 1: Viết bài test thất bại cho AC-05 và Review Focus #5**
 
 Bổ sung vào `do-an-ptit-d22/tests/test_matched_execution_contract.py`:
 ```python
@@ -378,12 +378,12 @@ def test_cli_vanilla_matched_modal_dry_run_succeeds_offline_without_draft(capsys
     assert '"disable_prefix_caching": true' in out
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_matched_execution_contract.py -k "test_cli_" -v`
 Kết quả mong đợi: FAIL (`SystemExit: 2` do argparse chưa biết các cờ mới).
 
-- [ ] **Bước 3: Cập nhật `src/flexsds/cli/main.py`**
+- [x] **Bước 3: Cập nhật `src/flexsds/cli/main.py`**
 
 1. Trong `parse_args()` (dòng 181–192), thêm vào `serve_parser`:
    - `--match-adaptive-runtime` (`action="store_true"`)
@@ -401,12 +401,12 @@ Kết quả mong đợi: FAIL (`SystemExit: 2` do argparse chưa biết các c�
      `"match_adaptive_runtime": args.match_adaptive_runtime`, `"disable_speculative": False`, `"disable_prefix_caching": args.no_prefix_caching`, `"static_k": args.static_k`.
 4. Ở nhánh `if args.dry_run:`, `LocalServingRunner().launch(..., dry_run=True)` và `ModalServingRunner().launch(..., dry_run=True)` đã tự in `Execution contract: ...` (không in trùng lặp 2 lần).
 
-- [ ] **Bước 4: Chạy toàn bộ `test_matched_execution_contract.py` để xác nhận pass**
+- [x] **Bước 4: Chạy toàn bộ `test_matched_execution_contract.py` để xác nhận pass**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_matched_execution_contract.py -v`
 Kết quả mong đợi: 100% PASS.
 
-- [ ] **Bước 5: Commit Tác vụ 3**
+- [x] **Bước 5: Commit Tác vụ 3**
 
 ```bash
 git add src/flexsds/cli/main.py tests/test_matched_execution_contract.py
@@ -421,7 +421,7 @@ git commit -m "feat(cli): expose --match-adaptive-runtime, --vanilla, --no-prefi
 - Create: `do-an-ptit-d22/logs/bugs/matchedExecutionContractBug/progress.md`
 - Modify: `do-an-ptit-d22/logs/bugs/matchedExecutionContractBug/plan.md` & `2026-11-22-matched-execution-contract-spec.md`
 
-- [ ] **Bước 1: Chạy toàn bộ bộ test hồi quy offline (AC-06)**
+- [x] **Bước 1: Chạy toàn bộ bộ test hồi quy offline (AC-06)**
 
 Chạy từ `do-an-ptit-d22/`:
 ```bash
@@ -446,11 +446,11 @@ PYTHONPATH=src:. pytest \
 ```
 Kết quả mong đợi: 100% PASS (0 failed).
 
-- [ ] **Bước 2: Ghi `logs/bugs/matchedExecutionContractBug/progress.md` và cập nhật trạng thái spec/plan**
+- [x] **Bước 2: Ghi `logs/bugs/matchedExecutionContractBug/progress.md` và cập nhật trạng thái spec/plan**
 
 Ghi lại danh sách commit SHA, kết quả kiểm thử, và 3 lệnh CLI mẫu sẵn sàng chạy đối chứng trực tiếp trên Modal A10G (Vanilla matched / Static matched / Adaptive ON).
 
-- [ ] **Bước 3: Commit tài liệu tiến độ**
+- [x] **Bước 3: Commit tài liệu tiến độ**
 
 ```bash
 git add logs/bugs/matchedExecutionContractBug/

@@ -3,7 +3,7 @@
 - **Mã tài liệu**: SPEC-MATCHED-EXEC-20261122
 - **Ngày tạo**: 2026-11-22
 - **Tác giả**: Đội ngũ phát triển FlexSDS (D22 PTIT)
-- **Trạng thái**: Bản nháp đề xuất chờ phê duyệt (Proposed — chưa sửa code)
+- **Trạng thái**: Đã triển khai và kiểm thử xong trên CPU (Implemented & CPU-verified — chờ kiểm chứng GPU trên Modal A10G)
 - **Liên kết kiểm toán**: Problem 1 / Mục 16 (`Adaptive ON/OFF không policy-isolated`) và Problem 6 (`Correctness / lossless chưa đóng`) trên nhánh `audit/flexsds-v023-hardwareadaptive-20261120`
 - **Phạm vi tác động**:
   - `src/flexsds/server/local_runner.py` (`LocalServingRunner.build_command`, `LocalServingRunner.setup_environment`, `LocalServingRunner.launch`)
