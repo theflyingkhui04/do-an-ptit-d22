@@ -15,8 +15,18 @@ import experiments.eagle_pulse_campaign as c
 
 
 @pytest.mark.parametrize("q", [0, 2, 3], ids=["CAM-native-q0", "CAM-native-q2", "CAM-native-q3"])
-def test_worker_native_queue_fresh_request_reset(native_runtime, q):
+def test_worker_native_queue_fresh_request_reset(native_runtime, q, monkeypatch):
     from src.proposer.pulse_policy import PulseCostGovernor, PulseSurvivalHistory
+    from experiments.eagle_rw_collector import EaglePulseCycleCollector
+    original_export = EaglePulseCycleCollector.export
+    deny_export = {"value": False}
+    def finalized_export(collector):
+        assert not collector.planner.pulse_cycles.active, "source export inside timed native cycle"
+        result = original_export(collector)
+        if deny_export["value"]:
+            result.update(canonical_profile_input=False, source_valid=False)
+        return result
+    monkeypatch.setattr(EaglePulseCycleCollector, "export", finalized_export)
     scheduler, old_request, _, status = native_runtime
     plan = make_plan(c.BASE_SHA, 8, True)
     p = scheduler._planner
@@ -100,3 +110,10 @@ def test_worker_native_queue_fresh_request_reset(native_runtime, q):
     with pytest.raises(c.CampaignError, match="already_attempted"):
         worker.execute("NVIDIA A10", f"old0_q{q}", "002", "cpu-000")
     assert len(requests) == len(resets) == 2
+
+    deny_export["value"] = True
+    failed = worker.execute("NVIDIA A10", f"old0_q{q}", "002", "cpu-002")
+    assert "collector_export_not_canonical" in failed["failure"]
+    assert failed["record"]["status"] == "INVALID"
+    assert len(failed["record"]["retirements"]) == 2
+    assert len(requests) == len(resets) == 3

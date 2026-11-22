@@ -110,15 +110,18 @@ class LiveWorker:
                 p.plan_step = prepare
                 for _ in range(128):
                     self.step()
-                    if collector is not None:
+                    if collector is not None and any(
+                            record.get("cohort_id") == cid for record in p.pulse_cycles.records):
+                        # Source/export validation runs only after the native
+                        # terminal record has sampled t1, never between queue steps.
                         exported = collector.export()
-                        if exported["records"]:
-                            row = exported["records"][0]
-                            break
+                        row = exported["records"][0]
+                        break
                 else:
                     raise RuntimeError("bounded_slot_engine_steps_exhausted")
                 require(collector is not None, "missing_decode_pulse")
                 require(row["status"] == "COMPLETE", "native_cycle_not_complete")
+                require(exported["canonical_profile_input"] and exported["source_valid"], "collector_export_not_canonical")
                 # The lease admits base3 on its actual StepPlan; preserve that
                 # existing admission predicate rather than infer from product.
                 for receipt in (row["pulse_receipt"], row["continuation_receipt"]):
