@@ -154,3 +154,35 @@ def test_static_k_customization_and_invalid_option_rejection():
             runner.build_command(bad)
         with pytest.raises(ValueError):
             runner.setup_environment(bad)
+
+
+def test_modal_runner_forwards_matched_contract_keys_and_validates_early(capsys):
+    """AC-04 & Review Focus #4: ModalServingRunner chuyển tiếp đủ 4 khóa và chặn cấu hình sai sớm."""
+    from flexsds.server.modal_runner import ModalServingRunner
+
+    runner = ModalServingRunner()
+    cfg = _base_pair_cfg(
+        enable_adaptive=False,
+        match_adaptive_runtime=True,
+        disable_prefix_caching=True,
+        static_k=3,
+        target_gpu="A10G",
+    )
+    env = runner.setup_environment(cfg)
+    payload = json.loads(env["FLEXSDS_SERVING_CONFIG"])
+    assert payload["match_adaptive_runtime"] is True
+    assert payload["disable_prefix_caching"] is True
+    assert payload["static_k"] == 3
+
+    runner.launch(cfg, deploy=False, dry_run=True)
+    out = capsys.readouterr().out
+    assert "Execution contract: static-matched-eager-v1+no-prefix-cache" in out
+
+    invalid_cfg = _base_pair_cfg(
+        enable_adaptive=False,
+        disable_speculative=True,
+        static_k=3,
+        target_gpu="A10G",
+    )
+    with pytest.raises(ValueError):
+        runner.launch(invalid_cfg, deploy=False, dry_run=True)

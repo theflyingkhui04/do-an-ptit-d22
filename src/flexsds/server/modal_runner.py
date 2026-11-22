@@ -73,8 +73,12 @@ class ModalServingRunner:
     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
         """Forward non-secret serving settings and package paths for app construction."""
         cfg = config.get("serving", config)
-        keys = ("target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
-                "target_revision", "draft_revision", "port", "enable_adaptive", "target_gpu", "max_model_len", "max_num_seqs", "profile_path")
+        keys = (
+            "target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
+            "target_revision", "draft_revision", "port", "enable_adaptive",
+            "target_gpu", "max_model_len", "max_num_seqs", "profile_path",
+            "match_adaptive_runtime", "disable_speculative", "disable_prefix_caching", "static_k",
+        )
         if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
             # Calibration also uses this method without the serving launch preflight.
             from flexsds.server.modal_auth import prepare_modal_auth
@@ -109,10 +113,17 @@ class ModalServingRunner:
             return None
 
         cfg = config.get('serving', config)
-        if cfg.get('enable_adaptive', False):
-            from flexsds.server.local_runner import LocalServingRunner
-            LocalServingRunner().build_command(config)
-            LocalServingRunner().setup_environment(config)
+        from flexsds.server.local_runner import LocalServingRunner
+        local_runner = LocalServingRunner()
+        if (
+            cfg.get('enable_adaptive', False)
+            or cfg.get('match_adaptive_runtime', False)
+            or cfg.get('disable_speculative', False)
+            or cfg.get('disable_prefix_caching', False)
+            or cfg.get('static_k') is not None
+        ):
+            local_runner.build_command(config)
+            local_runner.setup_environment(config)
 
         cmd = self.build_modal_command(config, deploy=deploy)
 
@@ -120,6 +131,7 @@ class ModalServingRunner:
             mode_desc = "Persistent Deploy" if deploy else "Ephemeral Run"
             print(f"\n[FlexSDS Modal] Dry-run command ({mode_desc}):")
             print(" ".join(cmd))
+            print(f"Execution contract: {local_runner.describe_execution_contract(config)}")
             print(f"Serving configuration: {self.setup_environment(config)['FLEXSDS_SERVING_CONFIG']}")
             return None
 
