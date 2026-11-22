@@ -17,7 +17,7 @@ class BudgetDecision:
     speedup: Optional[float] = None
     alpha_star: Optional[float] = None
     status: str = "ok"
-    decision_policy: str = "threshold"
+    decision_policy: Optional[str] = None
     cost_k_ms: Optional[float] = None
     cost_baseline_ms: Optional[float] = None
     cost_ref_ms: Optional[float] = None
@@ -259,7 +259,12 @@ class AdaptiveDraftController(BudgetController):
             )
         if memory_cooldown_steps < 1:
             raise ValueError("memory_cooldown_steps must be >= 1")
-        if not (isinstance(min_speedup_ratio, (int, float)) and math.isfinite(min_speedup_ratio) and min_speedup_ratio >= 1.0):
+        if not (
+            not isinstance(min_speedup_ratio, bool)
+            and isinstance(min_speedup_ratio, (int, float))
+            and math.isfinite(min_speedup_ratio)
+            and min_speedup_ratio >= 1.0
+        ):
             raise ValueError("min_speedup_ratio must be finite and >= 1.0")
 
         self.step_count = 0
@@ -468,13 +473,23 @@ class AdaptiveDraftController(BudgetController):
         batch_size: int = 1,
     ) -> BudgetDecision:
         """Selects k* using measured C(k, B) with lower-bound C_ref(B) normalization."""
+        if not (not isinstance(alpha, bool) and isinstance(alpha, (int, float)) and math.isfinite(alpha)):
+            alpha = 0.0
+        else:
+            alpha = min(max(float(alpha), 0.0), 1.0)
+
         positive_candidates = sorted(k for k in set(self.candidate_budgets) if k > 0)
         all_candidates = [0] + positive_candidates
 
         costs: Dict[int, float] = {}
         for cand_k in all_candidates:
             cost_val = self.cost_profile.get_cost(k=cand_k, batch_size=batch_size)
-            if not (isinstance(cost_val, (int, float)) and math.isfinite(cost_val) and cost_val > 0.0):
+            if not (
+                not isinstance(cost_val, bool)
+                and isinstance(cost_val, (int, float))
+                and math.isfinite(cost_val)
+                and cost_val > 0.0
+            ):
                 raise ValueError(
                     f"Cost profile entry for k={cand_k}, batch_size={batch_size} must be finite and positive; got {cost_val!r}"
                 )

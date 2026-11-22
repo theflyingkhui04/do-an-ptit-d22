@@ -17,6 +17,8 @@
 | 3 | `6e56027` | `feat(cost_model): add non-monotonicity diagnostic helper for measured profiles` (Tác vụ 1 — FR-04) |
 | 4 | `392bfd0` | `feat(controller): drive AdaptiveDraftController K selection from EmpiricalCostProfile` (Tác vụ 2 — FR-01, FR-02, FR-03 core, AC-01 → AC-04, Review Focus #1–#5) |
 | 5 | `01fdd32` | `feat(planner): emit hardware cost decision telemetry and warn on non-monotonic profiles` (Tác vụ 3 — FR-03 telemetry, FR-04 warning, AC-05) |
+| 6 | `7581b90` | `docs(progress): record completion of hardware cost-driven budget controller` |
+| 7 | *(commit hiện tại)* | `fix(controller,planner): harden max_k candidate sync, bool/NaN validation, and TreeAdaptiveDecision policy default` (vòng rà soát đối nghịch — adversarial review) |
 
 ---
 
@@ -27,10 +29,9 @@
 - `validate_measured_profile(...)` trên `profile_sm_86_remote_a10g_fcda5486b12d.json`: **`A10G_PROFILE_VALID_OK`** (khớp `raw_sha256` và `evidence.groups`).
 
 ### 2.2. Kết quả pytest trên nhánh mới
-- **Bộ test mới (`tests/test_hardware_cost_driven_controller.py`):** **11 passed / 0 failed** (phủ toàn bộ AC-01 → AC-05 và 5 ca biên Review Focus: không đơn điệu ở `alpha = 0`, chi phí `NaN`/không dương, kẹp `probe_k` vào `candidate_budgets`, tie-break ưu tiên `k` nhỏ hơn, và batch trung gian `B = 3`).
-- **Bộ test mở rộng (controller, planner, memory pressure, adapter, tree adaptive, cost model, lineage, local runner, m4 readiness, modal native interpreter):**
-  - Lệnh: `PYTHONPATH=src:. pytest tests/test_hardware_cost_driven_controller.py tests/test_budget_controller.py tests/test_budget_planner.py tests/test_memory_pressure_rule.py tests/test_proposer_adapter.py tests/test_tree_adaptive_controller.py tests/test_modal_native_interpreter.py tests/test_local_runner.py tests/test_m4_readiness.py tests/test_cost_model*.py tests/test_lineage*.py tests/test_adaptive*.py -q`
-  - Kết quả: **166 passed, 88 skipped, 0 failed**.
+- **Bộ test R6 mới (`tests/test_hardware_cost_driven_controller.py`):** **15 passed / 0 failed** (phủ toàn bộ AC-01 → AC-05, 5 ca biên Review Focus, và 4 ca rà soát đối nghịch: đồng bộ trần `max_k` tránh chọn `k=4` rồi kẹp xuống `k=3` bị lỗ, chặn kiểu `bool` lọt qua kiểm tra số thực, an toàn khi `alpha=NaN`, và không làm `TreeAdaptiveDecision` kế thừa nhầm `decision_policy="threshold"`).
+- **Bộ test hồi quy toàn diện không cần mạng/torch/modal** (16 nhóm file: controller, planner, memory pressure, adapter, tree adaptive, cost model, lineage, local runner, m4 readiness, hardware profiler benchmark, profile import, modal native interpreter, modal app container paths, modal runner CLI):
+  - Kết quả: **222 passed, 88 skipped, 0 failed** (trong 8.97 giây).
 - **Ghi chú giới hạn môi trường CPU cục bộ (không phải lỗi hồi quy):**
   - `tests/test_vram_memory_lifecycle.py`: không thu thập được trong Python hệ thống do chưa cài `torch`.
   - `tests/test_modal_packaging_contract.py`: cần gói `modal` SDK cài trong cùng Python environment để import `modal`.

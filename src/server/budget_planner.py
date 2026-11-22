@@ -60,7 +60,7 @@ class AdaptiveBudgetPlanner:
                 == os.path.normcase(os.path.realpath(step_telemetry_path))):
             raise ValueError("Step and aggregate telemetry must use separate paths")
         self.adapter = adapter or AdaptiveProposerAdapter()
-        self.max_k = max_k
+        self._max_k = max_k
         self.min_batch_k = min_batch_k
         self.per_request = per_request
         self.telemetry_path = telemetry_path
@@ -70,6 +70,28 @@ class AdaptiveBudgetPlanner:
         self._last_decisions: Dict[str, dict] = {}
         self._scheduled_runtime_modes: Dict[str, str] = {}
         self._plan_sequence = 0
+        self._sync_candidate_budgets_to_max_k()
+
+    @property
+    def max_k(self) -> int:
+        return self._max_k
+
+    @max_k.setter
+    def max_k(self, value: int) -> None:
+        if value < 0:
+            raise ValueError("max_k must be non-negative")
+        self._max_k = value
+        self._sync_candidate_budgets_to_max_k()
+
+    def _sync_candidate_budgets_to_max_k(self) -> None:
+        """Keep cost-model candidate budgets within the executable max_k ceiling."""
+        budgets = self.adapter.controller_kwargs.get("candidate_budgets")
+        if budgets is not None:
+            filtered = sorted({0} | {k for k in budgets if 0 <= k <= self._max_k})
+            self.adapter.controller_kwargs["candidate_budgets"] = filtered
+            for controller in self.adapter._active_sessions.values():
+                if hasattr(controller, "candidate_budgets"):
+                    controller.candidate_budgets = list(filtered)
 
     def plan_step(
         self,

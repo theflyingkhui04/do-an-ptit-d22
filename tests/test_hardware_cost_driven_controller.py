@@ -241,3 +241,65 @@ def test_planner_from_env_records_cost_driven_telemetry_and_warns_non_monotonic(
     assert rec_b32["decision_policy"] == "cost_model"
     assert rec_b32["scalar_runtime_budget"] == 0
     assert rec_b32["non_monotonic_cost"] is False
+
+
+def test_planner_max_k_ceiling_excludes_unexecutable_k_from_cost_model_search(tmp_path):
+    """Adversarial check: khi max_k=3 tại B=32, alpha=0.90 (k=4 lời nhưng k=3 lỗ),
+    planner phải loại k=4 khỏi tập ứng viên và chọn k=0 thay vì chọn k=4 rồi kẹp xuống k=3."""
+    from src.server.budget_planner import AdaptiveBudgetPlanner
+
+    step_path = tmp_path / "serving_steps.jsonl"
+    planner = AdaptiveBudgetPlanner.from_env(
+        {
+            "FLEXSDS_PROFILE_PATH": str(A10G_PROFILE_PATH),
+            "ADAPTIVE_MAX_K": "4",
+            "ADAPTIVE_STEP_TELEMETRY_PATH": str(step_path),
+            "ADAPTIVE_CONTROLLER_KWARGS": json.dumps({"initial_alpha": 0.90}),
+        }
+    )
+    # Giả lập AdaptiveAsyncScheduler.__init__ thu hẹp max_k theo num_spec_tokens = 3
+    planner.max_k = 3
+    plan = planner.plan_step(["req-b32"], batch_size=32, kv_usage=0.1, free_vram_mb=16000.0)
+    assert plan.batch_k == 0
+    assert plan.per_request_k["req-b32"] == 0
+
+    rec = json.loads(step_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert rec["decision_policy"] == "cost_model"
+    assert rec["scalar_runtime_budget"] == 0
+    assert rec["cost_k_ms"] == pytest.approx(rec["cost_baseline_ms"])
+
+
+def test_controller_rejects_boolean_speedup_ratio_and_cost_entries():
+    """Adversarial check: bool là lớp con của int trong Python, không được lọt qua kiểm tra số thực."""
+    from src.proposer.controller import AdaptiveDraftController, EmpiricalCostProfile
+
+    with pytest.raises(ValueError, match="min_speedup_ratio"):
+        AdaptiveDraftController(min_speedup_ratio=True)
+
+    bool_cost_profile = EmpiricalCostProfile(matrix={(0, 1): 15.0, (1, 1): True})
+    ctrl = AdaptiveDraftController(
+        initial_alpha=0.8, candidate_budgets=[0, 1], cost_profile=bool_cost_profile
+    )
+    with pytest.raises(ValueError, match="finite and positive"):
+        ctrl.select_budget(batch_size=1)
+
+
+def test_cost_driven_handles_nan_alpha_safely_without_crashing():
+    """Adversarial check: alpha=NaN fallback an toàn về k=0 và không sinh giá trị NaN."""
+    import math
+    from src.proposer.controller import AdaptiveDraftController
+
+    profile, budgets = _load_a10g_cost_profile()
+    ctrl = AdaptiveDraftController(initial_alpha=0.8, candidate_budgets=budgets, cost_profile=profile)
+    decision = ctrl.apply_cost_driven_budget_rule(alpha=float("nan"), batch_size=1)
+    assert decision.k == 0
+    assert math.isfinite(decision.alpha_ema)
+    assert decision.speedup == 1.0
+
+
+def test_tree_adaptive_decision_does_not_inherit_threshold_policy():
+    """Adversarial check: TreeAdaptiveDecision không bị kế thừa nhầm decision_policy='threshold'."""
+    from src.proposer.tree_adaptive import TreeAdaptiveDecision
+
+    dec = TreeAdaptiveDecision(k=4, alpha_ema=0.8, expected_tokens=2.5, reason="tree")
+    assert dec.decision_policy is None
