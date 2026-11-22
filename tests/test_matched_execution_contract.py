@@ -186,3 +186,137 @@ def test_modal_runner_forwards_matched_contract_keys_and_validates_early(capsys)
     )
     with pytest.raises(ValueError):
         runner.launch(invalid_cfg, deploy=False, dry_run=True)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator", "--match-adaptive-runtime", "--dry-run"],
+        ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator", "--static-k", "3", "--dry-run"],
+        ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--vanilla", "--static-k", "3", "--dry-run"],
+        ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator", "--vanilla", "--dry-run"],
+        ["serve", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator", "--no-adaptive", "--static-k", "9", "--dry-run"],
+    ],
+)
+def test_cli_rejects_invalid_matched_contract_flag_combinations(argv, capsys):
+    """AC-05 & Review Focus #5: Chặn tổ hợp cờ CLI sai với exit code 2 trước preflight mạng."""
+    from flexsds.cli.main import main
+
+    rc = main(argv)
+    assert rc == 2
+    out = capsys.readouterr().out.lower()
+    assert "invalid" in out
+
+
+def test_cli_vanilla_matched_modal_dry_run_succeeds_offline_without_draft(capsys):
+    """AC-05 & Review Focus #5: --vanilla --match-adaptive-runtime --dry-run chạy offline không cần --draft."""
+    from flexsds.cli.main import main
+
+    rc = main(
+        [
+            "serve",
+            "--backend",
+            "modal",
+            "--gpu",
+            "A10G",
+            "--target",
+            "Qwen/Qwen2.5-7B-Instruct-AWQ",
+            "--vanilla",
+            "--match-adaptive-runtime",
+            "--no-prefix-caching",
+            "--dry-run",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Execution contract: vanilla-matched-eager-v1+no-prefix-cache" in out
+    assert '"disable_speculative": true' in out
+    assert '"match_adaptive_runtime": true' in out
+    assert '"disable_prefix_caching": true' in out
+
+
+def test_cli_static_matched_local_dry_run_builds_expected_contract(monkeypatch, capsys):
+    """AC-05: flexsds serve --no-adaptive --match-adaptive-runtime --static-k 3 --dry-run."""
+    from types import SimpleNamespace
+    import flexsds.cli.main as cli_main
+
+    fake_report = SimpleNamespace(
+        draft_method="eagle3",
+        eagle_version="EAGLE-3.1",
+        target_revision="b25037543e9394b818fdfca67ab2a00ecc7dd641",
+        draft_revision="d9016c3860f42cc3f33a87fa5d346fee768f6290",
+        use_heterogeneous_vocab=False,
+        identified_method="eagle3",
+        oom_risk=False,
+        warnings=[],
+        recommendations=[],
+        summary=lambda: "Compatibility: OK",
+    )
+    fake_preflight = SimpleNamespace(report=fake_report, launch_reasons=lambda allow_oom: [])
+    monkeypatch.setattr(cli_main, "evaluate_serving_preflight", lambda *a, **kw: fake_preflight)
+
+    rc = cli_main.main(
+        [
+            "serve",
+            "--backend",
+            "local",
+            "--target",
+            "Qwen/Qwen2.5-7B-Instruct-AWQ",
+            "--draft",
+            "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "--no-adaptive",
+            "--match-adaptive-runtime",
+            "--no-prefix-caching",
+            "--static-k",
+            "3",
+            "--dry-run",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Execution contract: static-matched-eager-v1+no-prefix-cache" in out
+    assert "--enforce-eager" in out
+    assert "--async-scheduling" in out
+    assert "--no-enable-prefix-caching" in out
+    assert '"num_speculative_tokens": 3' in out
+    assert "--scheduler-cls" not in out
+
+
+def test_draft_model_static_k_syncs_batch_lookup_ceiling():
+    """Adversarial check: draft_model static_k=3 không bị ghi cứng [[1, 32, 4]]."""
+    runner = LocalServingRunner()
+    cfg = _base_pair_cfg(
+        draft_model="Qwen/Qwen2.5-0.5B-Instruct",
+        draft_method="draft_model",
+        enable_adaptive=False,
+        match_adaptive_runtime=True,
+        static_k=3,
+    )
+    cmd = runner.build_command(cfg)
+    spec = json.loads(cmd[cmd.index("--speculative-config") + 1])
+    assert spec["num_speculative_tokens"] == 3
+    assert spec["num_speculative_tokens_per_batch_size"] == [[1, 32, 3]]
+
+
+def test_cli_vanilla_without_target_on_local_cpu_blocks_instead_of_opening_wizard(monkeypatch, capsys):
+    """Adversarial check: --vanilla không bị rơi ngầm vào wizard tương tác."""
+    import flexsds.cli.main as cli_main
+    from flexsds.core.hardware import HardwareInfo
+
+    cpu_only = HardwareInfo(
+        device_name="CPU Only",
+        sm_architecture="cpu",
+        total_vram_mb=0.0,
+        free_vram_mb=0.0,
+        cuda_version="N/A",
+        is_cuda_available=False,
+    )
+    monkeypatch.setattr(cli_main, "detect_hardware", lambda: cpu_only)
+    monkeypatch.setattr(
+        cli_main,
+        "run_interactive_wizard",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("wizard should not run for --vanilla")),
+    )
+    rc = cli_main.main(["serve", "--backend", "local", "--vanilla"])
+    assert rc == 2
+    assert "cuda gpu unavailable" in capsys.readouterr().out.lower()

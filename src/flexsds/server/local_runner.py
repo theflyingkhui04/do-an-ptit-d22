@@ -147,7 +147,7 @@ class LocalServingRunner:
                 "draft_sample_method": "greedy",
             }
             if enable_adaptive or not is_eagle:
-                speculative_config["num_speculative_tokens_per_batch_size"] = [[1, 32, 4]]
+                speculative_config["num_speculative_tokens_per_batch_size"] = [[1, 32, num_spec_tokens]]
 
             if use_hetero:
                 speculative_config["use_heterogeneous_vocab"] = True
