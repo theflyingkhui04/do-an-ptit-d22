@@ -43,7 +43,7 @@
 - Produces: `inspect_cost_matrix_monotonicity(cost_matrix_ms: Mapping[str, float]) -> List[Dict[str, Any]]` trả về danh sách các bất thường đã sắp xếp theo `(batch, k)`, mỗi phần tử gồm:
   `{"batch": int, "k": int, "cost_ms": float, "baseline_k0_ms": Optional[float], "prev_k": Optional[int], "prev_cost_ms": Optional[float], "below_k0": bool, "below_prev_k": bool}`.
 
-- [ ] **Bước 1: Viết bài test thất bại cho `inspect_cost_matrix_monotonicity`**
+- [x] **Bước 1: Viết bài test thất bại cho `inspect_cost_matrix_monotonicity`**
 
 Tạo `do-an-ptit-d22/tests/test_hardware_cost_driven_controller.py` với 2 test:
 ```python
@@ -79,24 +79,24 @@ def test_inspect_monotonicity_returns_empty_for_strictly_increasing_matrix():
     assert inspect_cost_matrix_monotonicity(clean) == []
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy từ `do-an-ptit-d22/`: `PYTHONPATH=src:. pytest tests/test_hardware_cost_driven_controller.py -v`
 Kết quả mong đợi: `FAIL` với `ImportError: cannot import name 'inspect_cost_matrix_monotonicity'`.
 
-- [ ] **Bước 3: Triển khai `inspect_cost_matrix_monotonicity` trong `src/flexsds/core/cost_model.py`**
+- [x] **Bước 3: Triển khai `inspect_cost_matrix_monotonicity` trong `src/flexsds/core/cost_model.py`**
 
 Đặt hàm thuần túy ngay trước `validate_measured_profile` trong `src/flexsds/core/cost_model.py`:
 - Signature: `def inspect_cost_matrix_monotonicity(cost_matrix_ms: Dict[str, float]) -> List[Dict[str, Any]]:`
 - Parse các khóa dạng `k{k}_b{b}` (bỏ qua khóa topology `topo_*`), gom theo `batch`, duyệt các `k` theo thứ tự tăng dần.
 - Nếu `k > 0` và `cost < c0` (`below_k0 = True`) hoặc `cost < prev_cost` (`below_prev_k = True`), thêm dict mô tả vào danh sách kết quả. Không thay đổi dữ liệu đầu vào.
 
-- [ ] **Bước 4: Chạy test xác nhận pass**
+- [x] **Bước 4: Chạy test xác nhận pass**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_hardware_cost_driven_controller.py -v`
 Kết quả mong đợi: `2 passed`.
 
-- [ ] **Bước 5: Commit Tác vụ 1**
+- [x] **Bước 5: Commit Tác vụ 1**
 
 ```bash
 git add src/flexsds/core/cost_model.py tests/test_hardware_cost_driven_controller.py
@@ -128,7 +128,7 @@ git commit -m "feat(cost_model): add non-monotonicity diagnostic helper for meas
   - `AdaptiveDraftController.apply_cost_driven_budget_rule(self, alpha: float, batch_size: int) -> BudgetDecision`
   - `AdaptiveDraftController.select_budget(...) -> BudgetDecision` chọn theo 3 tầng: Memory Guard (`decision_policy="memory_guard"`, `status="memory_guard"`) → Cost-Driven khi `bool(getattr(self.cost_profile, "matrix", None))` (`decision_policy="cost_model"`) → Legacy threshold (`decision_policy="threshold"`).
 
-- [ ] **Bước 1: Viết đầy đủ các bài test thất bại cho AC-01 → AC-04 và 5 trường hợp Review Focus**
+- [x] **Bước 1: Viết đầy đủ các bài test thất bại cho AC-01 → AC-04 và 5 trường hợp Review Focus**
 
 Bổ sung vào `do-an-ptit-d22/tests/test_hardware_cost_driven_controller.py`:
 ```python
@@ -272,12 +272,12 @@ def test_cost_driven_handles_intermediate_batch_size_via_closest_grid_point():
     assert d3.cost_k_ms == pytest.approx(d2.cost_k_ms)
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_hardware_cost_driven_controller.py -v`
 Kết quả mong đợi: FAIL trên các test mới (do `AdaptiveDraftController` chưa hỗ trợ `min_speedup_ratio` và chưa gọi `cost_profile`).
 
-- [ ] **Bước 3: Cập nhật `BudgetDecision` và `AdaptiveDraftController` trong `src/proposer/controller.py`**
+- [x] **Bước 3: Cập nhật `BudgetDecision` và `AdaptiveDraftController` trong `src/proposer/controller.py`**
 
 Thực hiện đúng các thay đổi sau trong `src/proposer/controller.py`:
 1. Mở rộng dataclass `BudgetDecision` với 8 trường tùy chọn có giá trị mặc định như trong khối **Interfaces**.
@@ -300,12 +300,12 @@ Thực hiện đúng các thay đổi sau trong `src/proposer/controller.py`:
    - Tầng 3: Legacy `apply_budget_rule(alpha=effective_alpha)` → giữ nguyên `decision_policy="threshold"`.
    - Đẩy thêm `decision_policy`, `speedup`, `cost_k_ms` vào `self._history` (giữ nguyên các khóa cũ `"k"`, `"alpha"`, `"reason"`).
 
-- [ ] **Bước 4: Chạy test mới và test controller cũ để xác nhận pass và không hồi quy**
+- [x] **Bước 4: Chạy test mới và test controller cũ để xác nhận pass và không hồi quy**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_hardware_cost_driven_controller.py tests/test_budget_controller.py tests/test_memory_pressure_rule.py -v`
 Kết quả mong đợi: 100% PASS.
 
-- [ ] **Bước 5: Commit Tác vụ 2**
+- [x] **Bước 5: Commit Tác vụ 2**
 
 ```bash
 git add src/proposer/controller.py tests/test_hardware_cost_driven_controller.py
@@ -330,7 +330,7 @@ git commit -m "feat(controller): drive AdaptiveDraftController K selection from 
     `hardware_profile`, `dynamic_alpha_star`, `theoretical_speedup`, `decision_policy`, `cost_k_ms`, `cost_baseline_ms`, `cost_ref_ms`, `non_monotonic_cost`.
   - Cảnh báo `logger.warning(...)` trong `AdaptiveBudgetPlanner.from_env()` khi profile nạp vào có ô không đơn điệu.
 
-- [ ] **Bước 1: Viết bài test thất bại cho AC-05 và cảnh báo không đơn điệu**
+- [x] **Bước 1: Viết bài test thất bại cho AC-05 và cảnh báo không đơn điệu**
 
 Bổ sung vào `do-an-ptit-d22/tests/test_hardware_cost_driven_controller.py`:
 ```python
@@ -373,12 +373,12 @@ def test_planner_from_env_records_cost_driven_telemetry_and_warns_non_monotonic(
     assert rec_b32["non_monotonic_cost"] is False
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_hardware_cost_driven_controller.py::test_planner_from_env_records_cost_driven_telemetry_and_warns_non_monotonic -v`
 Kết quả mong đợi: FAIL (chưa có cảnh báo non-monotonic, `plan_b1.batch_k == 2` thay vì `4`, `hardware_profile is None`).
 
-- [ ] **Bước 3: Cập nhật `AdaptiveBudgetPlanner` và `_decision_record` trong `src/server/budget_planner.py`**
+- [x] **Bước 3: Cập nhật `AdaptiveBudgetPlanner` và `_decision_record` trong `src/server/budget_planner.py`**
 
 1. Trong `AdaptiveBudgetPlanner.__init__`: thêm tham số `hardware_profile: Optional[dict] = None` và lưu `self.hardware_profile = deepcopy(hardware_profile) if hardware_profile else None`.
 2. Trong `AdaptiveBudgetPlanner.from_env`:
@@ -389,12 +389,12 @@ Kết quả mong đợi: FAIL (chưa có cảnh báo non-monotonic, `plan_b1.bat
    - Truyền `hardware_profile=self.hardware_profile` vào `_decision_record(...)`.
    - Trong `_decision_record(...)`, điền `"hardware_profile": deepcopy(hardware_profile)` (hoặc `None` nếu không nạp profile) và bổ sung các khóa `"decision_policy"`, `"cost_k_ms"`, `"cost_baseline_ms"`, `"cost_ref_ms"`, `"non_monotonic_cost"` (dùng helper `finite(...)` cho mọi số thực để không bao giờ gây lỗi `allow_nan=False`).
 
-- [ ] **Bước 4: Chạy test mới và test planner hiện hữu**
+- [x] **Bước 4: Chạy test mới và test planner hiện hữu**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_hardware_cost_driven_controller.py tests/test_budget_planner.py -v`
 Kết quả mong đợi: 100% PASS.
 
-- [ ] **Bước 5: Commit Tác vụ 3**
+- [x] **Bước 5: Commit Tác vụ 3**
 
 ```bash
 git add src/server/budget_planner.py tests/test_hardware_cost_driven_controller.py
@@ -409,7 +409,7 @@ git commit -m "feat(planner): emit hardware cost decision telemetry and warn on 
 - Verify (read-only): `do-an-ptit-d22/src/flexsds/profiles/profile_sm_86_remote_a10g_fcda5486b12d.json`
 - Create: `do-an-ptit-d22/logs/bugs/hardwareProfileCostDecisionBug/progress.md`
 
-- [ ] **Bước 1: Xác minh file profile A10G còn nguyên vẹn và pass `validate_measured_profile()`**
+- [x] **Bước 1: Xác minh file profile A10G còn nguyên vẹn và pass `validate_measured_profile()`**
 
 Chạy từ `do-an-ptit-d22/`:
 ```bash
@@ -418,7 +418,7 @@ PYTHONPATH=src:. python3 -c "import json; from pathlib import Path; from flexsds
 ```
 Kết quả mong đợi: `git diff` rỗng và in ra `OK`.
 
-- [ ] **Bước 2: Chạy toàn bộ bộ test hồi quy liên quan (AC-06)**
+- [x] **Bước 2: Chạy toàn bộ bộ test hồi quy liên quan (AC-06)**
 
 Chạy từ `do-an-ptit-d22/`:
 ```bash
@@ -434,14 +434,14 @@ PYTHONPATH=src:. pytest \
 ```
 Kết quả mong đợi: 100% PASS (0 failed).
 
-- [ ] **Bước 3: Tạo `logs/bugs/hardwareProfileCostDecisionBug/progress.md` ghi nhận bằng chứng hoàn thành**
+- [x] **Bước 3: Tạo `logs/bugs/hardwareProfileCostDecisionBug/progress.md` ghi nhận bằng chứng hoàn thành**
 
 Ghi lại:
 - Danh sách commit SHA của các Tác vụ 1–3 trên nhánh mới tách từ `develop`.
 - Kết quả pytest đầy đủ (số test pass/skip/fail).
 - Danh sách việc tiếp theo để đóng kiểm chứng GPU cho báo cáo (1. cherry-pick 3 file vá đóng gói Modal/Windows từ nhánh audit; 2. bổ sung chế độ Static EAGLE matched-config cùng eager/V1 runner; 3. chạy 1 đợt GPU verification + lossless sạch + benchmark batch sweep).
 
-- [ ] **Bước 4: Commit tài liệu tiến độ**
+- [x] **Bước 4: Commit tài liệu tiến độ**
 
 ```bash
 git add logs/bugs/hardwareProfileCostDecisionBug/progress.md

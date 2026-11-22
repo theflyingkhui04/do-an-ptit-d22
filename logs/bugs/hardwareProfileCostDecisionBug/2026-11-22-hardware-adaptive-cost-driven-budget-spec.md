@@ -3,7 +3,7 @@
 - **Mã tài liệu**: SPEC-HWCOST-20261122
 - **Ngày tạo**: 2026-11-22
 - **Tác giả**: Đội ngũ phát triển FlexSDS (D22 PTIT)
-- **Trạng thái**: Bản nháp đề xuất chờ phê duyệt (Proposed — chưa sửa code)
+- **Trạng thái**: Đã triển khai và kiểm thử xong trên CPU (Implemented & CPU-verified — chờ kiểm chứng GPU)
 - **Liên kết kiểm toán**: Audit R6 (`Chưa đạt`) trên nhánh `audit/flexsds-v023-hardwareadaptive-20261120` (`logs/daijestic/flexsds-audit/HardwareAdaptive_v0.2.3_audit_interim_2026-11-20.md`)
 - **Phạm vi tác động**:
   - `src/proposer/controller.py` (`BudgetDecision`, `EmpiricalCostProfile`, `AdaptiveDraftController`)
