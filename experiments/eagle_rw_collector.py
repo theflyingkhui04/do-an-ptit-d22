@@ -30,7 +30,8 @@ except ModuleNotFoundError as error:
         PROTOCOL, UNIT, CLOCK, TIMING_BOUNDARY, K0_SEMANTICS, PublicationPlan,
         canonical, digest, decision_state_key, validate_identity,
     )
-from src.server.decision_state import RuntimeIdentitySnapshotV1
+from src.server.decision_state import (RuntimeIdentitySnapshotV1, FixedCalibrationActionV1,
+                                       candidate_state_for_action)
 
 
 _ISSUED = object()
@@ -129,6 +130,11 @@ class EagleRWCohortDescriptor:
             raise ValueError("invalid_cohort_provenance")
 
 
+class CollectionPurpose(str, Enum):
+    CALIBRATION = "CALIBRATION"
+    POLICY_VALIDATION = "POLICY_VALIDATION"
+
+
 @dataclass(frozen=True)
 class EagleRWCollectionPlan:
     source: EagleRWSourceProvenance
@@ -137,8 +143,15 @@ class EagleRWCollectionPlan:
     target_decision_state_key: str
     sample_plan: PublicationPlan = field(default_factory=PublicationPlan)
     profile_protocol_version: str = PROTOCOL
+    purpose: CollectionPurpose = CollectionPurpose.POLICY_VALIDATION
+    calibration_action_k: int | None = None
 
     def __post_init__(self):
+        if (not isinstance(self.purpose, CollectionPurpose)
+                or (self.purpose is CollectionPurpose.CALIBRATION and
+                    (type(self.calibration_action_k) is not int or self.calibration_action_k not in (0,2,3,4)))
+                or (self.purpose is CollectionPurpose.POLICY_VALIDATION and self.calibration_action_k is not None)):
+            raise ValueError("invalid_collection_purpose_or_action")
         if not isinstance(self.sample_plan, PublicationPlan) or not isinstance(self.cohort, EagleRWCohortDescriptor):
             raise ValueError("invalid_fixed_collection_plan")
         if not self.source.valid():
@@ -150,6 +163,10 @@ class EagleRWCollectionPlan:
                 or key.get("runtime_identity_key") != self.runtime_identity.identity_key
                 or key.get("runtime_mode_id") != self.runtime_identity.runtime_mode_id):
             raise ValueError("invalid_target_cell")
+        if (self.purpose is CollectionPurpose.CALIBRATION and
+                (key.get("candidate_shared_worker_k") != self.calibration_action_k
+                 or any(k > self.calibration_action_k for k in key.get("candidate_future_widths", ())))):
+            raise ValueError("calibration_target_action_mismatch")
 
     @property
     def runtime_config_hash(self):
@@ -157,6 +174,7 @@ class EagleRWCollectionPlan:
 
     def payload(self):
         return dict(profile_protocol_version=self.profile_protocol_version,
+            collection_purpose=self.purpose.value, calibration_action_k=self.calibration_action_k,
             source_git_sha=self.source.source_git_sha, synthetic=self.source.synthetic,
             source_manifest=list(self.source.code_manifest), runtime_config_hash=self.runtime_config_hash,
             expected_runtime_identity=asdict(self.runtime_identity), cohort=asdict(self.cohort),
@@ -165,6 +183,43 @@ class EagleRWCollectionPlan:
     @property
     def collection_plan_hash(self):
         return digest(self.payload())
+
+
+class EagleRWCalibrationAction:
+    """Fixed plan actuator, installed identically for collector OFF and ON.
+
+    Installing an observer never installs or changes this independent action.
+    """
+    def __init__(self, core, plan):
+        if plan.purpose is not CollectionPurpose.CALIBRATION:
+            raise ValueError("not_a_calibration_plan")
+        self.planner, self.plan = core.scheduler._planner, plan
+        self._prior, self._wrapped, self._existed = None, None, False
+
+    def install(self):
+        if self._wrapped is not None or not self.plan.source.valid():
+            raise ValueError("invalid_calibration_install")
+        if self.planner.runtime_identity != self.plan.runtime_identity:
+            raise ValueError("identity_mismatch")
+        action = FixedCalibrationActionV1(self.plan.calibration_action_k, self.plan.collection_plan_hash)
+        self._existed = "plan_step" in vars(self.planner)
+        self._prior = getattr(self.planner, "plan_step")
+        delegate = self._prior
+        def fixed(*args, **kwargs):
+            if "calibration_action" in kwargs:
+                raise ValueError("conflicting_calibration_action")
+            return delegate(*args, **kwargs, calibration_action=action)
+        self._wrapped = fixed
+        self.planner.plan_step = fixed
+        return self
+
+    def close(self):
+        if self._wrapped is not None and vars(self.planner).get("plan_step") is self._wrapped:
+            if self._existed:
+                self.planner.plan_step = self._prior
+            else:
+                delattr(self.planner, "plan_step")
+        self._wrapped = None
 
 
 class CollectorCanonicalityStatus(str, Enum):
@@ -324,8 +379,23 @@ class EagleRWCollector:
         key = scores[0]["decision_state_key_json"] if len(scores) == 1 else None
         if key != keys.get(selected):
             key = None
+        action = result.calibration_action
+        if self.plan.purpose is CollectionPurpose.CALIBRATION:
+            if (action is not None and action.k == self.plan.calibration_action_k
+                    and action.collection_plan_hash == self.plan.collection_plan_hash
+                    and result.decision_state_status == "SUPPORTED"):
+                ids = state.eligible_decode_request_ids
+                widths = tuple((r, min(result.per_request_selected_k[r], action.k)) for r in ids)
+                candidate = candidate_state_for_action(self.planner.runtime_identity, state,
+                    widths, max((k for _,k in widths), default=0))
+                key = decision_state_key(candidate) if candidate.status == "SUPPORTED" else None
+            else:
+                key = None
         payload = dict(capture_phase="pre_action_plan_return", plan_sequence=result.plan_sequence,
             schedule_sequence=state.scheduler_sequence, decision_state=state.to_record(),
+            collection_purpose=self.plan.purpose.value,
+            calibration_action_k=self.plan.calibration_action_k,
+            calibration_plan_hash=action.collection_plan_hash if action else None,
             decision_state_key=key, decision=decision, request_incarnations=dict(state.request_incarnations),
             K_base=dict(result.per_request_base_k), selected_cost_cap=selected,
             K_governed=dict(result.per_request_governed_k), K_applied=dict(result.per_request_k),
@@ -496,6 +566,9 @@ class EagleRWCollector:
         b = json.loads(binding.payload_json) if binding else {}
         return dict(record_schema_version="eagle_rw_retirement_v1", source_git_sha=self.plan.source.source_git_sha,
             source_manifest_hash=digest(self.plan.source.code_manifest), synthetic=self.plan.source.synthetic,
+            collection_purpose=self.plan.purpose.value,
+            calibration_action_k=self.plan.calibration_action_k,
+            calibration_plan_hash=b.get("calibration_plan_hash"),
             profile_protocol_version=PROTOCOL, runtime_config_hash=self.plan.runtime_config_hash,
             collection_plan_hash=self.plan.collection_plan_hash, runtime_identity_snapshot=asdict(self.planner.runtime_identity),
             cohort_id=self.plan.cohort.cohort_id, cohort_descriptor=asdict(self.plan.cohort),
@@ -547,6 +620,9 @@ class EagleRWCollector:
             "K_governed","K_applied","planned_worker_k","old_verification_width")})
         payload.update(raw_sampled_counts_before_stop=entry.get("raw_sampled_counts"),
                        feedback_verifier_origin=entry["consumed"], feedback_finalizations=entry["feedback"])
+        if self.plan.purpose is CollectionPurpose.CALIBRATION:
+            payload["verified_if_available"] = {r:v["verified_slots"] for r,v in entry["consumed"].items()}
+
         reasons = []
         if binding._proof is not _ISSUED or b.get("capture_phase") != "pre_action_plan_return":
             reasons.append("decision_state_not_captured_before_action")
@@ -556,8 +632,9 @@ class EagleRWCollector:
             reasons.append("dirty_or_unfrozen_execution_source")
         if b["request_incarnations"] != dict(self.plan.cohort.request_incarnations):
             reasons.append("cohort_incarnation_mismatch")
-        if (not b["decision"].get("cost_policy_applied") or b["decision_state_key"] is None
-                or b["decision_state_key"] != self.plan.target_decision_state_key):
+        if (b["decision_state_key"] is None or b["decision_state_key"] != self.plan.target_decision_state_key
+                or (self.plan.purpose is CollectionPurpose.POLICY_VALIDATION
+                    and not b["decision"].get("cost_policy_applied"))):
             reasons.append("unsupported_decision_state")
         if not entry["submitted"] or entry["output"] is not output:
             reasons.append("pairing_failure")
@@ -650,7 +727,12 @@ def _record_errors(row):
                 "request_incarnations", "K_base", "selected_cost_cap", "K_governed", "K_applied",
                 "planned_worker_k", "old_verification_width", "actual_useful_emitted_tokens",
                 "drafted", "accepted", "feedback_verifier_origin", "finalization_status", "decision_binding", "clock_domain")
-    errors = ["missing_"+name for name in required if name not in row or row[name] is None]
+    purpose = row.get("collection_purpose")
+    calibration = purpose == CollectionPurpose.CALIBRATION.value
+    errors = ["missing_"+name for name in required if name not in row or
+              (row[name] is None and not (calibration and name == "selected_cost_cap"))]
+    if purpose not in tuple(p.value for p in CollectionPurpose):
+        errors.append("invalid_collection_purpose")
     if errors:
         return errors
     if not _sha(row["source_git_sha"]):
@@ -683,8 +765,31 @@ def _record_errors(row):
             errors.append("binding_mismatch:"+name)
     decision = binding["decision"]
     cap = row["selected_cost_cap"]
-    if type(cap) is not int or cap not in (0,2,3,4):
+    if not calibration and (type(cap) is not int or cap not in (0,2,3,4)):
         errors.append("invalid_cost_cap")
+    if row.get("collection_purpose") != binding.get("collection_purpose"):
+        errors.append("purpose_binding_mismatch")
+    if calibration:
+        q = row.get("calibration_action_k")
+        if (type(q) is not int or q not in (0,2,3,4) or cap is not None
+                or q != binding.get("calibration_action_k")
+                or row.get("calibration_plan_hash") != row["collection_plan_hash"]
+                or binding.get("calibration_plan_hash") != row["collection_plan_hash"]
+                or decision.get("calibration_plan_hash") != row["collection_plan_hash"]
+                or decision.get("calibration_action_k") != q
+                or decision.get("decision_mode") != "calibration"
+                or decision.get("decision_reason") != "frozen_collection_action"
+                or any(decision.get(k) is not False for k in (
+                    "cost_policy_applied", "cost_optimal", "hardware_cost_claim_allowed"))):
+            errors.append("invalid_calibration_action_provenance")
+        if row.get("physical_draft_width_when_observed") is None:
+            errors.append("missing_calibration_physical_width")
+        verified = {r:v["verified_slots"] for r,v in row["feedback_verifier_origin"].items()}
+        if row.get("verified_if_available") != verified:
+            errors.append("calibration_verified_provenance_mismatch")
+        cap = q if type(q) is int else -1
+    elif row.get("calibration_action_k") is not None or row.get("calibration_plan_hash") is not None:
+        errors.append("policy_validation_cannot_relabel_calibration")
     for name in ("K_base","K_governed","K_applied","old_verification_width","drafted","accepted",
                  "actual_useful_emitted_tokens"):
         if any(type(v) is not int or v < 0 for v in row[name].values()):
@@ -696,12 +801,23 @@ def _record_errors(row):
                  or row.get("physical_draft_rows_when_observed") != len(row["K_applied"]))):
         errors.append("planned_physical_mismatch")
     scores = [s for s in decision.get("candidates",()) if s["cap"] == cap]
-    if (not decision.get("cost_policy_applied") or decision.get("profile_identity_status") != "VALID_MATCH"
+    if not calibration and (not decision.get("cost_policy_applied") or decision.get("profile_identity_status") != "VALID_MATCH"
             or len(scores) != 1 or scores[0]["decision_state_key_json"] != row["decision_state_key"]
             or row["K_base"] != decision.get("base_k")):
         errors.append("policy_key_mismatch")
     key = json.loads(row["decision_state_key"])
     ids = binding["decision_state"]["eligible_decode_request_ids"]
+    from src.server.decision_state import DecisionStateSnapshotV1
+    raw_state = {k:v for k,v in binding["decision_state"].items() if k != "status"}
+    snapshot = DecisionStateSnapshotV1(**raw_state)
+    action_state = candidate_state_for_action(identity, snapshot,
+        tuple((r, key["candidate_future_widths"][i]) for i,r in enumerate(ids)),
+        key["candidate_shared_worker_k"])
+    if decision_state_key(action_state) != row["decision_state_key"]:
+        errors.append("pre_action_key_mismatch")
+    if calibration and (key["candidate_shared_worker_k"] != row["calibration_action_k"]
+            or row["K_base"] != decision.get("base_k")):
+        errors.append("calibration_target_action_mismatch")
     if (row["schedule_sequence"] != binding["decision_state"]["scheduler_sequence"]
             or key["runtime_identity_key"] != identity.identity_key or key["runtime_mode_id"] != identity.runtime_mode_id
             or key["candidate_future_widths"] != [row["K_applied"][r] for r in ids]
@@ -743,7 +859,9 @@ def _validate_export(data):
     if data["collection_plan_hash"] != digest(plan):
         raise ValueError("collection_plan_hash_mismatch")
     for row in data["records"]:
-        if (row.get("cohort_id") != plan["cohort"]["cohort_id"]
+        if (row.get("collection_purpose") != plan.get("collection_purpose")
+                or row.get("calibration_action_k") != plan.get("calibration_action_k")
+                or row.get("cohort_id") != plan["cohort"]["cohort_id"]
                 or row.get("collection_plan_hash") != data["collection_plan_hash"]
                 or row.get("source_git_sha") != plan["source_git_sha"]
                 or row.get("runtime_config_hash") != plan["runtime_config_hash"]

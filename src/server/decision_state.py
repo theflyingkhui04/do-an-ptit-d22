@@ -320,3 +320,44 @@ class CandidateDecisionStateV1:
     @property
     def status(self):
         return "UNSUPPORTED" if self.unsupported_reasons else "SUPPORTED"
+
+
+@dataclass(frozen=True)
+class FixedCalibrationActionV1:
+    """Project-local collection action, separate from an online cost choice."""
+    k: int
+    collection_plan_hash: str
+
+    def __post_init__(self):
+        if (type(self.k) is not int or self.k not in (0, 2, 3, 4)
+                or not isinstance(self.collection_plan_hash, str)
+                or re.fullmatch(r"[0-9a-f]{64}", self.collection_plan_hash) is None):
+            raise ValueError("invalid_frozen_calibration_action")
+
+
+def candidate_state_for_action(identity, snapshot, future_widths, shared_k):
+    """Pure pre-action constructor; no profile, score, worker or mutable state."""
+    if not isinstance(snapshot, DecisionStateSnapshotV1):
+        raise ValueError("missing_pre_action_decision_state")
+    rows = tuple(tuple(row) for row in future_widths)
+    ids = snapshot.eligible_decode_request_ids
+    old = dict(snapshot.old_verification_width_by_request)
+    contexts = dict(snapshot.host_context_tokens_after_schedule_by_request)
+    reasons = list(snapshot.unsupported_reasons)
+    if snapshot.status != "SUPPORTED" or identity.status != "SUPPORTED":
+        reasons.append("unsupported_snapshot_or_identity")
+    if not snapshot.pure_decode or snapshot.has_scheduled_prefill:
+        reasons.append("mixed_prefill_decode")
+    if not ids or tuple(r for r, _ in rows) != ids:
+        reasons.append("incomplete_action_vector")
+    if (any(type(k) is not int or k not in (0, 2, 3, 4) for _, k in rows)
+            or type(shared_k) is not int or shared_k != max((k for _, k in rows), default=0)):
+        reasons.append("invalid_action_width")
+    buckets = tuple((r, context_bucket(contexts.get(r))) for r in ids)
+    if any(b is None for _, b in buckets):
+        reasons.append("unsupported_context_bucket")
+    if snapshot.runtime_mode_id != identity.runtime_mode_id:
+        reasons.append("runtime_mode_mismatch")
+    return CandidateDecisionStateV1(identity.identity_key, snapshot.pure_decode, len(ids),
+        tuple((r, old.get(r)) for r in ids), rows, shared_k, buckets,
+        snapshot.runtime_mode_id, tuple(dict.fromkeys(reasons)))

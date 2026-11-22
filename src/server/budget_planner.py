@@ -18,11 +18,11 @@ from typing import Dict, Iterable, Mapping, Optional, Set, Tuple
 from src.proposer.adapter import AdaptiveProposerAdapter
 from src.proposer.controller import AdaptiveDraftController, BudgetDecision
 from src.proposer.cost_policy import (
-    PendingFeedbackStore, PendingVerifierEvent, ScalarEagleCostGovernor,
+    CostDecision, PendingFeedbackStore, PendingVerifierEvent, ScalarEagleCostGovernor,
     SurvivalHistory, VerifierEventKey, source_decision_mode, EagleConsumerProfile,
 )
 from src.server.decision_state import (
-    CONTEXT_SEMANTICS, STATE_SCHEMA, CandidateDecisionStateV1,
+    CONTEXT_SEMANTICS, STATE_SCHEMA, CandidateDecisionStateV1, FixedCalibrationActionV1,
     DecisionStateSnapshotV1, RuntimeIdentitySnapshotV1, context_bucket,
 )
 
@@ -58,6 +58,7 @@ class StepPlan:
     per_request_governed_k: Dict[str, int] = field(default_factory=dict)
     per_request_base_k: Dict[str, int] = field(default_factory=dict)
     per_request_source_modes: Dict[str, str] = field(default_factory=dict)
+    calibration_action: Optional[FixedCalibrationActionV1] = None
 
     @property
     def worker_k(self) -> int:
@@ -255,11 +256,16 @@ class AdaptiveBudgetPlanner:
         free_vram_mb: Optional[float] = None,
         *,
         decision_state: Optional[DecisionStateSnapshotV1] = None,
+        calibration_action: Optional[FixedCalibrationActionV1] = None,
     ) -> StepPlan:
         """Selects k_i for every decoding request and the batch-wide K = max(k_i).
 
         kv_usage is the vLLM fraction in [0, 1] (Scheduler.get_kv_cache_usage()).
         """
+        if calibration_action is not None:
+            if (not isinstance(calibration_action, FixedCalibrationActionV1)
+                    or not self.replacement_policy or self.cost_governor.mode == "off"):
+                raise ValueError("unsupported_calibration_action_path")
         decode_req_ids = tuple(decode_req_ids)
         snapshot, state_status, state_reasons = self._bind_decision_state(
             decision_state, decode_req_ids, batch_size)
@@ -303,12 +309,23 @@ class AdaptiveBudgetPlanner:
         cost_decision = None
         governed = dict(selected)
         if self.replacement_policy:
-            cost_decision = self.cost_governor.decide(
-                runtime=self.runtime_identity, candidate_states=candidate_states,
-                base=base, source_modes=source_modes, history=self.survival_history,
-                incarnations={rid: self._request_incarnations.get(rid) for rid in base})
-            if cost_decision.selected_cap is not None:
-                governed = {rid: min(k, cost_decision.selected_cap) for rid, k in selected.items()}
+            if calibration_action is None:
+                cost_decision = self.cost_governor.decide(
+                    runtime=self.runtime_identity, candidate_states=candidate_states,
+                    base=base, source_modes=source_modes, history=self.survival_history,
+                    incarnations={rid: self._request_incarnations.get(rid) for rid in base})
+                if cost_decision.selected_cap is not None:
+                    governed = {rid: min(k, cost_decision.selected_cap) for rid, k in selected.items()}
+            else:
+                # Fixed experimental cap before existing replacement/recovery;
+                # controller base and hard safety remain upper bounds.
+                governed = {rid: min(k, calibration_action.k) for rid, k in selected.items()}
+                source_modes = {rid: "calibration" for rid in source_modes}
+                cost_decision = CostDecision(None, "calibration", "frozen_collection_action",
+                    False, False, False, json.dumps(dict(base_k=base, candidates=[],
+                        profile_identity_status="NOT_USED_CALIBRATION",
+                        calibration_action_k=calibration_action.k,
+                        calibration_plan_hash=calibration_action.collection_plan_hash)))
         fresh_max_k = max(governed.values(), default=0)
         if self.replacement_policy:
             cap = self._recovery_cap(governed, fresh_max_k)
@@ -382,7 +399,7 @@ class AdaptiveBudgetPlanner:
                         decision_state_status=state_status, decision_state_reasons=state_reasons,
                         candidate_decision_states=candidate_states, cost_decision=cost_decision,
                         per_request_governed_k=governed, per_request_base_k=base,
-                        per_request_source_modes=source_modes)
+                        per_request_source_modes=source_modes, calibration_action=calibration_action)
 
     def record_scheduled_budget(self, req_id: str, batch_k: int, placeholder_k: int,
                                 *, dynamic: bool, schedule_sequence: int,
@@ -453,7 +470,7 @@ class AdaptiveBudgetPlanner:
             return None
         try:
             if (type(source.source_base_k) is not int or not 0 <= source.source_base_k <= 4
-                    or source.source_decision_mode not in ("normal", "probe", "memory_override")):
+                    or source.source_decision_mode not in ("normal", "probe", "memory_override", "calibration")):
                 raise ValueError("Unknown producer base/mode")
             key = VerifierEventKey(req_id, source.incarnation, source.plan_sequence,
                                    source.schedule_sequence, verifier_id)
