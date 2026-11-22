@@ -182,6 +182,27 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--no-adaptive", action="store_true", help="Disable HardwareAdaptive optimization engine"
     )
     serve_parser.add_argument(
+        "--match-adaptive-runtime",
+        action="store_true",
+        help="Match Adaptive ON's V1 eager execution contract when serving static or vanilla baselines",
+    )
+    serve_parser.add_argument(
+        "--vanilla",
+        action="store_true",
+        help="Serve target model only without speculative decoding (implies --no-adaptive)",
+    )
+    serve_parser.add_argument(
+        "--no-prefix-caching",
+        action="store_true",
+        help="Disable vLLM automatic prefix caching (recommended for lossless repeatability checks)",
+    )
+    serve_parser.add_argument(
+        "--static-k",
+        type=positive_int,
+        default=None,
+        help="Explicit static draft token budget K in 1..8 (requires --no-adaptive without --vanilla)",
+    )
+    serve_parser.add_argument(
         "--allow-fallback", action="store_true", help="Deprecated: analytical fallback cannot satisfy empirical serving requirements"
     )
     serve_parser.add_argument(
@@ -374,13 +395,31 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
 
     if args.command == "serve":
+        if args.match_adaptive_runtime and not (args.no_adaptive or args.vanilla):
+            print("Invalid flag combination: --match-adaptive-runtime requires --no-adaptive or --vanilla.")
+            return 2
+        if args.vanilla and args.draft:
+            print("Invalid flag combination: --vanilla cannot be combined with --draft.")
+            return 2
+        if args.static_k is not None:
+            if args.vanilla or not args.no_adaptive:
+                print("Invalid flag combination: --static-k requires --no-adaptive and cannot be combined with --vanilla.")
+                return 2
+            if not 1 <= args.static_k <= 8:
+                print("Invalid --static-k: expected integer in 1..8.")
+                return 2
+
         raw_args = argv if argv is not None else sys.argv[1:]
         has_explicit_platform = any(a.startswith("--backend") or a.startswith("--gpu") for a in raw_args)
-        if (args.target and args.draft) or (
-            args.dry_run
-            and has_explicit_platform
-            and not (args.target and not args.draft)
-            and not (args.draft and not args.target)
+        if (
+            (args.target and args.draft)
+            or args.vanilla
+            or (
+                args.dry_run
+                and has_explicit_platform
+                and not (args.target and not args.draft)
+                and not (args.draft and not args.target)
+            )
         ):
             target_gpu = getattr(args, "gpu", "L4")
             if args.backend in ("modal", "colab"):
@@ -406,70 +445,99 @@ def main(argv: Optional[list[str]] = None) -> int:
                 serving_hw = hw_info
 
             target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
-            draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
+            draft_model = None if args.vanilla else (args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator")
 
-            from flexsds.cli.spinner import status_spinner
-            with status_spinner("Checking models compatibility"):
-                preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
-                                                   args.backend, getattr(args, "gpu", "L4"),
-                                                   max_num_seqs=args.max_num_seqs, max_model_len=args.max_model_len)
-            if args.eagle_version:
-                from flexsds.core.compatibility import select_report_eagle_version
-                try:
-                    preflight.report = select_report_eagle_version(preflight.report, args.eagle_version)
-                except ValueError as exc:
-                    print(str(exc))
+            if args.vanilla:
+                if args.backend == "local" and not args.dry_run and not hw_info.is_cuda_available:
+                    print("Launch blocked: CUDA GPU unavailable; system RAM is not serving VRAM")
                     return 2
-            elif preflight.report.identified_method == "eagle":
-                print("EAGLE version selection required: use --eagle-version 1 or --eagle-version 2")
-                return 2
-            print(preflight.report.summary())
-            for detail in preflight.report.warnings + preflight.report.recommendations:
-                print(detail)
-            reasons = preflight.launch_reasons(args.allow_oom_risk)
-            if preflight.report.oom_risk:
-                print(f"VRAM warning at batch={args.max_num_seqs}, context={args.max_model_len}: "
-                      "smaller workloads may fit; runtime memory fit is unverified.")
-                if not args.allow_oom_risk:
-                    print("Reduce --max-num-seqs/--max-model-len or pass --allow-oom-risk to continue.")
-            if reasons:
-                print("Launch blocked: " + "; ".join(reasons))
-            if args.backend != "local":
-                print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
-            if reasons:
-                return 2
+                cfg = {"serving": {
+                    "target_model": target_model,
+                    "draft_model": None,
+                    "draft_method": "none",
+                    "eagle_version": None,
+                    "target_revision": None,
+                    "draft_revision": None,
+                    "use_heterogeneous_vocab": False,
+                    "port": args.port,
+                    "target_gpu": target_gpu,
+                    "enable_adaptive": False,
+                    "match_adaptive_runtime": args.match_adaptive_runtime,
+                    "disable_speculative": True,
+                    "disable_prefix_caching": args.no_prefix_caching,
+                    "static_k": None,
+                    "max_num_seqs": args.max_num_seqs,
+                    "max_model_len": args.max_model_len,
+                    "allow_oom_risk": args.allow_oom_risk,
+                    "profile_path": None,
+                }}
+            else:
+                from flexsds.cli.spinner import status_spinner
+                with status_spinner("Checking models compatibility"):
+                    preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
+                                                       args.backend, getattr(args, "gpu", "L4"),
+                                                       max_num_seqs=args.max_num_seqs, max_model_len=args.max_model_len)
+                if args.eagle_version:
+                    from flexsds.core.compatibility import select_report_eagle_version
+                    try:
+                        preflight.report = select_report_eagle_version(preflight.report, args.eagle_version)
+                    except ValueError as exc:
+                        print(str(exc))
+                        return 2
+                elif preflight.report.identified_method == "eagle":
+                    print("EAGLE version selection required: use --eagle-version 1 or --eagle-version 2")
+                    return 2
+                print(preflight.report.summary())
+                for detail in preflight.report.warnings + preflight.report.recommendations:
+                    print(detail)
+                reasons = preflight.launch_reasons(args.allow_oom_risk)
+                if preflight.report.oom_risk:
+                    print(f"VRAM warning at batch={args.max_num_seqs}, context={args.max_model_len}: "
+                          "smaller workloads may fit; runtime memory fit is unverified.")
+                    if not args.allow_oom_risk:
+                        print("Reduce --max-num-seqs/--max-model-len or pass --allow-oom-risk to continue.")
+                if reasons:
+                    print("Launch blocked: " + "; ".join(reasons))
+                if args.backend != "local":
+                    print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
+                if reasons:
+                    return 2
 
-            if not args.no_adaptive:
-                cost_model, profile_name = load_profile_for_hardware(
-                    serving_hw, strict=True, target_model=target_model, draft_model=draft_model,
-                )
-                if cost_model is None or not profile_name:
-                    print(
-                        f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile for GPU '{serving_hw.device_name} ({serving_hw.sm_architecture})'. "
-                        f"Please calibrate using: flexsds profile --benchmark (or run with --no-adaptive for static speculation).\033[0m"
+                if not args.no_adaptive:
+                    cost_model, profile_name = load_profile_for_hardware(
+                        serving_hw, strict=True, target_model=target_model, draft_model=draft_model,
                     )
-                    return 1
+                    if cost_model is None or not profile_name:
+                        print(
+                            f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile for GPU '{serving_hw.device_name} ({serving_hw.sm_architecture})'. "
+                            f"Please calibrate using: flexsds profile --benchmark (or run with --no-adaptive for static speculation).\033[0m"
+                        )
+                        return 1
 
-                if profile_name == "conservative_analytical_fallback":
-                    print(
-                        f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
-                    )
-                else:
-                    print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+                    if profile_name == "conservative_analytical_fallback":
+                        print(
+                            f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
+                        )
+                    else:
+                        print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
 
-            cfg = {"serving": {
-                "target_model": target_model, "draft_model": draft_model,
-                "draft_method": preflight.report.draft_method,
-                "eagle_version": preflight.report.eagle_version.removeprefix("EAGLE-"),
-                "target_revision": preflight.report.target_revision,
-                "draft_revision": preflight.report.draft_revision,
-                "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
-                "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
-                "enable_adaptive": not args.no_adaptive,
-                "max_num_seqs": args.max_num_seqs, "max_model_len": args.max_model_len,
-                "allow_oom_risk": args.allow_oom_risk,
-                "profile_path": str(resolve_profile_path(profile_name)) if not args.no_adaptive else None,
-            }}
+                cfg = {"serving": {
+                    "target_model": target_model, "draft_model": draft_model,
+                    "draft_method": preflight.report.draft_method,
+                    "eagle_version": preflight.report.eagle_version.removeprefix("EAGLE-"),
+                    "target_revision": preflight.report.target_revision,
+                    "draft_revision": preflight.report.draft_revision,
+                    "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
+                    "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
+                    "enable_adaptive": not args.no_adaptive,
+                    "match_adaptive_runtime": args.match_adaptive_runtime,
+                    "disable_speculative": False,
+                    "disable_prefix_caching": args.no_prefix_caching,
+                    "static_k": args.static_k,
+                    "max_num_seqs": args.max_num_seqs, "max_model_len": args.max_model_len,
+                    "allow_oom_risk": args.allow_oom_risk,
+                    "profile_path": str(resolve_profile_path(profile_name)) if not args.no_adaptive else None,
+                }}
             if args.backend == "colab":
                 print("Colab guidance only: no server or endpoint was created; supplied models are not forwarded to the notebook.")
                 print("Open notebooks/flexsds_colab_server.ipynb and configure the exact models on that runtime.")

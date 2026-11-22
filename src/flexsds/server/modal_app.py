@@ -69,8 +69,19 @@ if modal is not None:
         else:
             flexsds_dir = resolved.parents[1] if len(resolved.parents) > 1 else Path("/root/project/src/flexsds")
             image = image.add_local_dir(str(flexsds_dir), remote_path="/root/project/src/flexsds")
+            # Wheels install these as siblings, but the runtime imports src.*.
+            for package in ("server", "proposer"):
+                image = image.add_local_dir(str(flexsds_dir.parent / package),
+                                           remote_path=f"/root/project/src/{package}")
 
         experiments_dir = PROJECT_ROOT / "experiments"
+        if not experiments_dir.exists():
+            experiments_dir = Path(_pkg_root) / "experiments"
+        if SERVING_CONFIG.get("enable_adaptive", True):
+            for name in ("protocol_b_boundary_observer.py", "scalar_vllm_source_manifest.json",
+                         "m4_eagle_source_manifest.json", "eagle_legacy_source_manifest.json"):
+                if not (experiments_dir / name).is_file():
+                    raise ValueError(f"Required adaptive runtime support file is missing: {name}")
         if experiments_dir.exists():
             image = image.add_local_dir(str(experiments_dir), remote_path="/root/project/experiments",
                                        ignore=["runs/**", "results/**", "__pycache__/**", "*.ipynb"])

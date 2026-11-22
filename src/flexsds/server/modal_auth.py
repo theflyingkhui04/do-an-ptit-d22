@@ -7,6 +7,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import zipfile
 
 
 def ensure_modal():
@@ -70,28 +71,50 @@ def save_verified_modal_token(manager, token_id, token_secret):
     print('Modal credentials verified and saved.')
 
 
+def _modal_interpreter_args(executable):
+    """Use the CLI's recorded interpreter, including pip's Windows launcher."""
+    if not executable:
+        return [sys.executable]
+    try:
+        data = Path(executable).read_bytes()
+        windows_launcher = data.startswith(b'MZ')
+        if windows_launcher:
+            # distlib writes PE launcher + shebang + ZIP(__main__.py).
+            with zipfile.ZipFile(executable) as archive:
+                offset = min(entry.header_offset for entry in archive.infolist())
+            _, marker, line = data[:offset].rpartition(b'#!')
+            if not marker or b'\n' in line.rstrip(b'\r\n'):
+                raise ValueError('Missing launcher shebang')
+        else:
+            line = data.split(b'\n', 1)[0]
+            if not line.startswith(b'#!'):
+                raise ValueError('Missing script shebang')
+            line = line[2:]
+        args = shlex.split(line.decode().strip(), posix=not windows_launcher)
+        if windows_launcher:
+            args = [arg[1:-1] if arg.startswith('"') and arg.endswith('"') else arg for arg in args]
+        if not args:
+            raise ValueError('Empty launcher shebang')
+        return args
+    except (OSError, ValueError, UnicodeError, zipfile.BadZipFile):
+        raise RuntimeError('Cannot determine the Modal CLI interpreter; check the Modal CLI installation.') from None
+
+
 def native_profile(action='inspect'):
     path = Path(os.environ.get('MODAL_CONFIG_PATH') or '~/.modal.toml').expanduser()
     if not path.exists():
         return {'configured': False}
-    executable = shutil.which('modal')
-    interpreter = sys.executable
-    if executable:
-        first = Path(executable).read_bytes().split(b'\n', 1)[0]
-        if first.startswith(b'#!'):
-            interpreter_args = shlex.split(first[2:].decode())
-        else:
-            candidate = Path(executable).parent / 'python.exe'
-            interpreter_args = [str(candidate)] if candidate.exists() else [interpreter]
-    else:
-        interpreter_args = [interpreter]
+    interpreter_args = _modal_interpreter_args(shutil.which('modal'))
     env = dict(os.environ)
     env.pop('PYTHONPATH', None)
     try:
         result = subprocess.run([*interpreter_args, str(Path(__file__).resolve()), action],
-                                env=env, capture_output=True, text=True, timeout=15)
+                                env=env, stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, encoding='utf-8', timeout=15)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError('Timed out reading the local Modal profile.') from exc
+    except OSError:
+        raise RuntimeError('Cannot start the Modal CLI interpreter; check the Modal CLI installation.') from None
     if result.returncode:
         raise RuntimeError('Cannot access the active Modal profile; check the Modal CLI installation.')
     return json.loads(result.stdout)
