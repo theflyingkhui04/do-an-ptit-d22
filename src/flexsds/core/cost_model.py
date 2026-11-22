@@ -376,6 +376,47 @@ def resolve_profile_path(name: str) -> Path:
     raise FileNotFoundError(f"Profile artifact missing: {name}")
 
 
+def inspect_cost_matrix_monotonicity(cost_matrix_ms: Dict[str, float]) -> List[Dict[str, Any]]:
+    """Inspect scalar k{k}_b{b} cost matrix for non-monotonic cells without mutating data."""
+    by_batch: Dict[int, Dict[int, float]] = {}
+    for key_str, raw_val in cost_matrix_ms.items():
+        parts = key_str.split("_")
+        if len(parts) == 2 and parts[0].startswith("k") and parts[1].startswith("b"):
+            try:
+                k_val = int(parts[0][1:])
+                b_val = int(parts[1][1:])
+            except ValueError:
+                continue
+            by_batch.setdefault(b_val, {})[k_val] = float(raw_val)
+
+    anomalies: List[Dict[str, Any]] = []
+    for batch in sorted(by_batch):
+        entries = by_batch[batch]
+        baseline_k0 = entries.get(0)
+        prev_k: Optional[int] = None
+        prev_cost: Optional[float] = None
+        for k_val in sorted(entries):
+            cost = entries[k_val]
+            below_k0 = bool(k_val > 0 and baseline_k0 is not None and cost < baseline_k0)
+            below_prev_k = bool(prev_cost is not None and cost < prev_cost)
+            if below_k0 or below_prev_k:
+                anomalies.append(
+                    {
+                        "batch": batch,
+                        "k": k_val,
+                        "cost_ms": cost,
+                        "baseline_k0_ms": baseline_k0,
+                        "prev_k": prev_k,
+                        "prev_cost_ms": prev_cost,
+                        "below_k0": below_k0,
+                        "below_prev_k": below_prev_k,
+                    }
+                )
+            prev_k = k_val
+            prev_cost = cost
+    return anomalies
+
+
 def validate_measured_profile(data, hardware=None, target_model=None, draft_model=None):
     """Reproduce scalar matrix from preserved worker samples, not a measured label."""
     from flexsds.core.calibration import build_profile, SCHEMA
