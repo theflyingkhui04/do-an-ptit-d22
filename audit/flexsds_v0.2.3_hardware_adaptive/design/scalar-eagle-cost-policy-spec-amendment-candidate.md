@@ -1,5 +1,8 @@
 # Scalar EAGLE Hardware-Cost Policy Specification — Amendment Candidate
 
+> **Active migration (2026-11-22): SECP-PULSE-2R-v1 applied.** The user authorized this scoped production/CPU migration. The appended P2R clauses supersede earlier candidate text for the B1/base3/old0/[0,256) pulse domain. Earlier fixtures/claims remain original-contract context, not evidence for the new objective. No GPU, campaign, publication, push or benchmark is authorized by this application.
+
+
 **Document type:** Normative technical specification candidate  
 **Status:** `AMENDMENT CANDIDATE — TECHNICAL REVIEW REQUIRED — NOT FROZEN`  
 **Policy ID:** `SECP-v1.1-candidate`  
@@ -1072,3 +1075,117 @@ previous K4, new cap2 -> worker <=2 immediately.
 ## 39. Exactly one next action
 
 **Human technical review of this candidate and the companion test plan; if accepted, freeze both before any production implementation.**
+
+
+# Applied SECP-PULSE-2R-v1 normative amendment
+
+## P2R-01 — Objective and claim ceiling
+
+For this opt-in protocol, choose one two-retirement macro-action to maximize predicted useful emitted tokens per expected wall-clock millisecond over that same finite horizon. Let G be a predeclared preparation, queue-driving, sampling, safety/configuration and continuation domain. Let s be the unchanged exact pre-action DecisionState at the pulse decision. Define:
+
+    C_cycle(s,q;G) = E[t_end(sigma2) - t_precommit(sigma1) | S=s, do(q then0), G]
+    Y_cycle(s,q;G) = E[U_poststop(sigma1) + U_poststop(sigma2) | S=s, do(q then0), G]
+    J_2R(s,q;G)    = Y_cycle(s,q;G) / C_cycle(s,q;G).
+
+Use the ratio of expected reward to expected elapsed duration, not the mean of per-cohort reward/time ratios. This is a finite macro-action completion-efficiency objective. It is not a theorem or claim about stationary throughput, TPOT, global optimality, or long-run reward rate.
+
+## P2R-02 — Scope and conditioning
+
+V1 supports only pure-decode B1, original controller base K3, old verification width0 and initial context bucket[0,256), with exact observed product/runtime/config identity, immutable target/draft revisions and qualified request-local history. Future actions are exactly q in{0,2,3}, as derived from the existing candidate rule for base3. No K4 cell is required for this domain. Other states are unsupported until separately specified/profiled; no nearest-state, diagonal, architecture-family or product-name substitution is permitted.
+
+G MUST bind exact workload/tokenization/preparation distribution, warm runtime/cache procedure, sampling domain, resolved native queue driver/capacity and pre-action pending-work contract, controller/recovery settings, common neutral continuation, source/observer versions, cohort/failure plan and fixed seeds. G is fixed before data collection and common across candidate arms. Each actual plan MUST serialize and hash its resolved G; the objective definition is parameterized by that frozen domain, not permission to choose a different G per q. Unknown or mismatching G fails closed before a new cost decision. Queue configuration and pending-work guards MUST NOT be inferred from requested hardware labels or static runtime_mode_id alone.
+
+## P2R-03 — Action definition
+
+The online/collection action is the ordered macro-action(q,0), not an unconstrained sequence of independent per-retirement cost decisions. Freeze q before execution; apply q exactly once to sigma1. The next schedule for the same request incarnation is sigma2 and MUST apply same-engine K0. Subsequent scheduling before sigma2 retires MUST use the same predeclared neutral K0 continuation/native queue-driving rule for every arm. No new cost election may override that lease. No unrelated client workload may be introduced silently.
+
+Producer/consumer order is logical execution order, not an added host-side wait: native async queue filling MAY schedule/submit sigma2 before sigma1's host retirement. Sigma2 must still consume sigma1's exact producer, and both host retirements must finalize in their source-bound order. Artificially serializing the host loop would define a different G and require its own matching profile/domain; this amendment does not silently introduce that intervention.
+
+## P2R-04 — K0 matching
+
+The baseline is the identical two-retirement macro-action(0,0), with the same G, initial state, clocks, receipt/observer implementation, source/configuration and strict nonterminal support. K0 retains the same EAGLE engine/drafter/cache-forward semantics. A one-retirement K0 cost or a target-only baseline cannot substitute. The neutral K0 continuation is a declared part of the objective; it can change ranking relative to other continuations without being estimator bias for this objective.
+
+## P2R-05 — Timing start/end
+
+At sigma1's actual decision hook, capture a detached immutable source-bound receipt after the exact pre-action state is available but before pulse K/placeholders are committed and before worker submission. Sample t0 using same-process perf_counter_ns at this boundary. Sample t1 only after natural materialization, native append/stop/length handling and feedback finalization of exact sigma2. C for one cohort is(t1-t0)/1e6. Do not sum overlapping response latencies or use an arbitrary preceding retirement as t0. No added CUDA synchronization, forced future materialization or tensor readback is allowed.
+
+## P2R-06 — Exact two-target lineage
+
+Bind sigma1 and sigma2 using exact request/incarnation, plan sequence, schedule sequence and source/runtime/plan hashes. In this single-request V1 domain sigma2 is the next scheduled output for that same incarnation. Its old verification width MUST equal the actual pulse width q. For q>0, its consumed verifier origin MUST be sigma1's producer and actual verified/drafted width MUST be q, with0<=A<=D=q. For q0, retain explicit zero-width same-engine proposal witnesses; do not fabricate a positive origin or verifier observation. A predecessor retirement, later output, duplicate, stale incarnation or substituted origin cannot occupy either target slot.
+
+## P2R-07 — Reward accounting
+
+Reward is the sum of actual useful token counts from the two native post-stop outputs, recorded separately before summing. Drafted, accepted, verified slots, useful emitted output, original base, governed/applied/worker/physical K and old verification width remain distinct. Pre-stop A+1 is not a data-source substitute. In the supported nonterminal domain, pinned semantics imply U1=1 and U2=1+A_q only after the exact post-stop outputs and full-width origin have been validated.
+
+## P2R-08 — Units and normalization
+
+Profile cost unit is `ms/completed_two_retirement_cycle`; reward unit is `useful_tokens/completed_two_retirement_cycle`. The ratio has units useful_tokens/ms for this finite horizon. These values MUST NOT be relabelled as existing ms/retired_batch measurements. Normalizing both reward and cost by2 would preserve the objective, but V1 publishes the unnormalized cycle quantities to avoid unit ambiguity. Never normalize only one side.
+
+## P2R-09 — Finite horizon and residual value
+
+The horizon is exactly the two target retirements and terminal continuation value is fixed to zero before collection. Sigma2 verifies every pulse draft; sigma2's proposal width is0, so no unconsumed positive pulse width remains to be credited in a later retirement. Nevertheless q changes useful progress, context/KV state and potentially all later rewards/costs. Those residual effects are intentionally truncated by this finite-horizon approximation; the endpoint is not claimed to equal the baseline's full future state. Native prefetch/queue interference within t0..t1 is included under G even when it involves later neutral work; later outputs receive no reward credit. No third retirement, longer horizon or tail-value estimate may be added after seeing rankings.
+
+## P2R-10 — Minimal predicted numerator
+
+For request i and q in{0,2,3}, define the qualified normal-cycle prefix survival estimate S_hat_(i,base3,G,j). The proposed numerator is:
+
+    Y_cycle_hat(s,q;G) = 2 + sum_(j=1..q) S_hat_(i,3,G,j)
+    Y_cycle_hat(s,0;G) = 2.
+
+Under the prefix-survival model this is1+the existing B1 predicted_yield(q), not the unchanged Y_batch(q). More generally the existing immediate old0 reward contributes B, but B>1 is not authorized by this V1. A change in numerator is mandatory; using C_cycle with unchanged Y_batch can change rankings and has the wrong reward horizon.
+
+## P2R-11 — Survival qualification and assumptions
+
+Reuse the current estimator's request-incarnation ownership, full rolling-window readiness, same-base full-exposure tail-count arithmetic and finalized-normal-event exclusions. Do NOT retroactively treat its legacy base-only history as cycle-qualified. A separate objective/domain stratum MUST admit only trusted completed normal pulse3/K0 cycles whose initial state is old0/base3 in the same G, whose continuation consumes all3 pulse slots and whose post-stop finalization is eligible. Retain the initial pulse receipt/domain with the accepted-prefix observation. q2/D2 does not expose the full base3 tail; q0 does not supply positive evidence. Calibration/probe/stale/preempted/terminal/aborted/ambiguous events do not enter this normal stratum.
+
+The arithmetic identity E[min(A3,q)]=sum_(j<=q)P(A3>=j) holds for the same full-exposure population. Transporting it to a newly chosen q assumes common-prefix behavior and local representativeness/stability within the qualified history/window/G. Greedy sequential EAGLE and matching conditioning support that model, but source/CPU tests do not prove GPU numerical prefix invariance, future stationarity, statistical IID samples or unbiased prediction for arbitrary prompts. These are explicit model assumptions; no online survival confidence interval is claimed. If history is missing/unqualified, perform safe existing-base warmup with the same two-phase continuation and no cost claim, or fail closed. Normal warmup provenance may qualify only after a genuine full, matched, nonterminal cycle; calibration samples may not seed it.
+
+A fixed rolling window is a point-prediction/readiness rule, not an asymptotically consistent estimator as the total lifetime sample count grows. Under a genuinely representative growing full-exposure sample, the same tail-count arithmetic has its usual conditional-frequency interpretation. This decision does not add an unsupported statistical-consistency or accuracy guarantee to the existing finite-window estimator.
+
+## P2R-12 — Nonterminal interior support
+
+Before each pulse, verify effective EOS stopping is disabled, stop-token/string/grammar/repetition termination is absent, sampling is greedy, and both remaining output budget and model-context capacity have at least6 tokens of unreserved slack after accounting for the maximum pending pre-action output. Five is insufficient because the maximum two-retirement advance is1+(3+1)=5 and equality can trigger a length cap. These guards are common across all arms, independent of q. Unknown pending bounds or effective stop settings are unsupported. This V1 does not estimate near-EOS or near-length-limit utility; it makes no deployment-wide assertion about those requests.
+
+## P2R-13 — Terminal/censoring rules
+
+Unexpected terminal/length/stop/clipped output in either target invalidates the complete cycle as a profile sample. Preserve the real clipped outputs and partial duration/receipts as censored raw evidence. Do not create an artificial zero-cost absorbing second retirement, relabel a later output as sigma2, estimate clipped reward from A+1, silently condition on surviving fast cycles, or replace invalid slots until a desired result appears. Near-terminal/absorbing-state objectives require a separate tail-aware reward model and amendment.
+
+## P2R-14 — Failures and macro-action safety
+
+Memory/KV safety, applied<=base and current replacement/downward/recovery bounds remain authoritative. A changed/clipped/rejected pulse, missing full exposure, unknown origin, unsupported state, identity/plan mismatch, OOM, timeout, abort, observer error, stale/preempted/ambiguous finalization or lease mismatch leaves raw evidence and does not produce a valid cycle. Safety can interrupt a macro-action; the policy MUST NOT preserve speculation merely to complete it. Only a fully source-bound completed cycle can support a completed-cycle hardware-cost claim. A forced continuation K0 is not a new independently cost-selected optimum.
+
+## P2R-15 — Cohort reconstruction
+
+Assign cohort IDs, arm/order and fixed plan before preparation. Each measured cohort contains one matched two-retirement cycle and starts from a newly reconstructed old0 state/request incarnation under the same G. Request-owned survival/history cannot be carried across incarnations or relabelled into independent cohorts. Unmeasured preparation/warmup and post-t1 cleanup remain outside the cost span. Existing normal online history may be used for prediction only within its valid incarnation/objective/domain stratum; cost calibration requires no online survival history. Fresh operational cohorts do not by themselves prove statistical independence of hardware/environmental nuisance; the eventual live protocol must preserve and assess temporal/block effects.
+
+## P2R-16 — Publication
+
+Per product and initial state/action cell, predeclare50 independent cohort slots, one cycle per cohort,5000 percentile bootstrap resamples of complete cohort IDs,95% confidence and seed731. Compute C_point as the mean cycle duration, and C_low/C_high as2.5/97.5 percentiles of cohort-resampled means. Keep each pair of target outputs, timing and all raw attempts together. Do not bootstrap individual retirements. Retain per-cycle actual reward and full K/token/origin provenance as validation data; online reward prediction remains request-local. Any failed/missing/censored slot leaves the cell incomplete under this conservative fixed-slot rule; no implicit replacement cohort protocol is granted.
+
+Reuse the existing cohort-bootstrap mathematics, not its retirement-denominator/schema labels. A future implementation needs explicit cycle raw/publication types; it MUST NOT feed two retirements into the old publisher and relabel its per-retirement mean as milliseconds per cycle.
+
+## P2R-17 — Profile key and admission
+
+Use a versioned typed envelope containing objective `SECP-PULSE-2R-v1`, cost/reward units, horizon2, terminal_value0, continuationK0, resolved G hash and the unchanged exact initial DecisionStateKeyV1 for(0,q). Preserve all of its fields; add guards rather than weakening them. The two raw constituent keys(0,q)and(q,0)MUST be retained, but(q,0)is a continuation witness, not a replacement for the initial(0,q)cell and not a separately required cost lookup. The three initial cost cells remain(0,0),(0,2),(0,3), separately for A10 and A10G. Profile provenance includes exact source/runtime/product/model revisions, effective dtype/quantizer, domain guards, cycle counts, raw hashes, bootstrap parameters and failures.
+
+Legacy component, steady-state, first-response and cycle profiles MUST be distinct and fail closed across types/units. An old EAGLE-RW loader MUST NOT admit cycle costs by label substitution. Unknown or mismatching objective, G, queue/sampling/tail/history guards or exact keys rejects a cost claim. Existing requested/observed product, driver/VRAM matching and immutable source rules remain unchanged.
+
+## P2R-18 — Online score and uncertainty
+
+For each admissible q>0 define:
+
+    R_point(q) = Y_cycle_hat(q) / C_point(q)
+    R_lower(q) = Y_cycle_hat(q) / C_high(q)
+    R_upper(0) = 2 / C_low(0).
+
+Support q only if R_lower(q)>R_upper(0). Select the supported q with greatest R_lower. Ties use the existing math.isclose(rel_tol=1e-9,abs_tol=1e-12)rule and the smaller q. If none is supported, select macro-action(0,0); preserve an inconclusive-cost explanation when appropriate. Keep safety, exact admission and history readiness before scoring. This asymmetry is conservative with respect to published cost intervals only. It does not account for uncertainty/model error in survival predictions, establish a simultaneous95% ranking guarantee or prove performance speedup.
+
+## P2R-19 — Online lease and feedback
+
+After the pulse's actual StepPlan is confirmed to apply the selected q exactly, reserve the same incarnation's next scheduling slot for K0; retain the parent cycle ID and exact expected origins. Do not rescore that slot or rearm a cycle while prior target outputs remain unfinalized. Native queue filling may submit later neutral K0 work under G; do not force a GPU wait merely to simplify attribution. Complete the lease only after both exact post-stop events. Reject duplicates/wrong epochs and invalidate interrupted cycles. No later output may leak into the pair. Scheduler-owned tail/stop/queue metadata and objective/domain-qualified history receipts require project-local transport/guards; the pinned Request, StepPlan and existing native completion hooks expose the needed facts, so no new upstream callback is required by this review.
+
+## P2R-20 — Migration and compatibility
+
+This is a versioned opt-in scientific objective change, not a calibration-only relabelling. Existing ordinary steady-state and POLICY_VALIDATION behavior remains unchanged until explicitly migrated. Under the new objective, POLICY_VALIDATION still requires an admitted matching profile, real deterministic candidate scores, correct macro-action lease, all existing safety/identity/source gates, physical execution/verifier/finalization evidence and false claims in calibration/probe/warmup/degraded modes.
+
+Preserve the old R6 source/CPU evidence as evidence for its original contract. Do not reinterpret its old B2/K2-versusK4 fixture numbers as pulse-cycle results. Add new fixed-noncost cycle causal fixtures, numerator/baseline/horizon/lease tests and explicit type/domain/history rejection controls. Production implementation requires source review, all regression gates and a new immutable executable checkpoint/bundle before any later live execution. This audit does not perform that migration, campaign, GPU validation or performance benchmark.

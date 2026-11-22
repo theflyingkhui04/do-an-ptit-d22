@@ -22,8 +22,11 @@ from src.proposer.cost_policy import (
     SurvivalHistory, VerifierEventKey, source_decision_mode, EagleConsumerProfile,
 )
 from src.server.decision_state import (
-    CONTEXT_SEMANTICS, STATE_SCHEMA, CandidateDecisionStateV1, FixedCalibrationActionV1,
+    CONTEXT_SEMANTICS, STATE_SCHEMA, CandidateDecisionStateV1, FixedCalibrationActionV1, PulseCalibrationActionV1,
     DecisionStateSnapshotV1, RuntimeIdentitySnapshotV1, context_bucket,
+)
+from src.proposer.pulse_policy import (
+    PulseCostGovernor, PulseSurvivalHistory, PulseCycleState, PulseCycleLease, EaglePulseProfile,
 )
 
 # Free VRAM value passed to the controller when no reading is available,
@@ -59,6 +62,7 @@ class StepPlan:
     per_request_base_k: Dict[str, int] = field(default_factory=dict)
     per_request_source_modes: Dict[str, str] = field(default_factory=dict)
     calibration_action: Optional[FixedCalibrationActionV1] = None
+    pulse_cycle: object = None
 
     @property
     def worker_k(self) -> int:
@@ -113,10 +117,13 @@ class AdaptiveBudgetPlanner:
         self._runtime_identity = RuntimeIdentitySnapshotV1()
         self._runtime_identity_bound = False
         self._last_decision_state_sequence = 0
-        self.cost_governor = ScalarEagleCostGovernor(cost_policy_mode, consumer_profile, consumer_profile_error)
+        self.cost_governor = PulseCostGovernor(cost_policy_mode, consumer_profile, consumer_profile_error)
         if cost_policy_mode != "off" and not replacement_policy:
             raise ValueError("SECP cost policy requires the replacement policy")
         self.survival_history = SurvivalHistory()
+        self.pulse_history = PulseSurvivalHistory()
+        self.pulse_cycles = PulseCycleState()
+        self.pulse_domain_json = None
         self.pending_feedback = PendingFeedbackStore()
         self.reset_recovery()
 
@@ -225,6 +232,7 @@ class AdaptiveBudgetPlanner:
             controller = self.adapter.get_controller(req_id)
             self._known_requests.add(req_id)
             self.survival_history.bind_request(req_id, incarnation, controller.window_size)
+            self.pulse_history.bind_request(req_id, incarnation, controller.window_size)
             self.pending_feedback.bind_request(req_id, incarnation)
 
     def _recovery_cap(self, selected: Dict[str, int], fresh_max_k: int) -> int:
@@ -257,6 +265,7 @@ class AdaptiveBudgetPlanner:
         *,
         decision_state: Optional[DecisionStateSnapshotV1] = None,
         calibration_action: Optional[FixedCalibrationActionV1] = None,
+        pulse_context=None,
     ) -> StepPlan:
         """Selects k_i for every decoding request and the batch-wide K = max(k_i).
 
@@ -310,10 +319,27 @@ class AdaptiveBudgetPlanner:
         governed = dict(selected)
         if self.replacement_policy:
             if calibration_action is None:
-                cost_decision = self.cost_governor.decide(
-                    runtime=self.runtime_identity, candidate_states=candidate_states,
-                    base=base, source_modes=source_modes, history=self.survival_history,
-                    incarnations={rid: self._request_incarnations.get(rid) for rid in base})
+                options = {}
+                pulse_active = isinstance(self.cost_governor, PulseCostGovernor)
+                if pulse_active:
+                    options = dict(pulse_context=pulse_context, snapshot=snapshot)
+                if pulse_active and self.cost_governor.mode != "off" and self.pulse_cycles.active:
+                    lease = self.pulse_cycles.lease
+                    if (snapshot is None or dict(snapshot.request_incarnations).get(lease.rid) != lease.epoch
+                            or set(base) != {lease.rid}):
+                        lease.invalidate("cycle_ownership_changed")
+                    cost_decision = CostDecision(0,"cycle_continuation","frozen_k0_continuation",
+                        False,False,False,json.dumps(dict(objective=self.cost_governor.objective,
+                            cycle_id=lease.record["cycle_id"], continuation=0,candidates=[])))
+                else:
+                    cost_decision = self.cost_governor.decide(
+                        runtime=self.runtime_identity, candidate_states=candidate_states,
+                        base=base, source_modes=source_modes,
+                        history=self.pulse_history if pulse_active else self.survival_history,
+                        incarnations={rid: self._request_incarnations.get(rid) for rid in base}, **options)
+                if pulse_active and self.pulse_cycles.active and "memory_override" in source_modes.values():
+                    self.pulse_cycles.lease.invalidate("memory_or_kv_safety")
+                    cost_decision = CostDecision(0,"memory_override","memory_or_kv_safety",False,False,False,"{}")
                 if cost_decision.selected_cap is not None:
                     governed = {rid: min(k, cost_decision.selected_cap) for rid, k in selected.items()}
             else:
@@ -326,6 +352,11 @@ class AdaptiveBudgetPlanner:
                         profile_identity_status="NOT_USED_CALIBRATION",
                         calibration_action_k=calibration_action.k,
                         calibration_plan_hash=calibration_action.collection_plan_hash)))
+            # A frozen macro-action owns its continuation even if a caller tries
+            # to install another calibration or ordinary selection meanwhile.
+            if (isinstance(self.cost_governor,PulseCostGovernor) and self.pulse_cycles.active
+                    and self.cost_governor.mode != "off"):
+                governed = {rid:0 for rid in selected}
         fresh_max_k = max(governed.values(), default=0)
         if self.replacement_policy:
             cap = self._recovery_cap(governed, fresh_max_k)
@@ -338,6 +369,14 @@ class AdaptiveBudgetPlanner:
                 per_request_k = {rid: batch_k for rid in per_request_k}
         batch_node_count = max(nodes.values(), default=0)
         self._plan_sequence += 1
+        if (isinstance(self.cost_governor,PulseCostGovernor) and cost_decision is not None
+                and (cost_decision.cost_policy_applied or cost_decision.decision_mode=="cost_warmup")
+                and (len(per_request_k)!=1 or any(k!=cost_decision.selected_cap for k in per_request_k.values()))):
+            self._write_step(dict(record_type="pulse_cycle_failed",plan_sequence=self._plan_sequence,
+                reason="pulse_not_applied_exactly",selected_q=cost_decision.selected_cap,
+                actual_applied_k=dict(per_request_k),decision_state=asdict(snapshot) if snapshot else None))
+            cost_decision = CostDecision(cost_decision.selected_cap,"normal","pulse_not_applied_exactly",
+                False,False,False,cost_decision.evidence_json)
         if cost_decision is not None:
             self._write_step(dict(
                 record_type="hardware_cost_decision", plan_sequence=self._plan_sequence,
@@ -390,7 +429,7 @@ class AdaptiveBudgetPlanner:
                 eligible_batch_size=len(selected), pending_target_k=self._pending_target_k,
                 pending_streak=self._pending_streak, required_hold_steps=self.recovery_hold_steps,
             ))
-        return StepPlan(batch_k=batch_k, per_request_k=per_request_k,
+        step = StepPlan(batch_k=batch_k, per_request_k=per_request_k,
                         batch_node_count=batch_node_count, per_request_node_count=nodes,
                         per_request_decisions=decisions, plan_sequence=self._plan_sequence,
                         per_request_selected_k=dict(selected), fresh_max_k=fresh_max_k,
@@ -400,6 +439,32 @@ class AdaptiveBudgetPlanner:
                         candidate_decision_states=candidate_states, cost_decision=cost_decision,
                         per_request_governed_k=governed, per_request_base_k=base,
                         per_request_source_modes=source_modes, calibration_action=calibration_action)
+        if isinstance(self.cost_governor,PulseCostGovernor) and self.cost_governor.mode != "off":
+            if self.pulse_cycles.active:
+                self.pulse_cycles.lease.confirm(step)
+            elif (pulse_context is not None and cost_decision is not None
+                  and (cost_decision.cost_policy_applied or cost_decision.decision_mode == "cost_warmup"
+                       or isinstance(calibration_action,PulseCalibrationActionV1))):
+                expected = calibration_action.k if isinstance(calibration_action,PulseCalibrationActionV1) else cost_decision.selected_cap
+                if step.per_request_k == {pulse_context.request_id:expected}:
+                    self.pulse_cycles.lease = PulseCycleLease(step,pulse_context,self.runtime_identity,
+                        purpose="CALIBRATION" if isinstance(calibration_action,PulseCalibrationActionV1) else "NORMAL",
+                        cohort_id=getattr(calibration_action,"cohort_id",None),
+                        source_git_sha=getattr(calibration_action,"source_git_sha",None),
+                        synthetic=getattr(calibration_action,"synthetic",getattr(self.cost_governor.profile,"synthetic",False)))
+            if self.pulse_cycles.lease is not None:
+                step.pulse_cycle = deepcopy(self.pulse_cycles.lease.record)
+            self.pulse_cycles.archive(self)
+        return step
+
+    def record_pulse_proposal(self, sequence, rows, width):
+        if self.pulse_cycles.active:
+            self.pulse_cycles.lease.proposal(sequence,rows,width)
+
+    def finalize_pulse_cycle(self, sequence, execution, outputs, *, invalid_status=None):
+        if self.pulse_cycles.lease is not None:
+            self.pulse_cycles.lease.retire(sequence,execution,outputs,invalid_status)
+            self.pulse_cycles.archive(self)
 
     def record_scheduled_budget(self, req_id: str, batch_k: int, placeholder_k: int,
                                 *, dynamic: bool, schedule_sequence: int,
@@ -456,7 +521,10 @@ class AdaptiveBudgetPlanner:
     def _emit_finalized_cost_feedback(self, event):
         if event is None:
             return
-        counted = self.survival_history.add(event)
+        pulse_active = isinstance(self.cost_governor,PulseCostGovernor)
+        counted = False if pulse_active else self.survival_history.add(event)
+        if pulse_active and self.pulse_cycles.active:
+            self.pulse_cycles.lease.verifier(event)
         observation = event.observation
         self._write_step(dict(
             record_type="cost_verification_finalized", **asdict(observation),
@@ -582,9 +650,14 @@ class AdaptiveBudgetPlanner:
         """Releases the request session and appends its telemetry as one JSONL line."""
         incarnation = self._request_incarnations.pop(req_id, None)
         if incarnation is not None:
+            if self.pulse_cycles.active and self.pulse_cycles.lease.rid == req_id:
+                self.pulse_cycles.lease.invalidate(feedback_status,censored=feedback_status=="TERMINAL_CENSORED")
+                if defer_verifier not in (self.pulse_cycles.lease.first,self.pulse_cycles.lease.first+1):
+                    self.pulse_cycles.archive(self)
             for event in self.pending_feedback.close_epoch(req_id, incarnation, feedback_status, defer_verifier):
                 self._emit_finalized_cost_feedback(event)
             self.survival_history.reset_epoch(req_id, incarnation)
+            self.pulse_history.reset_epoch(req_id, incarnation)
         self._cohort.discard((req_id, incarnation))
         if not self._cohort:
             self.reset_recovery()
@@ -650,11 +723,11 @@ class AdaptiveBudgetPlanner:
         if cost_mode != "off" and consumer_path:
             from pathlib import Path
             try:
-                consumer_profile = EagleConsumerProfile.from_data(json.loads(Path(consumer_path).read_text()))
+                consumer_profile = EaglePulseProfile.from_data(json.loads(Path(consumer_path).read_text()))
             except (OSError, ValueError, TypeError, KeyError):
                 consumer_error = "invalid_consumer_profile"
 
-        return cls(
+        planner = cls(
             adapter=AdaptiveProposerAdapter(controller_kwargs=controller_kwargs),
             max_k=int(env.get("ADAPTIVE_MAX_K", "4")),
             min_batch_k=int(env.get("ADAPTIVE_MIN_BATCH_K", "0")),
@@ -665,6 +738,8 @@ class AdaptiveBudgetPlanner:
             recovery_hold_steps=int(env.get("ADAPTIVE_RECOVERY_HOLD_STEPS", "0")),
             cost_policy_mode=cost_mode, consumer_profile=consumer_profile, consumer_profile_error=consumer_error,
         )
+        planner.pulse_domain_json = env.get("ADAPTIVE_PULSE_DOMAIN_JSON")
+        return planner
 
 
 def _env_flag(value: str) -> bool:

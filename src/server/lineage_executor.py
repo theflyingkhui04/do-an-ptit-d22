@@ -98,6 +98,29 @@ class LineageUniProcExecutor(UniProcExecutor):
         # EngineCore constructs its scheduler later with the same config object.
         self._lineage_registration = register_lineage_executor(config, self)
         self._lineage = self._lineage_registration.ledger
+        # Observe actual proposal results, including the real zero-width result.
+        # Shape metadata only; no tensor readback, wait, or upstream modification.
+        drafter = getattr(runner,"drafter",None)
+        original_propose = getattr(drafter,"propose",None)
+        if not callable(original_propose):
+            # Other supported legacy speculators need no pulse observer. A
+            # pulse can never complete without the actual proposal witness.
+            return
+        def observe_proposal(*args, **kwargs):
+            result = original_propose(*args, **kwargs)
+            try:
+                output = self._lineage_sampling
+                entry = self._lineage.get(output)
+                callback = self._lineage.on_pulse_proposal
+                if callback is not None and entry is not None:
+                    shape = getattr(result, "shape", ())
+                    if len(shape) == 2:
+                        callback(entry.schedule_sequence,int(shape[0]),int(shape[1]))
+            except Exception:
+                self._lineage.clear()
+                logger.exception("Pulse proposal observation failed; cycle invalidated")
+            return result
+        runner.drafter.propose = observe_proposal
 
     def execute_model(self, scheduler_output, non_block=False):
         runner = self._lineage_runner
@@ -142,6 +165,8 @@ class LineageUniProcExecutor(UniProcExecutor):
         if hasattr(result, "add_done_callback"):
             def terminal(future):
                 if future.cancelled() or future.exception() is not None:
+                    if self._lineage.on_pulse_failure is not None:
+                        self._lineage.on_pulse_failure("executor_future_failed")
                     self._lineage.clear()
             result.add_done_callback(terminal)
         return result

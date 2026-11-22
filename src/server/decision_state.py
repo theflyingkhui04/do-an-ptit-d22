@@ -335,6 +335,19 @@ class FixedCalibrationActionV1:
             raise ValueError("invalid_frozen_calibration_action")
 
 
+@dataclass(frozen=True)
+class PulseCalibrationActionV1(FixedCalibrationActionV1):
+    cohort_id: str = ""
+    source_git_sha: str = ""
+    synthetic: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (self.k not in (0,2,3) or not self.cohort_id
+                or re.fullmatch(r"[0-9a-f]{40}",self.source_git_sha) is None):
+            raise ValueError("invalid_pulse_calibration_action")
+
+
 def candidate_state_for_action(identity, snapshot, future_widths, shared_k):
     """Pure pre-action constructor; no profile, score, worker or mutable state."""
     if not isinstance(snapshot, DecisionStateSnapshotV1):
@@ -361,3 +374,57 @@ def candidate_state_for_action(identity, snapshot, future_widths, shared_k):
     return CandidateDecisionStateV1(identity.identity_key, snapshot.pure_decode, len(ids),
         tuple((r, old.get(r)) for r in ids), rows, shared_k, buckets,
         snapshot.runtime_mode_id, tuple(dict.fromkeys(reasons)))
+
+
+@dataclass(frozen=True)
+class PulseContextV1:
+    """Detached scheduler-owned support receipt, separate from the exact key."""
+    domain_json: str
+    request_id: str
+    incarnation: int
+    schedule_sequence: int
+    remaining_output: int
+    remaining_model: int
+    pending_output_bound: int
+    queue_capacity: int
+    greedy_no_stops: bool
+
+    def validate(self, snapshot):
+        if (snapshot is None or snapshot.eligible_decode_request_ids != (self.request_id,)
+                or snapshot.scheduler_sequence != self.schedule_sequence
+                or dict(snapshot.request_incarnations).get(self.request_id) != self.incarnation
+                or self.greedy_no_stops is not True
+                or any(type(n) is not int or n < 0 for n in (
+                    self.remaining_output, self.remaining_model, self.pending_output_bound))
+                or min(self.remaining_output, self.remaining_model)-self.pending_output_bound < 6):
+            raise ValueError("unsupported_pulse_interior")
+        domain = json.loads(self.domain_json)
+        required = ("preparation", "workload", "warm_runtime_cache", "sampling", "queue",
+                    "controller_recovery", "source_observer", "cohort_failure_plan", "seeds")
+        if (not isinstance(domain, dict) or any(not domain.get(k) for k in required)
+                or domain["sampling"] != "greedy_no_stops_v1"
+                or type(self.queue_capacity) is not int or self.queue_capacity < 1
+                or domain["queue"] != dict(capacity=self.queue_capacity,
+                    driver="native_enginecore_v030", pending="bounded_native_placeholders", continuation=0)):
+            raise ValueError("unsupported_pulse_domain")
+        return hashlib.sha256(json.dumps(domain, sort_keys=True, separators=(",", ":"),
+                                         allow_nan=False).encode()).hexdigest()
+
+
+def capture_pulse_context(domain_json, snapshot, request, max_model_len, queue_capacity):
+    """No defaults for unknown sampling/tail/queue facts; admission fails closed."""
+    try:
+        params = request.sampling_params
+        pending = request.num_output_placeholders
+        # Native output placeholders reserve the maximum pending sampled output.
+        context = PulseContextV1(domain_json, request.request_id,
+            dict(snapshot.request_incarnations)[request.request_id], snapshot.scheduler_sequence,
+            request.max_tokens-request.num_output_tokens,
+            max_model_len-request.num_computed_tokens, pending, queue_capacity,
+            params.temperature == 0 and params.ignore_eos is True and params.eos_token_id is None
+            and not params.stop and not params.stop_token_ids
+            and not params.repetition_detection and not request.use_structured_output)
+        context.validate(snapshot)
+        return context
+    except (AttributeError, TypeError, ValueError, KeyError):
+        return None

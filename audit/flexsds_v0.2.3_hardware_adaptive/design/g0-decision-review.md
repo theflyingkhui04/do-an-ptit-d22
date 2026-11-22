@@ -1,5 +1,8 @@
 # G0 Decision Review — Scalar EAGLE Hardware-Cost Policy
 
+> **Active migration (2026-11-22): SECP-PULSE-2R-v1 applied.** The user authorized this scoped production/CPU migration. The appended P2R clauses supersede earlier candidate text for the B1/base3/old0/[0,256) pulse domain. Earlier fixtures/claims remain original-contract context, not evidence for the new objective. No GPU, campaign, publication, push or benchmark is authorized by this application.
+
+
 **Status:** `TECHNICAL REVIEW PACKAGE — AMENDMENT CANDIDATE READY`  
 **Date:** 2026-11-21  
 **Repository source reviewed:** `4bb093ad4272aa330679d3baa9f5b1797ea397da`  
@@ -717,3 +720,8 @@ BENCHMARK AUTHORIZED = NO
 Exactly one next action:
 
 **Review and approve/reject the amendment candidate; then run the C/E source-feasibility tests before production implementation.**
+
+
+# Applied pulse migration decision
+
+The frozen objective is `SECP-PULSE-2R-v1`; it is not reopened here. The full amendment is applied to the companion active specification, with its verification mapping in the active test plan. This local migration requires a reviewed source checkpoint and all CPU gates. R6-GPU and R6-PERFORMANCE remain UNVERIFIED. The historical G0 candidate authorization statements above are superseded for this explicitly authorized scoped migration. No full campaign is implemented.

@@ -45,6 +45,8 @@ class LineageLedger:
         self._incarnation = 0
         self.generation = None
         self.on_policy_draft = None
+        self.on_pulse_proposal = None
+        self.on_pulse_failure = None
         self._issued_origins = WeakValueDictionary()
         self._counted_origins = WeakSet()
 
@@ -158,6 +160,8 @@ class LineageLedger:
             del self.executions[id(output)]
 
     def clear(self):
+        if self.on_pulse_failure is not None:
+            self.on_pulse_failure("lineage_cleared")
         self.executions.clear()
         self.active.clear()
         self.generation = None

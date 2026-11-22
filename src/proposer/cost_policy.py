@@ -1,4 +1,8 @@
-"""SECP-v1.1: finalized same-base survival and a conservative batch cost cap."""
+"""Shared feedback/estimator mechanics and the original SECP regression model.
+
+The active planner uses pulse_policy.PulseCostGovernor. The legacy governor
+below remains an explicit original-contract reference, never the active loader.
+"""
 from __future__ import annotations
 
 from collections import deque
@@ -92,6 +96,11 @@ class SurvivalEstimate:
         if not self.count:
             raise ValueError("No survival evidence")
         return 1. + sum(self.survival[:k])
+
+    def predicted_cycle_reward(self, q):
+        if self.base_k != 3 or q not in (0,2,3) or not self.ready:
+            raise ValueError("unready_or_unsupported_pulse_survival")
+        return 1. + self.predicted_yield(q)
 
 
 class SurvivalHistory:

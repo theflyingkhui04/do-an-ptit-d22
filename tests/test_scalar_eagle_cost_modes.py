@@ -140,8 +140,8 @@ def test_source_root_import_and_profile_load_use_same_consumer_types(tmp_path):
 import sys
 p=AdaptiveBudgetPlanner.from_env({"ADAPTIVE_REPLACEMENT_POLICY":"1",
     "ADAPTIVE_COST_POLICY_MODE":"strict","ADAPTIVE_CONSUMER_PROFILE_PATH":sys.argv[1]})
-assert p.cost_governor.profile is not None
-assert p.cost_governor.profile.synthetic
+assert p.cost_governor.profile is None  # Legacy EAGLE-RW is not a pulse profile.
+assert p.cost_governor.profile_error == "invalid_consumer_profile"
 '''
     completed=subprocess.run([sys.executable,"-B","-c",code,str(path)],cwd=root,env=env,
         capture_output=True,text=True)

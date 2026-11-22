@@ -289,3 +289,254 @@ class EagleConsumerProfile:
             cells.append((canonical(item["state"]), ConsumerCostCell(**cost)))
         data["cells"] = tuple(cells)
         return cls(**data)
+
+
+# Legacy EAGLE-RW types above remain readable for historical evidence only.
+# The active planner loads only this versioned, dimensionally distinct type.
+PULSE_OBJECTIVE = "SECP-PULSE-2R-v1"
+PULSE_UNIT = "ms/completed_two_retirement_cycle"
+PULSE_REWARD_UNIT = "useful_tokens/completed_two_retirement_cycle"
+PULSE_BOUNDARY = "precommit_pulse_to_exact_continuation_poststop_v1"
+
+
+def pulse_state_payload(state):
+    value = decision_state_payload(state)
+    if (value["eligible_decode_rows"] != 1 or value["old_verification_widths"] != [0]
+            or value["context_buckets"] != ["[0,256)"]
+            or value["candidate_future_widths"] not in ([0], [2], [3])):
+        raise ConsumerProfileError("unsupported_initial_pulse_state")
+    return value
+
+
+@dataclass(frozen=True)
+class PulseCostCell:
+    C_point: float
+    C_low: float
+    C_high: float
+    evidence_json: str
+    raw_sha256: str
+    synthetic: bool = False
+
+    def __post_init__(self):
+        if (not all(positive(v) for v in (self.C_point, self.C_low, self.C_high))
+                or not self.C_low <= self.C_point <= self.C_high):
+            raise ConsumerProfileError("invalid_cycle_interval")
+        raw = json.loads(self.evidence_json)
+        if digest(raw) != self.raw_sha256:
+            raise ConsumerProfileError("cycle_raw_link_mismatch")
+        if self.synthetic:
+            if raw != dict(kind="synthetic_pulse_cycle_v1", C_point=self.C_point,
+                           C_low=self.C_low, C_high=self.C_high):
+                raise ConsumerProfileError("invalid_cycle_fixture")
+        else:
+            report = publish_pulse_cost(raw.get("cycles", ()))
+            if raw.get("kind") != "pulse_cycle_cohorts_v1" or not report["complete"] or any(
+                    report[k] != getattr(self, k) for k in ("C_point", "C_low", "C_high")):
+                raise ConsumerProfileError("invalid_cycle_publication")
+
+    @classmethod
+    def synthetic_fixture(cls, point, low=None, high=None):
+        low, high = point if low is None else low, point if high is None else high
+        raw = dict(kind="synthetic_pulse_cycle_v1", C_point=point, C_low=low, C_high=high)
+        return cls(point, low, high, canonical(raw), digest(raw), True)
+
+    def to_data(self):
+        return dict(C_point=self.C_point, C_low=self.C_low, C_high=self.C_high,
+                    evidence=json.loads(self.evidence_json), raw_sha256=self.raw_sha256, synthetic=self.synthetic)
+
+
+def publish_pulse_cost(cycles):
+    """One complete cycle/cohort, fixed 50 slots; never normalizes by retirements.
+
+    This pure publication primitive does not collect or publish live profiles.
+    The campaign must supply all predetermined slots, including failures.
+    """
+    cycles = tuple(cycles)
+    costs, ids, epochs, failures = [], set(), set(), []
+    cell_domain = None
+    for cycle in cycles:
+        cid = cycle.get("cohort_id")
+        epoch = (cycle.get("request_id"), cycle.get("incarnation"), cycle.get("clock_domain"))
+        if not cid or cid in ids or epoch in epochs:
+            raise ConsumerProfileError("cycle_cohort_reused")
+        ids.add(cid); epochs.add(epoch)
+        if cycle.get("status") != "COMPLETE":
+            if cycle.get("status") not in ("INVALID","CENSORED","INCOMPLETE") or not cycle.get("failures"):
+                raise ConsumerProfileError("unexplained_failed_cycle")
+            failures.append(cid)
+            continue
+        if (cycle.get("objective") != PULSE_OBJECTIVE or cycle.get("synthetic") is not False
+                or cycle.get("unit") != PULSE_UNIT or len(cycle.get("retirements", ())) != 2
+                or cycle.get("purpose") != "CALIBRATION"
+                or cycle.get("continuation") != 0 or cycle.get("terminal_value") != 0
+                or not positive(cycle.get("cost_ms"))
+                or not re.fullmatch(r"[0-9a-f]{40}", cycle.get("source_git_sha", ""))
+                or cycle.get("cost_ms") != (cycle["end_ns"]-cycle["start_ns"])/1e6
+                or cycle.get("start_ns", -1) < 0):
+            raise ConsumerProfileError("invalid_complete_cycle")
+        group = (cycle.get("initial_key"), cycle.get("domain_hash"), cycle.get("runtime_identity_key"),
+                 cycle.get("source_git_sha"))
+        if cell_domain is not None and group != cell_domain:
+            raise ConsumerProfileError("mixed_cycle_cell_or_domain")
+        cell_domain = group
+        costs.append(cycle["cost_ms"])
+        validate_pulse_cycle(cycle)
+    result = dict(complete=False, failures=failures, objective=PULSE_OBJECTIVE, unit=PULSE_UNIT,
+                  cohort_ids=sorted(ids), seed=731, bootstrap_resamples=5000, confidence_level=.95)
+    if len(cycles) != 50 or failures:
+        return result
+    rng = random.Random(731)
+    draws = sorted(sum(rng.choices(costs, k=50))/50 for _ in range(5000))
+    return dict(result, complete=True, C_point=sum(costs)/50,
+                C_low=_percentile(draws, .025), C_high=_percentile(draws, .975))
+
+
+def validate_pulse_cycle(cycle):
+    """Validate serialized native receipts; no post-action old-width relabelling."""
+    try:
+        from src.server.decision_state import DecisionStateSnapshotV1, context_bucket
+        rid,epoch,q = cycle["request_id"],cycle["incarnation"],cycle["q"]
+        if q not in (0,2,3) or type(epoch) is not int or epoch<1:
+            raise ValueError("invalid pulse")
+        receipts = [cycle["pulse_receipt"],cycle["continuation_receipt"]]
+        initial = json.loads(cycle["initial_key"])
+        for i,(receipt,retirement,old,future) in enumerate(zip(receipts,cycle["retirements"],(0,q),(q,0))):
+            s = DecisionStateSnapshotV1(**receipt["decision_state"])
+            if (s.status != "SUPPORTED" or s.full_scheduled_request_ids != (rid,)
+                    or s.eligible_decode_request_ids != (rid,) or not s.pure_decode
+                    or s.request_incarnations != ((rid,epoch),)
+                    or s.old_verification_width_by_request != ((rid,old),)
+                    or s.runtime_mode_id != initial["runtime_mode_id"]
+                    or receipt["schedule_sequence"] != s.scheduler_sequence
+                    or receipt["applied_k"] != {rid:future} or receipt["worker_k"] != future
+                    or retirement["schedule_sequence"] != s.scheduler_sequence
+                    or retirement["physical"] != dict(rows=1,width=future)
+                    or retirement["finish_reason"] is not None):
+                raise ValueError("phase receipt mismatch")
+            origin = retirement["origin"]
+            if any(origin[k] != v for k,v in dict(request_id=rid,incarnation=epoch,
+                schedule_sequence=s.scheduler_sequence,plan_sequence=receipt["plan_sequence"],
+                request_k=future,batch_k=future).items()):
+                raise ValueError("origin mismatch")
+            if i==0:
+                candidate=CandidateDecisionStateV1(cycle["runtime_identity_key"],True,1,((rid,0),),
+                    ((rid,q),),q,((rid,context_bucket(dict(s.host_context_tokens_after_schedule_by_request)[rid])),),
+                    s.runtime_mode_id)
+                if canonical(pulse_state_payload(candidate)) != cycle["initial_key"]:
+                    raise ValueError("initial key mismatch")
+        if receipts[1]["schedule_sequence"] != receipts[0]["schedule_sequence"]+1:
+            raise ValueError("nonadjacent continuation")
+        a = 0
+        if q:
+            event = cycle["verifier_finalization"]
+            obs = event["observation"]
+            if (event["finalization_status"] != "ELIGIBLE_NONTERMINAL"
+                    or obs["key"] != dict(request_id=rid,incarnation=epoch,
+                        source_plan_sequence=receipts[0]["plan_sequence"],
+                        source_schedule_sequence=receipts[0]["schedule_sequence"],
+                        verifier_sequence=receipts[1]["schedule_sequence"])
+                    or obs["D"]!=q or obs["source_applied_k"]!=q or obs["source_shared_k"]!=q
+                    or type(obs["A"]) is not int or not 0<=obs["A"]<=q
+                    or event["emitted_tokens"] != cycle["retirements"][1]["useful_tokens"]):
+                raise ValueError("verifier mismatch")
+            a=obs["A"]
+        if ([r["useful_tokens"] for r in cycle["retirements"]] != [1,1+a]
+                or cycle["useful_tokens"] != 2+a or cycle.get("clock") != CLOCK
+                or cycle.get("added_cuda_sync") is not False or cycle.get("failures")):
+            raise ValueError("cycle output or clock mismatch")
+    except (KeyError,TypeError,ValueError,IndexError) as exc:
+        raise ConsumerProfileError("invalid_cycle_receipt_provenance") from exc
+    return True
+
+
+@dataclass(frozen=True)
+class EaglePulseProfile:
+    profile_id: str
+    identity: RuntimeIdentitySnapshotV1
+    domain_json: str
+    cells: tuple
+    synthetic: bool = False
+    objective: str = PULSE_OBJECTIVE
+    protocol: str = PULSE_OBJECTIVE
+    unit: str = PULSE_UNIT
+    reward_unit: str = PULSE_REWARD_UNIT
+    horizon: int = 2
+    continuation: int = 0
+    terminal_value: int = 0
+    timing_boundary: str = PULSE_BOUNDARY
+    k0_semantics: str = K0_SEMANTICS
+    clock: str = CLOCK
+    added_cuda_sync: bool = False
+
+    def __post_init__(self):
+        validate_identity(self.identity)
+        object.__setattr__(self, "cells", tuple(tuple(pair) for pair in self.cells))
+        if (not self.profile_id or self.objective != PULSE_OBJECTIVE or self.protocol != PULSE_OBJECTIVE
+                or self.unit != PULSE_UNIT or self.reward_unit != PULSE_REWARD_UNIT
+                or type(self.horizon) is not int or self.horizon != 2
+                or type(self.continuation) is not int or self.continuation != 0
+                or type(self.terminal_value) is not int or self.terminal_value != 0
+                or self.timing_boundary != PULSE_BOUNDARY or self.clock != CLOCK
+                or self.k0_semantics != K0_SEMANTICS or self.added_cuda_sync is not False
+                or len(dict(self.cells)) != len(self.cells) or not isinstance(json.loads(self.domain_json), dict)):
+            raise ConsumerProfileError("invalid_pulse_profile_contract")
+        for key, cell in self.cells:
+            value = json.loads(key)
+            if (value.get("schema") != "decision_state_key_v1"
+                    or value.get("runtime_identity_key") != self.identity.identity_key
+                    or value.get("runtime_mode_id") != self.identity.runtime_mode_id
+                    or value.get("eligible_decode_rows") != 1 or value.get("pure_decode_state") is not True
+                    or value.get("old_verification_widths") != [0]
+                    or value.get("candidate_future_widths") not in ([0], [2], [3])
+                    or value.get("candidate_shared_worker_k") != value["candidate_future_widths"][0]
+                    or value.get("context_buckets") != ["[0,256)"]
+                    or canonical(value) != key or not isinstance(cell, PulseCostCell)
+                    or cell.synthetic != self.synthetic):
+                raise ConsumerProfileError("invalid_exact_pulse_cell")
+            if not self.synthetic:
+                for cycle in json.loads(cell.evidence_json)["cycles"]:
+                    if (cycle.get("initial_key") != key or cycle.get("domain_hash") != self.domain_hash
+                            or cycle.get("runtime_identity_key") != self.identity.identity_key):
+                        raise ConsumerProfileError("cycle_profile_binding_mismatch")
+
+    @property
+    def domain_hash(self):
+        return digest(json.loads(self.domain_json))
+
+    def identity_status(self, runtime):
+        return "VALID_MATCH" if runtime == self.identity else "IDENTITY_MISMATCH"
+
+    def lookup(self, state):
+        key = canonical(pulse_state_payload(state))
+        try:
+            return dict(self.cells)[key]
+        except KeyError as exc:
+            raise ConsumerProfileError("missing_exact_pulse_cell") from exc
+
+    def to_data(self):
+        return dict(profile_id=self.profile_id, identity=asdict(self.identity), domain_json=self.domain_json,
+            cells=[dict(state=json.loads(k), cost=c.to_data()) for k,c in self.cells],
+            **{k:getattr(self,k) for k in ("synthetic", "objective", "protocol", "unit", "reward_unit", "horizon",
+               "continuation", "terminal_value", "timing_boundary", "k0_semantics", "clock", "added_cuda_sync")})
+
+    @cached_property
+    def sha256(self):
+        return digest(self.to_data())
+
+    @classmethod
+    def from_data(cls, data):
+        if not isinstance(data, dict) or data.get("objective") != PULSE_OBJECTIVE or data.get("protocol") != PULSE_OBJECTIVE:
+            raise ConsumerProfileError("missing_pulse_objective")
+        if any(k not in data for k in ("profile_id","identity","domain_json","cells","synthetic",
+                "unit","reward_unit","horizon","continuation","terminal_value","timing_boundary",
+                "k0_semantics","clock","added_cuda_sync")):
+            raise ConsumerProfileError("undeclared_pulse_profile_contract")
+        data = dict(data)
+        data["identity"] = RuntimeIdentitySnapshotV1(**data["identity"])
+        cells = []
+        for row in data["cells"]:
+            cost = dict(row["cost"])
+            cost["evidence_json"] = canonical(cost.pop("evidence"))
+            cells.append((canonical(row["state"]), PulseCostCell(**cost)))
+        data["cells"] = tuple(cells)
+        return cls(**data)

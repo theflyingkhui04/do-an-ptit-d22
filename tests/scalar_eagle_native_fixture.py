@@ -156,6 +156,10 @@ def native_runtime(scheduler_module, monkeypatch, tmp_path):
               ADAPTIVE_COST_POLICY_MODE="strict",ADAPTIVE_CONSUMER_PROFILE_PATH=str(path),
               ADAPTIVE_STEP_TELEMETRY_PATH=str(tmp_path/"steps.jsonl"),
               ADAPTIVE_CONTROLLER_KWARGS=json.dumps({"initial_alpha": .95,"min_warmup_samples":50}))
+    # Preserve the historical native feedback/collector contract explicitly.
+    # New pulse native tests replace this with the production pulse governor.
+    from src.proposer.cost_policy import ScalarEagleCostGovernor
+    s._planner.cost_governor = ScalarEagleCostGovernor("strict",profile)
     s.defer_block_free = False
     s.perf_metrics = None
     s.enable_return_routed_experts = False

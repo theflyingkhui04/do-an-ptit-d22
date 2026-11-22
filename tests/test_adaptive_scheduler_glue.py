@@ -967,6 +967,7 @@ def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch
     runner.prev_num_spec_tokens = 3
     runner._draft_token_ids = SimpleNamespace(shape=(1, 3))
     runner._copy_draft_token_ids_to_cpu = lambda output, zeros_only=False: None
+    runner.drafter = SimpleNamespace(propose=lambda: runner._draft_token_ids)
     class Base:
         def _init_executor(self):
             self.driver_worker = SimpleNamespace(worker=SimpleNamespace(model_runner=runner))
@@ -978,6 +979,8 @@ def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch
         def sample_tokens(self, grammar, non_block=False):
             output = runner.execute_model_state[0]
             runner.execute_model_state = None
+            if grammar != "synthetic":
+                runner.drafter.propose()
             runner._copy_draft_token_ids_to_cpu(output, zeros_only=grammar == "synthetic")
             return Future()  # caller materializes the result later
         def shutdown(self):
@@ -1014,6 +1017,8 @@ def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch
         executor._init_executor()
         sched = build(scheduler_module, monkeypatch, tmp_path, vllm_config=config)
     assert sched._lineage is executor._lineage
+    pulse_proposals = []
+    sched._lineage.on_pulse_proposal = lambda seq,rows,width: pulse_proposals.append((seq,rows,width))
     # Disable the fake schedule's simulated dispatch: exercise the wrapper.
     sched._test_runner = None
     req = make_request("r")
@@ -1034,6 +1039,13 @@ def test_executor_observation_and_terminal_cleanup(scheduler_module, monkeypatch
     executor.execute_model(third, non_block=True)
     executor.sample_tokens("synthetic", non_block=True)
     assert sched._lineage.generation is None
+    assert pulse_proposals == [(1,1,3),(2,1,3)]
+    # The same production observer must retain the actual empty proposal shape.
+    executor._lineage_sampling = third
+    runner._draft_token_ids = SimpleNamespace(shape=(1,0))
+    runner.drafter.propose()
+    executor._lineage_sampling = None
+    assert pulse_proposals[-1] == (3,1,0)
     retire(sched, second, [("r", 3, 2)])
     assert sched._planner.adapter.get_controller("r").step_count == 1
     f1.set_result(None)

@@ -12,6 +12,7 @@ from src.server.budget_planner import AdaptiveBudgetPlanner
 from src.server.lineage import DraftOrigin
 from src.proposer.adapter import AdaptiveProposerAdapter
 from src.proposer.cost_policy import PendingVerifierEvent, SurvivalEvent, VerifierEventKey
+from src.proposer.cost_policy import ScalarEagleCostGovernor
 
 
 def identity():
@@ -45,6 +46,9 @@ def planner(base=None, mode="strict", costs=(1., 1.8, 2.3, 3.2), ready=True,
         "window_size": window, "initial_alpha": .95, "min_k": floor}),
         replacement_policy=True, recovery_hold_steps=hold, cost_policy_mode=mode,
         step_telemetry_path=str(telemetry) if telemetry else None)
+    # Explicit original-contract regression fixture, not the active loader/path.
+    # Pulse migration has a separate B1/base3/old0 production causal witness.
+    p.cost_governor = ScalarEagleCostGovernor(mode)
     p.bind_runtime_identity(identity())
     for r, b in base.items():
         p.bind_request(r, 1)

@@ -1,5 +1,8 @@
 # Scalar EAGLE Hardware-Cost Policy — Amendment Candidate Test Plan
 
+> **Active migration (2026-11-22): SECP-PULSE-2R-v1 applied.** The user authorized this scoped production/CPU migration. The appended P2R clauses supersede earlier candidate text for the B1/base3/old0/[0,256) pulse domain. Earlier fixtures/claims remain original-contract context, not evidence for the new objective. No GPU, campaign, publication, push or benchmark is authorized by this application.
+
+
 **Document type:** Verification and acceptance plan  
 **Status:** `AMENDMENT CANDIDATE — NOT APPROVED`  
 **Policy under test:** `SECP-v1.1-candidate`  
@@ -1018,3 +1021,31 @@ TEST PLAN APPROVED = NO
 ## 41. Exactly one next action
 
 **Review this test plan together with the SECP-v1.1 amendment candidate and freeze both only after the G1 source-feasibility criteria are accepted.**
+
+
+# Applied pulse verification plan
+
+The complete normative P2R-01 through P2R-20 text is in the companion active specification. Required production test IDs are T01 through T32 in `tests/test_pulse_cycle_policy.py`. Historical 704 cases remain regression evidence for their explicitly declared original contracts; active pulse closure requires the new B1/base3 witness. Publication tests use synthetic CPU fixtures only.
+
+| Clause | Implementation | Test IDs |
+|---|---|---|
+| P2R-01 | src/proposer/pulse_policy.py:PulseCostGovernor | T01,T02,T03,T28 |
+| P2R-02 | src/server/decision_state.py:PulseContextV1; eagle_consumer_profile.py:pulse_state_payload | T15,T27,T31 |
+| P2R-03 | src/server/budget_planner.py:plan_step; pulse_policy.py:PulseCycleLease | T16,T17,T18,T19,T32 |
+| P2R-04 | pulse_policy.py:PulseCostGovernor; PulseCycleLease | T01,T05,T16,T19 |
+| P2R-05 | pulse_policy.py:PulseCycleLease.__init__/retire | T20,T21,T28,T32 |
+| P2R-06 | pulse_policy.py:PulseCycleLease.confirm/verifier/retire | T20,T21,T22,T23,T24 |
+| P2R-07 | pulse_policy.py:PulseCycleLease.retire; adaptive_scheduler.py:update_from_output | T20,T21,T28,T32 |
+| P2R-08 | eagle_consumer_profile.py:EaglePulseProfile/PulseCostCell/publish_pulse_cost | T12,T13,T14,T28 |
+| P2R-09 | pulse_policy.py:PulseCycleLease.retire | T23,T28 |
+| P2R-10 | src/proposer/cost_policy.py:SurvivalEstimate.predicted_cycle_reward | T01,T02,T03 |
+| P2R-11 | pulse_policy.py:PulseSurvivalHistory; budget_planner.py:_emit_finalized_cost_feedback | T26,T32 |
+| P2R-12 | decision_state.py:capture_pulse_context/PulseContextV1.validate | T24,T31 |
+| P2R-13 | pulse_policy.py:PulseCycleLease.invalidate/retire | T24,T25 |
+| P2R-14 | budget_planner.py:plan_step; lineage.py:clear; lineage_executor.py:execute_model/sample_tokens | T25,T29,T30 |
+| P2R-15 | experiments/eagle_rw_collector.py:EaglePulseCycleCollector; budget_planner.py:finish_request | T26,T28 |
+| P2R-16 | eagle_consumer_profile.py:publish_pulse_cost/PulseCostCell | T25,T28 |
+| P2R-17 | eagle_consumer_profile.py:EaglePulseProfile/pulse_state_payload | T12,T13,T14,T15,T27,T31 |
+| P2R-18 | pulse_policy.py:PulseCostGovernor.decide | T04,T05,T06,T07,T08,T09,T10,T11 |
+| P2R-19 | pulse_policy.py:PulseCycleLease; adaptive_scheduler.py:update_from_output | T16,T17,T18,T19,T20,T21,T32 |
+| P2R-20 | budget_planner.py:__init__/from_env; tests/scalar_eagle_fixtures.py | T09,T10,T11,T12,T13,T14,T29,T30,T31,T32 |

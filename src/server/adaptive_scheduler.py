@@ -26,7 +26,7 @@ from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 from src.server.budget_planner import AdaptiveBudgetPlanner, StepPlan, _env_flag
 from src.server.lineage import require_lineage_executor, release_ledger
 from src.server.lineage_diagnostics import observe
-from src.server.decision_state import capture_decision_state, observe_runtime_identity
+from src.server.decision_state import capture_decision_state, observe_runtime_identity, capture_pulse_context
 from experiments.protocol_b_boundary_observer import observe as _pb279_observe
 from experiments.protocol_b_boundary_observer import control_producer as _pb177_control
 
@@ -57,6 +57,9 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         if self._planner.replacement_policy:
             self._lineage.on_policy_draft = self._planner.record_draft_birth
         self._retiring = None
+        self._pulse_queue_capacity = getattr(config, "max_concurrent_batches", None)
+        self._lineage.on_pulse_proposal = self._planner.record_pulse_proposal
+        self._lineage.on_pulse_failure = self._pulse_failure
         observe("scheduler_initialized", registration=registration,
                 scheduler_class=f"{type(self).__module__}.{type(self).__name__}")
 
@@ -157,10 +160,15 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
                 {r.request_id: len(output.scheduled_spec_decode_tokens.get(r.request_id, ()))
                  for r in requests}, incarnations, self._planner.runtime_identity.runtime_mode_id,
             )
+            options = {}
+            if self._planner.pulse_domain_json and len(eligible) == 1:
+                options["pulse_context"] = capture_pulse_context(
+                    self._planner.pulse_domain_json,state,eligible[0],self.max_model_len,
+                    self._pulse_queue_capacity)
             self._plan = self._planner.plan_step(
                 [r.request_id for r in eligible], batch_size=len(eligible),
                 kv_usage=self.get_kv_cache_usage(), free_vram_mb=self._free_vram_mb(),
-                decision_state=state,
+                decision_state=state, **options,
             )
         except Exception:
             if _env_flag(os.environ.get("ADAPTIVE_STRICT", "0")):
@@ -184,15 +192,25 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
             result = super().update_from_output(scheduler_output, model_runner_output)
             self._planner.finalize_cost_feedback(
                 getattr(self._retiring[0], "schedule_sequence", None), result)
+            self._planner.finalize_pulse_cycle(
+                getattr(self._retiring[0], "schedule_sequence", None),self._retiring[0],result)
             return result
         except BaseException:
             self._planner.finalize_cost_feedback(
                 getattr(self._retiring[0], "schedule_sequence", None), None,
                 invalid_status="AMBIGUOUS_INVALID")
+            self._planner.finalize_pulse_cycle(
+                getattr(self._retiring[0], "schedule_sequence", None),self._retiring[0],None,
+                invalid_status="AMBIGUOUS_INVALID")
             raise
         finally:
             self._retiring = previous
             self._lineage.retire(scheduler_output)
+
+    def _pulse_failure(self, reason):
+        if self._planner.pulse_cycles.active:
+            self._planner.pulse_cycles.lease.invalidate(reason)
+            self._planner.pulse_cycles.archive(self._planner)
 
     def make_spec_decoding_stats(
         self,
@@ -306,6 +324,8 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         finally:
             if self._planner.replacement_policy:
                 self._lineage.on_policy_draft = None
+                self._lineage.on_pulse_proposal = None
+                self._lineage.on_pulse_failure = None
                 self._planner.reset_recovery()
             release_ledger(self._lineage_registration)
 

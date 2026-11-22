@@ -41,6 +41,7 @@ _CODE_PATHS = (
     "src/server/budget_planner.py", "src/server/adaptive_scheduler.py",
     "src/server/lineage.py", "src/server/lineage_executor.py",
     "src/proposer/cost_policy.py", "src/flexsds/core/eagle_consumer_profile.py",
+    "src/proposer/pulse_policy.py",
 )
 
 
@@ -888,3 +889,103 @@ def validate_export(data):
         return _validate_export(data)
     except (KeyError, TypeError, IndexError, AttributeError) as error:
         raise ValueError("malformed_collector_evidence") from error
+
+
+class EaglePulseCycleCollector:
+    """One predeclared calibration cohort, no campaign loop or publication.
+
+    Ordinary EAGLE-RW observations/transition exclusions remain untouched.
+    The active planner supplies separately typed two-retirement cycle receipts.
+    """
+    def __init__(self, core, source, cohort, q, domain_json):
+        from src.server.decision_state import PulseCalibrationActionV1
+        from src.proposer.pulse_policy import PulseCostGovernor
+        self.planner = core.scheduler._planner
+        if (not source.valid() or not isinstance(self.planner.cost_governor,PulseCostGovernor)
+                or self.planner.cost_governor.mode=="off" or q not in (0,2,3)
+                or len(cohort.request_incarnations)!=1
+                or self.planner.pulse_domain_json != domain_json):
+            raise ValueError("unsupported_pulse_collection_contract")
+        if any(self.planner._request_incarnations.get(r)!=e for r,e in cohort.request_incarnations):
+            raise ValueError("inactive_pulse_cohort")
+        self.source,self.cohort,self.q = source,cohort,q
+        self.domain_hash = digest(json.loads(domain_json))
+        self.plan_hash = digest(dict(objective="SECP-PULSE-2R-v1",q=q,continuation=0,
+            cohort=asdict(cohort),domain=self.domain_hash,source=source.source_git_sha))
+        self.action = PulseCalibrationActionV1(q,self.plan_hash,cohort.cohort_id,source.source_git_sha,source.synthetic)
+        self._prior = None
+        self.started = False
+        self.failures = []
+
+    def _failed_attempt(self, reason, result=None):
+        rid,epoch = self.cohort.request_incarnations[0]
+        self.failures.append(dict(status="INVALID",objective="SECP-PULSE-2R-v1",
+            cohort_id=self.cohort.cohort_id,request_id=rid,incarnation=epoch,
+            clock_domain=f"enginecore:{os.getpid()}",q=self.q,continuation=0,
+            domain_hash=self.domain_hash,source_git_sha=self.source.source_git_sha,
+            failures=[reason],synthetic=self.source.synthetic,
+            attempted_step=asdict(result) if result is not None else None))
+
+    def install(self):
+        if self._prior is not None or self.planner.pulse_cycles.active or not self.source.valid():
+            raise ValueError("pulse_collector_already_active_or_dirty")
+        claims = _COHORT_CLAIMS.setdefault(self.planner,{})
+        if any(epoch in claims for epoch in self.cohort.request_incarnations):
+            raise ValueError("pulse_cohort_incarnation_reused")
+        claims.update({epoch:self.plan_hash for epoch in self.cohort.request_incarnations})
+        self._existed = "plan_step" in vars(self.planner)
+        self._prior = self.planner.plan_step
+        def planned(*args, **kwargs):
+            context = kwargs.get("pulse_context")
+            if not self.started:
+                state = kwargs.get("decision_state")
+                try:
+                    domain = context.validate(state) if context is not None else None
+                except (ValueError,TypeError,KeyError) as error:
+                    self._failed_attempt("unsupported_pulse_context")
+                    raise ValueError("unsupported_pulse_context") from error
+                if (context is None or domain != self.domain_hash
+                        or tuple(state.request_incarnations) != self.cohort.request_incarnations):
+                    self._failed_attempt("pulse_cohort_or_domain_mismatch")
+                    raise ValueError("pulse_cohort_or_domain_mismatch")
+                if "calibration_action" in kwargs:
+                    raise ValueError("conflicting_pulse_action")
+                kwargs["calibration_action"] = self.action
+            else:
+                # Keep later native queue-fill work neutral; it is never
+                # another sample or an independent online cost election.
+                kwargs["calibration_action"] = FixedCalibrationActionV1(0,self.plan_hash)
+            try:
+                result = self._prior(*args,**kwargs)
+            except BaseException as error:
+                self._failed_attempt(type(error).__name__)
+                raise
+            if not self.started:
+                lease = self.planner.pulse_cycles.lease
+                if lease is None or lease.q != self.q:
+                    self._failed_attempt("planned_pulse_not_applied",result)
+                    raise ValueError("planned_pulse_not_applied")
+                self.started = True
+            return result
+        self._wrapper = planned
+        self.planner.plan_step = planned
+        return self
+
+    def close(self):
+        if self.planner.pulse_cycles.active:
+            self.planner.pulse_cycles.lease.invalidate("collector_closed_with_inflight_cycle")
+            self.planner.pulse_cycles.archive(self.planner)
+        if self._prior is not None and vars(self.planner).get("plan_step") is self._wrapper:
+            if self._existed:
+                self.planner.plan_step = self._prior
+            else:
+                del self.planner.plan_step
+        self._prior = None
+
+    def export(self):
+        rows = self.failures+[r for r in self.planner.pulse_cycles.records if r.get("cohort_id")==self.cohort.cohort_id]
+        valid = self.source.valid()
+        payload = dict(objective="SECP-PULSE-2R-v1",consumer_profile=False,performance_claim=False,
+            source_valid=valid,collection_plan_hash=self.plan_hash,records=rows,
+            canonical_profile_input=valid and len(rows)==1 and rows[0]["status"]=="COMPLETE")
+        return dict(payload,raw_sha256=digest(payload))
