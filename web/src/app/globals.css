@@ -111,6 +111,7 @@
   --animate-fade-in: fade-in 160ms ease-out;
   --animate-row-good: row-good 1.4s ease-out;
   --animate-row-bad: row-bad 1.4s ease-out;
+  --animate-row-info: row-info 1.4s ease-out;
 
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(2px); }
@@ -122,6 +123,11 @@
   }
   @keyframes row-bad {
     from { background-color: var(--bad-tint); }
+    to { background-color: transparent; }
+  }
+  /* a row that just became (or stopped being) the baseline */
+  @keyframes row-info {
+    from { background-color: color-mix(in srgb, var(--focus) 12%, transparent); }
     to { background-color: transparent; }
   }
 }

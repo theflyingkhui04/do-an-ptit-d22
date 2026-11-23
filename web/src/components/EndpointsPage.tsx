@@ -137,7 +137,10 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
       open.current = false;
     };
   }, []);
-  const [flash, setFlash] = useState<Record<string, "good" | "bad">>({});
+  const [flash, setFlash] = useState<Record<string, "good" | "bad" | "info">>({});
+  // The baseline being saved (null = clearing it); undefined when nothing is being saved.
+  const [pendingBaseline, setPendingBaseline] = useState<string | null | undefined>(undefined);
+  const [announce, setAnnounce] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -153,7 +156,8 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
 
   const colors = endpointColors(endpoints);
   const models = new Set(endpoints.map(baseModel));
-  const ordered = [...endpoints].sort((a, b) => Number(b.is_baseline) - Number(a.is_baseline)); // baseline first
+  const baselineId = endpoints.find((e) => e.is_baseline)?.endpoint_id ?? null;
+  const shownBaseline = pendingBaseline !== undefined ? pendingBaseline : baselineId; // the radio moves at once
   const editingEndpoint = endpoints.find((e) => e.endpoint_id === editing);
   const confirming = endpoints.find((e) => e.endpoint_id === confirm);
   const closeEditor = useCallback(() => setEditing(null), []);
@@ -195,6 +199,27 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
     if (open.current) await onChange();
   }
 
+  // One baseline at a time: the server clears the old one when a new one is set. null clears it.
+  async function chooseBaseline(id: string | null) {
+    const before = endpoints.find((e) => e.is_baseline);
+    const target = id ?? before?.endpoint_id;
+    if (!target || pendingBaseline !== undefined || id === baselineId) return;
+    setPendingBaseline(id);
+    setError(null);
+    try {
+      await api.updateEndpoint(target, { is_baseline: id !== null });
+      await onChange();
+      if (!open.current) return;
+      const name = endpoints.find((e) => e.endpoint_id === target)?.name ?? target;
+      setAnnounce(id === null ? `Đã bỏ mốc ${name}.` : `Đã đặt ${name} làm mốc${before ? `, ${before.name} không còn là mốc` : ""}.`);
+      setFlash((current) => ({ ...current, [target]: "info" }));
+    } catch (exc) {
+      if (open.current) setError((exc as Error).message);
+    } finally {
+      if (open.current) setPendingBaseline(undefined);
+    }
+  }
+
   async function remove(id: string) {
     setDeleting(true);
     setError(null);
@@ -232,7 +257,7 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
         <Onboarding onAdd={onAdd} />
       ) : (
         <section aria-label="Danh sách endpoint" className="overflow-hidden rounded-xl border border-line bg-surface">
-          {ordered.map((e) => {
+          {endpoints.map((e) => {
             const setup = setupLine(e);
             const busy = checking[e.endpoint_id] !== undefined;
             return (
@@ -241,11 +266,30 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
                 aria-label={e.name}
                 className={cx(
                   "grid gap-x-5 gap-y-3 border-line px-[18px] py-4 [&+&]:border-t",
-                  "md:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(190px,0.85fr)_auto]",
+                  "md:grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)]",
+                  "lg:grid-cols-[56px_minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(190px,0.85fr)_auto]",
                   flash[e.endpoint_id] === "good" && "animate-row-good", flash[e.endpoint_id] === "bad" && "animate-row-bad",
+                  flash[e.endpoint_id] === "info" && "animate-row-info",
                 )}
                 onAnimationEnd={() => setFlash((current) => without(current, e.endpoint_id))}
               >
+                {/* Baseline column (Kiểu B, chosen 23/11): one radio per row, only one can be on. */}
+                <label className={cx(
+                  "flex cursor-pointer items-center gap-2 self-start text-[12.5px] text-ink-3 has-[:checked]:font-bold has-[:checked]:text-ink",
+                  "md:row-span-2 md:flex-col md:gap-1 md:pt-0.5 lg:row-span-1",
+                )}>
+                  <input
+                    type="radio"
+                    name="baseline-endpoint"
+                    aria-label={`Mốc: ${e.name}`}
+                    checked={shownBaseline === e.endpoint_id}
+                    disabled={pendingBaseline !== undefined}
+                    onChange={() => void chooseBaseline(e.endpoint_id)}
+                    className="size-5 cursor-pointer accent-ink disabled:cursor-wait"
+                  />
+                  <span aria-hidden>Mốc</span>
+                </label>
+
                 <div className="grid min-w-0 content-start gap-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <Dot color={colors[e.endpoint_id]} />
@@ -257,7 +301,6 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
                     >
                       {e.name}
                     </button>
-                    {e.is_baseline && <span className="shrink-0 rounded-md border border-line px-1.5 text-[12px] font-semibold text-ink-2">Mốc</span>}
                   </div>
                   <div className="flex min-w-0 items-center gap-1 font-mono text-[12.5px] text-ink-3">
                     <span className="truncate" title={e.base_url}>{shortUrl(e.base_url)}</span>
@@ -283,7 +326,7 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
                   />
                 </div>
 
-                <div className="flex flex-wrap items-start gap-1.5 md:col-span-2 lg:col-span-1 lg:justify-end">
+                <div className="flex flex-wrap items-start gap-1.5 lg:justify-end">
                   <Button variant="ghost" icon={RefreshCw} loading={busy} disabled={busy} aria-label={`Kiểm tra ${e.name}`}
                     className="px-2.5 py-1.5 text-[13px]" onClick={() => void check([e.endpoint_id])}>
                     Kiểm tra
@@ -300,12 +343,21 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
               </article>
             );
           })}
+          {shownBaseline !== null && (
+            <div className="border-t border-line px-[18px] py-2.5">
+              <Button variant="ghost" className="px-2.5 py-1.5 text-[13px]" disabled={pendingBaseline !== undefined}
+                onClick={() => void chooseBaseline(null)}>
+                Bỏ chọn mốc
+              </Button>
+            </div>
+          )}
         </section>
       )}
 
+      <p aria-live="polite" className={announce ? "animate-fade-in text-[13px] text-ink-2" : "sr-only"}>{announce}</p>
       {error && <Notice tone="bad">{error}</Notice>}
       {endpoints.length > 0 && !endpoints.some((e) => e.is_baseline) && (
-        <Notice tone="info">Chưa chọn endpoint mốc: các trang chỉ hiện số tuyệt đối (thời gian, TTFT, TPOT), không hiện hệ số tăng tốc. Chọn mốc trong ngăn Sửa.</Notice>
+        <Notice tone="info">Chưa chọn endpoint mốc: các trang chỉ hiện số tuyệt đối (thời gian, TTFT, TPOT), không hiện hệ số tăng tốc. Chọn ô Mốc ở đầu dòng của endpoint muốn dùng làm mốc.</Notice>
       )}
       {models.size > 1 && (
         <Notice tone="warn">Các endpoint đang chạy {models.size} model khác nhau. So sánh tốc độ giữa hai model khác nhau không công bằng.</Notice>

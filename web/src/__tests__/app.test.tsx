@@ -99,9 +99,10 @@ describe("endpoints", () => {
     ] }));
     open("endpoints", fakeApi({ endpoints }));
     const rows = await screen.findAllByRole("article");
-    expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["vanilla", "adaptive"]); // the baseline first
+    expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["adaptive", "vanilla"]); // the order they were added
     const vanilla = rowOf("vanilla");
-    expect(within(vanilla).getByText("Mốc")).toBeInTheDocument();
+    expect(within(vanilla).getByRole("radio", { name: "Mốc: vanilla" })).toBeChecked();
+    expect(within(rowOf("adaptive")).getByRole("radio", { name: "Mốc: adaptive" })).not.toBeChecked();
     expect(within(vanilla).getByText("Đã dừng")).toBeInTheDocument();
     expect(within(vanilla).queryByText("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeNull(); // only in the tooltip
     expect(within(vanilla).getByTitle("GPU đang ngủ hoặc khởi động (HTTP 503)")).toBeInTheDocument();
@@ -114,10 +115,43 @@ describe("endpoints", () => {
     for (const action of ["Kiểm tra adaptive", "Sửa adaptive", "Xoá adaptive"]) {
       expect(within(adaptive).getByRole("button", { name: action })).toBeVisible();
     }
-    // One "Thêm endpoint" (top bar), no radio column, no tunnel panel
+    // One "Thêm endpoint" (top bar), no tunnel panel
     expect(screen.getAllByRole("button", { name: "Thêm endpoint" })).toHaveLength(1);
-    expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.queryByText("Endpoint trên máy cá nhân")).toBeNull();
+  });
+
+  it("picks one baseline from the radio column, keeps the rows in place and can clear it", async () => {
+    let list = [endpoint(BASE, "vanilla", { is_baseline: true }), endpoint(FAST, "adaptive")];
+    const endpoints = vi.fn(async () => ({ endpoints: list }));
+    const updateEndpoint = vi.fn(async (id: string, change: { is_baseline?: boolean }) => {
+      list = list.map((e) => ({ ...e, is_baseline: change.is_baseline ? e.endpoint_id === id : e.is_baseline && e.endpoint_id !== id }));
+      return list.find((e) => e.endpoint_id === id)!;
+    });
+    open("endpoints", fakeApi({ endpoints, updateEndpoint }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("radio", { name: "Mốc: adaptive" }));
+    expect(updateEndpoint).toHaveBeenCalledWith(FAST, { is_baseline: true });
+    expect(await screen.findByText("Đã đặt adaptive làm mốc, vanilla không còn là mốc.")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Mốc: adaptive" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Mốc: vanilla" })).not.toBeChecked();
+    expect(screen.getAllByRole("article").map((r) => r.getAttribute("aria-label"))).toEqual(["vanilla", "adaptive"]);
+
+    await user.click(screen.getByRole("button", { name: "Bỏ chọn mốc" }));
+    expect(updateEndpoint).toHaveBeenLastCalledWith(FAST, { is_baseline: false });
+    expect(await screen.findByText("Đã bỏ mốc adaptive.")).toBeInTheDocument();
+    expect(screen.getByText(/Chưa chọn endpoint mốc/)).toHaveTextContent("Chọn ô Mốc ở đầu dòng");
+    expect(screen.queryByRole("button", { name: "Bỏ chọn mốc" })).toBeNull();
+    for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked();
+  });
+
+  it("keeps the old baseline and says why when saving a new one fails", async () => {
+    const endpoints = vi.fn(async () => ({ endpoints: [endpoint(BASE, "vanilla", { is_baseline: true }), endpoint(FAST, "adaptive")] }));
+    const updateEndpoint = vi.fn(async () => { throw new Error("Máy chủ đang bận, thử lại sau."); });
+    open("endpoints", fakeApi({ endpoints, updateEndpoint }));
+    await userEvent.setup().click(await screen.findByRole("radio", { name: "Mốc: adaptive" }));
+    expect(await screen.findByText("Máy chủ đang bận, thử lại sau.")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Mốc: vanilla" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Mốc: adaptive" })).not.toBeChecked();
   });
 
   it("adds one address at a time: explains a local one, then saves a usable one under the typed name", async () => {
