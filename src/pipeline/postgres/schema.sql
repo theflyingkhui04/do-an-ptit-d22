@@ -246,11 +246,14 @@ CREATE TABLE IF NOT EXISTS endpoints (
     meta JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(meta) = 'object'),
     api_key TEXT,
     is_baseline BOOLEAN NOT NULL DEFAULT false,
-    status TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok', 'down')),
+    status TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok', 'starting', 'down')),
     status_message TEXT,
     checked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 'starting' = a sleeping GPU answered 503 while waking up. Tables created before it allowed only ok/down.
+ALTER TABLE endpoints DROP CONSTRAINT IF EXISTS endpoints_status_check;
+ALTER TABLE endpoints ADD CONSTRAINT endpoints_status_check CHECK (status IN ('ok', 'starting', 'down'));
 CREATE UNIQUE INDEX IF NOT EXISTS idx_endpoints_one_baseline ON endpoints (is_baseline) WHERE is_baseline;
 
 CREATE TABLE IF NOT EXISTS bench_runs (

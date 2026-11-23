@@ -37,7 +37,7 @@ export default function KeyGate({ verify, onAccepted }: Props) {
         <div className="flex items-center gap-2.5">
           <BrandMark size={36} className="ring-1 ring-line" />
           <div className="leading-tight">
-            <h1 className="text-lg font-bold">FlexSDS Console</h1>
+            <h1 className="text-lg font-bold">FlexSDS Benchmark</h1>
             <p className="text-[13px] text-ink-3">Đồ án tốt nghiệp D22, PTIT</p>
           </div>
         </div>

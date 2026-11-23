@@ -9,7 +9,7 @@ const sans = Be_Vietnam_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "FlexSDS Console",
+  title: "FlexSDS Benchmark",
   description:
     "Chạy pipeline hoá đơn 3 node và đo tốc độ trên các endpoint do flexsds tạo ra (đồ án tốt nghiệp D22, PTIT)",
 };

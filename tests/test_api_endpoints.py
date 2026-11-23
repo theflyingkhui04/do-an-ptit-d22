@@ -11,7 +11,6 @@ from src.api.endpoints import (
     EndpointError,
     check_address,
     normalize_url,
-    parse_serving_config,
     platform_of,
     probe,
 )
@@ -118,18 +117,3 @@ def test_unreachable_endpoint():
     with pytest.raises(EndpointError) as info:
         probe("https://x.trycloudflare.com/v1", None, client(down))
     assert info.value.code == "unreachable"
-
-
-def test_serving_config_from_the_cli():
-    config = {"flexsds_version": "0.2.0-alpha",
-              "hardware": {"device_name": "NVIDIA L4", "sm_architecture": "sm_89", "free_vram_mb": 22450.0},
-              "serving": {"backend": "modal", "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
-                          "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator", "draft_method": "eagle3",
-                          "max_model_len": 4096, "adaptive_enabled": True}}
-    assert parse_serving_config(config) == {
-        "gpu": "NVIDIA L4", "sm": "sm_89", "backend": "modal", "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
-        "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator", "draft_method": "eagle3", "adaptive": True,
-        "max_model_len": 4096, "flexsds_version": "0.2.0-alpha"}
-    assert parse_serving_config({"serving": {"draft_model": None}}) == {"draft_model": None}
-    with pytest.raises(EndpointError):
-        parse_serving_config(["not", "an", "object"])

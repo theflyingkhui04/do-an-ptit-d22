@@ -1,5 +1,5 @@
 // Client of the FastAPI backend (src/api). The browser only knows the backend URL and the demo key the user
-// typed. Endpoint API keys are sent once when an endpoint is added and are never returned by the backend.
+// typed. Endpoint API keys are sent when an endpoint is added or its key is changed, and are never returned.
 
 export interface Status {
   backend: string;
@@ -31,7 +31,8 @@ export interface Endpoint {
   max_model_len: number | null;
   meta: EndpointMeta;
   is_baseline: boolean;
-  status: "ok" | "down";
+  // starting: the last check found a sleeping GPU waking up (HTTP 503 or no answer yet), down: it failed.
+  status: "ok" | "starting" | "down";
   status_message: string | null;
   checked_at: string;
   created_at: string;
@@ -47,6 +48,33 @@ export interface DetectResult {
   platform: Platform | null;
   model_id: string | null;
   max_model_len: number | null;
+  endpoint_id?: string; // code "exists": the saved endpoint with this address
+  name?: string;
+}
+
+// One address to add, with the name and key typed on its row (design D14).
+export interface NewEndpoint {
+  url: string;
+  name?: string;
+  api_key?: string;
+}
+
+// Notes on how an endpoint is served; null removes a note.
+export interface EndpointNotes {
+  gpu?: string | null;
+  draft_method?: string | null;
+  draft_model?: string | null;
+  target_model?: string | null;
+  adaptive?: boolean | null;
+}
+
+// Fields left out stay as they are; api_key null removes the key.
+export interface EndpointChange {
+  name?: string;
+  is_baseline?: boolean;
+  base_url?: string;
+  api_key?: string | null;
+  meta?: EndpointNotes;
 }
 
 export interface Money {
@@ -92,6 +120,19 @@ export interface RunReport {
   total_fields: number | null;
   differing_fields: string[];
   source_restored?: string[];
+  // This endpoint's own extraction (null when it failed), shown column by column (design D13).
+  payload?: InvoicePayload | null;
+}
+
+// One line of a job's live log. `src` is "system", "ocr" or an endpoint id; `t` is server epoch seconds.
+// A line with a `key` is a counter the backend updates in place; `data` holds the numbers behind it.
+export interface JobEvent {
+  t: number;
+  src: string;
+  level: "info" | "ok" | "warn" | "error";
+  msg: string;
+  key?: string;
+  data?: Record<string, number | null | undefined>;
 }
 
 export interface JobResult {
@@ -107,6 +148,7 @@ export interface JobResult {
   item_check?: { lines: (boolean | null)[]; invoice_sum: boolean | null };
   invoice_id?: string;
   timings_ms?: Record<string, number>;
+  events?: JobEvent[];
 }
 
 export type JobStatus = "queued" | "ocr" | "node1" | "saving" | "done" | "failed" | "interrupted";
@@ -117,6 +159,8 @@ export interface Job {
   error: string | null;
   result: JobResult;
   invoice_id: string | null;
+  // Server clock at the response, so "last signal x s ago" does not depend on the viewer's clock.
+  server_time?: number;
 }
 
 export interface CallInfo {
@@ -290,12 +334,8 @@ export interface Api {
   status(): Promise<Status>;
   endpoints(): Promise<{ endpoints: Endpoint[] }>;
   detectEndpoints(urls: string[], apiKey?: string): Promise<{ results: DetectResult[] }>;
-  addEndpoints(
-    urls: string[],
-    apiKey?: string,
-    servingConfig?: unknown,
-  ): Promise<{ results: DetectResult[]; saved: Endpoint[] }>;
-  updateEndpoint(endpointId: string, change: { name?: string; is_baseline?: boolean }): Promise<Endpoint>;
+  addEndpoints(endpoints: NewEndpoint[]): Promise<{ results: DetectResult[]; saved: Endpoint[] }>;
+  updateEndpoint(endpointId: string, change: EndpointChange): Promise<Endpoint>;
   deleteEndpoint(endpointId: string): Promise<{ deleted: string }>;
   checkEndpoint(endpointId: string): Promise<Endpoint>;
   upload(file: File, endpointIds: string[]): Promise<{ job_id: string; endpoint_ids: string[] }>;
@@ -374,8 +414,7 @@ export function createApi(baseUrl: string, getKey: () => string | null): Api {
     status: () => call<Status>("/api/status", {}, false),
     endpoints: () => call("/api/endpoints"),
     detectEndpoints: (urls, apiKey) => call("/api/endpoints/detect", json("POST", { urls, api_key: apiKey || null })),
-    addEndpoints: (urls, apiKey, servingConfig) =>
-      call("/api/endpoints", json("POST", { urls, api_key: apiKey || null, serving_config: servingConfig ?? null })),
+    addEndpoints: (endpoints) => call("/api/endpoints", json("POST", { endpoints })),
     updateEndpoint: (endpointId, change) => call(`/api/endpoints/${id(endpointId)}`, json("PATCH", change)),
     deleteEndpoint: (endpointId) => call(`/api/endpoints/${id(endpointId)}`, { method: "DELETE" }),
     checkEndpoint: (endpointId) => call(`/api/endpoints/${id(endpointId)}/check`, { method: "POST" }),
