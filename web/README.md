@@ -14,4 +14,6 @@ Code chính: `src/components/Console.tsx` (khung, điều hướng theo `#node1|
 
 Biến môi trường (Vercel → Project Settings → Environment Variables): `NEXT_PUBLIC_API_URL` = URL backend Render, ví dụ `https://ptit-invoice-api.onrender.com`. Giá trị được nhúng lúc build, nên đổi URL thì phải build lại.
 
+`NEXT_PUBLIC_ACCESS_KEY` (tuỳ chọn) = mật khẩu demo của backend (`DEMO_KEY` trên Render). Có biến này thì web vào thẳng màn chính, không hỏi mật khẩu và ẩn nút "Thoát". Giá trị nằm công khai trong bundle, nên ai mở trang cũng dùng được backend; đổi `DEMO_KEY` thì đổi biến này rồi build lại, nếu không web sẽ quay về màn nhập mật khẩu. Không ghi giá trị vào repo.
+
 Trên Vercel: Root Directory = `web`, Framework = Next.js.

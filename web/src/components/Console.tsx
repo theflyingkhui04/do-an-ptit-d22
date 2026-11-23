@@ -34,16 +34,21 @@ interface Props {
   // Tests inject a fake API; the page builds the real one from NEXT_PUBLIC_API_URL.
   makeApi?: (getKey: () => string | null) => Api;
   pollMs?: number;
+  presetKey?: string | null;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// A key set at build time (NEXT_PUBLIC_ACCESS_KEY on Vercel, never in the repo) opens the console without the
+// key prompt. Owner's call on 23/11: the demo opens straight on the main screen, so this key is public in the
+// bundle. If the backend refuses it, the prompt comes back.
+const PRESET_KEY = process.env.NEXT_PUBLIC_ACCESS_KEY || null;
 
 function pageFromHash(): PageId | null {
   const id = window.location.hash.replace(/^#/, "");
   return PAGES.some((p) => p.id === id) ? (id as PageId) : null;
 }
 
-export default function Console({ makeApi, pollMs = 1500 }: Props) {
+export default function Console({ makeApi, pollMs = 1500, presetKey = PRESET_KEY }: Props) {
   const [key, setKey] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const build = useMemo(() => makeApi ?? ((getKey: () => string | null) => createApi(API_URL, getKey)), [makeApi]);
@@ -57,11 +62,11 @@ export default function Console({ makeApi, pollMs = 1500 }: Props) {
   );
 
   useEffect(() => {
-    // The key lives in sessionStorage, which only exists in the browser.
+    // The key lives in sessionStorage, which only exists in the browser; a typed key wins over the preset one.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setKey(readKey());
+    setKey(readKey() ?? presetKey);
     setReady(true);
-  }, []);
+  }, [presetKey]);
 
   if (!ready) return null;
   if (!key) {
@@ -81,7 +86,8 @@ export default function Console({ makeApi, pollMs = 1500 }: Props) {
     <Shell
       api={api}
       pollMs={pollMs}
-      onSignOut={() => {
+      // Nothing to sign out of with the preset key: it would open the console again at once.
+      onSignOut={key === presetKey ? undefined : () => {
         saveKey(null);
         setKey(null);
       }}
@@ -89,7 +95,7 @@ export default function Console({ makeApi, pollMs = 1500 }: Props) {
   );
 }
 
-function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut: () => void }) {
+function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut?: () => void }) {
   const [endpoints, setEndpoints] = useState<Endpoint[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [page, setPage] = useState<PageId | null>(null);
@@ -191,20 +197,24 @@ function Shell({ api, pollMs, onSignOut }: { api: Api; pollMs: number; onSignOut
             </div>
           ))}
         </div>
-        <div className="mt-auto hidden gap-2 rounded-xl bg-rail-active p-3 text-[13px] wide:grid">
-          <button type="button" onClick={onSignOut} className="flex items-center gap-2 text-[#8796a5] hover:text-white">
-            <LogOut aria-hidden className="size-4" /> Thoát
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={onSignOut}
-          title="Thoát"
-          aria-label="Thoát"
-          className="mt-auto hidden size-10 place-items-center self-center rounded-lg text-[#8796a5] hover:bg-rail-active hover:text-white md:grid wide:hidden"
-        >
-          <LogOut aria-hidden className="size-4" />
-        </button>
+        {onSignOut && (
+          <>
+            <div className="mt-auto hidden gap-2 rounded-xl bg-rail-active p-3 text-[13px] wide:grid">
+              <button type="button" onClick={onSignOut} className="flex items-center gap-2 text-[#8796a5] hover:text-white">
+                <LogOut aria-hidden className="size-4" /> Thoát
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={onSignOut}
+              title="Thoát"
+              aria-label="Thoát"
+              className="mt-auto hidden size-10 place-items-center self-center rounded-lg text-[#8796a5] hover:bg-rail-active hover:text-white md:grid wide:hidden"
+            >
+              <LogOut aria-hidden className="size-4" />
+            </button>
+          </>
+        )}
       </nav>
 
       <div className="flex min-w-0 flex-col">

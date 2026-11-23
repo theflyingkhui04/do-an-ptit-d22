@@ -36,6 +36,27 @@ describe("demo key gate", () => {
     expect(window.sessionStorage.getItem("ptit-demo-key")).toBe("good-key-123");
   });
 
+  it("opens straight on the console with a preset key, sends it and hides Thoát", async () => {
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+    let sent: (() => string | null) | null = null;
+    render(<Console makeApi={(getKey) => { sent = getKey; return fakeApi(); }} presetKey="preset-key-1" />);
+    expect(await screen.findByRole("heading", { level: 1, name: "Trích xuất hoá đơn" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Mật khẩu demo")).toBeNull();
+    expect(sent!()).toBe("preset-key-1");
+    expect(screen.queryByRole("button", { name: "Thoát" })).toBeNull();
+  });
+
+  it("falls back to the key prompt when the preset key is refused", async () => {
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+    const endpoints = vi.fn(async () => {
+      throw new ApiError(401, "Sai mật khẩu demo");
+    });
+    render(<Console makeApi={() => fakeApi({ endpoints })} presetKey="old-key" />);
+    expect(await screen.findByLabelText("Mật khẩu demo")).toBeInTheDocument();
+  });
+
   it("returns to the key prompt when the API answers 401", async () => {
     const ask = vi.fn(async () => {
       throw new ApiError(401, "Sai mật khẩu demo");
