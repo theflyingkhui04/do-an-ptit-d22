@@ -71,7 +71,14 @@ export function notesFromServingConfig(value: unknown): ServingNotes | null {
   return notes;
 }
 
-const lastPart = (name: string) => name.replace(/\/+$/, "").split("/").pop() || name;
+// Trailing slashes are cut with a loop: a /\/+$/ regex backtracks on long runs of "/".
+function withoutTrailingSlashes(text: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === "/") end -= 1;
+  return text.slice(0, end);
+}
+
+const lastPart = (name: string) => withoutTrailingSlashes(name).split("/").pop() || name;
 
 // "NVIDIA A10G, EAGLE-3, Hardware-Adaptive" when noted, else null.
 export function setupLine(e: Endpoint): string | null {

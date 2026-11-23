@@ -12,7 +12,9 @@ export function leafFields(payload: InvoicePayload | null | undefined): [string,
   if (!payload) return out;
   const walk = (value: unknown, path: string) => {
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      for (const key of Object.keys(value).sort()) walk((value as Record<string, unknown>)[key], `${path}.${key}`);
+      // Code-unit order on purpose (not localeCompare): it must match Python's sorted() in compare.leaf_fields.
+      const keys = Object.keys(value).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      for (const key of keys) walk((value as Record<string, unknown>)[key], `${path}.${key}`);
     } else if (Array.isArray(value)) {
       if (value.length === 0) out.push([path, []]);
       value.forEach((item, index) => walk(item, `${path}[${index}]`));

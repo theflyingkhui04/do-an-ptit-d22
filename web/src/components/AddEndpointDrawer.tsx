@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, CircleCheck, KeyRound, Plug, RefreshCw, SearchCheck, XCircle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button, CopyButton, Drawer, Notice, Spinner, secondsSince, useNow } from "@/components/ui";
 import type { Api, DetectResult } from "@/lib/api";
@@ -66,7 +66,7 @@ function Row({ check, onName, onKey, onRecheck }: {
             {check.triedKey ? ", có khoá API" : ""}
           </span>
           <label className="grid gap-1 text-[13px] font-semibold text-ink-2">
-            Tên hiển thị
+            <span>Tên hiển thị</span>
             <input
               aria-label={`Tên hiển thị cho ${input}`}
               value={check.name ?? r.model_id ?? ""}
@@ -168,6 +168,9 @@ export default function AddEndpointDrawer({ api, onClose, onSaved }: {
   onSaved: () => Promise<void>;
 }) {
   const [text, setText] = useState("");
+  // The drawer is a dialog: the cursor starts in its only field.
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => field.current?.focus(), []);
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -261,9 +264,9 @@ export default function AddEndpointDrawer({ api, onClose, onSaved }: {
           <label htmlFor="endpoint-urls" className="text-[13.5px] font-semibold">Địa chỉ API</label>
           <input
             id="endpoint-urls"
+            ref={field}
             type="text"
             inputMode="url"
-            autoFocus
             spellCheck={false}
             autoComplete="off"
             value={text}

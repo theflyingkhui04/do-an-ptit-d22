@@ -1,7 +1,7 @@
 "use client";
 
 import { FileJson, KeyRound, Trash2 } from "lucide-react";
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { Button, Drawer, Notice, baseModel, cx } from "@/components/ui";
 import type { Api, Endpoint, EndpointChange, EndpointNotes } from "@/lib/api";
@@ -41,6 +41,9 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
   const id = useId();
   const meta = e.meta ?? {};
   const [name, setName] = useState(e.name);
+  // The drawer is a dialog: the cursor starts in its first field.
+  const first = useRef<HTMLInputElement>(null);
+  useEffect(() => first.current?.focus(), []);
   const [url, setUrl] = useState(e.base_url);
   const [baseline, setBaseline] = useState(e.is_baseline);
   const [keyMode, setKeyMode] = useState<KeyMode>("keep");
@@ -162,7 +165,7 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
           <legend className="mb-2 text-[13.5px] font-bold">Nhận diện</legend>
           <div className="grid gap-1.5">
             <label htmlFor={`${id}-name`} className={label}>Tên hiển thị</label>
-            <input id={`${id}-name`} autoFocus value={name} maxLength={80} onChange={(ev) => setName(ev.target.value)} className={field} />
+            <input id={`${id}-name`} ref={first} value={name} maxLength={80} onChange={(ev) => setName(ev.target.value)} className={field} />
             <small className={hint}>Tên hiện ở mọi trang, ví dụ “adaptive A10G”.</small>
           </div>
           <div className="grid gap-1.5">
@@ -172,7 +175,7 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
           </div>
           <label className="inline-flex items-center gap-2.5">
             <input type="checkbox" checked={baseline} onChange={(ev) => setBaseline(ev.target.checked)} className="size-4" />
-            Dùng làm endpoint mốc để so sánh tốc độ và kết quả
+            <span>Dùng làm endpoint mốc để so sánh tốc độ và kết quả</span>
           </label>
         </fieldset>
 

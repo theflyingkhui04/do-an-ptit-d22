@@ -220,9 +220,9 @@ function Compare({ base, others, colors }: {
               const speed = mine && theirs ? theirs / mine : null;
               return (
                 <tr key={endpoint.endpoint_id} role="row" className="border-t border-line align-top max-sm:grid max-sm:gap-0.5 max-sm:py-1.5">
-                  <td role="cell" data-label="Endpoint" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]"><span className="flex items-center gap-2 font-bold"><Dot color={colors[endpoint.endpoint_id]} />{endpoint.name}</span></td>
-                  <td role="cell" data-label="Kết quả" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">{verdict}</td>
-                  <td role="cell" data-label="Tốc độ" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">
+                  <td data-label="Endpoint" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]"><span className="flex items-center gap-2 font-bold"><Dot color={colors[endpoint.endpoint_id]} />{endpoint.name}</span></td>
+                  <td data-label="Kết quả" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">{verdict}</td>
+                  <td data-label="Tốc độ" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">
                     {speed === null ? <span className="text-ink-3">Chưa đủ số đo</span> : (
                       <>
                         <b className={speed >= 1 ? "text-good" : "text-bad"}>{speed >= 1 ? `Nhanh hơn ${formatSpeedup(speed)}` : `Chậm hơn ${formatSpeedup(1 / speed)}`}</b>

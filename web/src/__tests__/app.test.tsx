@@ -165,6 +165,16 @@ describe("endpoints", () => {
     for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked();
   });
 
+  it("puts the cursor in the first field when a drawer opens", async () => {
+    open("endpoints", fakeApi());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Thêm endpoint" }));
+    expect(screen.getByRole("textbox", { name: /Địa chỉ API/ })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Huỷ" }));
+    await user.click(screen.getByRole("button", { name: "Sửa adaptive" }));
+    expect(screen.getByLabelText("Tên hiển thị")).toHaveFocus();
+  });
+
   it("keeps the old baseline and says why when saving a new one fails", async () => {
     const endpoints = vi.fn(async () => ({ endpoints: [endpoint(BASE, "vanilla", { is_baseline: true }), endpoint(FAST, "adaptive")] }));
     const updateEndpoint = vi.fn(async () => { throw new Error("Máy chủ đang bận, thử lại sau."); });
