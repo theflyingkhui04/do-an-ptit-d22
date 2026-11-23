@@ -40,7 +40,7 @@ function Onboarding({ onAdd }: { onAdd: () => void }) {
   const steps = [
     { title: "Chạy flexsds serve", body: "Trên Modal, Colab hoặc GPU của máy. CLI dựng vLLM và chọn cách giải mã hợp với GPU." },
     { title: "Copy dòng API", body: `Khi CLI báo “${SERVE_SAMPLE_HEADER.replace(/:$/, "")}”, copy địa chỉ ở dòng API. Trên máy cá nhân, mở đường hầm cloudflared trước.` },
-    { title: "Dán vào web", body: "Web tự nhận model và độ dài ngữ cảnh. Dán nhiều endpoint để so sánh với nhau." },
+    { title: "Dán vào web", body: "Web tự nhận model và độ dài ngữ cảnh. Thêm nhiều endpoint để so sánh với nhau." },
   ];
   return (
     <EmptyState

@@ -298,7 +298,7 @@ function DataDrawer({ result, onClose }: { result?: ReportResult; onClose: () =>
 export default function Node3Page({ api, endpoints, go }: { api: Api; endpoints: Endpoint[]; go: (page: PageId) => void }) {
   const baseline = endpoints.find((e) => e.is_baseline);
   const [selected, setSelected] = useState<string[]>(() => defaultTarget(endpoints).filter((id) => id !== baseline?.endpoint_id));
-  const [request, setRequest] = useState(SAMPLES[0].text);
+  const [request, setRequest] = useState("");
   const [limit, setLimit] = useState<number | null>(10);
   const [round, setRound] = useState<Round | null>(null);
   const [view, setView] = useState<string | null>(null);

@@ -785,7 +785,7 @@ describe("node 3", () => {
       number_check: { numbers: 2, ungrounded: ["1.270.000"] },
     })));
     open("node3", fakeApi({ report }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Chi tiêu gần đây" }));
     const adaptive = await screen.findByRole("article", { name: "adaptive" });
     expect(await within(adaptive).findByText("1.270.000", { selector: "mark" })).toBeInTheDocument();
     expect(within(adaptive).getByText(/1 số không có trong bảng/)).toHaveTextContent("1.270.000");
@@ -798,7 +798,7 @@ describe("node 3", () => {
     })));
     open("node3", fakeApi({ report }));
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    await user.click(await screen.findByRole("button", { name: "Chi tiêu gần đây" }));
     const adaptive = await screen.findByRole("article", { name: "adaptive" });
     expect(await within(adaptive).findByText("Thuế")).toHaveAttribute("data-diff", "true");
     expect(within(adaptive).getByText("Chi tiêu theo ngày")).not.toHaveAttribute("data-diff");
@@ -811,7 +811,10 @@ describe("node 3", () => {
   it("flags foreign words in the report", async () => {
     const report = vi.fn(async (endpointId: string) => written(endpointId, { language_check: { foreign_words: ["城市"] } }));
     open("node3", fakeApi({ report }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Yêu cầu báo cáo" }), "Tình hình thuế");
+    await user.click(screen.getByRole("button", { name: "Tạo báo cáo" }));
+    expect(report).toHaveBeenCalledWith(FAST, "Tình hình thuế", 10);
     expect((await screen.findAllByText(/Chữ không phải tiếng Việt/))[0]).toHaveTextContent("城市");
   });
 
@@ -820,7 +823,7 @@ describe("node 3", () => {
       dashboard: { status: "fallback" as const, error: "Model không trả JSON hợp lệ cho dashboard.", charts: [{ table: "by_store", type: "bar" as const, value: "tong_tien", title: "Tổng tiền theo cửa hàng" }] },
     }));
     open("node3", fakeApi({ report }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Chi tiêu gần đây" }));
     const flag = (await within(await screen.findByRole("article", { name: "adaptive" })).findByText("Không chọn được biểu đồ, dùng bộ mặc định"));
     expect(flag).toHaveAttribute("title", "Model không trả JSON hợp lệ cho dashboard.");
     expect(screen.getByRole("img", { name: "Tổng tiền theo cửa hàng" })).toBeInTheDocument();
@@ -839,7 +842,7 @@ describe("node 3", () => {
       ] },
     }));
     open("node3", fakeApi({ report }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Chi tiêu gần đây" }));
     const bars = await screen.findByRole("img", { name: "Từng hoá đơn" });
     expect(bars).toHaveTextContent("2020-08-16, MINIMART ANAN");
     expect(bars).toHaveTextContent("2020-08-16, CUA HANG X");
@@ -851,7 +854,7 @@ describe("node 3", () => {
   it("explains an empty scope instead of drawing anything", async () => {
     const report = vi.fn(async (endpointId: string) => written(endpointId, { scope: { limit: 10, invoice_count: 0, label: "x" }, dashboard: { ...REPORT.dashboard, charts: [] } }));
     open("node3", fakeApi({ report }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Chi tiêu gần đây" }));
     expect(await screen.findByText(/Phạm vi này chưa có hoá đơn nào/)).toBeInTheDocument();
     expect(screen.queryByRole("article")).toBeNull();
   });
@@ -862,7 +865,7 @@ describe("node 3", () => {
     await user.click(await screen.findByRole("button", { name: "Số liệu đầu vào" }));
     expect(screen.getByRole("dialog", { name: "Số liệu đầu vào" })).not.toHaveTextContent(/truy vấn|báo cáo/); // empty before a report
     await user.click(screen.getByRole("button", { name: "Đóng" }));
-    await user.click(await screen.findByRole("button", { name: "Tạo báo cáo" }));
+    await user.click(await screen.findByRole("button", { name: "Chi tiêu gần đây" }));
     await screen.findByLabelText("Số tổng của phạm vi");
     await user.click(screen.getByRole("button", { name: "Số liệu đầu vào" }));
     const drawer = screen.getByRole("dialog", { name: "Số liệu đầu vào" });
@@ -918,6 +921,18 @@ describe("Canva review 19/11", () => {
     open("node3", fakeApi());
     expect(await screen.findByPlaceholderText("Bạn cần báo cáo gì")).toBeInTheDocument();
     expect(screen.getByText("Lựa chọn LLM")).toBeInTheDocument();
+  });
+
+  it("starts Node 3 with an empty request, like Node 2", async () => {
+    open("node3", fakeApi());
+    expect(await screen.findByRole("textbox", { name: "Yêu cầu báo cáo" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Tạo báo cáo" })).toBeDisabled();
+  });
+
+  it("tells the onboarding to add endpoints one at a time", async () => {
+    open("", fakeApi({ endpoints: vi.fn(async () => ({ endpoints: [] })) }));
+    expect(await screen.findByText(/Thêm nhiều endpoint để so sánh với nhau\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Dán nhiều endpoint/)).toBeNull();
   });
 });
 
