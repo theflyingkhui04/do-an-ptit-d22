@@ -11,7 +11,8 @@ import { useI18n } from "@/lib/i18n";
 import { durationText } from "@/lib/liveness";
 
 export const WAKE_RETRY_MS = 20_000;
-export const WAKE_LIMIT_MS = 5 * 60_000;
+// A scaled-to-zero GPU endpoint (flexsds serve on Modal) was measured at 7.5 to 15 minutes from cold.
+export const WAKE_LIMIT_MS = 15 * 60_000;
 
 interface CheckOutcome {
   at: number;
