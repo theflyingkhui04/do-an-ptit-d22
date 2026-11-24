@@ -222,3 +222,94 @@ def test_planner_batched_io_error_does_not_crash_or_leak_buffer(tmp_path, caplog
     assert planner._step_buffer == []
     planner.close()
     assert "step telemetry" in caplog.text.lower()
+
+
+def test_runner_and_modal_step_telemetry_batching_and_opt_out(monkeypatch):
+    """AC-05 & Review Focus #5: Mặc định flush_every=64; opt-out tắt hẳn path và dọn biến rò."""
+    from flexsds.server.local_runner import LocalServingRunner
+    from flexsds.server.modal_runner import ModalServingRunner
+
+    data = json.loads(A10G_PROFILE_PATH.read_text(encoding="utf-8"))
+    base = {
+        "target_model": data["models"]["target"],
+        "draft_model": data["models"]["draft"],
+        "draft_method": data["draft_method"],
+        "target_revision": data["models"]["target_revision"],
+        "draft_revision": data["models"]["draft_revision"],
+        "profile_path": str(A10G_PROFILE_PATH),
+        "enable_adaptive": True,
+        "target_gpu": "A10G",
+    }
+
+    local_runner = LocalServingRunner()
+    env_default = local_runner.setup_environment({"serving": dict(base)})
+    assert "ADAPTIVE_STEP_TELEMETRY_PATH" in env_default
+    assert env_default["ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY"] == "64"
+
+    monkeypatch.setenv("ADAPTIVE_STEP_TELEMETRY_PATH", "/tmp/leaked_steps.jsonl")
+    monkeypatch.setenv("ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY", "16")
+    env_off = local_runner.setup_environment({"serving": dict(base, enable_step_telemetry=False)})
+    assert "ADAPTIVE_STEP_TELEMETRY_PATH" not in env_off
+    assert "ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY" not in env_off
+
+    env_static = local_runner.setup_environment({"serving": {"enable_adaptive": False}})
+    assert "ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY" not in env_static
+
+    for bad_flush in (True, 0, -4):
+        with pytest.raises(ValueError):
+            local_runner.setup_environment({"serving": dict(base, step_telemetry_flush_every=bad_flush)})
+
+    modal_env = ModalServingRunner().setup_environment(
+        {"serving": dict(base, enable_step_telemetry=False, step_telemetry_flush_every=128)}
+    )
+    payload = json.loads(modal_env["FLEXSDS_SERVING_CONFIG"])
+    assert payload["enable_step_telemetry"] is False
+    assert payload["step_telemetry_flush_every"] == 128
+
+
+def test_cli_no_step_telemetry_flag_forwards_opt_out(monkeypatch, capsys):
+    """AC-05: Cờ --no-step-telemetry trên flexsds serve được truyền vào Modal serving config."""
+    from types import SimpleNamespace
+    import flexsds.cli.main as cli_main
+
+    data = json.loads(A10G_PROFILE_PATH.read_text(encoding="utf-8"))
+    fake_report = SimpleNamespace(
+        draft_method=data["draft_method"],
+        eagle_version="EAGLE-3.1",
+        target_revision=data["models"]["target_revision"],
+        draft_revision=data["models"]["draft_revision"],
+        use_heterogeneous_vocab=False,
+        identified_method="eagle3",
+        oom_risk=False,
+        warnings=[],
+        recommendations=[],
+        summary=lambda: "Compatibility: OK",
+    )
+    fake_preflight = SimpleNamespace(report=fake_report, launch_reasons=lambda allow_oom: [])
+    monkeypatch.setattr(cli_main, "evaluate_serving_preflight", lambda *a, **kw: fake_preflight)
+    monkeypatch.setattr(
+        cli_main,
+        "load_profile_for_hardware",
+        lambda *a, **kw: (object(), A10G_PROFILE_PATH.name),
+    )
+    monkeypatch.setattr(cli_main, "resolve_profile_path", lambda name: A10G_PROFILE_PATH)
+
+    rc = cli_main.main(
+        [
+            "serve",
+            "--backend",
+            "modal",
+            "--gpu",
+            "A10G",
+            "--target",
+            data["models"]["target"],
+            "--draft",
+            data["models"]["draft"],
+            "--no-step-telemetry",
+            "--dry-run",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert '"enable_step_telemetry": false' in out
+

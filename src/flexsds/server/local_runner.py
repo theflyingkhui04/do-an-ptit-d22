@@ -69,6 +69,7 @@ class LocalServingRunner:
         enable_adaptive = bool(serving_cfg.get("enable_adaptive", True))
         disable_speculative = bool(serving_cfg.get("disable_speculative", False))
         static_k = serving_cfg.get("static_k")
+        flush_every = serving_cfg.get("step_telemetry_flush_every")
 
         if disable_speculative and enable_adaptive:
             raise ValueError("Cannot enable adaptive scheduling when speculative decoding is disabled")
@@ -80,6 +81,9 @@ class LocalServingRunner:
                 )
             if isinstance(static_k, bool) or not isinstance(static_k, int) or not 1 <= static_k <= 8:
                 raise ValueError("static_k must be an integer between 1 and 8")
+        if flush_every is not None:
+            if isinstance(flush_every, bool) or not isinstance(flush_every, int) or flush_every < 1:
+                raise ValueError("step_telemetry_flush_every must be a positive integer")
 
     def describe_execution_contract(self, config: Dict[str, Any]) -> str:
         """Trả về nhãn hợp đồng thực thi chuẩn cho log đối chứng và dry-run."""
@@ -270,6 +274,7 @@ class LocalServingRunner:
                 "FLEXSDS_PROFILE_PATH",
                 "ADAPTIVE_STRICT",
                 "ADAPTIVE_STEP_TELEMETRY_PATH",
+                "ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY",
                 "ADAPTIVE_STARTUP_TELEMETRY_PATH",
                 "ADAPTIVE_CONTROLLER_KWARGS",
             ):
@@ -285,7 +290,15 @@ class LocalServingRunner:
         if enable_adaptive:
             trace_dir = Path(env['ADAPTIVE_TELEMETRY_PATH']).parent
             trace_dir.mkdir(parents=True, exist_ok=True)
-            env['ADAPTIVE_STEP_TELEMETRY_PATH'] = str(trace_dir / 'serving_steps.jsonl')
+            if bool(serving_cfg.get("enable_step_telemetry", True)):
+                flush_every = serving_cfg.get("step_telemetry_flush_every")
+                if flush_every is None:
+                    flush_every = 64
+                env['ADAPTIVE_STEP_TELEMETRY_PATH'] = str(trace_dir / 'serving_steps.jsonl')
+                env['ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY'] = str(flush_every)
+            else:
+                env.pop('ADAPTIVE_STEP_TELEMETRY_PATH', None)
+                env.pop('ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY', None)
             env['ADAPTIVE_STARTUP_TELEMETRY_PATH'] = str(trace_dir / 'serving_lineage.jsonl')
         env["ADAPTIVE_MAX_K"] = str(serving_cfg.get("max_k", 4))
         env["ADAPTIVE_MIN_BATCH_K"] = "0"

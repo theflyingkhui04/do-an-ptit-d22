@@ -78,6 +78,7 @@ class ModalServingRunner:
             "target_revision", "draft_revision", "port", "enable_adaptive",
             "target_gpu", "max_model_len", "max_num_seqs", "profile_path",
             "match_adaptive_runtime", "disable_speculative", "disable_prefix_caching", "static_k",
+            "enable_step_telemetry", "step_telemetry_flush_every",
         )
         if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
             # Calibration also uses this method without the serving launch preflight.
@@ -121,6 +122,8 @@ class ModalServingRunner:
             or cfg.get('disable_speculative', False)
             or cfg.get('disable_prefix_caching', False)
             or cfg.get('static_k') is not None
+            or cfg.get('enable_step_telemetry') is False
+            or cfg.get('step_telemetry_flush_every') is not None
         ):
             local_runner.build_command(config)
             local_runner.setup_environment(config)
