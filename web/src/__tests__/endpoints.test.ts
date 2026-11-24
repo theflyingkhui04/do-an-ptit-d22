@@ -10,16 +10,16 @@ describe("serving_config.json from the CLI", () => {
       target_gpu: "A10G", hardware: { device_name: "NVIDIA A10G", sm_architecture: "sm_86", free_vram_mb: 22000 },
     };
     expect(notesFromServingConfig(wizard)).toEqual({
-      gpu: "NVIDIA A10G", decoding: "adaptive", draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+      gpu: "NVIDIA A10G", decoding: "eagle3_adaptive", draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator",
       target_model: "Qwen/Qwen2.5-7B-Instruct-AWQ",
     });
   });
 
   it("also reads the nested serving block and its older adaptive_enabled name", () => {
-    expect(notesFromServingConfig({ serving: { draft_model: "x/draft", draft_method: "draft_model", target_gpu: "L4" } }))
-      .toEqual({ gpu: "L4", decoding: "draft", draft_model: "x/draft" });
     expect(notesFromServingConfig({ serving: { draft_method: "eagle3", draft_model: "d", adaptive_enabled: false } }))
-      .toEqual({ decoding: "static", draft_model: "d" });
+      .toEqual({ decoding: "eagle3_static", draft_model: "d" });
+    expect(notesFromServingConfig({ serving: { draft_method: "eagle3.1", draft_model: "d", adaptive_enabled: true } }))
+      .toEqual({ decoding: "eagle31_adaptive", draft_model: "d" });
     expect(notesFromServingConfig({ draft_model: null, enable_adaptive: false })).toEqual({ decoding: "vanilla" });
   });
 
@@ -31,20 +31,27 @@ describe("serving_config.json from the CLI", () => {
 });
 
 describe("decoding notes", () => {
-  it("reads the decoding from the stored notes", () => {
+  it("reads every EAGLE-1/2/3/3.1 decoding mode from stored notes", () => {
     expect(decodingOf({})).toBe("");
     expect(decodingOf({ draft_method: "none" })).toBe("vanilla");
     expect(decodingOf({ draft_method: null })).toBe("vanilla");
-    expect(decodingOf({ draft_method: "eagle3", adaptive: true })).toBe("adaptive");
-    expect(decodingOf({ draft_method: "eagle", adaptive: false })).toBe("static");
-    expect(decodingOf({ draft_method: "draft_model" })).toBe("draft");
+    expect(decodingOf({ draft_method: "eagle1", adaptive: false })).toBe("eagle1_static");
+    expect(decodingOf({ draft_method: "eagle1", adaptive: true })).toBe("eagle1_adaptive");
+    expect(decodingOf({ draft_method: "eagle2", adaptive: false })).toBe("eagle2_static");
+    expect(decodingOf({ draft_method: "eagle2", adaptive: true })).toBe("eagle2_adaptive");
+    expect(decodingOf({ draft_method: "eagle3", adaptive: false })).toBe("eagle3_static");
+    expect(decodingOf({ draft_method: "eagle3", adaptive: true })).toBe("eagle3_adaptive");
+    expect(decodingOf({ draft_method: "eagle3.1", adaptive: false })).toBe("eagle31_static");
+    expect(decodingOf({ draft_method: "eagle3.1", adaptive: true })).toBe("eagle31_adaptive");
   });
 
-  it("writes notes that remove what does not apply", () => {
-    expect(notesFor("vanilla", "ignored")).toEqual({ draft_method: "none", adaptive: null, draft_model: null });
-    expect(notesFor("adaptive", " d ")).toEqual({ draft_method: "eagle3", adaptive: true, draft_model: "d" });
-    expect(notesFor("static", "")).toEqual({ draft_method: "eagle3", adaptive: false, draft_model: null });
-    expect(notesFor("draft", "m")).toEqual({ draft_method: "draft_model", adaptive: false, draft_model: "m" });
+  it("writes notes that match the chosen decoding method", () => {
+    expect(notesFor("vanilla", "ignored")).toEqual({ draft_method: "none", adaptive: false, draft_model: null });
+    expect(notesFor("eagle1_static", " d ")).toEqual({ draft_method: "eagle1", adaptive: false, draft_model: "d" });
+    expect(notesFor("eagle2_adaptive", " d ")).toEqual({ draft_method: "eagle2", adaptive: true, draft_model: "d" });
+    expect(notesFor("eagle3_adaptive", " d ")).toEqual({ draft_method: "eagle3", adaptive: true, draft_model: "d" });
+    expect(notesFor("eagle31_static", "")).toEqual({ draft_method: "eagle3.1", adaptive: false, draft_model: null });
+    expect(notesFor("eagle31_adaptive", "e31")).toEqual({ draft_method: "eagle3.1", adaptive: true, draft_model: "e31" });
     expect(notesFor("", "m")).toEqual({ draft_method: null, adaptive: null, draft_model: null });
   });
 });

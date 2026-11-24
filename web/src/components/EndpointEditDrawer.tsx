@@ -52,7 +52,7 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
   const [gpu, setGpu] = useState(meta.gpu ?? "");
   const [decoding, setDecoding] = useState<Decoding>(decodingOf(meta));
   const [draft, setDraft] = useState(meta.draft_model ?? "");
-  const [target, setTarget] = useState<string | undefined>(undefined);
+  const [target, setTarget] = useState(meta.target_model ?? "");
   const [loaded, setLoaded] = useState<{ tone: "info" | "bad"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +66,7 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
   function notes(): EndpointNotes {
     const want: EndpointNotes = { gpu: gpu.trim() || null };
     if (decoding !== decodingOf(meta) || draft.trim() !== (meta.draft_model ?? "")) Object.assign(want, notesFor(decoding, draft));
-    if (target !== undefined) want.target_model = target || null;
+    if (target.trim() !== (meta.target_model ?? "")) want.target_model = target.trim() || null;
     const stored = meta as Record<string, unknown>;
     return Object.fromEntries(Object.entries(want).filter(([k, v]) => v !== (stored[k] ?? null)));
   }
@@ -212,6 +212,11 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
                 {Object.entries(DECODING_LABELS_BY_LANG[lang]).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
               </select>
             </div>
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor={`${id}-target`} className={label}>{t.targetModelLabel}</label>
+            <input id={`${id}-target`} value={target} spellCheck={false} placeholder={baseModel(e)}
+              onChange={(ev) => setTarget(ev.target.value)} className={cx(field, "font-mono text-[13px]")} />
           </div>
           {decoding && decoding !== "vanilla" && (
             <div className="grid gap-1.5">

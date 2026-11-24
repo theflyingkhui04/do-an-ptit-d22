@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import EndpointEditDrawer from "@/components/EndpointEditDrawer";
 import { Button, ConfirmDialog, CopyButton, Dot, EmptyState, Notice, PageHead, Pill, baseModel, cx, endpointColors, secondsSince, useNow } from "@/components/ui";
 import type { Api, Endpoint } from "@/lib/api";
-import { agoText, detailLine, setupLine, shortReason, shortUrl } from "@/lib/endpoints";
+import { agoText, isHardwareAdaptive, shortModelName, shortReason, shortUrl } from "@/lib/endpoints";
 import { useI18n } from "@/lib/i18n";
 import { durationText } from "@/lib/liveness";
 
@@ -116,7 +116,7 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
   onAdd: () => void;
   onCheckingChange?: (count: number) => void;
 }) {
-  const { lang, t } = useI18n();
+  const { t } = useI18n();
   const [checking, setChecking] = useState<Record<string, number>>({});
   const [waking, setWaking] = useState<Record<string, true>>({});
   const [outcome, setOutcome] = useState<Record<string, CheckOutcome>>({});
@@ -224,16 +224,18 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
       ) : (
         <section aria-label={t.endpointsList} className="overflow-hidden rounded-xl border border-line bg-surface">
           {endpoints.map((e) => {
-            const setup = setupLine(e, lang);
             const busy = checking[e.endpoint_id] !== undefined;
+            const targetName = baseModel(e);
+            const draftName = e.meta?.draft_model ?? null;
+            const adaptiveOn = isHardwareAdaptive(e.meta);
             return (
               <article
                 key={e.endpoint_id}
                 aria-label={e.name}
                 className={cx(
                   "grid gap-x-5 gap-y-3 border-line px-[18px] py-4 [&+&]:border-t",
-                  "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]",
-                  "lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.3fr)_minmax(160px,0.75fr)_auto]",
+                  "md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]",
+                  "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(140px,0.7fr)_auto]",
                   flash[e.endpoint_id] === "good" && "animate-row-good",
                   flash[e.endpoint_id] === "bad" && "animate-row-bad",
                   flash[e.endpoint_id] === "info" && "animate-row-info",
@@ -257,10 +259,23 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
                   </div>
                 </div>
 
-                <div className="grid min-w-0 content-start gap-0.5 text-[13.5px]">
-                  {setup && <span className="font-semibold">{setup}</span>}
-                  <span className={setup ? "text-[12.5px] text-ink-3" : "text-ink-2"}>{detailLine(e, baseModel(e), lang)}</span>
-                </div>
+                <dl className="m-0 grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] content-start gap-x-3 gap-y-1 text-[13px]">
+                  <dt className="text-ink-3">{t.epFieldChip}</dt>
+                  <dd className="m-0 truncate font-medium text-ink">{e.meta?.gpu || "—"}</dd>
+                  <dt className="text-ink-3">{t.epFieldDraft}</dt>
+                  <dd className="m-0 truncate text-ink-2" title={draftName ?? undefined}>{draftName ? shortModelName(draftName) : "—"}</dd>
+                  <dt className="text-ink-3">{t.epFieldTarget}</dt>
+                  <dd className="m-0 truncate text-ink-2" title={targetName}>{shortModelName(targetName)}</dd>
+                  <dt className="text-ink-3">{t.epFieldAdaptive}</dt>
+                  <dd className="m-0">
+                    <span className={cx(
+                      "inline-flex items-center rounded-md px-1.5 py-px text-[11.5px] font-bold",
+                      adaptiveOn ? "bg-good-tint text-good" : "bg-sunken text-ink-3",
+                    )}>
+                      {adaptiveOn ? t.onLabel : t.offLabel}
+                    </span>
+                  </dd>
+                </dl>
 
                 <div className="grid content-start justify-items-start gap-1" aria-live="polite">
                   <StatusCell

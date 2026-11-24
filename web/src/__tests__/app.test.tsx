@@ -117,26 +117,36 @@ describe("endpoints and alias flow", () => {
     expect(screen.getByTestId("endpoint-summary")).toHaveTextContent("Chưa có endpoint");
   });
 
-  it("lists endpoints cleanly without baseline radios or redundant model lines", async () => {
+  it("lists endpoints with Chip, Draft model, Target model, and Hardware-Adaptive ON/OFF only", async () => {
     const endpoints = vi.fn(async () => ({ endpoints: [
-      endpoint(FAST, "#1", { model_id: "qwen2.5-7b-adaptive", meta: { gpu: "NVIDIA L4", draft_method: "eagle3", adaptive: true } }),
-      endpoint(BASE, "#2", { model_id: "vanilla", has_key: false, status: "down",
-        status_message: "Endpoint chưa sẵn sàng (HTTP 503): GPU đang khởi động" }),
+      endpoint(FAST, "#1", {
+        model_id: "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        meta: { gpu: "NVIDIA L4", draft_method: "eagle3.1", adaptive: true, draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator" },
+      }),
+      endpoint(BASE, "#2", {
+        model_id: "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        has_key: false,
+        status: "down",
+        status_message: "Endpoint chưa sẵn sàng (HTTP 503): GPU đang khởi động",
+      }),
     ] }));
     open("endpoints", fakeApi({ endpoints }));
     const rows = await screen.findAllByRole("article");
     expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["#1", "#2"]);
     expect(screen.queryByRole("radio")).toBeNull();
-    expect(screen.queryByText(/Mốc/)).toBeNull();
-    expect(screen.queryByText(/Model endpoint báo/)).toBeNull();
-
-    const second = rowOf("#2");
-    expect(within(second).getByText("Ngưng kết nối")).toBeInTheDocument();
-    expect(within(second).getByTitle("GPU đang khởi động (HTTP 503)")).toBeInTheDocument();
+    expect(screen.queryByText(/8\.192 token/)).toBeNull();
+    expect(screen.queryByText(/Modal/)).toBeNull();
 
     const first = rowOf("#1");
-    expect(within(first).getByText("NVIDIA L4 · EAGLE-3 (Hardware-Adaptive)")).toBeInTheDocument();
-    expect(within(first).getByText(/có API key/)).toBeInTheDocument();
+    expect(within(first).getByText("NVIDIA L4")).toBeInTheDocument();
+    expect(within(first).getByText("qwen2.5-7b-eagle3.1-speculator")).toBeInTheDocument();
+    expect(within(first).getByText("Qwen2.5-7B-Instruct-AWQ")).toBeInTheDocument();
+    expect(within(first).getByText("ON")).toBeInTheDocument();
+
+    const second = rowOf("#2");
+    expect(within(second).getByText("OFF")).toBeInTheDocument();
+    expect(within(second).getByText("Ngưng kết nối")).toBeInTheDocument();
+    expect(within(second).getByTitle("GPU đang khởi động (HTTP 503)")).toBeInTheDocument();
   });
 
   it("suggests #1 / #2 alias when adding an endpoint and saves the custom alias", async () => {
@@ -205,14 +215,24 @@ describe("endpoints and alias flow", () => {
 
     await user.clear(within(drawer).getByLabelText("Alias"));
     await user.type(within(drawer).getByLabelText("Alias"), "#2 L4");
-    await user.clear(within(drawer).getByLabelText("GPU"));
-    await user.type(within(drawer).getByLabelText("GPU"), "NVIDIA A10G");
-    await user.selectOptions(within(drawer).getByLabelText("Phương pháp giải mã"), "Tiêu chuẩn (Vanilla)");
+    await user.clear(within(drawer).getByLabelText("Chip"));
+    await user.type(within(drawer).getByLabelText("Chip"), "NVIDIA A10G");
+    const decodingSelect = within(drawer).getByLabelText("Phương pháp giải mã");
+    expect(within(decodingSelect).getByRole("option", { name: "EAGLE-1 (K cố định)" })).toBeInTheDocument();
+    expect(within(decodingSelect).getByRole("option", { name: "EAGLE-1 (Hardware-Adaptive)" })).toBeInTheDocument();
+    expect(within(decodingSelect).getByRole("option", { name: "EAGLE-2 (K cố định)" })).toBeInTheDocument();
+    expect(within(decodingSelect).getByRole("option", { name: "EAGLE-2 (Hardware-Adaptive)" })).toBeInTheDocument();
+    expect(within(decodingSelect).getByRole("option", { name: "EAGLE-3 (K cố định)" })).toBeInTheDocument();
+    expect(within(decodingSelect).getByRole("option", { name: "EAGLE-3 (Hardware-Adaptive)" })).toBeInTheDocument();
+    expect(within(decodingSelect).getByRole("option", { name: "EAGLE-3.1 (K cố định)" })).toBeInTheDocument();
+    expect(within(decodingSelect).getByRole("option", { name: "EAGLE-3.1 (Hardware-Adaptive)" })).toBeInTheDocument();
+    expect(within(decodingSelect).queryByRole("option", { name: /độc lập/i })).toBeNull();
+    await user.selectOptions(decodingSelect, "EAGLE-3.1 (Hardware-Adaptive)");
     await user.click(within(drawer).getByRole("button", { name: "Lưu thay đổi" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(updateEndpoint).toHaveBeenCalledWith(FAST, {
       name: "#2 L4",
-      meta: { gpu: "NVIDIA A10G", draft_method: "none", adaptive: null },
+      meta: { gpu: "NVIDIA A10G", draft_method: "eagle3.1" },
     });
   });
 
@@ -381,7 +401,7 @@ describe("benchmark page", () => {
     created_at: "2026-11-12T03:00:00Z",
   });
 
-  it("uses clean Mode labels without explanatory clutter and supports dynamic reference switching", async () => {
+  it("uses Task 1/2/3, dataset/single-invoice tabs, and clean result headers", async () => {
     let finish: (run: BenchRun) => void = () => undefined;
     const running: BenchRun = { ...speedRun(), status: "running", progress: { done: 8, total: 32 }, result: {} };
     const bench = vi.fn().mockResolvedValueOnce(running).mockImplementationOnce(() => new Promise<BenchRun>((resolve) => {
@@ -392,23 +412,29 @@ describe("benchmark page", () => {
     open("result", api);
     const user = userEvent.setup();
 
-    expect(await screen.findByRole("radiogroup", { name: "Chế độ đo" })).toBeInTheDocument();
-    expect(screen.queryByText(/ước tính khoảng/)).toBeNull();
-    expect(screen.queryByText(/máy chủ miễn phí/)).toBeNull();
-    expect(screen.queryByText(/có nhiễu/)).toBeNull();
+    expect(await screen.findByRole("radio", { name: "Trên tập hóa đơn" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Trên một hóa đơn" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Task 1" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Task 2" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Task 3" })).toBeInTheDocument();
+    expect(screen.queryByText(/Node 1 \(W1\)/)).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "Chế độ đo" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Trên lý thuyết" })).toBeInTheDocument();
+    expect(screen.queryByText("Chuẩn thực nghiệm")).toBeNull();
+    expect(screen.queryByText("Đo trực tiếp")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Bắt đầu đo" }));
     expect(api.startBench).toHaveBeenCalledWith({ kind: "speed", endpoint_ids: [BASE, FAST], workload: "W1", loads: [1, 8], requests: 8, repeats: 1 });
     expect(await screen.findByRole("progressbar")).toHaveAttribute("aria-valuenow", "25");
 
     await act(async () => finish(speedRun()));
-    expect(await screen.findByText("Đo trực tiếp")).toBeInTheDocument();
-    expect(screen.queryByText(/đỡ nhất là/)).toBeNull();
-    expect(screen.queryByText(/Singapore/)).toBeNull();
+    expect(await screen.findByRole("radio", { name: "Trên lần đo này" })).toBeInTheDocument();
+    expect(screen.queryByText("Đo trực tiếp")).toBeNull();
 
     const heavy = screen.getByRole("group", { name: "Concurrency 8" });
     expect(heavy).toHaveTextContent("25 ms");
     expect(heavy).toHaveTextContent("Chậm hơn 1,14×");
+    expect(within(heavy).queryByText("Đối chiếu")).toBeNull();
     expect(within(screen.getByRole("group", { name: "Concurrency 1" })).getByText("Nhanh hơn 1,43×")).toBeInTheDocument();
 
     // Switch reference endpoint dynamically
@@ -416,13 +442,19 @@ describe("benchmark page", () => {
     expect(within(screen.getByRole("group", { name: "Concurrency 8" })).getByText("Nhanh hơn 1,14×")).toBeInTheDocument();
   });
 
-  it("runs pipeline 1 -> 3 and opens details drawer", async () => {
+  it("runs single-invoice benchmark with Task 1/2/3 and no M3-06 badges", async () => {
     const api = fakeApi({ bench: vi.fn(async () => chainRun()) });
     open("result", api);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("radio", { name: "Pipeline 1 → 3" }));
-    await user.click(screen.getByRole("button", { name: "Chạy pipeline" }));
-    const quality = await screen.findByRole("table", { name: "Bảng đối chiếu chất lượng pipeline" });
+    await user.click(await screen.findByRole("radio", { name: "Trên một hóa đơn" }));
+    expect(screen.queryByText("Chuẩn thực nghiệm")).toBeNull();
+    expect(screen.queryByText(/M3-06/)).toBeNull();
+    expect(screen.getByText("Task 1")).toBeInTheDocument();
+    expect(screen.getByText("Task 2")).toBeInTheDocument();
+    expect(screen.getByText("Task 3")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Bắt đầu đo" }));
+    const quality = await screen.findByRole("table", { name: "Bảng đối chiếu chất lượng" });
     expect(quality).toHaveTextContent("6/6");
     await user.click(screen.getByRole("button", { name: "Xem chi tiết adaptive" }));
     expect(screen.getByRole("dialog", { name: "Chi tiết · adaptive" })).toBeInTheDocument();

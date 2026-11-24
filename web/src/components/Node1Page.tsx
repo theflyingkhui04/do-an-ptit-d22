@@ -66,11 +66,10 @@ function LiveState({ state, small }: { state: PartState; small?: boolean }) {
   );
 }
 
-function RunHead({ id, name, color, isReference, report, state, onLog }: {
+function RunHead({ id, name, color, report, state, onLog }: {
   id: string;
   name: string;
   color: string;
-  isReference: boolean;
   report?: RunReport;
   state: PartState;
   onLog: () => void;
@@ -81,7 +80,6 @@ function RunHead({ id, name, color, isReference, report, state, onLog }: {
       <div className="flex items-center gap-2">
         <Dot color={color} />
         <b className="truncate text-[15px] font-bold">{name}</b>
-        {isReference && <span className="rounded-md border border-line px-1.5 text-[11.5px] font-semibold text-ink-3">{t.referenceBadge}</span>}
         <button type="button" onClick={onLog} aria-label={t.viewLogAria(name)} title={t.viewLogAria(name)} className="ml-auto rounded-md p-1 text-ink-3 hover:bg-sunken">
           <ScrollText aria-hidden className="size-4" />
         </button>
@@ -626,7 +624,6 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
                           id={c.endpoint_id}
                           name={c.name}
                           color={colors[c.endpoint_id] ?? "var(--ink-2)"}
-                          isReference={c.endpoint_id === referenceId}
                           report={runs[c.endpoint_id]}
                           state={states[c.endpoint_id]}
                           onLog={() => setLogPart(c.endpoint_id)}

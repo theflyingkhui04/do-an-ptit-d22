@@ -159,9 +159,9 @@ function SpeedLive({ result, colors }: { result: SpeedResult; colors: Record<str
                       </span>
                       <span className="grid min-w-[7.5em] justify-items-end leading-tight">
                         <b className="num">{v === null ? "—" : fmt(v)}</b>
-                        {id === referenceId
-                          ? <small className="text-[11.5px] text-ink-3">{t.referenceBadge}</small>
-                          : ratio !== null && <small className={cx("whitespace-nowrap text-[11.5px] font-semibold", ratio >= 1 ? "text-good" : "text-bad")}>{compared(metric, ratio, lang, t)}</small>}
+                        {id !== referenceId && ratio !== null && (
+                          <small className={cx("whitespace-nowrap text-[11.5px] font-semibold", ratio >= 1 ? "text-good" : "text-bad")}>{compared(metric, ratio, lang, t)}</small>
+                        )}
                       </span>
                     </div>
                   );
@@ -282,9 +282,8 @@ function ChainBars({ rows }: { rows: { id: string; name: string; color: string; 
           <div key={r.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-1.5 md:grid-cols-[minmax(150px,220px)_minmax(0,1fr)_auto]">
             <div className="grid min-w-0 justify-items-start gap-1">
               <span className="inline-flex max-w-full items-center gap-2 font-semibold"><Dot color={r.color} /><span className="truncate">{r.name}</span></span>
-              {r.isReference && <span className="rounded border border-line px-1 text-[11.5px] text-ink-2">{t.referenceBadge}</span>}
             </div>
-            <div className="col-span-2 row-start-2 flex h-7 overflow-hidden rounded-md bg-sunken md:col-span-1 md:row-start-auto" role="img" aria-label={`${r.name}: Node 1 ${formatMs(r.node1, lang)}, Node 2 ${formatMs(r.node2, lang)}, Node 3 ${formatMs(r.node3, lang)}`}>
+            <div className="col-span-2 row-start-2 flex h-7 overflow-hidden rounded-md bg-sunken md:col-span-1 md:row-start-auto" role="img" aria-label={`${r.name}: ${t.chainNode1} ${formatMs(r.node1, lang)}, ${t.chainNode2} ${formatMs(r.node2, lang)}, ${t.chainNode3} ${formatMs(r.node3, lang)}`}>
               <div className="flex" style={{ width: `${(100 * total) / max}%` }}>
                 {nodes.map((n, i) => (
                   <div
@@ -381,7 +380,6 @@ function ChainLive({ result, colors, onDetail }: { result: ChainResult; colors: 
                 <tr key={r.endpoint_id} className="border-t border-line align-top">
                   <td className="px-3.5 py-2.5">
                     <span className="inline-flex items-center gap-2 font-bold"><Dot color={colors[r.endpoint_id] ?? "var(--ink-2)"} /><span>{r.name}</span></span>
-                    {isRef && <span className="ml-1.5 rounded border border-line px-1 text-[11.5px] text-ink-2">{t.referenceBadge}</span>}
                   </td>
                   <td className="px-3.5 py-2.5">
                     {q.fields ? <b className={cx("text-[15px]", good(q.fields[0] === q.fields[1]))}>{q.fields[0]}/{q.fields[1]}</b>
@@ -448,7 +446,7 @@ function ChainDetail({ row, onClose }: { row: ChainRow; onClose: () => void }) {
 }
 
 export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; endpoints: Endpoint[]; pollMs: number; go: (page: PageId) => void }) {
-  const { lang, t } = useI18n();
+  const { t } = useI18n();
   const [mode, setMode] = useState<Mode>("speed");
   const [selected, setSelected] = useState<string[]>(() => defaultTarget(endpoints, 6));
   const [workload, setWorkload] = useState<Workload>("W1");
@@ -523,17 +521,14 @@ export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; e
 
   const modeRuns = runs.filter((r) => r.kind === mode);
   const shown = modeRuns.find((r) => r.run_id === shownId) ?? (current?.kind === mode && current.run_id === shownId ? current : null) ?? modeRuns[0] ?? null;
-  const showOfficial = official || !shown;
+  const showOfficial = mode === "speed" ? (official || !shown) : !shown;
 
   let body: ReactNode = null;
-  let badge: ReactNode = null;
-  let meta = "";
   if (running && current?.kind === mode) {
     const c = current.config;
     const done = current.progress.done ?? 0;
     const total = current.progress.total ?? 0;
     const pct = total ? Math.round((100 * done) / total) : 0;
-    badge = <Pill tone="warn">{t.liveBadge}</Pill>;
     body = (
       <div className="grid gap-2.5">
         <p className="flex items-center gap-2 text-[14px] text-ink-2">
@@ -550,29 +545,21 @@ export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; e
       </div>
     );
   } else if (showOfficial) {
-    badge = <span className="rounded-full border border-line bg-sunken px-2.5 py-0.5 text-[12px] font-semibold text-ink-2">{t.officialBadge}</span>;
-    meta = mode === "speed" ? t.metaOfficialSpeed(t.workloadNames[workload]) : t.metaOfficialChain;
     body = mode === "speed" ? <SpeedOfficial workload={workload} /> : <ChainOfficial />;
   } else if (shown) {
-    badge = <Pill tone="good">{t.liveBadge}</Pill>;
     if (shown.status === "failed") body = <Notice tone="bad">{shown.error}</Notice>;
     else if (shown.status === "interrupted") body = <Notice tone="warn">{t.benchInterrupted}</Notice>;
     else if ("kind" in shown.result && shown.result.kind === "speed") {
-      const totalReqs = shown.result.cells.reduce((sum, c) => sum + c.n, 0);
-      meta = t.metaSpeedLive(t.workloadNames[shown.result.workload as Workload] ?? shown.result.workload, shown.result.loads, totalReqs);
       body = <SpeedLive key={shown.run_id} result={shown.result} colors={colors} />;
     } else if ("kind" in shown.result && shown.result.kind === "chain") {
       const chain = shown.result;
-      const sampleLabel = SAMPLES.find((s) => s.id === chain.sample_id)?.label ?? chain.sample_id;
-      meta = t.metaChainLive(sampleLabel, chain.ocr_ms);
-      if (chain.ocr_ms) meta += ` ${formatMs(chain.ocr_ms, lang)}`;
       body = <ChainLive key={shown.run_id} result={chain} colors={colors} onDetail={setDetail} />;
     }
   }
 
-  const views: [string, string][] = [
-    ...(shown ? [["live", t.liveRunTab(when(shown.created_at).split(" ")[1] ?? "")] as [string, string]] : []),
-    ["official", mode === "speed" ? t.officialM305 : t.officialM306],
+  const speedViews: [string, string][] = [
+    ...(shown ? [["live", t.liveRunTab] as [string, string]] : []),
+    ["official", t.officialM305],
   ];
 
   return (
@@ -641,11 +628,9 @@ export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; e
       <section aria-label={t.resultsHeading} className="grid gap-4 rounded-xl border border-line bg-surface p-[18px]">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h2 className="text-[15px] font-bold">{running && current?.kind === mode ? t.runningHeading : t.resultsHeading}</h2>
-          {badge}
-          {meta && <span className="text-[12.5px] text-ink-3">{meta}</span>}
-          {!(running && current?.kind === mode) && (
+          {mode === "speed" && !(running && current?.kind === mode) && (
             <span className="ml-auto">
-              <Segmented label={t.viewAria} value={showOfficial ? "official" : "live"} onChange={(v) => setOfficial(v === "official")} options={views} />
+              <Segmented label={t.viewAria} value={showOfficial ? "official" : "live"} onChange={(v) => setOfficial(v === "official")} options={speedViews} />
             </span>
           )}
         </div>

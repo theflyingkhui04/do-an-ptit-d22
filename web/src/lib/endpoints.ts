@@ -1,6 +1,5 @@
 // Endpoint metadata helpers, alias suggestions, serving_config.json parser, and short display lines.
 import type { Endpoint, EndpointMeta, EndpointNotes } from "@/lib/api";
-import { localeTag } from "@/lib/format";
 import type { Lang } from "@/lib/i18n";
 
 export const PLATFORM_LABELS_BY_LANG: Record<Lang, Record<string, string>> = {
@@ -22,20 +21,40 @@ export function platformLabel(platform: string, lang: Lang = "vi"): string {
   return PLATFORM_LABELS_BY_LANG[lang][platform] ?? platform;
 }
 
-export type Decoding = "" | "vanilla" | "static" | "adaptive" | "draft";
+export type Decoding =
+  | ""
+  | "vanilla"
+  | "eagle1_static"
+  | "eagle1_adaptive"
+  | "eagle2_static"
+  | "eagle2_adaptive"
+  | "eagle3_static"
+  | "eagle3_adaptive"
+  | "eagle31_static"
+  | "eagle31_adaptive";
 
 export const DECODING_LABELS_BY_LANG: Record<Lang, Record<Exclude<Decoding, "">, string>> = {
   vi: {
     vanilla: "Tiêu chuẩn (Vanilla)",
-    static: "EAGLE-3 (K cố định)",
-    adaptive: "EAGLE-3 (Hardware-Adaptive)",
-    draft: "Draft model độc lập",
+    eagle1_static: "EAGLE-1 (K cố định)",
+    eagle1_adaptive: "EAGLE-1 (Hardware-Adaptive)",
+    eagle2_static: "EAGLE-2 (K cố định)",
+    eagle2_adaptive: "EAGLE-2 (Hardware-Adaptive)",
+    eagle3_static: "EAGLE-3 (K cố định)",
+    eagle3_adaptive: "EAGLE-3 (Hardware-Adaptive)",
+    eagle31_static: "EAGLE-3.1 (K cố định)",
+    eagle31_adaptive: "EAGLE-3.1 (Hardware-Adaptive)",
   },
   en: {
     vanilla: "Standard (Vanilla)",
-    static: "EAGLE-3 (Static K)",
-    adaptive: "EAGLE-3 (Hardware-Adaptive)",
-    draft: "Standalone draft model",
+    eagle1_static: "EAGLE-1 (Static K)",
+    eagle1_adaptive: "EAGLE-1 (Hardware-Adaptive)",
+    eagle2_static: "EAGLE-2 (Static K)",
+    eagle2_adaptive: "EAGLE-2 (Hardware-Adaptive)",
+    eagle3_static: "EAGLE-3 (Static K)",
+    eagle3_adaptive: "EAGLE-3 (Hardware-Adaptive)",
+    eagle31_static: "EAGLE-3.1 (Static K)",
+    eagle31_adaptive: "EAGLE-3.1 (Hardware-Adaptive)",
   },
 };
 
@@ -57,17 +76,31 @@ export function decodingOf(meta: EndpointMeta): Decoding {
   const method = meta.draft_method;
   if (method === undefined) return "";
   if (method === null || method === "none") return "vanilla";
-  if (method === "draft_model") return "draft";
-  return meta.adaptive ? "adaptive" : "static";
+  const adaptive = Boolean(meta.adaptive);
+  const norm = method.toLowerCase().replace(/[\s_-]+/g, "");
+  if (norm === "eagle1") return adaptive ? "eagle1_adaptive" : "eagle1_static";
+  if (norm === "eagle2") return adaptive ? "eagle2_adaptive" : "eagle2_static";
+  if (norm === "eagle3.1" || norm === "eagle31") return adaptive ? "eagle31_adaptive" : "eagle31_static";
+  if (norm === "eagle3" || norm === "eagle") return adaptive ? "eagle3_adaptive" : "eagle3_static";
+  return adaptive ? "eagle3_adaptive" : "eagle3_static";
+}
+
+export function isHardwareAdaptive(meta: EndpointMeta | undefined): boolean {
+  return Boolean(meta?.adaptive);
 }
 
 export function notesFor(decoding: Decoding, draftModel: string): Required<Pick<EndpointNotes, "draft_method" | "adaptive" | "draft_model">> {
   const draft = draftModel.trim() || null;
   switch (decoding) {
-    case "vanilla": return { draft_method: "none", adaptive: null, draft_model: null };
-    case "static": return { draft_method: "eagle3", adaptive: false, draft_model: draft };
-    case "adaptive": return { draft_method: "eagle3", adaptive: true, draft_model: draft };
-    case "draft": return { draft_method: "draft_model", adaptive: false, draft_model: draft };
+    case "vanilla": return { draft_method: "none", adaptive: false, draft_model: null };
+    case "eagle1_static": return { draft_method: "eagle1", adaptive: false, draft_model: draft };
+    case "eagle1_adaptive": return { draft_method: "eagle1", adaptive: true, draft_model: draft };
+    case "eagle2_static": return { draft_method: "eagle2", adaptive: false, draft_model: draft };
+    case "eagle2_adaptive": return { draft_method: "eagle2", adaptive: true, draft_model: draft };
+    case "eagle3_static": return { draft_method: "eagle3", adaptive: false, draft_model: draft };
+    case "eagle3_adaptive": return { draft_method: "eagle3", adaptive: true, draft_model: draft };
+    case "eagle31_static": return { draft_method: "eagle3.1", adaptive: false, draft_model: draft };
+    case "eagle31_adaptive": return { draft_method: "eagle3.1", adaptive: true, draft_model: draft };
     default: return { draft_method: null, adaptive: null, draft_model: null };
   }
 }
@@ -90,8 +123,13 @@ export function notesFromServingConfig(value: unknown): ServingNotes | null {
   const pick = (key: string) => (key in value ? value[key] : serving[key]);
   const draftModel = text(pick("draft_model"));
   const method = text(pick("draft_method"));
-  const adaptive = pick("enable_adaptive") ?? pick("adaptive_enabled");
-  const decoding: Decoding = !draftModel ? "vanilla" : method === "draft_model" ? "draft" : adaptive ? "adaptive" : "static";
+  const adaptive = Boolean(pick("enable_adaptive") ?? pick("adaptive_enabled"));
+  let decoding: Decoding;
+  if (!draftModel) {
+    decoding = "vanilla";
+  } else {
+    decoding = decodingOf({ draft_method: method ?? "eagle3", adaptive });
+  }
   const notes: ServingNotes = { decoding };
   const gpu = text(hardware.device_name) ?? text(pick("target_gpu"));
   if (gpu) notes.gpu = gpu;
@@ -107,22 +145,8 @@ function withoutTrailingSlashes(raw: string): string {
   return raw.slice(0, end);
 }
 
-const lastPart = (name: string) => withoutTrailingSlashes(name).split("/").pop() || name;
-
-export function setupLine(e: Endpoint, lang: Lang = "vi"): string | null {
-  const decoding = decodingOf(e.meta ?? {});
-  const parts = [e.meta?.gpu, decoding ? decodingLabel(decoding, lang) : undefined].filter(Boolean);
-  return parts.length ? parts.join(" · ") : null;
-}
-
-export function detailLine(e: Endpoint, baseModel: string, lang: Lang = "vi"): string {
-  const parts = [platformLabel(e.platform, lang), lastPart(baseModel)];
-  if (e.max_model_len) {
-    const formatted = e.max_model_len.toLocaleString(localeTag(lang));
-    parts.push(lang === "en" ? `${formatted} tokens` : `${formatted} token`);
-  }
-  if (e.has_key) parts.push(lang === "en" ? "API key" : "có API key");
-  return parts.join(" · ");
+export function shortModelName(name: string): string {
+  return withoutTrailingSlashes(name).split("/").pop() || name;
 }
 
 export function shortUrl(url: string): string {

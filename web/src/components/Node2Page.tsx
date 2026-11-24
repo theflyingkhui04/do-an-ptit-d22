@@ -118,10 +118,9 @@ function SqlDetails({ result }: { result: QuestionResult }) {
   );
 }
 
-function Column({ endpoint, color, isReference, answer, base, now }: {
+function Column({ endpoint, color, answer, base, now }: {
   endpoint: Endpoint;
   color: string;
-  isReference: boolean;
   answer: Answer;
   base?: QuestionResult;
   now: number;
@@ -173,7 +172,6 @@ function Column({ endpoint, color, isReference, answer, base, now }: {
     <article aria-label={endpoint.name} className="grid min-w-0 content-start overflow-hidden rounded-xl border border-line bg-surface">
       <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-line bg-sunken px-3.5 py-2.5">
         <span className="flex min-w-0 items-center gap-2 font-bold"><Dot color={color} /><span className="truncate">{endpoint.name}</span></span>
-        {isReference && <span className="rounded-md border border-line bg-surface px-1.5 text-[11.5px] font-semibold text-ink-2">{t.referenceBadge}</span>}
         <span className="ml-auto"><StatusPill answer={answer} now={now} /></span>
       </header>
       <div className="grid min-w-0 gap-3 p-3.5">{body}</div>
@@ -389,7 +387,6 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
                   key={id}
                   endpoint={endpoint}
                   color={colors[id]}
-                  isReference={id === referenceId}
                   answer={round.answers[id]}
                   base={refResult}
                   now={now}
