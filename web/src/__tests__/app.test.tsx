@@ -227,6 +227,7 @@ describe("endpoints and alias flow", () => {
     expect(within(decodingSelect).getByRole("option", { name: "EAGLE-3.1 (K cố định)" })).toBeInTheDocument();
     expect(within(decodingSelect).getByRole("option", { name: "EAGLE-3.1 (Hardware-Adaptive)" })).toBeInTheDocument();
     expect(within(decodingSelect).queryByRole("option", { name: /độc lập/i })).toBeNull();
+    expect(within(drawer).getByLabelText("Model draft")).toBeInTheDocument();
     await user.selectOptions(decodingSelect, "EAGLE-3.1 (Hardware-Adaptive)");
     await user.click(within(drawer).getByRole("button", { name: "Lưu thay đổi" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

@@ -65,7 +65,12 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
 
   function notes(): EndpointNotes {
     const want: EndpointNotes = { gpu: gpu.trim() || null };
-    if (decoding !== decodingOf(meta) || draft.trim() !== (meta.draft_model ?? "")) Object.assign(want, notesFor(decoding, draft));
+    if (decoding !== decodingOf(meta)) {
+      Object.assign(want, notesFor(decoding, draft));
+    }
+    if (draft.trim() !== (meta.draft_model ?? "")) {
+      want.draft_model = draft.trim() || null;
+    }
     if (target.trim() !== (meta.target_model ?? "")) want.target_model = target.trim() || null;
     const stored = meta as Record<string, unknown>;
     return Object.fromEntries(Object.entries(want).filter(([k, v]) => v !== (stored[k] ?? null)));
@@ -218,13 +223,11 @@ export default function EndpointEditDrawer({ api, endpoint: e, paused, onClose, 
             <input id={`${id}-target`} value={target} spellCheck={false} placeholder={baseModel(e)}
               onChange={(ev) => setTarget(ev.target.value)} className={cx(field, "font-mono text-[13px]")} />
           </div>
-          {decoding && decoding !== "vanilla" && (
-            <div className="grid gap-1.5">
-              <label htmlFor={`${id}-draft`} className={label}>{t.draftModelLabel}</label>
-              <input id={`${id}-draft`} value={draft} spellCheck={false} placeholder="duckhoi/qwen2.5-7b-eagle3.1-speculator"
-                onChange={(ev) => setDraft(ev.target.value)} className={cx(field, "font-mono text-[13px]")} />
-            </div>
-          )}
+          <div className="grid gap-1.5">
+            <label htmlFor={`${id}-draft`} className={label}>{t.draftModelLabel}</label>
+            <input id={`${id}-draft`} value={draft} spellCheck={false} placeholder="duckhoi/qwen2.5-7b-eagle3.1-speculator"
+              onChange={(ev) => setDraft(ev.target.value)} className={cx(field, "font-mono text-[13px]")} />
+          </div>
           <div className="grid justify-items-start gap-1.5">
             <label htmlFor={`${id}-file`} className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold hover:bg-sunken has-[+input:focus-visible]:outline-2">
               <FileJson aria-hidden className="size-4" /> {t.importConfig}
