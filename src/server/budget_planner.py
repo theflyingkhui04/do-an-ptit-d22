@@ -216,6 +216,7 @@ class AdaptiveBudgetPlanner:
             return
         payload = "".join(self._step_buffer)
         self._step_buffer.clear()
+        self._step_io_state["path"] = self.step_telemetry_path
         try:
             if self._step_fh is None or self._step_fh.closed:
                 self._step_fh = open(self.step_telemetry_path, "a", encoding="utf-8", buffering=65536)

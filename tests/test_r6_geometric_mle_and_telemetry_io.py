@@ -313,3 +313,42 @@ def test_cli_no_step_telemetry_flag_forwards_opt_out(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert '"enable_step_telemetry": false' in out
 
+
+def test_adversarial_edge_cases_adapter_telemetry_env_validation_and_modal_launch():
+    """Adversarial review: adapter export MLE stats, env flush_every errors, Modal launch validation."""
+    from src.proposer.adapter import AdaptiveProposerAdapter
+    from src.server.budget_planner import AdaptiveBudgetPlanner
+    from flexsds.server.modal_runner import ModalServingRunner
+
+    profile, budgets = _load_a10g_profile()
+    adapter = AdaptiveProposerAdapter(
+        controller_kwargs={"cost_profile": profile, "candidate_budgets": budgets}
+    )
+    adapter.propose("r1", draft_generator=lambda k: [1] * k, batch_size=1)
+    adapter.on_verification_completed("r1", num_accepted=2, num_drafted=4)
+    summary = adapter.end_request("r1")
+    assert summary["alpha_estimator"] == "geometric_mle"
+    assert summary["total_tested_positions"] == 3
+    assert summary["geometric_alpha_mle"] == pytest.approx((0.90 * 2.0 * 0.8 + 2) / (0.90 * 2.0 + 3))
+
+    for bad_env in ("0", "-3", "not-an-int"):
+        with pytest.raises(ValueError):
+            AdaptiveBudgetPlanner.from_env({"ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY": bad_env})
+
+    # ModalServingRunner.launch rejects invalid flush_every early, yet accepts enable_step_telemetry=False
+    # on a minimal non-adaptive dry-run config without falsely demanding a profile artifact.
+    modal_runner = ModalServingRunner()
+    with pytest.raises(ValueError):
+        modal_runner.launch(
+            {"serving": {"target_gpu": "A10G", "enable_adaptive": False, "step_telemetry_flush_every": 0}},
+            dry_run=True,
+        )
+    assert (
+        modal_runner.launch(
+            {"serving": {"target_gpu": "A10G", "enable_step_telemetry": False}},
+            dry_run=True,
+        )
+        is None
+    )
+
+

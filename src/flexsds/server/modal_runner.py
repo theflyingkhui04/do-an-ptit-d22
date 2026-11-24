@@ -116,14 +116,13 @@ class ModalServingRunner:
         cfg = config.get('serving', config)
         from flexsds.server.local_runner import LocalServingRunner
         local_runner = LocalServingRunner()
+        local_runner._validate_execution_options(cfg)
         if (
             cfg.get('enable_adaptive', False)
             or cfg.get('match_adaptive_runtime', False)
             or cfg.get('disable_speculative', False)
             or cfg.get('disable_prefix_caching', False)
             or cfg.get('static_k') is not None
-            or cfg.get('enable_step_telemetry') is False
-            or cfg.get('step_telemetry_flush_every') is not None
         ):
             local_runner.build_command(config)
             local_runner.setup_environment(config)
