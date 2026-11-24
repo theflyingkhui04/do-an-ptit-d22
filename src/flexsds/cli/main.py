@@ -203,6 +203,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Explicit static draft token budget K in 1..8 (requires --no-adaptive without --vanilla)",
     )
     serve_parser.add_argument(
+        "--no-step-telemetry",
+        action="store_true",
+        help="Disable per-step adaptive telemetry file I/O (ADAPTIVE_STEP_TELEMETRY_PATH) for peak throughput",
+    )
+    serve_parser.add_argument(
         "--allow-fallback", action="store_true", help="Deprecated: analytical fallback cannot satisfy empirical serving requirements"
     )
     serve_parser.add_argument(
@@ -530,6 +535,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
                     "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
                     "enable_adaptive": not args.no_adaptive,
+                    "enable_step_telemetry": not args.no_step_telemetry,
                     "match_adaptive_runtime": args.match_adaptive_runtime,
                     "disable_speculative": False,
                     "disable_prefix_caching": args.no_prefix_caching,

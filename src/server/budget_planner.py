@@ -11,9 +11,10 @@ import logging
 import math
 import os
 import time
+import weakref
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Mapping, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from src.proposer.adapter import AdaptiveProposerAdapter
 from src.proposer.controller import BudgetDecision
@@ -51,10 +52,17 @@ class AdaptiveBudgetPlanner:
         per_request: bool = True,
         telemetry_path: Optional[str] = None,
         step_telemetry_path: Optional[str] = None,
+        step_telemetry_flush_every: int = 1,
         hardware_profile: Optional[dict] = None,
     ):
         if max_k < 0 or min_batch_k < 0:
             raise ValueError("max_k and min_batch_k must be non-negative")
+        if (
+            isinstance(step_telemetry_flush_every, bool)
+            or not isinstance(step_telemetry_flush_every, int)
+            or step_telemetry_flush_every < 1
+        ):
+            raise ValueError("step_telemetry_flush_every must be a positive integer")
         if (telemetry_path and step_telemetry_path
                 and os.path.normcase(os.path.realpath(telemetry_path))
                 == os.path.normcase(os.path.realpath(step_telemetry_path))):
@@ -65,11 +73,16 @@ class AdaptiveBudgetPlanner:
         self.per_request = per_request
         self.telemetry_path = telemetry_path
         self.step_telemetry_path = step_telemetry_path
+        self.step_telemetry_flush_every = step_telemetry_flush_every
         self.hardware_profile = deepcopy(hardware_profile) if hardware_profile else None
         self._known_requests: Set[str] = set()
         self._last_decisions: Dict[str, dict] = {}
         self._scheduled_runtime_modes: Dict[str, str] = {}
         self._plan_sequence = 0
+        self._step_buffer: List[str] = []
+        self._step_fh = None
+        self._step_io_state: Dict[str, object] = {"fh": None, "buf": self._step_buffer, "path": step_telemetry_path}
+        self._finalizer = weakref.finalize(self, _finalize_step_io, self._step_io_state)
         self._sync_candidate_budgets_to_max_k()
 
     @property
@@ -110,7 +123,7 @@ class AdaptiveBudgetPlanner:
         per_request_k: Dict[str, int] = {}
         nodes: Dict[str, int] = {}
         decisions: Dict[str, BudgetDecision] = {}
-        alpha_signals: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
+        alpha_signals: Dict[str, Tuple[Optional[float], Optional[float], Optional[float]]] = {}
         for req_id in decode_req_ids:
             self._known_requests.add(req_id)
             controller = self.adapter.get_controller(req_id)
@@ -120,9 +133,15 @@ class AdaptiveBudgetPlanner:
                 kv_cache_usage_pct=kv_pct,
             )
             decisions[req_id] = deepcopy(decision)
-            effective_alpha = getattr(controller, "get_effective_alpha", None)
-            alpha_signals[req_id] = (getattr(controller, "alpha_ema", None),
-                                     effective_alpha() if callable(effective_alpha) else None)
+            effective_alpha_fn = getattr(controller, "get_effective_alpha", None)
+            geometric_alpha_fn = getattr(controller, "get_geometric_alpha", None)
+            geom_alpha = geometric_alpha_fn() if callable(geometric_alpha_fn) else None
+            estimator = getattr(decision, "alpha_estimator", None)
+            if estimator == "geometric_mle" and geom_alpha is not None:
+                eff_alpha = geom_alpha
+            else:
+                eff_alpha = effective_alpha_fn() if callable(effective_alpha_fn) else None
+            alpha_signals[req_id] = (getattr(controller, "alpha_ema", None), eff_alpha, geom_alpha)
             nodes[req_id] = max(0, getattr(decision, "num_nodes", decision.k))
             per_request_k[req_id] = min(nodes[req_id], self.max_k)
 
@@ -136,9 +155,10 @@ class AdaptiveBudgetPlanner:
         batch_node_count = max(nodes.values())
         self._plan_sequence += 1
         for req_id, decision in decisions.items():
-            raw_alpha, effective_alpha = alpha_signals[req_id]
+            raw_alpha, effective_alpha, geometric_alpha = alpha_signals[req_id]
             record = _decision_record(decision, nodes[req_id], batch_size, kv_pct, free_vram_mb,
                                       raw_alpha=raw_alpha, effective_alpha=effective_alpha,
+                                      geometric_alpha=geometric_alpha,
                                       hardware_profile=self.hardware_profile)
             record.update(request_id=req_id, lane="adaptive", record_type="planned_decision",
                           controller_class=f"{type(self.adapter.get_controller(req_id)).__module__}.{type(self.adapter.get_controller(req_id)).__name__}",
@@ -161,6 +181,8 @@ class AdaptiveBudgetPlanner:
         self._known_requests.add(req_id)
         mode = "linear_dynamic_k" if dynamic else "linear_fixed_k"
         self._scheduled_runtime_modes[req_id] = mode
+        if not self.step_telemetry_path:
+            return
         self._write_step({"record_type": "scheduled_budget", "request_id": req_id,
                           "lane": "adaptive", "executed_runtime_mode": "unverified",
                           "scheduled_runtime_mode": mode,
@@ -174,13 +196,54 @@ class AdaptiveBudgetPlanner:
                           "executed_draft_token_count": None, "tree_execution_verified": False})
 
     def _write_step(self, record: dict) -> None:
-        if self.step_telemetry_path:
+        if not self.step_telemetry_path:
+            return
+        try:
+            line = json.dumps(dict(record, recorded_at=time.time()), allow_nan=False) + "\n"
+        except ValueError:
+            logger.exception("AdaptiveBudgetPlanner: step telemetry serialization failed")
+            return
+        self._step_buffer.append(line)
+        if len(self._step_buffer) >= self.step_telemetry_flush_every:
+            self.flush()
+
+    def flush(self) -> None:
+        """Flushes buffered step telemetry lines to the persistent file handle."""
+        if not self._step_buffer:
+            return
+        if not self.step_telemetry_path:
+            self._step_buffer.clear()
+            return
+        payload = "".join(self._step_buffer)
+        self._step_buffer.clear()
+        self._step_io_state["path"] = self.step_telemetry_path
+        try:
+            if self._step_fh is None or self._step_fh.closed:
+                self._step_fh = open(self.step_telemetry_path, "a", encoding="utf-8", buffering=65536)
+                self._step_io_state["fh"] = self._step_fh
+            self._step_fh.write(payload)
+            self._step_fh.flush()
+        except OSError:
+            logger.exception("AdaptiveBudgetPlanner: step telemetry write failed")
+            if self._step_fh is not None:
+                try:
+                    self._step_fh.close()
+                except OSError:
+                    pass
+                self._step_fh = None
+                self._step_io_state["fh"] = None
+
+    def close(self) -> None:
+        """Flushes any pending step telemetry and closes the persistent handle."""
+        self.flush()
+        if self._step_fh is not None:
             try:
-                line = json.dumps(dict(record, recorded_at=time.time()), allow_nan=False)
-                with open(self.step_telemetry_path, "a", encoding="utf-8") as fh:
-                    fh.write(line + "\n")
-            except (OSError, ValueError):
-                logger.exception("AdaptiveBudgetPlanner: step telemetry write failed")
+                self._step_fh.close()
+            except OSError:
+                logger.exception("AdaptiveBudgetPlanner: step telemetry close failed")
+            finally:
+                self._step_fh = None
+                self._step_io_state["fh"] = None
 
     def record_lineage_failure(self, req_id: str, reason: str) -> None:
         logger.warning("Adaptive feedback skipped for %s: %s", req_id, reason)
@@ -208,10 +271,18 @@ class AdaptiveBudgetPlanner:
             num_drafted=num_drafted,
         )
         if self.step_telemetry_path:
+            controller = self.adapter.get_controller(req_id)
+            accepted_clamped = min(max(int(num_accepted), 0), int(num_drafted))
+            tested_positions = accepted_clamped + (1 if accepted_clamped < num_drafted else 0)
+            geom_fn = getattr(controller, "get_geometric_alpha", None)
+            geom_alpha = geom_fn() if callable(geom_fn) else None
+            if geom_alpha is not None and not math.isfinite(geom_alpha):
+                geom_alpha = None
             self._write_step({
                 "record_type": "verification_feedback", "request_id": req_id,
                 "lane": "adaptive", "executed_draft_token_count": num_drafted,
                 "accepted_draft_token_count": num_accepted,
+                "tested_draft_positions": tested_positions,
                 "executed_runtime_mode": "unverified",
                 "source_plan_sequence": source.plan_sequence if source else None,
                 "source_schedule_sequence": source.schedule_sequence if source else None,
@@ -221,6 +292,7 @@ class AdaptiveBudgetPlanner:
                 "tree_execution_verified": False,
                 "alpha_ema": self.adapter.get_telemetry(req_id)["alpha_ema"],
                 "alpha_ema_before": alpha_before,
+                "geometric_alpha_mle": geom_alpha,
             })
 
     def finish_request(self, req_id: str) -> Optional[dict]:
@@ -240,6 +312,7 @@ class AdaptiveBudgetPlanner:
                          scheduled_runtime_mode=mode, executed_runtime_mode="unverified",
                          executed_draft_token_count=None,
                          tree_execution_verified=False)
+        self.flush()
         if self.telemetry_path:
             record = dict(telemetry)
             record["finished_at"] = time.time()
@@ -299,6 +372,14 @@ class AdaptiveBudgetPlanner:
         if "ADAPTIVE_ENABLE_VRAM_GUARD" in env:
             controller_kwargs["enable_vram_guard"] = _env_flag(env["ADAPTIVE_ENABLE_VRAM_GUARD"])
 
+        raw_flush_every = env.get("ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY", "1").strip()
+        try:
+            flush_every = int(raw_flush_every) if raw_flush_every else 1
+        except ValueError as exc:
+            raise ValueError(
+                f"ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY must be a positive integer: {raw_flush_every!r}"
+            ) from exc
+
         return cls(
             adapter=AdaptiveProposerAdapter(controller_kwargs=controller_kwargs),
             max_k=int(env.get("ADAPTIVE_MAX_K", "4")),
@@ -306,8 +387,33 @@ class AdaptiveBudgetPlanner:
             per_request=_env_flag(env.get("ADAPTIVE_PER_REQUEST", "1")),
             telemetry_path=env.get("ADAPTIVE_TELEMETRY_PATH") or None,
             step_telemetry_path=env.get("ADAPTIVE_STEP_TELEMETRY_PATH") or None,
+            step_telemetry_flush_every=flush_every,
             hardware_profile=hardware_profile,
         )
+
+
+def _finalize_step_io(state: Dict[str, object]) -> None:
+    """Best-effort flush and close on garbage collection / interpreter exit."""
+    buf = state.get("buf")
+    fh = state.get("fh")
+    path = state.get("path")
+    try:
+        if isinstance(buf, list) and buf and path:
+            payload = "".join(buf)
+            buf.clear()
+            if fh is None or getattr(fh, "closed", True):
+                fh = open(path, "a", encoding="utf-8", buffering=65536)
+            fh.write(payload)
+            fh.flush()
+    except OSError:
+        pass
+    finally:
+        if fh is not None:
+            try:
+                fh.close()
+            except OSError:
+                pass
+            state["fh"] = None
 
 
 def _env_flag(value: str) -> bool:
@@ -317,6 +423,7 @@ def _env_flag(value: str) -> bool:
 def _decision_record(decision: BudgetDecision, nodes: int, batch_size: int,
                      kv_pct: float, free_vram_mb: Optional[float], *,
                      raw_alpha: Optional[float], effective_alpha: Optional[float],
+                     geometric_alpha: Optional[float] = None,
                      hardware_profile: Optional[dict] = None) -> dict:
     """Additive Interface A v0.2 decision fields (spec §4.6).
 
@@ -339,6 +446,8 @@ def _decision_record(decision: BudgetDecision, nodes: int, batch_size: int,
         "hardware_profile": deepcopy(hardware_profile) if hardware_profile else None,
         "concurrency_batch_b": batch_size, "acceptance_rate_ema": finite(raw_alpha),
         "effective_alpha": finite(effective_alpha),
+        "geometric_alpha_mle": finite(geometric_alpha),
+        "alpha_estimator": getattr(decision, "alpha_estimator", None),
         "dynamic_alpha_star": finite(getattr(decision, "alpha_star", None)),
         "selected_topology": topology, "planned_draft_node_count": nodes,
         "mean_accepted_tokens_tau": None,

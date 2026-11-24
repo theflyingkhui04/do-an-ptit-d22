@@ -137,6 +137,12 @@ class AdaptiveProposerAdapter:
         }
         if "effective_alpha" in stats:
             telemetry["effective_alpha"] = stats["effective_alpha"]
+        if "geometric_alpha_mle" in stats:
+            telemetry["geometric_alpha_mle"] = stats["geometric_alpha_mle"]
+        if "alpha_estimator" in stats:
+            telemetry["alpha_estimator"] = stats["alpha_estimator"]
+        if "total_tested_positions" in stats:
+            telemetry["total_tested_positions"] = stats["total_tested_positions"]
         if "is_warmed_up" in stats:
             telemetry["is_warmed_up"] = stats["is_warmed_up"]
         if "topologies" in stats:
