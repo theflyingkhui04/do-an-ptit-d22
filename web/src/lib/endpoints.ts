@@ -1,41 +1,106 @@
-// Text and notes for the Endpoint page (design D14): how an endpoint is served, short list text, serving_config.json.
+// Endpoint metadata helpers, alias suggestions, serving_config.json parser, and short display lines.
 import type { Endpoint, EndpointMeta, EndpointNotes } from "@/lib/api";
+import type { Lang } from "@/lib/i18n";
 
-export const PLATFORM_LABELS: Record<string, string> = {
-  modal: "Modal",
-  tunnel: "Đường hầm (Colab hoặc máy cá nhân)",
-  other: "Khác",
-  local: "Máy cá nhân",
+export const PLATFORM_LABELS_BY_LANG: Record<Lang, Record<string, string>> = {
+  vi: {
+    modal: "Modal",
+    tunnel: "Tunnel (Colab / Local)",
+    other: "Khác",
+    local: "Local",
+  },
+  en: {
+    modal: "Modal",
+    tunnel: "Tunnel (Colab / Local)",
+    other: "Other",
+    local: "Local",
+  },
 };
 
-export type Decoding = "" | "vanilla" | "static" | "adaptive" | "draft";
+export function platformLabel(platform: string, lang: Lang = "vi"): string {
+  return PLATFORM_LABELS_BY_LANG[lang][platform] ?? platform;
+}
 
-export const DECODING_LABELS: Record<Exclude<Decoding, "">, string> = {
-  vanilla: "Không nháp (vanilla)",
-  static: "EAGLE-3, K cố định",
-  adaptive: "EAGLE-3, Hardware-Adaptive",
-  draft: "Model nháp riêng",
+export type Decoding =
+  | ""
+  | "vanilla"
+  | "eagle1_static"
+  | "eagle1_adaptive"
+  | "eagle2_static"
+  | "eagle2_adaptive"
+  | "eagle3_static"
+  | "eagle3_adaptive"
+  | "eagle31_static"
+  | "eagle31_adaptive";
+
+export const DECODING_LABELS_BY_LANG: Record<Lang, Record<Exclude<Decoding, "">, string>> = {
+  vi: {
+    vanilla: "Tiêu chuẩn (Vanilla)",
+    eagle1_static: "EAGLE-1 (K cố định)",
+    eagle1_adaptive: "EAGLE-1 (Hardware-Adaptive)",
+    eagle2_static: "EAGLE-2 (K cố định)",
+    eagle2_adaptive: "EAGLE-2 (Hardware-Adaptive)",
+    eagle3_static: "EAGLE-3 (K cố định)",
+    eagle3_adaptive: "EAGLE-3 (Hardware-Adaptive)",
+    eagle31_static: "EAGLE-3.1 (K cố định)",
+    eagle31_adaptive: "EAGLE-3.1 (Hardware-Adaptive)",
+  },
+  en: {
+    vanilla: "Standard (Vanilla)",
+    eagle1_static: "EAGLE-1 (Static K)",
+    eagle1_adaptive: "EAGLE-1 (Hardware-Adaptive)",
+    eagle2_static: "EAGLE-2 (Static K)",
+    eagle2_adaptive: "EAGLE-2 (Hardware-Adaptive)",
+    eagle3_static: "EAGLE-3 (Static K)",
+    eagle3_adaptive: "EAGLE-3 (Hardware-Adaptive)",
+    eagle31_static: "EAGLE-3.1 (Static K)",
+    eagle31_adaptive: "EAGLE-3.1 (Hardware-Adaptive)",
+  },
 };
 
-// Suggestions for the GPU note; anything else can be typed.
+export function decodingLabel(decoding: Exclude<Decoding, "">, lang: Lang = "vi"): string {
+  return DECODING_LABELS_BY_LANG[lang][decoding];
+}
+
 export const GPU_SUGGESTIONS = ["NVIDIA A10G", "NVIDIA L4", "NVIDIA T4", "NVIDIA A100", "NVIDIA H100"];
+
+/** Suggests the next unused short alias (#1, #2, ...) for a new endpoint. */
+export function nextAlias(endpoints: Pick<Endpoint, "name">[]): string {
+  const taken = new Set(endpoints.map((e) => e.name.trim().toLowerCase()));
+  let n = 1;
+  while (taken.has(`#${n}`)) n += 1;
+  return `#${n}`;
+}
 
 export function decodingOf(meta: EndpointMeta): Decoding {
   const method = meta.draft_method;
   if (method === undefined) return "";
-  if (method === null || method === "none") return "vanilla"; // null: written by the server-side parser before D14
-  if (method === "draft_model") return "draft";
-  return meta.adaptive ? "adaptive" : "static";
+  if (method === null || method === "none") return "vanilla";
+  const adaptive = Boolean(meta.adaptive);
+  const norm = method.toLowerCase().replace(/[\s_-]+/g, "");
+  if (norm === "eagle1") return adaptive ? "eagle1_adaptive" : "eagle1_static";
+  if (norm === "eagle2") return adaptive ? "eagle2_adaptive" : "eagle2_static";
+  if (norm === "eagle3.1" || norm === "eagle31") return adaptive ? "eagle31_adaptive" : "eagle31_static";
+  if (norm === "eagle3" || norm === "eagle") return adaptive ? "eagle3_adaptive" : "eagle3_static";
+  return adaptive ? "eagle3_adaptive" : "eagle3_static";
 }
 
-// Notes to send for a decoding choice; null removes a note that no longer applies.
+export function isHardwareAdaptive(meta: EndpointMeta | undefined): boolean {
+  return Boolean(meta?.adaptive);
+}
+
 export function notesFor(decoding: Decoding, draftModel: string): Required<Pick<EndpointNotes, "draft_method" | "adaptive" | "draft_model">> {
   const draft = draftModel.trim() || null;
   switch (decoding) {
-    case "vanilla": return { draft_method: "none", adaptive: null, draft_model: null };
-    case "static": return { draft_method: "eagle3", adaptive: false, draft_model: draft };
-    case "adaptive": return { draft_method: "eagle3", adaptive: true, draft_model: draft };
-    case "draft": return { draft_method: "draft_model", adaptive: false, draft_model: draft };
+    case "vanilla": return { draft_method: "none", adaptive: false, draft_model: null };
+    case "eagle1_static": return { draft_method: "eagle1", adaptive: false, draft_model: draft };
+    case "eagle1_adaptive": return { draft_method: "eagle1", adaptive: true, draft_model: draft };
+    case "eagle2_static": return { draft_method: "eagle2", adaptive: false, draft_model: draft };
+    case "eagle2_adaptive": return { draft_method: "eagle2", adaptive: true, draft_model: draft };
+    case "eagle3_static": return { draft_method: "eagle3", adaptive: false, draft_model: draft };
+    case "eagle3_adaptive": return { draft_method: "eagle3", adaptive: true, draft_model: draft };
+    case "eagle31_static": return { draft_method: "eagle3.1", adaptive: false, draft_model: draft };
+    case "eagle31_adaptive": return { draft_method: "eagle3.1", adaptive: true, draft_model: draft };
     default: return { draft_method: null, adaptive: null, draft_model: null };
   }
 }
@@ -51,8 +116,6 @@ const text = (value: unknown) => (typeof value === "string" && value.trim() ? va
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// serving_config.json as the CLI writes it: the wizard puts the fields at the top level
-// (src/flexsds/cli/wizard.py), the serve command keeps them under "serving" (src/flexsds/cli/main.py).
 export function notesFromServingConfig(value: unknown): ServingNotes | null {
   if (!isObject(value)) return null;
   const serving = isObject(value.serving) ? value.serving : {};
@@ -60,8 +123,13 @@ export function notesFromServingConfig(value: unknown): ServingNotes | null {
   const pick = (key: string) => (key in value ? value[key] : serving[key]);
   const draftModel = text(pick("draft_model"));
   const method = text(pick("draft_method"));
-  const adaptive = pick("enable_adaptive") ?? pick("adaptive_enabled");
-  const decoding: Decoding = !draftModel ? "vanilla" : method === "draft_model" ? "draft" : adaptive ? "adaptive" : "static";
+  const adaptive = Boolean(pick("enable_adaptive") ?? pick("adaptive_enabled"));
+  let decoding: Decoding;
+  if (!draftModel) {
+    decoding = "vanilla";
+  } else {
+    decoding = decodingOf({ draft_method: method ?? "eagle3", adaptive });
+  }
   const notes: ServingNotes = { decoding };
   const gpu = text(hardware.device_name) ?? text(pick("target_gpu"));
   if (gpu) notes.gpu = gpu;
@@ -71,32 +139,16 @@ export function notesFromServingConfig(value: unknown): ServingNotes | null {
   return notes;
 }
 
-// Trailing slashes are cut with a loop: a /\/+$/ regex backtracks on long runs of "/".
-function withoutTrailingSlashes(text: string): string {
-  let end = text.length;
-  while (end > 0 && text[end - 1] === "/") end -= 1;
-  return text.slice(0, end);
+function withoutTrailingSlashes(raw: string): string {
+  let end = raw.length;
+  while (end > 0 && raw[end - 1] === "/") end -= 1;
+  return raw.slice(0, end);
 }
 
-const lastPart = (name: string) => withoutTrailingSlashes(name).split("/").pop() || name;
-
-// "NVIDIA A10G, EAGLE-3, Hardware-Adaptive" when noted, else null.
-export function setupLine(e: Endpoint): string | null {
-  const decoding = decodingOf(e.meta ?? {});
-  const parts = [e.meta?.gpu, decoding ? DECODING_LABELS[decoding] : undefined].filter(Boolean);
-  return parts.length ? parts.join(", ") : null;
+export function shortModelName(name: string): string {
+  return withoutTrailingSlashes(name).split("/").pop() || name;
 }
 
-export function detailLine(e: Endpoint, baseModel: string): string {
-  const parts = [PLATFORM_LABELS[e.platform] ?? e.platform, lastPart(baseModel)];
-  if (e.max_model_len) parts.push(`ngữ cảnh ${e.max_model_len.toLocaleString("vi-VN")}`);
-  const decoding = decodingOf(e.meta ?? {});
-  if (e.meta?.draft_model && decoding && decoding !== "vanilla") parts.push(`nháp ${lastPart(e.meta.draft_model)}`);
-  if (e.has_key) parts.push("có khoá API");
-  return parts.join(", ");
-}
-
-// Long Modal addresses keep the part that tells them apart: the first host label and the path.
 export function shortUrl(url: string): string {
   const bare = url.replace(/^https?:\/\//, "");
   if (bare.length <= 40) return bare;
@@ -105,8 +157,15 @@ export function shortUrl(url: string): string {
   return dot > 0 ? `${bare.slice(0, dot)}…${slash > 0 ? bare.slice(slash) : ""}` : `${bare.slice(0, 24)}…${bare.slice(-12)}`;
 }
 
-export function agoVi(iso: string, now: number): string {
+export function agoText(iso: string, now: number, lang: Lang = "vi"): string {
   const seconds = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+  if (lang === "en") {
+    if (seconds < 5) return "just now";
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  }
   if (seconds < 5) return "vừa xong";
   if (seconds < 60) return `${seconds} giây trước`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)} phút trước`;
@@ -114,9 +173,15 @@ export function agoVi(iso: string, now: number): string {
   return `${Math.floor(seconds / 86400)} ngày trước`;
 }
 
-// The full message stays in the edit drawer; the list shows the gist.
-export function shortReason(message: string | null): string {
+export const agoVi = (iso: string, now: number) => agoText(iso, now, "vi");
+
+export function shortReason(message: string | null, lang: Lang = "vi"): string {
   if (!message) return "";
   const busy = /HTTP (50[234])/.exec(message);
-  return busy ? `GPU đang ngủ hoặc khởi động (HTTP ${busy[1]})` : message;
+  if (busy) {
+    return lang === "en"
+      ? `GPU starting up (HTTP ${busy[1]})`
+      : `GPU đang khởi động (HTTP ${busy[1]})`;
+  }
+  return message;
 }

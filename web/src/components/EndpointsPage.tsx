@@ -6,21 +6,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import EndpointEditDrawer from "@/components/EndpointEditDrawer";
 import { Button, ConfirmDialog, CopyButton, Dot, EmptyState, Notice, PageHead, Pill, baseModel, cx, endpointColors, secondsSince, useNow } from "@/components/ui";
 import type { Api, Endpoint } from "@/lib/api";
-import { agoVi, detailLine, setupLine, shortReason, shortUrl } from "@/lib/endpoints";
-import { formatMs } from "@/lib/format";
-import { durationVi } from "@/lib/liveness";
+import { agoText, isHardwareAdaptive, shortModelName, shortReason, shortUrl } from "@/lib/endpoints";
+import { useI18n } from "@/lib/i18n";
+import { durationText } from "@/lib/liveness";
 
-// A sleeping GPU on Modal answers 503 for the 2-3 minutes it takes to start: ask again until it is up.
 export const WAKE_RETRY_MS = 20_000;
 export const WAKE_LIMIT_MS = 5 * 60_000;
 
-// What the last check of a row found in this session; fresher than the list, which is reloaded once at the end.
 interface CheckOutcome {
   at: number;
   ms: number;
-  status: Endpoint["status"] | "error"; // error: the backend itself could not be called
+  status: Endpoint["status"] | "error";
   message: string | null;
-  gaveUp?: boolean; // still waking after WAKE_LIMIT_MS
+  gaveUp?: boolean;
 }
 
 function without<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -29,26 +27,26 @@ function without<T>(record: Record<string, T>, key: string): Record<string, T> {
   return next;
 }
 
-// Kept in step with the real CLI by tests/test_web_cli_sample.py (argparse of `flexsds serve`,
-// the header printed by serving_session.py and the Modal app name in modal_app.py).
+// Kept in step with the real CLI by tests/test_web_cli_sample.py.
 export const SERVE_SAMPLE =
   "flexsds serve --backend modal --gpu A10G --target Qwen/Qwen2.5-7B-Instruct-AWQ --draft duckhoi/qwen2.5-7b-eagle3.1-speculator";
 export const SERVE_SAMPLE_HEADER = "Endpoint LLM created:";
 export const SERVE_SAMPLE_API = "https://…--flexsds-serving-serve.modal.run/v1";
 
 function Onboarding({ onAdd }: { onAdd: () => void }) {
+  const { t } = useI18n();
   const steps = [
-    { title: "Chạy flexsds serve", body: "Trên Modal, Colab hoặc GPU của máy. CLI dựng vLLM và chọn cách giải mã hợp với GPU." },
-    { title: "Copy dòng API", body: `Khi CLI báo “${SERVE_SAMPLE_HEADER.replace(/:$/, "")}”, copy địa chỉ ở dòng API. Trên máy cá nhân, mở đường hầm cloudflared trước.` },
-    { title: "Dán vào web", body: "Web tự nhận model và độ dài ngữ cảnh. Thêm nhiều endpoint để so sánh với nhau." },
+    { title: t.step1Title, body: t.step1Body },
+    { title: t.step2Title, body: t.step2Body },
+    { title: t.step3Title, body: t.step3Body },
   ];
   return (
     <EmptyState
       icon={Server}
-      title="Chưa có endpoint nào"
-      action={<Button icon={Plus} onClick={onAdd}>Thêm endpoint đầu tiên</Button>}
+      title={t.emptyEndpointsTitle}
+      action={<Button icon={Plus} onClick={onAdd}>{t.addFirstEndpoint}</Button>}
     >
-      <p>Mọi node của pipeline chạy trên endpoint do CLI FlexSDS tạo ra. Thêm ít nhất một endpoint để bắt đầu.</p>
+      <p>{t.emptyEndpointsBody}</p>
       <ol className="mt-4 grid gap-3 sm:grid-cols-3">
         {steps.map((s, i) => (
           <li key={s.title} className="grid content-start gap-1 rounded-xl bg-sunken p-3.5">
@@ -68,27 +66,25 @@ function Onboarding({ onAdd }: { onAdd: () => void }) {
 
 function StatusCell({ endpoint: e, checkingFor, waking, outcome, now }: {
   endpoint: Endpoint;
-  checkingFor: number | null; // seconds this check has been waiting, or null when idle
-  waking: boolean; // the GPU answered "starting" and is being asked again
+  checkingFor: number | null;
+  waking: boolean;
   outcome?: CheckOutcome;
   now: number;
 }) {
+  const { lang, t } = useI18n();
   if (checkingFor !== null && waking) {
     return (
-      <>
-        <Pill tone="warn">
-          <span aria-hidden className="size-2 animate-pulse rounded-full bg-warn" />
-          Đang khởi động GPU, {durationVi(checkingFor)}
-        </Pill>
-        <span className="text-[12.5px] text-ink-3">Tự kiểm tra lại mỗi {WAKE_RETRY_MS / 1000} s tới khi GPU lên, tối đa {WAKE_LIMIT_MS / 60_000} phút.</span>
-      </>
+      <Pill tone="warn">
+        <span aria-hidden className="size-2 animate-pulse rounded-full bg-warn" />
+        {t.wakingElapsed(durationText(checkingFor, lang))}
+      </Pill>
     );
   }
   if (checkingFor !== null) {
     return (
       <Pill tone="idle">
         <span aria-hidden className="size-2 animate-pulse rounded-full bg-ink-3" />
-        Đang kiểm tra, {checkingFor} s
+        {t.checkingElapsed(checkingFor)}
       </Pill>
     );
   }
@@ -99,20 +95,15 @@ function StatusCell({ endpoint: e, checkingFor, waking, outcome, now }: {
   const failedCall = outcome?.status === "error" ? outcome.message : null;
   return (
     <>
-      {/* The reason stays in the tooltip only (Canva review 19/11: no reason line under the pill). */}
-      <span className="inline-flex" title={status !== "ok" && reason ? shortReason(reason) : undefined}>
-        {status === "ok" && <Pill tone="good">Đang chạy</Pill>}
-        {status === "starting" && !fresh?.gaveUp && <Pill tone="warn">Chưa sẵn sàng</Pill>}
-        {(status === "down" || fresh?.gaveUp) && <Pill tone="bad">Đã dừng</Pill>}
+      <span className="inline-flex" title={status !== "ok" && reason ? shortReason(reason, lang) : undefined}>
+        {status === "ok" && <Pill tone="good">{t.statusOnline}</Pill>}
+        {status === "starting" && !fresh?.gaveUp && <Pill tone="warn">{t.statusStarting}</Pill>}
+        {(status === "down" || fresh?.gaveUp) && <Pill tone="bad">{t.statusOffline}</Pill>}
       </span>
       {fresh?.gaveUp && (
-        <span className="text-[12.5px] text-bad">
-          GPU chưa lên sau {WAKE_LIMIT_MS / 60_000} phút. Xem lại phiên flexsds serve rồi bấm Kiểm tra.
-        </span>
+        <span className="text-[12.5px] text-bad">{t.wakingTimeout(WAKE_LIMIT_MS / 60_000)}</span>
       )}
-      <span className="num text-[12.5px] text-ink-3">
-        Kiểm tra {agoVi(checkedAt, now)}{outcome ? `, mất ${formatMs(outcome.ms)}` : ""}
-      </span>
+      <span className="num text-[12px] text-ink-3">{agoText(checkedAt, now, lang)}</span>
       {failedCall && <span className="animate-fade-in text-[12.5px] text-bad">{failedCall}</span>}
     </>
   );
@@ -123,13 +114,12 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
   endpoints: Endpoint[];
   onChange: () => Promise<unknown>;
   onAdd: () => void;
-  // How many checks are running, for the spinner in the top bar.
   onCheckingChange?: (count: number) => void;
 }) {
+  const { t } = useI18n();
   const [checking, setChecking] = useState<Record<string, number>>({});
   const [waking, setWaking] = useState<Record<string, true>>({});
   const [outcome, setOutcome] = useState<Record<string, CheckOutcome>>({});
-  // Waking GPUs are asked again only while this page is open.
   const open = useRef(true);
   useEffect(() => {
     open.current = true;
@@ -138,15 +128,11 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
     };
   }, []);
   const [flash, setFlash] = useState<Record<string, "good" | "bad" | "info">>({});
-  // The baseline being saved (null = clearing it); undefined when nothing is being saved.
-  const [pendingBaseline, setPendingBaseline] = useState<string | null | undefined>(undefined);
-  const [announce, setAnnounce] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const running = Object.keys(checking).length;
-  // Every second while a check runs (its counter), else every 30 s ("Kiểm tra 3 phút trước").
   const now = useNow(true, running > 0 ? 1000 : 30_000);
 
   useEffect(() => {
@@ -156,13 +142,10 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
 
   const colors = endpointColors(endpoints);
   const models = new Set(endpoints.map(baseModel));
-  const baselineId = endpoints.find((e) => e.is_baseline)?.endpoint_id ?? null;
-  const shownBaseline = pendingBaseline !== undefined ? pendingBaseline : baselineId; // the radio moves at once
   const editingEndpoint = endpoints.find((e) => e.endpoint_id === editing);
   const confirming = endpoints.find((e) => e.endpoint_id === confirm);
   const closeEditor = useCallback(() => setEditing(null), []);
 
-  // Asks again every WAKE_RETRY_MS while the GPU says it is starting, for at most WAKE_LIMIT_MS.
   async function checkOne(id: string) {
     const started = Date.now();
     setChecking((current) => ({ ...current, [id]: started }));
@@ -182,8 +165,13 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
         if (!open.current) return;
         continue;
       }
-      found = { at, ms: at - started, status: checked.status, message: checked.status === "ok" ? null : checked.status_message,
-                gaveUp: checked.status === "starting" };
+      found = {
+        at,
+        ms: at - started,
+        status: checked.status,
+        message: checked.status === "ok" ? null : checked.status_message,
+        gaveUp: checked.status === "starting",
+      };
       break;
     }
     if (!open.current) return;
@@ -193,31 +181,9 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
     setChecking((current) => without(current, id));
   }
 
-  // Checks run side by side; the list is reloaded once, after the last one answers.
   async function check(ids: string[]) {
     await Promise.all(ids.map(checkOne));
     if (open.current) await onChange();
-  }
-
-  // One baseline at a time: the server clears the old one when a new one is set. null clears it.
-  async function chooseBaseline(id: string | null) {
-    const before = endpoints.find((e) => e.is_baseline);
-    const target = id ?? before?.endpoint_id;
-    if (!target || pendingBaseline !== undefined || id === baselineId) return;
-    setPendingBaseline(id);
-    setError(null);
-    try {
-      await api.updateEndpoint(target, { is_baseline: id !== null });
-      await onChange();
-      if (!open.current) return;
-      const name = endpoints.find((e) => e.endpoint_id === target)?.name ?? target;
-      setAnnounce(id === null ? `Đã bỏ mốc ${name}.` : `Đã đặt ${name} làm mốc${before ? `, ${before.name} không còn là mốc` : ""}.`);
-      setFlash((current) => ({ ...current, [target]: "info" }));
-    } catch (exc) {
-      if (open.current) setError((exc as Error).message);
-    } finally {
-      if (open.current) setPendingBaseline(undefined);
-    }
   }
 
   async function remove(id: string) {
@@ -239,7 +205,7 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
   return (
     <>
       <PageHead
-        title="Endpoint"
+        title={t.pageEndpoints}
         actions={endpoints.length > 0 && (
           <Button
             variant="ghost"
@@ -248,7 +214,7 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
             disabled={running > 0}
             onClick={() => void check(endpoints.map((e) => e.endpoint_id))}
           >
-            {running > 0 ? `Đang kiểm tra ${running} endpoint` : "Kiểm tra tất cả"}
+            {running > 0 ? t.checkingCount(running) : t.checkAll}
           </Button>
         )}
       />
@@ -256,46 +222,31 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
       {endpoints.length === 0 ? (
         <Onboarding onAdd={onAdd} />
       ) : (
-        <section aria-label="Danh sách endpoint" className="overflow-hidden rounded-xl border border-line bg-surface">
+        <section aria-label={t.endpointsList} className="overflow-hidden rounded-xl border border-line bg-surface">
           {endpoints.map((e) => {
-            const setup = setupLine(e);
             const busy = checking[e.endpoint_id] !== undefined;
+            const targetName = baseModel(e);
+            const draftName = e.meta?.draft_model ?? null;
+            const adaptiveOn = isHardwareAdaptive(e.meta);
             return (
               <article
                 key={e.endpoint_id}
                 aria-label={e.name}
                 className={cx(
                   "grid gap-x-5 gap-y-3 border-line px-[18px] py-4 [&+&]:border-t",
-                  "md:grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)]",
-                  "lg:grid-cols-[56px_minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(190px,0.85fr)_auto]",
-                  flash[e.endpoint_id] === "good" && "animate-row-good", flash[e.endpoint_id] === "bad" && "animate-row-bad",
+                  "md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]",
+                  "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(140px,0.7fr)_auto]",
+                  flash[e.endpoint_id] === "good" && "animate-row-good",
+                  flash[e.endpoint_id] === "bad" && "animate-row-bad",
                   flash[e.endpoint_id] === "info" && "animate-row-info",
                 )}
                 onAnimationEnd={() => setFlash((current) => without(current, e.endpoint_id))}
               >
-                {/* Baseline column (Kiểu B, chosen 23/11): one radio per row, only one can be on. */}
-                <label className={cx(
-                  "flex cursor-pointer items-center gap-2 self-start text-[12.5px] text-ink-3 has-[:checked]:font-bold has-[:checked]:text-ink",
-                  "md:row-span-2 md:flex-col md:gap-1 md:pt-0.5 lg:row-span-1",
-                )}>
-                  <input
-                    type="radio"
-                    name="baseline-endpoint"
-                    aria-label={`Mốc: ${e.name}`}
-                    checked={shownBaseline === e.endpoint_id}
-                    disabled={pendingBaseline !== undefined}
-                    onChange={() => void chooseBaseline(e.endpoint_id)}
-                    className="size-5 cursor-pointer accent-ink disabled:cursor-wait"
-                  />
-                  <span aria-hidden>Mốc</span>
-                </label>
-
                 <div className="grid min-w-0 content-start gap-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <Dot color={colors[e.endpoint_id]} />
                     <button
                       type="button"
-                      title="Xem và sửa"
                       onClick={() => setEditing(e.endpoint_id)}
                       className="truncate text-left text-[15px] font-bold hover:underline"
                     >
@@ -304,17 +255,27 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
                   </div>
                   <div className="flex min-w-0 items-center gap-1 font-mono text-[12.5px] text-ink-3">
                     <span className="truncate" title={e.base_url}>{shortUrl(e.base_url)}</span>
-                    <CopyButton text={e.base_url} label={`Copy địa chỉ ${e.name}`} />
+                    <CopyButton text={e.base_url} label={t.copyAddress(e.name)} />
                   </div>
-                  {e.model_id !== e.name && (
-                    <small className="text-[12.5px] text-ink-3">Model endpoint báo: <span className="text-ink-2">{e.model_id}</span></small>
-                  )}
                 </div>
 
-                <div className="grid min-w-0 content-start gap-0.5 text-[13.5px]">
-                  {setup && <span className="font-semibold">{setup}</span>}
-                  <span className={setup ? "text-[12.5px] text-ink-3" : "text-ink-2"}>{detailLine(e, baseModel(e))}</span>
-                </div>
+                <dl className="m-0 grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] content-start gap-x-3 gap-y-1 text-[13px]">
+                  <dt className="text-ink-3">{t.epFieldChip}</dt>
+                  <dd className="m-0 truncate font-medium text-ink">{e.meta?.gpu || "—"}</dd>
+                  <dt className="text-ink-3">{t.epFieldDraft}</dt>
+                  <dd className="m-0 truncate text-ink-2" title={draftName ?? undefined}>{draftName ? shortModelName(draftName) : "—"}</dd>
+                  <dt className="text-ink-3">{t.epFieldTarget}</dt>
+                  <dd className="m-0 truncate text-ink-2" title={targetName}>{shortModelName(targetName)}</dd>
+                  <dt className="text-ink-3">{t.epFieldAdaptive}</dt>
+                  <dd className="m-0">
+                    <span className={cx(
+                      "inline-flex items-center rounded-md px-1.5 py-px text-[11.5px] font-bold",
+                      adaptiveOn ? "bg-good-tint text-good" : "bg-sunken text-ink-3",
+                    )}>
+                      {adaptiveOn ? t.onLabel : t.offLabel}
+                    </span>
+                  </dd>
+                </dl>
 
                 <div className="grid content-start justify-items-start gap-1" aria-live="polite">
                   <StatusCell
@@ -327,40 +288,28 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
                 </div>
 
                 <div className="flex flex-wrap items-start gap-1.5 lg:justify-end">
-                  <Button variant="ghost" icon={RefreshCw} loading={busy} disabled={busy} aria-label={`Kiểm tra ${e.name}`}
+                  <Button variant="ghost" icon={RefreshCw} loading={busy} disabled={busy} aria-label={t.checkEndpointAria(e.name)}
                     className="px-2.5 py-1.5 text-[13px]" onClick={() => void check([e.endpoint_id])}>
-                    Kiểm tra
+                    {t.actionCheck}
                   </Button>
-                  <Button variant="ghost" icon={Pencil} aria-label={`Sửa ${e.name}`} className="px-2.5 py-1.5 text-[13px]"
+                  <Button variant="ghost" icon={Pencil} aria-label={t.editEndpointAria(e.name)} className="px-2.5 py-1.5 text-[13px]"
                     onClick={() => setEditing(e.endpoint_id)}>
-                    Sửa
+                    {t.actionEdit}
                   </Button>
-                  <Button variant="danger" icon={Trash2} aria-label={`Xoá ${e.name}`} disabled={busy} className="px-2.5 py-1.5 text-[13px]"
+                  <Button variant="danger" icon={Trash2} aria-label={t.deleteEndpointAria(e.name)} disabled={busy} className="px-2.5 py-1.5 text-[13px]"
                     onClick={() => setConfirm(e.endpoint_id)}>
-                    Xoá
+                    {t.actionDelete}
                   </Button>
                 </div>
               </article>
             );
           })}
-          {shownBaseline !== null && (
-            <div className="border-t border-line px-[18px] py-2.5">
-              <Button variant="ghost" className="px-2.5 py-1.5 text-[13px]" disabled={pendingBaseline !== undefined}
-                onClick={() => void chooseBaseline(null)}>
-                Bỏ chọn mốc
-              </Button>
-            </div>
-          )}
         </section>
       )}
 
-      <p aria-live="polite" className={announce ? "animate-fade-in text-[13px] text-ink-2" : "sr-only"}>{announce}</p>
       {error && <Notice tone="bad">{error}</Notice>}
-      {endpoints.length > 0 && !endpoints.some((e) => e.is_baseline) && (
-        <Notice tone="info">Chưa chọn endpoint mốc: các trang chỉ hiện số tuyệt đối (thời gian, TTFT, TPOT), không hiện hệ số tăng tốc. Chọn ô Mốc ở đầu dòng của endpoint muốn dùng làm mốc.</Notice>
-      )}
       {models.size > 1 && (
-        <Notice tone="warn">Các endpoint đang chạy {models.size} model khác nhau. So sánh tốc độ giữa hai model khác nhau không công bằng.</Notice>
+        <Notice tone="warn">{t.diffModelsWarn(models.size)}</Notice>
       )}
 
       {editingEndpoint && (
@@ -376,21 +325,14 @@ export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheck
       )}
       {confirming && (
         <ConfirmDialog
-          title={`Xoá ${confirming.name}?`}
-          confirmLabel="Xoá endpoint"
+          title={t.deleteTitle(confirming.name)}
+          confirmLabel={t.deleteConfirm}
           confirmIcon={Trash2}
           busy={deleting}
           onConfirm={() => void remove(confirming.endpoint_id)}
           onCancel={() => setConfirm(null)}
         >
-          <ul className="grid list-disc gap-1 pl-5 text-ink-2">
-            <li>Endpoint biến mất khỏi mọi trang của web.</li>
-            <li>GPU trên Modal và phiên <code className="font-mono">flexsds serve</code> không bị tắt; muốn dùng lại thì thêm lại địa chỉ.</li>
-            <li>Hoá đơn và các lần đo đã lưu vẫn giữ nguyên.</li>
-            {confirming.is_baseline && (
-              <li><b className="text-ink">Đây là endpoint mốc:</b> các trang không có số so sánh cho tới khi bạn chọn mốc mới.</li>
-            )}
-          </ul>
+          <p className="text-ink-2">{t.deleteBody}</p>
         </ConfirmDialog>
       )}
     </>

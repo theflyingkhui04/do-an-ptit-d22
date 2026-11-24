@@ -1,30 +1,38 @@
-// "Alive or dead" for each part of a Node 1 job, read from its live log (design D13).
+// Live status of each part of a Node 1 job, derived from server log events.
 import type { Job, JobEvent } from "@/lib/api";
+import { localeTag } from "@/lib/format";
+import type { Lang } from "@/lib/i18n";
 
-export const SILENT_S = 60; // a waiting part with no new log line for this long is flagged
-// How long the backend keeps waiting before it gives up (httpx read timeouts in src/api).
+export const SILENT_S = 60;
 const BACKEND_WAIT_S: Record<string, number> = { ocr: 300, endpoint: 600 };
 
 export type Tone = "idle" | "warn" | "good" | "bad";
 export interface PartState {
   tone: Tone;
   text: string;
-  busy: boolean; // something is still in flight: show a spinner
-  silentFor?: number; // seconds without a new line, once over SILENT_S
+  busy: boolean;
+  silentFor?: number;
 }
 
-export function durationVi(seconds: number): string {
+export function durationText(seconds: number, lang: Lang = "vi"): string {
   const whole = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(whole / 60);
   const rest = whole % 60;
+  if (lang === "en") {
+    if (!minutes) return `${rest} s`;
+    return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+  }
   if (!minutes) return `${rest} s`;
   return rest ? `${minutes} phút ${rest} s` : `${minutes} phút`;
 }
 
-const vi = (n: number | null | undefined) => (n ?? 0).toLocaleString("vi-VN");
-// Short durations keep one decimal (2,7 s); longer ones read in minutes and seconds.
-const tookVi = (seconds: number) =>
-  seconds < 10 ? `${seconds.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} s` : durationVi(seconds);
+export const durationVi = (seconds: number) => durationText(seconds, "vi");
+
+const num = (n: number | null | undefined, lang: Lang) => (n ?? 0).toLocaleString(localeTag(lang));
+const tookText = (seconds: number, lang: Lang) =>
+  seconds < 10
+    ? `${seconds.toLocaleString(localeTag(lang), { maximumFractionDigits: 1 })} s`
+    : durationText(seconds, lang);
 
 function lastOf(events: JobEvent[], src: string): JobEvent | undefined {
   let last: JobEvent | undefined;
@@ -34,53 +42,108 @@ function lastOf(events: JobEvent[], src: string): JobEvent | undefined {
 
 const isFinal = (job: Job) => ["done", "failed", "interrupted"].includes(job.status);
 
-export function systemState(job: Job, lostFor: number | null): PartState {
-  if (lostFor !== null) return { tone: "bad", text: `Mất liên lạc ${durationVi(lostFor)}`, busy: true };
-  if (job.status === "failed" || job.status === "interrupted") return { tone: "bad", text: "Job dừng vì lỗi", busy: false };
-  if (job.status === "done") return { tone: "good", text: "Đã xong", busy: false };
-  return { tone: "good", text: "Sống", busy: true };
+export function systemState(job: Job, lostFor: number | null, lang: Lang = "vi"): PartState {
+  if (lostFor !== null) {
+    return {
+      tone: "bad",
+      text: lang === "en" ? `Reconnecting (${durationText(lostFor, lang)})` : `Mất kết nối (${durationText(lostFor, lang)})`,
+      busy: true,
+    };
+  }
+  if (job.status === "failed" || job.status === "interrupted") {
+    return { tone: "bad", text: lang === "en" ? "Failed" : "Lỗi xử lý", busy: false };
+  }
+  if (job.status === "done") {
+    return { tone: "good", text: lang === "en" ? "Completed" : "Hoàn tất", busy: false };
+  }
+  return { tone: "good", text: lang === "en" ? "Active" : "Đang hoạt động", busy: true };
 }
 
-export function ocrState(job: Job, events: JobEvent[], now: number): PartState {
+export function ocrState(job: Job, events: JobEvent[], now: number, lang: Lang = "vi"): PartState {
   const last = lastOf(events, "ocr");
-  if (!last) return { tone: "idle", text: isFinal(job) ? "Không chạy" : "Chưa chạy", busy: false };
+  if (!last) {
+    return {
+      tone: "idle",
+      text: isFinal(job) ? (lang === "en" ? "Skipped" : "Không chạy") : (lang === "en" ? "Pending" : "Đang chờ"),
+      busy: false,
+    };
+  }
   if (last.level === "ok") {
     const ms = job.result.timings_ms?.ocr;
-    return { tone: "good", text: ms ? `Xong trong ${tookVi(ms / 1000)}` : "Xong", busy: false };
+    return {
+      tone: "good",
+      text: ms ? (lang === "en" ? `Done (${tookText(ms / 1000, lang)})` : `Hoàn tất (${tookText(ms / 1000, lang)})`) : (lang === "en" ? "Done" : "Hoàn tất"),
+      busy: false,
+    };
   }
-  if (job.status === "failed" && (job.error ?? "").startsWith("ocr")) return { tone: "bad", text: "Lỗi", busy: false };
-  if (isFinal(job)) return { tone: "idle", text: "Đã dừng", busy: false };
-  return waiting(last, now, "Máy OCR", "Đang đọc ảnh");
+  if (job.status === "failed" && (job.error ?? "").startsWith("ocr")) {
+    return { tone: "bad", text: lang === "en" ? "Error" : "Lỗi", busy: false };
+  }
+  if (isFinal(job)) return { tone: "idle", text: lang === "en" ? "Stopped" : "Đã dừng", busy: false };
+  return waiting(last, now, "OCR", lang === "en" ? "Reading image" : "Đang nhận dạng", lang);
 }
 
-export function endpointState(job: Job, events: JobEvent[], endpointId: string, now: number): PartState {
+export function endpointState(job: Job, events: JobEvent[], endpointId: string, now: number, lang: Lang = "vi"): PartState {
   const report = job.result.runs?.[endpointId];
-  if (report) return report.valid ? { tone: "good", text: "Xong", busy: false } : { tone: "bad", text: "Lỗi", busy: false };
+  if (report) {
+    return report.valid
+      ? { tone: "good", text: lang === "en" ? "Completed" : "Hoàn tất", busy: false }
+      : { tone: "bad", text: lang === "en" ? "Error" : "Lỗi", busy: false };
+  }
   const last = lastOf(events, endpointId);
-  if (!last) return { tone: "idle", text: isFinal(job) ? "Không chạy" : "Chờ OCR xong", busy: false };
-  if (last.level === "error") return { tone: "bad", text: "Lỗi", busy: false };
-  if (isFinal(job)) return { tone: "idle", text: "Đã dừng", busy: false };
-  return waiting(last, now, "GPU", "Chờ token đầu");
+  if (!last) {
+    return {
+      tone: "idle",
+      text: isFinal(job) ? (lang === "en" ? "Skipped" : "Không chạy") : (lang === "en" ? "Waiting for OCR" : "Chờ OCR"),
+      busy: false,
+    };
+  }
+  if (last.level === "error") return { tone: "bad", text: lang === "en" ? "Error" : "Lỗi", busy: false };
+  if (isFinal(job)) return { tone: "idle", text: lang === "en" ? "Stopped" : "Đã dừng", busy: false };
+  return waiting(last, now, "GPU", lang === "en" ? "Waiting for first token" : "Chờ token đầu", lang);
 }
 
-function waiting(last: JobEvent, now: number, who: string, firstWait: string): PartState {
+function waiting(last: JobEvent, now: number, who: string, firstWait: string, lang: Lang): PartState {
   const age = now - last.t;
   if (last.key?.endsWith("-wait")) {
-    return { tone: "warn", text: `${who} đang khởi động, đã thử ${vi(last.data?.tries)} lần`, busy: true };
+    return {
+      tone: "warn",
+      text: lang === "en"
+        ? `${who} starting (attempt ${num(last.data?.tries, lang)})`
+        : `${who} đang khởi động (lần thử ${num(last.data?.tries, lang)})`,
+      busy: true,
+    };
   }
-  if (age >= SILENT_S) return { tone: "bad", text: `Không có tín hiệu ${durationVi(age)}`, busy: true, silentFor: age };
-  if (last.key?.endsWith("-recv")) return { tone: "good", text: `Đang nhận ${vi(last.data?.chars)} ký tự`, busy: true };
-  if (last.level === "ok") return { tone: "good", text: "Đang trả lời", busy: true };
-  return { tone: "warn", text: `${firstWait}, ${durationVi(age)}`, busy: true };
+  if (age >= SILENT_S) {
+    return {
+      tone: "bad",
+      text: lang === "en" ? `No signal (${durationText(age, lang)})` : `Không có phản hồi (${durationText(age, lang)})`,
+      busy: true,
+      silentFor: age,
+    };
+  }
+  if (last.key?.endsWith("-recv")) {
+    return {
+      tone: "good",
+      text: lang === "en" ? `Streaming (${num(last.data?.chars, lang)} chars)` : `Đang nhận (${num(last.data?.chars, lang)} ký tự)`,
+      busy: true,
+    };
+  }
+  if (last.level === "ok") return { tone: "good", text: lang === "en" ? "Streaming" : "Đang sinh văn bản", busy: true };
+  return { tone: "warn", text: `${firstWait} (${durationText(age, lang)})`, busy: true };
 }
 
-// A warning line the web adds for a part that went quiet; it is not stored on the server.
-export function silentLine(src: string, state: PartState, now: number): JobEvent | null {
+export function silentLine(src: string, state: PartState, now: number, lang: Lang = "vi"): JobEvent | null {
   if (state.silentFor === undefined) return null;
   const isOcr = src === "ocr";
+  const waitMax = durationText(BACKEND_WAIT_S[isOcr ? "ocr" : "endpoint"], lang);
   return {
-    t: now, src, level: "warn", key: `${src}-silent`,
-    msg: `Chưa có tín hiệu trong ${durationVi(state.silentFor)}; ${isOcr ? "máy OCR" : "endpoint"} có thể đã dừng. `
-      + `Backend chờ tối đa ${durationVi(BACKEND_WAIT_S[isOcr ? "ocr" : "endpoint"])}`,
+    t: now,
+    src,
+    level: "warn",
+    key: `${src}-silent`,
+    msg: lang === "en"
+      ? `No response for ${durationText(state.silentFor, lang)}; timeout is ${waitMax}.`
+      : `Không có phản hồi trong ${durationText(state.silentFor, lang)}; thời gian chờ tối đa ${waitMax}.`,
   };
 }
