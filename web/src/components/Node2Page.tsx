@@ -6,11 +6,13 @@ import { useRef, useState, type ReactNode } from "react";
 import type { PageId } from "@/components/Console";
 import {
   Button,
+  Dot,
   Drawer,
   EndpointChips,
   NeedEndpoint,
   PageHead,
   Pill,
+  ReferencePicker,
   ResultTable,
   Spinner,
   SqlBlock,
@@ -19,16 +21,14 @@ import {
   endpointColors,
   secondsSince,
   useNow,
-  Dot,
 } from "@/components/ui";
 import { ApiError, type Api, type Endpoint, type QuestionResult } from "@/lib/api";
 import { formatMs, formatNumber, formatSpeedup } from "@/lib/format";
-import { QUESTIONS, VIEWS } from "@/lib/views";
+import { useI18n, type Dict } from "@/lib/i18n";
+import { VIEWS, getQuestions } from "@/lib/views";
 
-const CHECKS = ["Chỉ đọc (một câu SELECT)", "Chỉ 4 view được phép", "Không cộng trùng hoá đơn khi nối bảng", "Tối đa 200 dòng"];
-const MAX_ENDPOINTS = 6; // as on Node 1
+const MAX_ENDPOINTS = 6;
 
-// What one endpoint answered for the current question (design D15).
 interface Answer {
   started: number;
   result?: QuestionResult;
@@ -37,12 +37,12 @@ interface Answer {
 
 interface Round {
   question: string;
-  order: string[]; // baseline first
+  order: string[];
   answers: Record<string, Answer>;
 }
 
-function askError(exc: unknown): string {
-  if (exc instanceof ApiError && exc.status === 429) return "Đã hỏi quá nhiều trong ít phút, thử lại sau.";
+function askError(exc: unknown, t: Dict): string {
+  if (exc instanceof ApiError && exc.status === 429) return t.errRateLimit;
   return (exc as Error).message;
 }
 
@@ -50,7 +50,6 @@ const firstSql = (r: QuestionResult) => r.calls.find((c) => c.step === "node2");
 const totalMs = (r: QuestionResult) => r.calls.reduce((sum, c) => sum + (c.wall_ms ?? c.latency_ms ?? 0), 0);
 const sameRow = (a: unknown[] | undefined, b: unknown[] | undefined) => JSON.stringify(a) === JSON.stringify(b);
 
-// Rows of `r` that are not the same as the baseline's row at the same place.
 function differentRows(r: QuestionResult, base: QuestionResult | undefined): Set<number> | null {
   if (!base || base === r || r.status !== "ok" || base.status !== "ok") return null;
   const rows = new Set<number>();
@@ -61,21 +60,23 @@ function differentRows(r: QuestionResult, base: QuestionResult | undefined): Set
 }
 
 function StatusPill({ answer, now }: { answer: Answer; now: number }) {
-  if (answer.error) return <Pill tone="bad">Lỗi</Pill>;
+  const { t } = useI18n();
+  if (answer.error) return <Pill tone="bad">{t.statusError}</Pill>;
   const r = answer.result;
-  if (!r) return <Pill tone="idle"><Spinner className="size-3.5" />Đang hỏi, {secondsSince(answer.started, now)} s</Pill>;
-  if (r.status === "ok") return <Pill tone="good">Đã trả lời</Pill>;
-  if (r.status === "no_data") return <Pill tone="idle">Không có dữ liệu khớp</Pill>;
-  return <Pill tone="bad">Bị chặn</Pill>;
+  if (!r) return <Pill tone="idle"><Spinner className="size-3.5" />{t.statusAsking(secondsSince(answer.started, now))}</Pill>;
+  if (r.status === "ok") return <Pill tone="good">{t.statusAnswered}</Pill>;
+  if (r.status === "no_data") return <Pill tone="idle">{t.statusNoData}</Pill>;
+  return <Pill tone="bad">{t.statusBlocked}</Pill>;
 }
 
 function Stats({ result }: { result: QuestionResult }) {
+  const { lang, t } = useI18n();
   const first = firstSql(result);
   const cells: [string, string][] = [
-    ["Thời gian", formatMs(totalMs(result))],
-    ["TTFT", formatMs(first?.ttft_ms)],
-    ["TPOT", formatMs(first?.tpot_ms)],
-    ["Token", formatNumber(first?.completion_tokens)],
+    [t.statLatency, formatMs(totalMs(result), lang)],
+    ["TTFT", formatMs(first?.ttft_ms, lang)],
+    ["TPOT", formatMs(first?.tpot_ms, lang)],
+    [t.statTokens, formatNumber(first?.completion_tokens, lang)],
   ];
   return (
     <dl className="grid grid-cols-2 overflow-hidden rounded-lg border border-line sm:grid-cols-4">
@@ -90,6 +91,7 @@ function Stats({ result }: { result: QuestionResult }) {
 }
 
 function SqlDetails({ result }: { result: QuestionResult }) {
+  const { t } = useI18n();
   const blocked = result.status === "error";
   const [open, setOpen] = useState(blocked);
   if (!result.sql) return null;
@@ -103,32 +105,28 @@ function SqlDetails({ result }: { result: QuestionResult }) {
         className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[13px] font-semibold text-ink-2 [&::-webkit-details-marker]:hidden"
       >
         <ChevronRight aria-hidden className={cx("size-3.5 transition-transform", open && "rotate-90")} />
-        <span>Câu SQL</span>
+        <span>{t.sqlQuery}</span>
         {!blocked && (
-          <span className="ml-auto inline-flex items-center gap-1 font-medium text-good"><ShieldCheck aria-hidden className="size-3.5" />qua 4 kiểm tra</span>
+          <span className="ml-auto inline-flex items-center gap-1 font-medium text-good"><ShieldCheck aria-hidden className="size-3.5" />{t.sqlValidated}</span>
         )}
       </summary>
       <div className="grid gap-2 border-t border-line p-2.5">
         <SqlBlock sql={result.sql} />
-        {!blocked && (
-          <ul className="grid list-disc gap-0.5 pl-5 text-[12.5px] text-ink-2">
-            {CHECKS.map((c) => <li key={c}>{c}</li>)}
-          </ul>
-        )}
-        {result.first_error && <p className="text-[12.5px] text-ink-3">Lỗi lần đầu: <span className="font-mono">{result.first_error}</span></p>}
+        {result.first_error && <p className="text-[12.5px] text-ink-3">{t.sqlFirstError} <span className="font-mono">{result.first_error}</span></p>}
       </div>
     </details>
   );
 }
 
-function Column({ endpoint, color, isBaseline, answer, base, now }: {
+function Column({ endpoint, color, isReference, answer, base, now }: {
   endpoint: Endpoint;
   color: string;
-  isBaseline: boolean;
+  isReference: boolean;
   answer: Answer;
   base?: QuestionResult;
   now: number;
 }) {
+  const { lang, t } = useI18n();
   const r = answer.result;
   const diff = r ? differentRows(r, base) : null;
   const foreign = r?.foreign_words ?? [];
@@ -137,7 +135,7 @@ function Column({ endpoint, color, isBaseline, answer, base, now }: {
   if (answer.error) {
     body = <p role="alert" className="text-[14px] text-bad">{answer.error}</p>;
   } else if (!r) {
-    body = <p className="text-ink-3">Đang sinh câu SQL, kiểm tra rồi chạy trên dữ liệu đã lưu…</p>;
+    body = <p className="text-ink-3">{t.node2RunningText}</p>;
   } else {
     body = (
       <>
@@ -147,27 +145,22 @@ function Column({ endpoint, color, isBaseline, answer, base, now }: {
           <p className="min-h-[3em] text-base leading-normal">{r.answer}</p>
         ) : (
           <p className="min-h-[3em] text-ink-3">
-            {r.status === "no_data" ? "Câu SQL chạy đúng nhưng không có dòng nào khớp, nên không có câu trả lời." : "Model không trả về câu trả lời nào."}
+            {r.status === "no_data" ? t.node2NoDataText : t.node2NoAnswerText}
           </p>
         )}
         <Stats result={r} />
         {(r.repairs > 0 || foreign.length > 0 || ungrounded.length > 0) && (
           <div className="flex flex-wrap gap-1.5">
-            {r.repairs > 0 && <Pill tone="warn">Câu SQL đầu lỗi, đã sửa {r.repairs} lần</Pill>}
-            {foreign.length > 0 && <Pill tone="warn">Chữ không phải tiếng Việt: {foreign.join(", ")}</Pill>}
-            {ungrounded.length > 0 && <Pill tone="warn">Số không có trong kết quả SQL: {ungrounded.join(", ")}</Pill>}
+            {r.repairs > 0 && <Pill tone="warn">{t.sqlRepaired(r.repairs)}</Pill>}
+            {foreign.length > 0 && <Pill tone="warn">{t.foreignWordsFlag(foreign.join(", "))}</Pill>}
+            {ungrounded.length > 0 && <Pill tone="warn">{t.ungroundedNumbersFlag(ungrounded.join(", "))}</Pill>}
           </div>
-        )}
-        {(r.text_rewrites ?? []).length > 0 && (
-          <p className="rounded-lg bg-sunken px-3 py-2 text-[12.5px] text-ink-2">
-            Khớp chữ không dấu (dữ liệu hoá đơn lưu không dấu): {r.text_rewrites!.map((w) => `${w.from} → ${w.to}`).join("; ")}
-          </p>
         )}
         {r.status === "ok" && (
           <div className="grid gap-1.5">
             <div className="flex flex-wrap justify-between gap-2 text-[12.5px] text-ink-3">
-              <span>Kết quả SQL, {formatNumber(r.row_count)} dòng</span>
-              {diff && diff.size > 0 && <span className="font-semibold text-warn">{diff.size} dòng khác mốc</span>}
+              <span>{t.sqlRowsCount(formatNumber(r.row_count, lang))}</span>
+              {diff && diff.size > 0 && <span className="font-semibold text-warn">{t.diffRowsCount(diff.size)}</span>}
             </div>
             <ResultTable columns={r.columns} rows={r.rows} differs={diff ? (i) => diff.has(i) : undefined} />
           </div>
@@ -180,7 +173,7 @@ function Column({ endpoint, color, isBaseline, answer, base, now }: {
     <article aria-label={endpoint.name} className="grid min-w-0 content-start overflow-hidden rounded-xl border border-line bg-surface">
       <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-line bg-sunken px-3.5 py-2.5">
         <span className="flex min-w-0 items-center gap-2 font-bold"><Dot color={color} /><span className="truncate">{endpoint.name}</span></span>
-        {isBaseline && <span className="rounded-md border border-line bg-surface px-1.5 text-[11.5px] font-semibold text-ink-2">Mốc</span>}
+        {isReference && <span className="rounded-md border border-line bg-surface px-1.5 text-[11.5px] font-semibold text-ink-2">{t.referenceBadge}</span>}
         <span className="ml-auto"><StatusPill answer={answer} now={now} /></span>
       </header>
       <div className="grid min-w-0 gap-3 p-3.5">{body}</div>
@@ -188,45 +181,45 @@ function Column({ endpoint, color, isBaseline, answer, base, now }: {
   );
 }
 
-// Under the columns, as on Node 1: each endpoint against the baseline (design D15).
 function Compare({ base, others, colors }: {
   base: { endpoint: Endpoint; result: QuestionResult };
   others: { endpoint: Endpoint; result: QuestionResult }[];
   colors: Record<string, string>;
 }) {
+  const { lang, t } = useI18n();
   const b = base.result;
   return (
     <div className="grid gap-2 border-t border-line pt-4">
-      <h3 className="text-[14px] font-bold">So với mốc {base.endpoint.name}</h3>
+      <h3 className="text-[14px] font-bold">{t.compareTableTitle(base.endpoint.name)}</h3>
       <div className="overflow-x-auto rounded-lg border border-line">
-        <table role="table" aria-label={`So với mốc ${base.endpoint.name}`} className="w-full text-left text-[13.5px] [&_td]:[overflow-wrap:anywhere] max-sm:block">
+        <table role="table" aria-label={t.compareTableTitle(base.endpoint.name)} className="w-full text-left text-[13.5px] [&_td]:[overflow-wrap:anywhere] max-sm:block">
           <thead className="bg-sunken text-[12px] text-ink-3 max-sm:hidden">
-            <tr><th className="px-3.5 py-1.5 font-medium">Endpoint</th><th className="px-3.5 py-1.5 font-medium">Kết quả</th><th className="px-3.5 py-1.5 font-medium">Tốc độ</th></tr>
+            <tr><th className="px-3.5 py-1.5 font-medium">{t.colEndpoint}</th><th className="px-3.5 py-1.5 font-medium">{t.colResult}</th><th className="px-3.5 py-1.5 font-medium">{t.colSpeed}</th></tr>
           </thead>
           <tbody className="max-sm:block">
             {others.map(({ endpoint, result: r }) => {
               let verdict: ReactNode;
               if (r.status === "error" || b.status === "error") {
-                verdict = r.status === b.status ? <b className="text-good">Cùng bị chặn</b> : <b className="text-bad">Khác mốc</b>;
+                verdict = r.status === b.status ? <b className="text-good">{t.bothBlocked}</b> : <b className="text-bad">{t.differsRef}</b>;
               } else if (r.status === b.status && sameRow(r.rows as unknown[], b.rows as unknown[])) {
-                verdict = <><b className="text-good">Giống mốc</b><small className="block text-[12.5px] text-ink-3">{r.rows.length ? `${r.rows.length}/${r.rows.length} dòng kết quả giống` : "cùng không có dữ liệu"}</small></>;
+                verdict = <><b className="text-good">{t.matchesRef}</b><small className="block text-[12.5px] text-ink-3">{r.rows.length ? t.rowsMatchDetail(r.rows.length) : t.bothEmptyDetail}</small></>;
               } else {
                 const total = Math.max(r.rows.length, b.rows.length);
                 const differ = Array.from({ length: total }, (_, i) => !sameRow(r.rows[i], b.rows[i])).filter(Boolean).length;
-                verdict = <><b className="text-warn">Khác mốc</b><small className="block text-[12.5px] text-ink-3">{differ}/{total} dòng khác</small></>;
+                verdict = <><b className="text-warn">{t.differsRef}</b><small className="block text-[12.5px] text-ink-3">{t.rowsDiffDetail(differ, total)}</small></>;
               }
               const mine = firstSql(r)?.tpot_ms;
               const theirs = firstSql(b)?.tpot_ms;
               const speed = mine && theirs ? theirs / mine : null;
               return (
                 <tr key={endpoint.endpoint_id} role="row" className="border-t border-line align-top max-sm:grid max-sm:gap-0.5 max-sm:py-1.5">
-                  <td data-label="Endpoint" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]"><span className="flex items-center gap-2 font-bold"><Dot color={colors[endpoint.endpoint_id]} />{endpoint.name}</span></td>
-                  <td data-label="Kết quả" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">{verdict}</td>
-                  <td data-label="Tốc độ" className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">
-                    {speed === null ? <span className="text-ink-3">Chưa đủ số đo</span> : (
+                  <td data-label={t.colEndpoint} className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]"><span className="flex items-center gap-2 font-bold"><Dot color={colors[endpoint.endpoint_id]} />{endpoint.name}</span></td>
+                  <td data-label={t.colResult} className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">{verdict}</td>
+                  <td data-label={t.colSpeed} className="px-3.5 py-2.5 max-sm:block max-sm:py-1 max-sm:before:block max-sm:before:text-[11.5px] max-sm:before:text-ink-3 max-sm:before:content-[attr(data-label)]">
+                    {speed === null ? <span className="text-ink-3">{t.insufficientMetrics}</span> : (
                       <>
-                        <b className={speed >= 1 ? "text-good" : "text-bad"}>{speed >= 1 ? `Nhanh hơn ${formatSpeedup(speed)}` : `Chậm hơn ${formatSpeedup(1 / speed)}`}</b>
-                        <small className="block text-[12.5px] text-ink-3">theo TPOT{r.repairs > 0 ? `; phải sửa SQL ${r.repairs} lần` : ""}</small>
+                        <b className={speed >= 1 ? "text-good" : "text-bad"}>{speed >= 1 ? t.fasterBy(formatSpeedup(speed, lang)) : t.slowerBy(formatSpeedup(1 / speed, lang))}</b>
+                        {r.repairs > 0 && <small className="block text-[12.5px] text-ink-3">{t.repairedNote(r.repairs)}</small>}
                       </>
                     )}
                   </td>
@@ -241,10 +234,11 @@ function Compare({ base, others, colors }: {
 }
 
 function ViewsDrawer({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
   return (
-    <Drawer title="Dữ liệu có thể hỏi" onClose={onClose}>
+    <Drawer title={t.dataSchemaTitle} onClose={onClose}>
       <div className="grid gap-4">
-        <p className="text-[13.5px] text-ink-2">Các SQL view có thể truy vấn bao gồm</p>
+        <p className="text-[13.5px] text-ink-2">{t.dataSchemaIntro}</p>
         {VIEWS.map((v) => (
           <section key={v.name} className="grid gap-1.5">
             <h3 className="text-[14px]">
@@ -261,10 +255,11 @@ function ViewsDrawer({ onClose }: { onClose: () => void }) {
 }
 
 export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints: Endpoint[]; go: (page: PageId) => void }) {
-  const baseline = endpoints.find((e) => e.is_baseline);
-  const [selected, setSelected] = useState<string[]>(() => defaultTarget(endpoints).filter((id) => id !== baseline?.endpoint_id));
+  const { lang, t } = useI18n();
+  const [selected, setSelected] = useState<string[]>(() => defaultTarget(endpoints));
   const [question, setQuestion] = useState("");
   const [round, setRound] = useState<Round | null>(null);
+  const [refChoice, setRefChoice] = useState<string | null>(null);
   const [views, setViews] = useState(false);
   const latest = useRef(0);
   const busy = round !== null && round.order.some((id) => !round.answers[id].result && !round.answers[id].error);
@@ -272,16 +267,15 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
 
   const colors = endpointColors(endpoints);
   const byId = new Map(endpoints.map((e) => [e.endpoint_id, e]));
-  const baseLive = baseline && baseline.status !== "down" ? baseline : undefined;
-  const chosen = selected.filter((id) => id !== baseline?.endpoint_id && byId.get(id)?.status !== "down");
-  const order = [...(baseLive ? [baseLive.endpoint_id] : []), ...chosen].slice(0, MAX_ENDPOINTS);
+  const order = selected.filter((id) => byId.get(id)?.status !== "down").slice(0, MAX_ENDPOINTS);
+  const questions = getQuestions(lang);
 
-  // `started` is read by the event handler that asks.
   function ask(text: string, started: number) {
     const q = text.trim();
     if (!q || order.length === 0) return;
     const id = ++latest.current;
     setQuestion(q);
+    setRefChoice(null);
     setRound({ question: q, order, answers: Object.fromEntries(order.map((e) => [e, { started }])) });
     const settle = (endpointId: string, answer: Partial<Answer>) => setRound((current) => (
       current && latest.current === id
@@ -290,27 +284,32 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
     for (const endpointId of order) {
       api.ask(q, endpointId).then(
         (result) => settle(endpointId, { result }),
-        (exc) => settle(endpointId, { error: askError(exc) }),
+        (exc) => settle(endpointId, { error: askError(exc, t) }),
       );
     }
   }
 
-  const baseResult = round && baseLive && round.order.includes(baseLive.endpoint_id) ? round.answers[baseLive.endpoint_id].result : undefined;
-  const others = round
-    ? round.order.filter((id) => id !== baseLive?.endpoint_id).flatMap((id) => {
-      const result = round.answers[id].result;
+  const roundEndpoints = round ? round.order.map((id) => byId.get(id)).filter((e): e is Endpoint => Boolean(e)) : [];
+  const referenceId = roundEndpoints.length >= 2
+    ? (refChoice && roundEndpoints.some((e) => e.endpoint_id === refChoice) ? refChoice : roundEndpoints[0].endpoint_id)
+    : null;
+  const refEndpoint = referenceId ? byId.get(referenceId) : undefined;
+  const refResult = round && referenceId ? round.answers[referenceId]?.result : undefined;
+  const others = round && referenceId
+    ? round.order.filter((id) => id !== referenceId).flatMap((id) => {
+      const result = round.answers[id]?.result;
       const endpoint = byId.get(id);
       return result && endpoint ? [{ endpoint, result }] : [];
     })
     : [];
 
-  if (endpoints.length === 0) return <><PageHead title="Truy vấn SQL" /><NeedEndpoint what="Node 2" onGo={() => go("endpoints")} /></>;
+  if (endpoints.length === 0) return <><PageHead title={t.pageNode2} /><NeedEndpoint what="Node 2" onGo={() => go("endpoints")} /></>;
 
   return (
     <>
-      <PageHead title="Truy vấn SQL" actions={<Button variant="ghost" icon={DatabaseZap} onClick={() => setViews(true)}>Dữ liệu có thể hỏi</Button>} />
+      <PageHead title={t.pageNode2} actions={<Button variant="ghost" icon={DatabaseZap} onClick={() => setViews(true)}>{t.dataSchemaBtn}</Button>} />
 
-      <section aria-label="Đặt câu hỏi" className="grid gap-3.5 rounded-xl border border-line bg-surface p-[18px]">
+      <section aria-label={t.questionSectionAria} className="grid gap-3.5 rounded-xl border border-line bg-surface p-[18px]">
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -318,7 +317,7 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
           }}
           className="rounded-xl border border-line bg-surface focus-within:border-lane-1 focus-within:ring-3 focus-within:ring-lane-1/20"
         >
-          <label htmlFor="question" className="sr-only">Câu hỏi</label>
+          <label htmlFor="question" className="sr-only">{t.questionLabel}</label>
           <textarea
             id="question"
             rows={2}
@@ -331,25 +330,24 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
                 ask(question, Date.now());
               }
             }}
-            placeholder="Hỏi về dữ liệu hoá đơn"
+            placeholder={t.questionPlaceholder}
             className="block min-h-[60px] w-full resize-none bg-transparent px-4 pb-1.5 pt-3.5 text-base leading-snug outline-none"
           />
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 px-3 pb-2.5 pl-4">
-            <span className="text-[13px] text-ink-3">Lựa chọn LLM</span>
+            <span className="text-[13px] text-ink-3">{t.selectLlm}</span>
             <EndpointChips
               endpoints={endpoints}
               selected={selected}
-              alwaysOn={baseLive ? [baseLive.endpoint_id] : []}
-              onToggle={(id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id].slice(-(MAX_ENDPOINTS - 1))))}
+              onToggle={(id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id].slice(-MAX_ENDPOINTS)))}
             />
             <Button type="submit" icon={Play} loading={busy} disabled={busy || !question.trim() || order.length === 0} className="ml-auto">
-              {busy ? "Đang hỏi" : "Hỏi"}
+              {busy ? t.runningQueryBtn : t.runQueryBtn}
             </Button>
           </div>
         </form>
-        <div className="flex flex-wrap items-center gap-1.5" aria-label="Câu hỏi mẫu" role="group">
-          <span className="mr-0.5 text-[13px] text-ink-3">Câu hỏi mẫu</span>
-          {QUESTIONS.map((q) => (
+        <div className="flex flex-wrap items-center gap-1.5" aria-label={t.sampleQuestionsLabel} role="group">
+          <span className="mr-0.5 text-[13px] text-ink-3">{t.sampleQuestionsLabel}</span>
+          {questions.map((q) => (
             <button
               key={q.id}
               type="button"
@@ -368,10 +366,20 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
       </section>
 
       {round && (
-        <section aria-label="Kết quả" className="grid gap-4 rounded-xl border border-line bg-surface p-[18px]">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="text-[15px] font-bold">Kết quả</h2>
+        <section aria-label={t.resultsPanel} className="grid gap-4 rounded-xl border border-line bg-surface p-[18px]">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h2 className="text-[15px] font-bold">{t.resultsPanel}</h2>
             <span className="text-ink-2">“{round.question}”</span>
+            {referenceId && (
+              <span className="ml-auto">
+                <ReferencePicker
+                  options={roundEndpoints.map((e) => ({ id: e.endpoint_id, name: e.name }))}
+                  value={referenceId}
+                  onChange={setRefChoice}
+                  colors={colors}
+                />
+              </span>
+            )}
           </div>
           <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))]">
             {round.order.map((id) => {
@@ -381,16 +389,16 @@ export default function Node2Page({ api, endpoints, go }: { api: Api; endpoints:
                   key={id}
                   endpoint={endpoint}
                   color={colors[id]}
-                  isBaseline={id === baseLive?.endpoint_id}
+                  isReference={id === referenceId}
                   answer={round.answers[id]}
-                  base={baseResult}
+                  base={refResult}
                   now={now}
                 />
               ) : null;
             })}
           </div>
-          {baseResult && baseLive && others.length > 0 && (
-            <Compare base={{ endpoint: baseLive, result: baseResult }} others={others} colors={colors} />
+          {refResult && refEndpoint && others.length > 0 && (
+            <Compare base={{ endpoint: refEndpoint, result: refResult }} others={others} colors={colors} />
           )}
         </section>
       )}

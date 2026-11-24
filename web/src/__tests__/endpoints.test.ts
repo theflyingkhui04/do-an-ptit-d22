@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { agoVi, decodingOf, notesFor, notesFromServingConfig, shortReason, shortUrl } from "@/lib/endpoints";
+import { agoText, agoVi, decodingOf, nextAlias, notesFor, notesFromServingConfig, shortReason, shortUrl } from "@/lib/endpoints";
 
 describe("serving_config.json from the CLI", () => {
   it("reads the file the wizard writes (fields at the top level, GPU under hardware)", () => {
-    // src/flexsds/cli/wizard.py: target_model, draft_model, draft_method, enable_adaptive at the top level
     const wizard = {
       flexsds_version: "0.2.1", action: "serve", backend: "modal", target_model: "Qwen/Qwen2.5-7B-Instruct-AWQ",
       draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator", draft_method: "eagle3", enable_adaptive: true,
@@ -35,7 +34,7 @@ describe("decoding notes", () => {
   it("reads the decoding from the stored notes", () => {
     expect(decodingOf({})).toBe("");
     expect(decodingOf({ draft_method: "none" })).toBe("vanilla");
-    expect(decodingOf({ draft_method: null })).toBe("vanilla"); // written by the old parser
+    expect(decodingOf({ draft_method: null })).toBe("vanilla");
     expect(decodingOf({ draft_method: "eagle3", adaptive: true })).toBe("adaptive");
     expect(decodingOf({ draft_method: "eagle", adaptive: false })).toBe("static");
     expect(decodingOf({ draft_method: "draft_model" })).toBe("draft");
@@ -50,25 +49,32 @@ describe("decoding notes", () => {
   });
 });
 
-describe("list text", () => {
+describe("alias suggestions and list formatting", () => {
+  it("suggests the next free #N alias", () => {
+    expect(nextAlias([])).toBe("#1");
+    expect(nextAlias([{ name: "#1" }])).toBe("#2");
+    expect(nextAlias([{ name: "#1" }, { name: "#3" }])).toBe("#2");
+    expect(nextAlias([{ name: "vanilla" }, { name: "#1" }, { name: "#2" }])).toBe("#3");
+  });
+
   it("shortens a long address to its first host label and path", () => {
     expect(shortUrl("https://u--ptit-vllm-demo-vanilla.us-east.modal.direct/v1")).toBe("u--ptit-vllm-demo-vanilla…/v1");
     expect(shortUrl("https://abc.trycloudflare.com/v1")).toBe("abc.trycloudflare.com/v1");
   });
 
-  it("says how long ago an endpoint was checked", () => {
+  it("formats relative check times in both VI and EN", () => {
     const now = Date.parse("2026-11-17T10:00:00Z");
     expect(agoVi("2026-11-17T09:59:58Z", now)).toBe("vừa xong");
     expect(agoVi("2026-11-17T09:59:20Z", now)).toBe("40 giây trước");
     expect(agoVi("2026-11-17T09:35:00Z", now)).toBe("25 phút trước");
-    expect(agoVi("2026-11-17T07:00:00Z", now)).toBe("3 giờ trước");
-    expect(agoVi("2026-11-15T09:00:00Z", now)).toBe("2 ngày trước");
+    expect(agoText("2026-11-17T09:59:58Z", now, "en")).toBe("just now");
+    expect(agoText("2026-11-17T09:35:00Z", now, "en")).toBe("25m ago");
+    expect(agoText("2026-11-15T09:00:00Z", now, "en")).toBe("2d ago");
   });
 
-  it("gives a short reason for a stopped endpoint", () => {
-    expect(shortReason("Endpoint chưa sẵn sàng (HTTP 503): GPU đang khởi động hoặc đang ngủ, …")).toBe("GPU đang ngủ hoặc khởi động (HTTP 503)");
-    expect(shortReason("Không kết nối được (ConnectError). Kiểm tra phiên flexsds serve còn chạy không."))
-      .toBe("Không kết nối được (ConnectError). Kiểm tra phiên flexsds serve còn chạy không.");
+  it("gives a concise reason for a starting/stopped endpoint in VI and EN", () => {
+    expect(shortReason("Endpoint chưa sẵn sàng (HTTP 503): GPU đang khởi động", "vi")).toBe("GPU đang khởi động (HTTP 503)");
+    expect(shortReason("Endpoint chưa sẵn sàng (HTTP 503): GPU đang khởi động", "en")).toBe("GPU starting up (HTTP 503)");
     expect(shortReason(null)).toBe("");
   });
 });

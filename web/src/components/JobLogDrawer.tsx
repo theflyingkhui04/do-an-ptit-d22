@@ -5,11 +5,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { clockTime, cx } from "@/components/ui";
 import type { JobEvent } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import type { PartState } from "@/lib/liveness";
 
-// A part of the job whose log can be shown on its own: OCR, an endpoint, or the system lines.
 export interface LogPart {
-  id: string; // "all", "ocr", "system" or an endpoint id
+  id: string;
   label: string;
   color?: string;
   state?: PartState;
@@ -27,7 +27,6 @@ const LEVEL_TEXT: Record<JobEvent["level"], string> = {
 
 export const partOf = (src: string) => (src === "system" || src === "web" ? "system" : src);
 
-// Log lines live in a drawer opened on demand, filtered to one part when opened from that part (Dương, 16/11).
 export default function JobLogDrawer({ lines, parts, part, onPart, onClose, sourceLabel, sourceColor, elapsed }: {
   lines: JobEvent[];
   parts: LogPart[];
@@ -38,6 +37,7 @@ export default function JobLogDrawer({ lines, parts, part, onPart, onClose, sour
   sourceColor: (src: string) => string | undefined;
   elapsed?: string;
 }) {
+  const { lang, t } = useI18n();
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [follow, setFollow] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
@@ -66,12 +66,12 @@ export default function JobLogDrawer({ lines, parts, part, onPart, onClose, sour
 
   async function copy() {
     const text = lines.filter(shown)
-      .map((line) => `${clockTime(new Date(line.t * 1000))} [${sourceLabel(line.src)}] ${line.msg}`).join("\n");
+      .map((line) => `${clockTime(new Date(line.t * 1000), lang)} [${sourceLabel(line.src)}] ${line.msg}`).join("\n");
     try {
       await navigator.clipboard.writeText(text);
-      setCopied("Đã copy");
+      setCopied(t.copied);
     } catch {
-      setCopied("Không copy được, hãy chọn chữ rồi bấm Ctrl+C");
+      setCopied(t.logCopyFailed);
     }
   }
 
@@ -85,14 +85,14 @@ export default function JobLogDrawer({ lines, parts, part, onPart, onClose, sour
         className="fixed inset-y-0 right-0 z-40 flex w-full max-w-[600px] animate-fade-in flex-col border-l border-line bg-surface text-[14px] text-ink shadow-[-12px_0_32px_rgb(0_0_0/0.18)]"
       >
         <header className="flex items-center gap-2.5 border-b border-line px-[18px] py-3.5">
-          <h2 id="job-log-title" className="text-base font-bold">Log lượt chạy</h2>
+          <h2 id="job-log-title" className="text-base font-bold">{t.logTitle}</h2>
           {elapsed && <span className="num text-[13px] text-ink-3">{elapsed}</span>}
-          <button ref={closeButton} type="button" onClick={onClose} aria-label="Đóng log" className="ml-auto rounded-md p-1 text-ink-3 hover:bg-sunken">
+          <button ref={closeButton} type="button" onClick={onClose} aria-label={t.closeLog} className="ml-auto rounded-md p-1 text-ink-3 hover:bg-sunken">
             <X aria-hidden className="size-5" />
           </button>
         </header>
 
-        <div className="flex flex-wrap gap-1.5 px-[18px] pt-3" role="group" aria-label="Xem log của phần">
+        <div className="flex flex-wrap gap-1.5 px-[18px] pt-3" role="group" aria-label={t.logFilterAria}>
           {parts.map((p) => (
             <button
               key={p.id}
@@ -113,25 +113,25 @@ export default function JobLogDrawer({ lines, parts, part, onPart, onClose, sour
 
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-b border-line px-[18px] py-2.5 text-[13px] text-ink-2">
           <label className="inline-flex items-center gap-1.5">
-            <input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} /> Chỉ cảnh báo và lỗi
+            <input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} /> {t.logOnlyIssues}
           </label>
           <label className="inline-flex items-center gap-1.5">
-            <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Tự cuộn
+            <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> {t.logAutoScroll}
           </label>
           <button type="button" onClick={copy} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 font-semibold text-ink hover:bg-sunken">
-            <Copy aria-hidden className="size-3.5" /> {copied ?? "Copy log"}
+            <Copy aria-hidden className="size-3.5" /> {copied ?? t.logCopy}
           </button>
         </div>
 
-        <ol ref={list} role="log" aria-live="polite" aria-label="Các dòng log" className="flex-1 overflow-y-auto py-1.5 font-mono text-[12.8px] leading-[1.5]">
-          {lines.length === 0 && <li className="px-[18px] py-4 font-sans text-ink-3">Chưa có log.</li>}
+        <ol ref={list} role="log" aria-live="polite" aria-label={t.logListAria} className="flex-1 overflow-y-auto py-1.5 font-mono text-[12.8px] leading-[1.5]">
+          {lines.length === 0 && <li className="px-[18px] py-4 font-sans text-ink-3">{t.logEmpty}</li>}
           {lines.map((line, index) => (
             <li
               key={`${line.key ?? index}-${line.src}`}
               hidden={!shown(line)}
               className={cx("grid grid-cols-[62px_86px_minmax(0,1fr)] gap-2.5 border-l-[3px] border-transparent px-[18px] py-[3px]", LEVEL_ROW[line.level])}
             >
-              <span className="num text-ink-3">{clockTime(new Date(line.t * 1000))}</span>
+              <span className="num text-ink-3">{clockTime(new Date(line.t * 1000), lang)}</span>
               <span className="flex min-w-0 items-center gap-1.5 text-ink-2">
                 <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: sourceColor(line.src) ?? "var(--ink-3)" }} />
                 <span className="truncate">{sourceLabel(line.src)}</span>

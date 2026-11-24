@@ -1,18 +1,15 @@
 "use client";
 
-import { formatNumber } from "@/lib/format";
+import { formatNumber, formatShortMoney } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 
-// A value per load for each endpoint, as lines; labels sit at the line ends (no legend lookup). Used for the
-// speed-up of the official campaign (with the 1x baseline line) and for live numbers over many loads (design D17).
-// Text uses theme ink tokens; marks use the endpoint colours.
 export interface Series {
   name: string;
   color: string;
   values: (number | null)[];
-  dashed?: boolean; // the baseline, when it is drawn as a line of its own
+  dashed?: boolean;
 }
 
-// Round ticks: a 1-2-5 step giving about four gaps.
 function ticksFor(lo: number, hi: number): number[] {
   const raw = (hi - lo) / 4 || Math.abs(hi) / 4 || 1;
   const mag = 10 ** Math.floor(Math.log10(raw));
@@ -27,9 +24,10 @@ export function LineChart({ label, loads, series, format, reference, referenceLa
   loads: number[];
   series: Series[];
   format: (value: number) => string;
-  reference?: number; // drawn bold, e.g. 1x for the baseline
+  reference?: number;
   referenceLabel?: string;
 }) {
+  const { t } = useI18n();
   const W = 720, H = 320, L = 74, R = 230, T = 18, B = 52;
   const all = series.flatMap((s) => s.values.filter((v): v is number => v !== null)).concat(reference === undefined ? [] : [reference]);
   const ticks = ticksFor(Math.min(...all), Math.max(...all));
@@ -40,15 +38,14 @@ export function LineChart({ label, loads, series, format, reference, referenceLa
     .map((s) => ({ s, last: [...s.values].reverse().find((v) => v !== null) ?? null }))
     .filter((e): e is { s: Series; last: number } => e.last !== null)
     .sort((a, b) => b.last - a.last);
-  // End labels go down the right side in value order, at least 18 px apart so they never overlap.
   const labelY: number[] = [];
   for (const e of ends) labelY.push(Math.max(y(e.last) + 5, (labelY[labelY.length - 1] ?? -Infinity) + 18));
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full min-w-[520px] max-w-[820px]" role="img" aria-label={label}>
-      {ticks.map((t) => (
-        <g key={t}>
-          <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="var(--line)" />
-          <text x={L - 10} y={y(t) + 5} textAnchor="end" fontSize={14} fill="var(--ink-3)">{format(t)}</text>
+      {ticks.map((tick) => (
+        <g key={tick}>
+          <line x1={L} x2={W - R} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
+          <text x={L - 10} y={y(tick) + 5} textAnchor="end" fontSize={14} fill="var(--ink-3)">{format(tick)}</text>
         </g>
       ))}
       {reference !== undefined && (
@@ -60,7 +57,7 @@ export function LineChart({ label, loads, series, format, reference, referenceLa
       {loads.map((c, i) => (
         <text key={c} x={x(i)} y={H - B + 22} textAnchor="middle" fontSize={14} fill="var(--ink-3)">{c}</text>
       ))}
-      <text x={(L + W - R) / 2} y={H - 6} textAnchor="middle" fontSize={13} fill="var(--ink-3)">Số người dùng cùng lúc</text>
+      <text x={(L + W - R) / 2} y={H - 6} textAnchor="middle" fontSize={13} fill="var(--ink-3)">{t.concurrencyAxis}</text>
       {series.map((s) => {
         const points = s.values.map((v, i) => (v === null ? null : `${x(i)},${y(v)}`)).filter(Boolean).join(" ");
         return (
@@ -68,7 +65,7 @@ export function LineChart({ label, loads, series, format, reference, referenceLa
             <polyline points={points} fill="none" stroke={s.color} strokeWidth={2.5} strokeLinejoin="round" strokeDasharray={s.dashed ? "6 5" : undefined} />
             {s.values.map((v, i) => v !== null && (
               <circle key={i} cx={x(i)} cy={y(v)} r={5} fill={s.color} stroke="var(--surface)" strokeWidth={2}>
-                <title>{`${s.name}, ${loads[i]} người dùng: ${format(v)}`}</title>
+                <title>{`${s.name}, Concurrency ${loads[i]}: ${format(v)}`}</title>
               </circle>
             ))}
           </g>
@@ -83,17 +80,16 @@ export function LineChart({ label, loads, series, format, reference, referenceLa
   );
 }
 
-// Bars drawn straight from SQL rows: vertical for dates, horizontal for names. HTML, not SVG, so the text keeps
-// its size on a phone (design D16); values are written on the bars, so there is no axis.
-export function BarChart({ rows, horizontal, color = "var(--step-3)", unit = "đ", label }: {
+export function BarChart({ rows, horizontal, color = "var(--step-3)", unit = "VND", label }: {
   rows: [string, number][];
   horizontal?: boolean;
   color?: string;
   unit?: string;
   label: string;
 }) {
+  const { lang } = useI18n();
   const max = Math.max(1, ...rows.map((r) => r[1]));
-  const fmt = (v: number) => `${formatNumber(v)}${unit ? ` ${unit}` : ""}`;
+  const fmt = (v: number) => `${formatNumber(v, lang)}${unit ? ` ${unit}` : ""}`;
   if (horizontal) {
     return (
       <div role="img" aria-label={label} className="grid gap-2">
@@ -109,11 +105,9 @@ export function BarChart({ rows, horizontal, color = "var(--step-3)", unit = "đ
       </div>
     );
   }
-  // Short values fit above narrow columns: 1,27 tr and 420 k for money.
-  const short = (v: number) => (!unit ? formatNumber(v)
-    : v >= 1e6 ? `${formatNumber(Math.round(v / 1e4) / 100)} tr` : v >= 1e3 ? `${formatNumber(Math.round(v / 1e3))} k` : fmt(v));
+  const short = (v: number) => (!unit ? formatNumber(v, lang) : formatShortMoney(v, lang));
   const peak = rows.reduce((best, r, i) => (r[1] > rows[best][1] ? i : best), 0);
-  const crowded = rows.length > 8; // then only the highest column is labelled
+  const crowded = rows.length > 8;
   return (
     <div role="img" aria-label={label} className="flex h-[220px] items-end gap-1.5 border-b border-line pt-1 sm:gap-2.5">
       {rows.map(([k, v], i) => (

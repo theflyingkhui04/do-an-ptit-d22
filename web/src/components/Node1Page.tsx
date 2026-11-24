@@ -16,6 +16,7 @@ import {
   PageHead,
   Panel,
   Pill,
+  ReferencePicker,
   Spinner,
   Tabs,
   cx,
@@ -34,19 +35,20 @@ import {
   type JobEvent,
   type RunReport,
 } from "@/lib/api";
-import { KEY_FIELDS, describeField, fieldText, isEmptyValue, leafFields, sameValue, type FieldValue } from "@/lib/fields";
+import { KEY_FIELDS_BY_LANG, describeField, fieldText, isEmptyValue, leafFields, sameValue, type FieldValue } from "@/lib/fields";
 import { formatMoney, formatMs, formatNumber, formatSpeedup } from "@/lib/format";
-import { durationVi, endpointState, ocrState, silentLine, systemState, type PartState } from "@/lib/liveness";
+import { useI18n, type Dict, type Lang } from "@/lib/i18n";
+import { durationText, endpointState, ocrState, silentLine, systemState, type PartState } from "@/lib/liveness";
 import { SAMPLES } from "@/lib/official";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const TONE_TEXT: Record<PartState["tone"], string> = { good: "text-good", warn: "text-warn", bad: "text-bad", idle: "text-ink-3" };
 
-function uploadError(exc: unknown): string {
+function uploadError(exc: unknown, t: Dict): string {
   if (exc instanceof ApiError) {
-    if (exc.status === 413) return "Ảnh lớn hơn 10 MB.";
-    if (exc.status === 415) return "Tệp không phải ảnh JPEG hoặc PNG.";
-    if (exc.status === 429) return "Đã chạy quá nhiều lần trong ít phút, thử lại sau.";
+    if (exc.status === 413) return t.errTooLarge;
+    if (exc.status === 415) return t.errInvalidType;
+    if (exc.status === 429) return t.errRateLimit;
     return exc.message;
   }
   return (exc as Error).message;
@@ -64,71 +66,78 @@ function LiveState({ state, small }: { state: PartState; small?: boolean }) {
   );
 }
 
-// Column head of one endpoint: what it is doing now, then its own speed once it answered (design D13).
-function RunHead({ id, name, color, isBaseline, report, state, onLog }: {
+function RunHead({ id, name, color, isReference, report, state, onLog }: {
   id: string;
   name: string;
   color: string;
-  isBaseline: boolean;
+  isReference: boolean;
   report?: RunReport;
   state: PartState;
   onLog: () => void;
 }) {
+  const { lang, t } = useI18n();
   return (
     <div className="grid min-w-[210px] gap-1.5 text-left font-normal" data-testid={`run-${id}`}>
       <div className="flex items-center gap-2">
         <Dot color={color} />
         <b className="truncate text-[15px] font-bold">{name}</b>
-        {isBaseline && <span className="rounded-md border border-line px-1.5 text-[11.5px] font-semibold text-ink-3">mốc</span>}
-        <button type="button" onClick={onLog} aria-label={`Xem log ${name}`} title={`Xem log ${name}`} className="ml-auto rounded-md p-1 text-ink-3 hover:bg-sunken">
+        {isReference && <span className="rounded-md border border-line px-1.5 text-[11.5px] font-semibold text-ink-3">{t.referenceBadge}</span>}
+        <button type="button" onClick={onLog} aria-label={t.viewLogAria(name)} title={t.viewLogAria(name)} className="ml-auto rounded-md p-1 text-ink-3 hover:bg-sunken">
           <ScrollText aria-hidden className="size-4" />
         </button>
       </div>
       <LiveState state={state} />
       {report?.valid && (
         <div className="num flex flex-wrap gap-x-3.5 gap-y-0.5 text-[12.5px] text-ink-2">
-          <span>TTFT <b className="text-ink">{formatMs(report.ttft_ms)}</b></span>
-          <span>TPOT <b className="text-ink">{formatMs(report.tpot_ms)}</b></span>
-          <span><b className="text-ink">{formatNumber(report.completion_tokens)}</b> token</span>
+          <span>TTFT <b className="text-ink">{formatMs(report.ttft_ms, lang)}</b></span>
+          <span>TPOT <b className="text-ink">{formatMs(report.tpot_ms, lang)}</b></span>
+          <span><b className="text-ink">{formatNumber(report.completion_tokens, lang)}</b> token</span>
         </div>
       )}
       {report && !report.valid && <p className="line-clamp-3 text-[12.5px] text-bad" title={report.error ?? undefined}>{report.error}</p>}
-      {(report?.source_restored ?? []).length > 0 && (
-        <p className="text-[12px] text-ink-3" title="Model chép sai giá trị nguồn mà hệ thống đã gửi; hệ thống điền lại giá trị đúng.">
-          Hệ thống điền lại nguồn: {report!.source_restored!.join(", ")}
-        </p>
-      )}
     </div>
   );
 }
 
-function diffNote(paths: string[]): string {
-  if (paths.length === 0) return "Mọi trường trùng với mốc";
-  const named = paths.slice(0, 4).map((path) => {
-    const { group, label } = describeField(path);
-    return `${group}, ${label.toLowerCase()}`;
-  });
-  return `Khác ở ${named.join("; ")}${paths.length > 4 ? ` và ${paths.length - 4} trường khác` : ""}`;
+interface PairComparison {
+  endpointId: string;
+  name: string;
+  equalFields: number | null;
+  totalFields: number | null;
+  differingPaths: string[];
+  speedup: number | null;
+  tpotMs: number | null | undefined;
+  baseTpotMs: number | null | undefined;
 }
 
-// Under the table: how each endpoint compares with the baseline (Dương, 16/11).
-function Conclusion({ run, base }: { run: RunReport; base?: RunReport }) {
-  const speed = run.speedup_tpot_vs_baseline;
-  const same = run.differing_fields.length === 0;
+function diffNote(paths: string[], lang: Lang, t: Dict): string {
+  if (paths.length === 0) return t.allFieldsMatch;
+  const named = paths.slice(0, 4).map((path) => {
+    const { group, label } = describeField(path, lang);
+    return `${group} · ${label.toLowerCase()}`;
+  });
+  return t.differsAt(named, Math.max(0, paths.length - 4));
+}
+
+function Conclusion({ cmp, refName }: { cmp: PairComparison; refName: string }) {
+  const { lang, t } = useI18n();
+  const same = cmp.differingPaths.length === 0;
   return (
-    <section className="grid gap-2" data-testid={`conclusion-${run.endpoint_id}`} aria-label={`${run.name} so với mốc`}>
-      <h3 className="text-[13.5px] font-semibold text-ink-2">{run.name} so với mốc{base ? ` ${base.name}` : ""}</h3>
+    <section className="grid gap-2" data-testid={`conclusion-${cmp.endpointId}`} aria-label={`${cmp.name} · ${t.compareTableTitle(refName)}`}>
+      <h3 className="text-[13.5px] font-semibold text-ink-2">{cmp.name} · {t.compareTableTitle(refName)}</h3>
       <div className="grid gap-x-7 gap-y-3 sm:grid-cols-2">
-        <div className="grid content-start gap-0.5">
-          <span className="text-[13px] font-medium text-ink-3">Giống mốc</span>
-          <b className={cx("num text-[24px] leading-tight", same ? "text-good" : "text-warn")}>{run.equal_fields}/{run.total_fields} trường</b>
-          <small className="text-[13px] text-ink-2">{diffNote(run.differing_fields)}</small>
-        </div>
-        {speed !== null && (
+        {cmp.equalFields !== null && cmp.totalFields !== null && (
           <div className="grid content-start gap-0.5">
-            <span className="text-[13px] font-medium text-ink-3">{speed >= 1 ? "Nhanh hơn mốc" : "Chậm hơn mốc"}</span>
-            <b className={cx("num text-[24px] leading-tight", speed >= 1 ? "text-good" : "text-bad")}>{formatSpeedup(speed)}</b>
-            <small className="text-[13px] text-ink-2">Tính theo TPOT: {formatMs(run.tpot_ms)} so với {formatMs(base?.tpot_ms)}</small>
+            <span className="text-[13px] font-medium text-ink-3">{t.matchFieldsLabel}</span>
+            <b className={cx("num text-[24px] leading-tight", same ? "text-good" : "text-warn")}>{t.fieldsCount(cmp.equalFields, cmp.totalFields)}</b>
+            <small className="text-[13px] text-ink-2">{diffNote(cmp.differingPaths, lang, t)}</small>
+          </div>
+        )}
+        {cmp.speedup !== null && (
+          <div className="grid content-start gap-0.5">
+            <span className="text-[13px] font-medium text-ink-3">{cmp.speedup >= 1 ? t.fasterLabel : t.slowerLabel}</span>
+            <b className={cx("num text-[24px] leading-tight", cmp.speedup >= 1 ? "text-good" : "text-bad")}>{formatSpeedup(cmp.speedup, lang)}</b>
+            <small className="text-[13px] text-ink-2">{t.tpotDetail(formatMs(cmp.tpotMs, lang), formatMs(cmp.baseTpotMs, lang))}</small>
           </div>
         )}
       </div>
@@ -137,6 +146,7 @@ function Conclusion({ run, base }: { run: RunReport; base?: RunReport }) {
 }
 
 function SavedInvoices({ api, refresh }: { api: Api; refresh: number }) {
+  const { lang, t } = useI18n();
   const [rows, setRows] = useState<InvoiceRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Detail | null>(null);
@@ -153,20 +163,20 @@ function SavedInvoices({ api, refresh }: { api: Api; refresh: number }) {
   }, [api, refresh]);
 
   return (
-    <Panel title="Hoá đơn đã lưu" icon={Database} bodyClassName="p-0 gap-0">
+    <Panel title={t.savedInvoicesTitle} icon={Database} bodyClassName="p-0 gap-0">
       {error && <div className="p-[18px]"><Notice tone="bad">{error}</Notice></div>}
-      {rows && rows.length === 0 && <p className="p-[18px] text-ink-3">Chưa có hoá đơn nào.</p>}
+      {rows && rows.length === 0 && <p className="p-[18px] text-ink-3">{t.noSavedInvoices}</p>}
       {rows && rows.length > 0 && (
         <div className="max-h-[420px] overflow-auto">
           <table className="w-full min-w-[720px] text-left text-[13.5px]">
             <thead className="sticky top-0 bg-surface text-ink-3">
               <tr className="border-b border-line">
-                <th className="px-[18px] py-2.5 font-semibold">Cửa hàng</th>
-                <th className="px-3 py-2.5 font-semibold">Ngày lập</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Tổng tiền</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Mặt hàng</th>
-                <th className="px-3 py-2.5 font-semibold">Nguồn</th>
-                <th className="px-[18px] py-2.5 font-semibold">Trích bởi</th>
+                <th className="px-[18px] py-2.5 font-semibold">{t.colStore}</th>
+                <th className="px-3 py-2.5 font-semibold">{t.colDate}</th>
+                <th className="px-3 py-2.5 text-right font-semibold">{t.colTotal}</th>
+                <th className="px-3 py-2.5 text-right font-semibold">{t.colItems}</th>
+                <th className="px-3 py-2.5 font-semibold">{t.colSource}</th>
+                <th className="px-[18px] py-2.5 font-semibold">{t.colExtractedBy}</th>
               </tr>
             </thead>
             <tbody className="num">
@@ -178,9 +188,9 @@ function SavedInvoices({ api, refresh }: { api: Api; refresh: number }) {
                 >
                   <td className="px-[18px] py-2">{row.seller_name ?? "—"}</td>
                   <td className="px-3 py-2">{row.issued_date ?? "—"}</td>
-                  <td className="px-3 py-2 text-right">{formatMoney(row.total_amount_value, row.total_amount_currency)}</td>
+                  <td className="px-3 py-2 text-right">{formatMoney(row.total_amount_value, row.total_amount_currency, lang)}</td>
                   <td className="px-3 py-2 text-right">{row.item_count}</td>
-                  <td className="px-3 py-2">{row.source === "upload" ? <Pill tone="idle">Tải lên</Pill> : "Devset"}</td>
+                  <td className="px-3 py-2">{row.source === "upload" ? <Pill tone="idle">{t.sourceUpload}</Pill> : t.sourceDevset}</td>
                   <td className="px-[18px] py-2 text-ink-3">{row.lane ?? "—"}</td>
                 </tr>
               ))}
@@ -192,13 +202,13 @@ function SavedInvoices({ api, refresh }: { api: Api; refresh: number }) {
         <div className="grid gap-3 border-t border-line p-[18px]">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{open.payload.seller?.name ?? open.invoice_id}</h3>
-            <span className="text-[13px] text-ink-3">trích bởi {open.lane ?? "—"}, model {open.model_name ?? "—"}</span>
-            <Button variant="ghost" className="ml-auto" onClick={() => setOpen(null)}>Đóng</Button>
+            {open.lane && <span className="text-[13px] text-ink-3">{open.lane}</span>}
+            <Button variant="ghost" className="ml-auto" onClick={() => setOpen(null)}>{t.close}</Button>
           </div>
           <div className={cx("grid gap-5", open.image_url && "lg:grid-cols-[220px_minmax(0,1fr)]")}>
             {open.image_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={open.image_url} alt="Ảnh hoá đơn" className="max-h-[360px] w-full rounded-lg border border-line object-contain" />
+              <img src={open.image_url} alt={t.invoiceImageAlt} className="max-h-[360px] w-full rounded-lg border border-line object-contain" />
             )}
             <InvoiceDetail invoice={open.payload} />
           </div>
@@ -216,10 +226,12 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
   pollMs: number;
   go: (page: PageId) => void;
 }) {
+  const { lang, t } = useI18n();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>(() => defaultTarget(endpoints));
   const [job, setJob] = useState<Job | null>(null);
+  const [refChoice, setRefChoice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -233,7 +245,7 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
   const clockRef = useRef(clock);
   const alive = useRef(true);
   const nowMs = useNow(busy);
-  const closeLog = useCallback(() => setLogPart(null), []); // stable, so the open drawer keeps its focus
+  const closeLog = useCallback(() => setLogPart(null), []);
 
   useEffect(() => {
     alive.current = true;
@@ -244,13 +256,14 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
 
   const choose = useCallback((chosen: File | null) => {
     setJob(null);
+    setRefChoice(null);
     setError(null);
     if (chosen && !["image/jpeg", "image/png"].includes(chosen.type)) {
-      setError("Chỉ nhận ảnh JPEG hoặc PNG.");
+      setError(t.errInvalidType);
       return;
     }
     if (chosen && chosen.size > MAX_BYTES) {
-      setError("Ảnh lớn hơn 10 MB.");
+      setError(t.errTooLarge);
       return;
     }
     setFile(chosen);
@@ -258,7 +271,7 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
       if (old) URL.revokeObjectURL?.(old);
       return chosen && typeof URL.createObjectURL === "function" ? URL.createObjectURL(chosen) : null;
     });
-  }, []);
+  }, [t]);
 
   async function pickSample(sample: (typeof SAMPLES)[number]) {
     try {
@@ -266,15 +279,14 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
       const blob = await response.blob();
       choose(new File([blob], `${sample.id}.jpg`, { type: "image/jpeg" }));
     } catch {
-      setError("Không tải được ảnh mẫu.");
+      setError(t.errSampleLoad);
     }
   }
 
-  // Lines the web itself writes (it lost or found the backend again), on the server's clock.
   function addWebLine(level: JobEvent["level"], msg: string, key?: string) {
     const { server, client } = clockRef.current;
-    const t = server ? server + (Date.now() - client) / 1000 : Date.now() / 1000;
-    setWebLines((lines) => [...lines.filter((line) => !key || line.key !== key), { t, src: "web", level, msg, key }]);
+    const timestamp = server ? server + (Date.now() - client) / 1000 : Date.now() / 1000;
+    setWebLines((lines) => [...lines.filter((line) => !key || line.key !== key), { t: timestamp, src: "web", level, msg, key }]);
   }
 
   async function run() {
@@ -282,6 +294,7 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
     setBusy(true);
     setError(null);
     setJob(null);
+    setRefChoice(null);
     setWebLines([]);
     setLostSince(null);
     setTab("info");
@@ -289,7 +302,7 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
     try {
       ({ job_id: jobId } = await api.upload(file, selected));
     } catch (exc) {
-      setError(uploadError(exc));
+      setError(uploadError(exc, t));
       setBusy(false);
       return;
     }
@@ -301,20 +314,18 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
         try {
           current = await api.job(jobId);
         } catch (exc) {
-          // 4xx (wrong key, unknown job) ends the run; a network error or 5xx is the backend asleep or gone.
           if (exc instanceof ApiError && exc.status < 500) throw exc;
           if (!alive.current) return;
           lost ??= Date.now();
           tries += 1;
           setLostSince(lost);
-          addWebLine("error", `Không gọi được backend, đã thử ${tries} lần trong ${durationVi((Date.now() - lost) / 1000)}; `
-            + "job có thể vẫn đang chạy trên máy chủ", "lost");
+          addWebLine("error", t.logLostBackend(tries, durationText((Date.now() - lost) / 1000, lang)), "lost");
           await sleep(pollMs * 3);
           continue;
         }
         if (!alive.current) return;
         if (lost !== null) {
-          addWebLine("ok", `Đã kết nối lại backend sau ${durationVi((Date.now() - lost) / 1000)}`);
+          addWebLine("ok", t.logReconnected(durationText((Date.now() - lost) / 1000, lang)));
           lost = null;
           tries = 0;
           setLostSince(null);
@@ -329,39 +340,41 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
         await sleep(pollMs);
       }
     } catch (exc) {
-      setError(uploadError(exc));
+      setError(uploadError(exc, t));
     } finally {
       if (alive.current) setBusy(false);
     }
   }
 
-  if (endpoints.length === 0) return <><PageHead title="Trích xuất hoá đơn" /><NeedEndpoint what="Node 1" onGo={() => go("endpoints")} /></>;
+  if (endpoints.length === 0) return <><PageHead title={t.pageNode1} /><NeedEndpoint what="Node 1" onGo={() => go("endpoints")} /></>;
 
   const colors = endpointColors(endpoints);
   const result = job?.result;
   const runs = result?.runs ?? {};
-  const baselineId = result?.baseline ?? null;
-  const columns = [...(result?.endpoints ?? [])].sort((a, b) =>
-    Number(b.endpoint_id === baselineId) - Number(a.endpoint_id === baselineId));
+  const rawColumns = result?.endpoints ?? [];
+  const validRef = (id: string | null | undefined) => (id && rawColumns.some((c) => c.endpoint_id === id) ? id : null);
+  const referenceId = rawColumns.length >= 2
+    ? (validRef(refChoice) ?? validRef(result?.baseline) ?? rawColumns[0]?.endpoint_id ?? null)
+    : null;
+  const columns = [...rawColumns].sort((a, b) =>
+    Number(b.endpoint_id === referenceId) - Number(a.endpoint_id === referenceId));
   const nameOf = (id: string) => columns.find((c) => c.endpoint_id === id)?.name ?? endpoints.find((e) => e.endpoint_id === id)?.name ?? id;
 
-  // Live state of every part, on the server's clock.
   const serverNow = clock.server + Math.max(0, (nowMs - clock.client) / 1000);
   const events = result?.events ?? [];
   const lostFor = lostSince === null ? null : Math.max(0, (nowMs - lostSince) / 1000);
   const states: Record<string, PartState> = {};
   if (job) {
-    states.system = systemState(job, lostFor);
-    states.ocr = ocrState(job, events, serverNow);
-    for (const c of columns) states[c.endpoint_id] = endpointState(job, events, c.endpoint_id, serverNow);
+    states.system = systemState(job, lostFor, lang);
+    states.ocr = ocrState(job, events, serverNow, lang);
+    for (const c of columns) states[c.endpoint_id] = endpointState(job, events, c.endpoint_id, serverNow, lang);
   }
   const silent = ["ocr", ...columns.map((c) => c.endpoint_id)]
-    .map((src) => (states[src] ? silentLine(src, states[src], serverNow) : null))
+    .map((src) => (states[src] ? silentLine(src, states[src], serverNow, lang) : null))
     .filter((line): line is JobEvent => line !== null);
   const lines = [...events, ...webLines, ...silent].sort((a, b) => a.t - b.t);
   const issues = lines.filter((line) => line.level === "warn" || line.level === "error");
 
-  // Fields: each endpoint's own output, compared cell by cell with the baseline.
   const fields: Record<string, Map<string, FieldValue>> = {};
   for (const c of columns) {
     const payload = runs[c.endpoint_id]?.payload;
@@ -370,13 +383,46 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
   const allPaths: string[] = [];
   for (const c of columns) for (const path of fields[c.endpoint_id]?.keys() ?? []) if (!allPaths.includes(path)) allPaths.push(path);
   const showAll = view === "all" && allPaths.length > 0;
-  const paths = showAll ? allPaths : Object.keys(KEY_FIELDS);
-  const baseFields = baselineId ? fields[baselineId] : undefined;
-  const comparisons = columns.map((c) => runs[c.endpoint_id])
-    .filter((r): r is RunReport => Boolean(r) && r!.endpoint_id !== baselineId && r!.total_fields !== null);
+  const keyFieldLabels = KEY_FIELDS_BY_LANG[lang];
+  const paths = showAll ? allPaths : Object.keys(keyFieldLabels);
+  const refFields = referenceId ? fields[referenceId] : undefined;
+  const refRun = referenceId ? runs[referenceId] : undefined;
+
+  const comparisons: PairComparison[] = [];
+  if (referenceId && refRun?.valid) {
+    for (const c of columns) {
+      if (c.endpoint_id === referenceId) continue;
+      const runReport = runs[c.endpoint_id];
+      if (!runReport?.valid) continue;
+      const mine = fields[c.endpoint_id];
+      let equalFields: number | null = null;
+      let totalFields: number | null = null;
+      let differingPaths: string[] = [];
+      if (mine && refFields) {
+        const union = [...new Set([...mine.keys(), ...refFields.keys()])];
+        differingPaths = union.filter((p) => !sameValue(mine.get(p), refFields.get(p)));
+        totalFields = union.length;
+        equalFields = union.length - differingPaths.length;
+      } else if (referenceId === result?.baseline && runReport.total_fields !== null) {
+        equalFields = runReport.equal_fields;
+        totalFields = runReport.total_fields;
+        differingPaths = runReport.differing_fields;
+      }
+      const speedup = runReport.tpot_ms && refRun.tpot_ms ? refRun.tpot_ms / runReport.tpot_ms : null;
+      comparisons.push({
+        endpointId: c.endpoint_id,
+        name: c.name,
+        equalFields,
+        totalFields,
+        differingPaths,
+        speedup,
+        tpotMs: runReport.tpot_ms,
+        baseTpotMs: refRun.tpot_ms,
+      });
+    }
+  }
   const stored = result?.stored_endpoint ? runs[result.stored_endpoint] : undefined;
 
-  // Step track: OCR -> Node 1 -> Lưu, from the job status, its timings and the log.
   const firstAt = (match: (line: JobEvent) => boolean) => events.find(match)?.t;
   const failedAt = job?.status === "failed" ? (job.error ?? "").split(":")[0] : null;
   const order = ["ocr", "node1", "saving", "done"];
@@ -392,31 +438,33 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
   const saveStart = firstAt((l) => l.src === "system" && l.msg.startsWith("Lưu hoá đơn"));
   const saveEnd = firstAt((l) => l.src === "system" && l.msg.startsWith("Đã lưu"));
   const steps: { name: string; label: string; state: StepState; meta: string }[] = [
-    { name: "ocr", label: "OCR", state: stepState("ocr"), meta: "" },
-    { name: "node1", label: "Node 1", state: Object.values(runs).length > 0 && !Object.values(runs).some((r) => r.valid) ? "err" : stepState("node1"), meta: "" },
-    { name: "saving", label: "Lưu", state: stepState("saving"), meta: "" },
+    { name: "ocr", label: t.stepOcr, state: stepState("ocr"), meta: "" },
+    { name: "node1", label: t.stepNode1, state: Object.values(runs).length > 0 && !Object.values(runs).some((r) => r.valid) ? "err" : stepState("node1"), meta: "" },
+    { name: "saving", label: t.stepSaving, state: stepState("saving"), meta: "" },
   ];
   const started: Record<string, number | undefined> = {
-    ocr: firstAt((l) => l.src === "ocr"), node1: firstAt((l) => columns.some((c) => c.endpoint_id === l.src)), saving: saveStart,
+    ocr: firstAt((l) => l.src === "ocr"),
+    node1: firstAt((l) => columns.some((c) => c.endpoint_id === l.src)),
+    saving: saveStart,
   };
   for (const s of steps) {
     const ms = s.name === "saving" ? (saveStart && saveEnd ? (saveEnd - saveStart) * 1000 : undefined) : result?.timings_ms?.[s.name];
-    if (s.state === "run" && started[s.name] !== undefined) s.meta = durationVi(serverNow - started[s.name]!);
-    else if (ms !== undefined && s.state !== "wait") s.meta = formatMs(ms);
+    if (s.state === "run" && started[s.name] !== undefined) s.meta = durationText(serverNow - started[s.name]!, lang);
+    else if (ms !== undefined && s.state !== "wait") s.meta = formatMs(ms, lang);
   }
 
   const parts: LogPart[] = job ? [
-    { id: "all", label: "Tất cả" },
-    { id: "ocr", label: "OCR", state: states.ocr },
+    { id: "all", label: t.logAll },
+    { id: "ocr", label: t.stepOcr, state: states.ocr },
     ...columns.map((c) => ({ id: c.endpoint_id, label: c.name, color: colors[c.endpoint_id], state: states[c.endpoint_id] })),
-    { id: "system", label: "Hệ thống", state: states.system },
+    { id: "system", label: t.logSystem, state: states.system },
   ] : [];
 
   return (
     <>
-      <PageHead title="Trích xuất hoá đơn" />
+      <PageHead title={t.pageNode1} />
 
-      <Panel title="Đầu vào" icon={ImageUp}>
+      <Panel title={t.inputPanel} icon={ImageUp}>
         <div className="grid gap-4 lg:grid-cols-[170px_minmax(0,1fr)_auto] lg:items-center">
           <label
             onDragOver={(e) => {
@@ -436,20 +484,20 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
           >
             {preview ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={preview} alt="Ảnh đã chọn" className="max-h-[150px] rounded-lg object-contain" />
+              <img src={preview} alt={t.selectedImageAlt} className="max-h-[150px] rounded-lg object-contain" />
             ) : (
               <>
                 <FileImage aria-hidden className="size-7 text-ink-3" />
-                <span className="text-[12.5px] text-ink-3">Kéo thả hoặc bấm để chọn ảnh</span>
+                <span className="text-[12.5px] text-ink-3">{t.dropImage}</span>
               </>
             )}
-            <input type="file" accept="image/jpeg,image/png" aria-label="Ảnh hoá đơn" className="sr-only" onChange={(e) => choose(e.target.files?.[0] ?? null)} />
+            <input type="file" accept="image/jpeg,image/png" aria-label={t.imageInputAria} className="sr-only" onChange={(e) => choose(e.target.files?.[0] ?? null)} />
           </label>
 
           <div className="grid min-w-0 gap-3">
             <div>
-              <b className="block truncate text-[15px]">{file ? file.name : "Chọn ảnh"}</b>
-              <span className="text-[13px] text-ink-3">JPEG hoặc PNG, tối đa 10 MB.</span>
+              <b className="block truncate text-[15px]">{file ? file.name : t.selectImage}</b>
+              <span className="text-[13px] text-ink-3">{t.imageConstraints}</span>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 {SAMPLES.map((s) => (
                   <button key={s.id} type="button" onClick={() => pickSample(s)} className="flex items-center gap-2 rounded-lg border border-line py-1 pl-1 pr-2.5 text-left text-[12.5px] text-ink-2 hover:bg-sunken">
@@ -461,7 +509,7 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
               </div>
             </div>
             <div className="grid gap-1.5">
-              <span className="text-[13.5px] font-semibold">Lựa chọn LLM</span>
+              <span className="text-[13.5px] font-semibold">{t.selectLlm}</span>
               <EndpointChips
                 endpoints={endpoints}
                 selected={selected}
@@ -470,9 +518,9 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
             </div>
           </div>
 
-          <div className="grid gap-2 lg:min-w-[190px]">
+          <div className="grid gap-2 lg:min-w-[170px]">
             <Button icon={Play} loading={busy} disabled={!file || selected.length === 0 || busy} onClick={run}>
-              {busy ? "Đang chạy" : "Bắt đầu"}
+              {busy ? t.runningBtn : t.startRun}
             </Button>
           </div>
         </div>
@@ -480,11 +528,11 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
         {result?.ocr?.text && (
           <details className="border-t border-line pt-3">
             <summary className="flex cursor-pointer items-center gap-2 text-[13.5px] font-semibold">
-              Chữ OCR đọc được ({result.ocr.text.split("\n").length} dòng, đã bỏ dấu)
+              {t.ocrTextTitle(result.ocr.text.split("\n").length)}
               <button
                 type="button"
-                aria-label="Xem log OCR"
-                title="Xem log OCR"
+                aria-label={t.viewOcrLog}
+                title={t.viewOcrLog}
                 onClick={(e) => {
                   e.preventDefault();
                   setLogPart("ocr");
@@ -494,18 +542,30 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
                 <ScrollText aria-hidden className="size-4" />
               </button>
             </summary>
-            <div className="mt-2.5"><CodeBlock label="Văn bản OCR">{result.ocr.text}</CodeBlock></div>
+            <div className="mt-2.5"><CodeBlock label={t.ocrTextLabel}>{result.ocr.text}</CodeBlock></div>
           </details>
         )}
       </Panel>
 
-      <Panel title="Kết quả" icon={ScanText} meta={job && <span>Job {job.job_id}</span>} bodyClassName="p-0 gap-0">
+      <Panel
+        title={t.resultsPanel}
+        icon={ScanText}
+        meta={referenceId && (
+          <ReferencePicker
+            options={rawColumns.map((c) => ({ id: c.endpoint_id, name: c.name }))}
+            value={referenceId}
+            onChange={setRefChoice}
+            colors={colors}
+          />
+        )}
+        bodyClassName="p-0 gap-0"
+      >
         {!job ? (
-          busy && <p className="p-[18px] text-ink-3">Đang gửi ảnh lên máy chủ…</p>
+          busy && <p className="p-[18px] text-ink-3">{t.uploadingImage}</p>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-line px-[18px] py-3">
-              <ol aria-label="Các bước" className="flex flex-wrap items-center gap-2">
+              <ol aria-label={t.stepsAria} className="flex flex-wrap items-center gap-2">
                 {steps.map((s, i) => (
                   <li key={s.name} className="flex items-center gap-2">
                     {i > 0 && <span aria-hidden className="h-px w-5 bg-line" />}
@@ -521,8 +581,8 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
               </ol>
               <div className="ml-auto flex flex-wrap items-center gap-2.5">
                 {allPaths.length > 0 && (
-                  <div role="group" aria-label="Cách xem kết quả" className="inline-flex overflow-hidden rounded-lg border border-line text-[13px]">
-                    {([["key", "Trường chính"], ["all", `Đủ ${allPaths.length} trường`]] as const).map(([value, label]) => (
+                  <div role="group" aria-label={t.viewModeAria} className="inline-flex overflow-hidden rounded-lg border border-line text-[13px]">
+                    {([["key", t.keyFieldsBtn], ["all", t.allFieldsBtn(allPaths.length)]] as const).map(([value, label]) => (
                       <button key={value} type="button" aria-pressed={view === value} onClick={() => setView(value)}
                         className={cx("px-2.5 py-1", view === value ? "bg-ink font-semibold text-surface" : "hover:bg-sunken")}>
                         {label}
@@ -532,7 +592,7 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
                 )}
                 <button type="button" onClick={() => setLogPart("all")} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[13px] font-semibold hover:bg-sunken">
                   <ScrollText aria-hidden className="size-4" />
-                  Xem log
+                  {t.viewLogsBtn}
                   {issues.length > 0 && (
                     <span aria-hidden className={cx("num grid min-w-[18px] place-items-center rounded-full px-1.5 text-[11.5px]",
                       issues.some((l) => l.level === "error") ? "bg-bad-tint text-bad" : "bg-warn-tint text-warn")}>
@@ -545,36 +605,28 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
 
             {lostFor !== null && (
               <div className="px-[18px] pt-3">
-                <Notice tone="bad">Mất liên lạc với backend {durationVi(lostFor)}; web đang thử lại. Job có thể vẫn đang chạy trên máy chủ.</Notice>
+                <Notice tone="bad">{t.lostBackendNotice(durationText(lostFor, lang))}</Notice>
               </div>
             )}
             {job.status === "failed" && (
               <div className="px-[18px] pt-3">
-                <Notice tone="bad">
-                  Lỗi ở bước {job.error}
-                  {job.error?.includes("SOURCE_BINDING") && (
-                    <p className="mt-1.5 text-ink-2">
-                      Model chép sai thông tin nguồn của ảnh (mã hoặc đường dẫn) mà luồng Node 1 bắt phải chép y nguyên. Lỗi này
-                      thỉnh thoảng xảy ra với model 7B; bấm Bắt đầu lần nữa.
-                    </p>
-                  )}
-                </Notice>
+                <Notice tone="bad">{t.failedStepPrefix} {job.error}</Notice>
               </div>
             )}
-            {job.status === "interrupted" && <div className="px-[18px] pt-3"><Notice tone="warn">Máy chủ khởi động lại giữa chừng; chạy lại lần nữa.</Notice></div>}
+            {job.status === "interrupted" && <div className="px-[18px] pt-3"><Notice tone="warn">{t.interruptedNotice}</Notice></div>}
 
             <div className="overflow-x-auto">
-              <table aria-label="So sánh với mốc" className="w-full min-w-[620px] border-collapse text-left text-[14px]">
+              <table aria-label={t.comparisonTableAria} className="w-full min-w-[620px] border-collapse text-left text-[14px]">
                 <thead>
                   <tr className="border-b border-line">
-                    <th scope="col" className="w-[170px] px-[18px] pb-2.5 pt-3.5 align-top text-[13px] font-medium text-ink-3">Trường</th>
+                    <th scope="col" className="w-[170px] px-[18px] pb-2.5 pt-3.5 align-top text-[13px] font-medium text-ink-3">{t.fieldCol}</th>
                     {columns.map((c) => (
                       <th key={c.endpoint_id} scope="col" className="px-3.5 pb-2.5 pt-3.5 align-top">
                         <RunHead
                           id={c.endpoint_id}
                           name={c.name}
                           color={colors[c.endpoint_id] ?? "var(--ink-2)"}
-                          isBaseline={c.endpoint_id === baselineId}
+                          isReference={c.endpoint_id === referenceId}
                           report={runs[c.endpoint_id]}
                           state={states[c.endpoint_id]}
                           onLog={() => setLogPart(c.endpoint_id)}
@@ -585,8 +637,8 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
                 </thead>
                 <tbody>
                   {paths.map((path, index) => {
-                    const { group, label } = describeField(path);
-                    const newGroup = showAll && (index === 0 || describeField(paths[index - 1]).group !== group);
+                    const { group, label } = describeField(path, lang);
+                    const newGroup = showAll && (index === 0 || describeField(paths[index - 1], lang).group !== group);
                     return [
                       newGroup && (
                         <tr key={`g-${group}`} className="border-t border-line bg-sunken">
@@ -594,19 +646,19 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
                         </tr>
                       ),
                       <tr key={path} className="border-t border-line first:border-t-0">
-                        <th scope="row" className="whitespace-nowrap px-[18px] py-2.5 align-top font-medium text-ink-2">{showAll ? label : KEY_FIELDS[path]}</th>
+                        <th scope="row" className="whitespace-nowrap px-[18px] py-2.5 align-top font-medium text-ink-2">{showAll ? label : keyFieldLabels[path]}</th>
                         {columns.map((c) => {
                           const mine = fields[c.endpoint_id];
                           if (!mine) {
                             const failed = runs[c.endpoint_id] && !runs[c.endpoint_id].valid;
-                            return <td key={c.endpoint_id} className={cx("px-3.5 py-2.5 align-top", failed ? "italic text-ink-3" : "text-ink-3")}>{failed ? "Không có kết quả" : "—"}</td>;
+                            return <td key={c.endpoint_id} className={cx("px-3.5 py-2.5 align-top", failed ? "italic text-ink-3" : "text-ink-3")}>{failed ? t.noResultCell : "—"}</td>;
                           }
                           const value = mine.get(path);
-                          const differs = c.endpoint_id !== baselineId && baseFields !== undefined && !sameValue(value, baseFields.get(path));
+                          const differs = c.endpoint_id !== referenceId && refFields !== undefined && !sameValue(value, refFields.get(path));
                           return (
-                            <td key={c.endpoint_id} title={differs ? "Khác mốc" : undefined}
+                            <td key={c.endpoint_id} title={differs ? t.diffTooltip : undefined}
                               className={cx("break-words px-3.5 py-2.5 align-top", differs && "bg-warn-tint font-semibold text-warn")}>
-                              {isEmptyValue(value) ? <span className="italic text-ink-3">Không có</span> : fieldText(value)}
+                              {isEmptyValue(value) ? <span className="italic text-ink-3">{t.emptyValue}</span> : fieldText(value, lang)}
                             </td>
                           );
                         })}
@@ -618,12 +670,9 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
                       <td />
                       <td colSpan={columns.length} className="px-3.5 py-3">
                         {showAll ? (
-                          <Button variant="ghost" onClick={() => setView("key")}>Thu gọn về trường chính</Button>
+                          <Button variant="ghost" onClick={() => setView("key")}>{t.collapseFields}</Button>
                         ) : (
-                          <span className="flex flex-wrap items-center gap-2.5">
-                            <Button variant="ghost" onClick={() => setView("all")}>{`Xem đủ ${allPaths.length} trường`}</Button>
-                            <span className="text-[13px] text-ink-3">gồm mọi trường của hoá đơn, theo nhóm</span>
-                          </span>
+                          <Button variant="ghost" onClick={() => setView("all")}>{t.expandFields(allPaths.length)}</Button>
                         )}
                       </td>
                     </tr>
@@ -634,25 +683,25 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
 
             {(comparisons.length > 0 || stored) && (
               <div className="grid gap-4 rounded-b-2xl border-t border-line bg-sunken px-[18px] py-4">
-                {comparisons.map((r) => <Conclusion key={r.endpoint_id} run={r} base={baselineId ? runs[baselineId] : undefined} />)}
+                {referenceId && comparisons.map((cmp) => (
+                  <Conclusion key={cmp.endpointId} cmp={cmp} refName={nameOf(referenceId)} />
+                ))}
                 {stored && (
                   <p className="text-[13px] text-ink-2">
-                    Đã lưu hoá đơn từ <b className="text-ink">{stored.name}</b>
-                    {result?.stored_from_fallback ? " (endpoint chọn đầu bị lỗi, lấy kết quả của mốc)" : ""}.
+                    {t.storedFrom} <b className="text-ink">{stored.name}</b>.
                   </p>
                 )}
-                {!baselineId && Object.keys(runs).length > 0 && <p className="text-[13px] text-ink-3">Chưa có endpoint mốc nên chưa so sánh.</p>}
               </div>
             )}
 
             {result?.invoice && (
               <div className="grid gap-4 border-t border-line px-[18px] py-4">
-                <Tabs label="Hoá đơn đã lưu" value={tab} onChange={setTab} tabs={[["info", "Hoá đơn đã lưu"], ["json", "JSON"]]} />
+                <Tabs label={t.storedInvoiceTab} value={tab} onChange={setTab} tabs={[["info", t.storedInvoiceTab], ["json", t.jsonTab]]} />
                 {tab === "info" && <InvoiceDetail invoice={result.invoice} itemLines={result.item_check?.lines} invoiceSum={result.item_check?.invoice_sum} />}
-                {tab === "json" && <CodeBlock label="JSON hoá đơn">{JSON.stringify(result.invoice, null, 2)}</CodeBlock>}
+                {tab === "json" && <CodeBlock label={t.invoiceJsonLabel}>{JSON.stringify(result.invoice, null, 2)}</CodeBlock>}
                 {result.grounding && result.grounding.ungrounded_fields.length > 0 && (
                   <Notice tone="warn">
-                    {result.grounding.ungrounded_fields.length} trường không thấy trong văn bản OCR: {result.grounding.ungrounded_fields.join(", ")}
+                    {t.ungroundedFieldsWarn(result.grounding.ungrounded_fields.length, result.grounding.ungrounded_fields.join(", "))}
                   </Notice>
                 )}
               </div>
@@ -670,9 +719,9 @@ export default function Node1Page({ api, endpoints, pollMs, go }: {
           part={logPart}
           onPart={setLogPart}
           onClose={closeLog}
-          sourceLabel={(src) => (src === "system" || src === "web" ? "Hệ thống" : src === "ocr" ? "OCR" : nameOf(src))}
+          sourceLabel={(src) => (src === "system" || src === "web" ? t.logSystem : src === "ocr" ? t.stepOcr : nameOf(src))}
           sourceColor={(src) => (src === "ocr" ? "var(--step-1)" : colors[src])}
-          elapsed={`${lines.length} dòng`}
+          elapsed={t.logLinesCount(lines.length)}
         />
       )}
     </>
