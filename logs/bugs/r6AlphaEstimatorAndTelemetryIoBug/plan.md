@@ -46,7 +46,7 @@
   - `AdaptiveDraftController._resolved_alpha_estimator(self) -> str`
   - `AdaptiveDraftController.get_stats(self) -> dict` bổ sung `"geometric_alpha_mle"`, `"alpha_estimator"`, `"total_tested_positions"`.
 
-- [ ] **Bước 1: Viết các bài test thất bại cho AC-01, AC-02, AC-03 và Review Focus #1–#2**
+- [x] **Bước 1: Viết các bài test thất bại cho AC-01, AC-02, AC-03 và Review Focus #1–#2**
 
 Tạo `do-an-ptit-d22/tests/test_r6_geometric_mle_and_telemetry_io.py`:
 ```python
@@ -213,12 +213,12 @@ def test_mle_parameter_validation_clamping_and_reset():
     assert ctrl.get_stats()["total_tested_positions"] == 0
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy từ `do-an-ptit-d22/`: `PYTHONPATH=src:. pytest tests/test_r6_geometric_mle_and_telemetry_io.py -v`
 Kết quả mong đợi: FAIL (`TypeError: unexpected keyword argument 'mle_beta'`).
 
-- [ ] **Bước 3: Triển khai FR-01 trong `src/proposer/controller.py`**
+- [x] **Bước 3: Triển khai FR-01 trong `src/proposer/controller.py`**
 
 1. Thêm `alpha_estimator: Optional[str] = None` vào `BudgetDecision`.
 2. Trong `AdaptiveDraftController.__init__`: thêm và kiểm tra `mle_beta: float = 0.90`, `mle_prior_weight: float = 2.0`, `alpha_estimator: str = "auto"`; khởi tạo `_mle_accepted`, `_mle_tested`, `_total_accepted_tokens`, `_total_tested_positions`.
@@ -227,12 +227,12 @@ Kết quả mong đợi: FAIL (`TypeError: unexpected keyword argument 'mle_beta
 5. Trong `select_budget()`: tính `estimator = self._resolved_alpha_estimator()` và `decision_alpha = self.get_geometric_alpha() if estimator == "geometric_mle" else self.get_effective_alpha()`; gắn `alpha_estimator=estimator` trên mọi `BudgetDecision` trả về (kể cả `memory_guard`, `cost_model`, `threshold`).
 6. Cập nhật `reset()` và `get_stats()`.
 
-- [ ] **Bước 4: Chạy test mới và bộ controller cũ để xác nhận pass và không hồi quy**
+- [x] **Bước 4: Chạy test mới và bộ controller cũ để xác nhận pass và không hồi quy**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_r6_geometric_mle_and_telemetry_io.py tests/test_hardware_cost_driven_controller.py tests/test_budget_controller.py tests/test_memory_pressure_rule.py -v`
 Kết quả mong đợi: 100% PASS.
 
-- [ ] **Bước 5: Commit Tác vụ 1**
+- [x] **Bước 5: Commit Tác vụ 1**
 
 ```bash
 git add src/proposer/controller.py tests/test_r6_geometric_mle_and_telemetry_io.py
@@ -257,7 +257,7 @@ git commit -m "feat(controller): add discounted-count geometric MLE alpha estima
   - `_decision_record()` bổ sung `"geometric_alpha_mle"` và `"alpha_estimator"`; `record_verification()` bổ sung `"tested_draft_positions"` và `"geometric_alpha_mle"`.
   - `AdaptiveAsyncScheduler.shutdown()` gọi `self._planner.close()`.
 
-- [ ] **Bước 1: Viết các bài test thất bại cho AC-04, FR-02 và Review Focus #3–#4**
+- [x] **Bước 1: Viết các bài test thất bại cho AC-04, FR-02 và Review Focus #3–#4**
 
 Bổ sung vào `do-an-ptit-d22/tests/test_r6_geometric_mle_and_telemetry_io.py`:
 ```python
@@ -324,12 +324,12 @@ def test_planner_batched_io_error_does_not_crash_or_leak_buffer(tmp_path, caplog
     assert "step telemetry" in caplog.text.lower()
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_r6_geometric_mle_and_telemetry_io.py -k "test_planner_" -v`
 Kết quả mong đợi: FAIL (`TypeError: unexpected keyword argument 'step_telemetry_flush_every'`).
 
-- [ ] **Bước 3: Triển khai FR-02 và FR-03 trong `src/server/budget_planner.py` và `src/server/adaptive_scheduler.py`**
+- [x] **Bước 3: Triển khai FR-02 và FR-03 trong `src/server/budget_planner.py` và `src/server/adaptive_scheduler.py`**
 
 1. Trong `AdaptiveBudgetPlanner.__init__`:
    - Thêm `step_telemetry_flush_every: int = 1` (validate `not isinstance(..., bool) and isinstance(..., int) and >= 1`).
@@ -351,12 +351,12 @@ Kết quả mong đợi: FAIL (`TypeError: unexpected keyword argument 'step_tel
 8. Trong `src/server/adaptive_scheduler.py` (`shutdown()`):
    - Gọi `self._planner.close()` trong khối `finally:` cùng `release_ledger(...)`.
 
-- [ ] **Bước 4: Chạy test mới và bộ test planner/readiness cũ để xác nhận pass**
+- [x] **Bước 4: Chạy test mới và bộ test planner/readiness cũ để xác nhận pass**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_r6_geometric_mle_and_telemetry_io.py tests/test_budget_planner.py tests/test_m4_readiness.py tests/test_adaptive_scheduler_glue.py -v`
 Kết quả mong đợi: 100% PASS.
 
-- [ ] **Bước 5: Commit Tác vụ 2**
+- [x] **Bước 5: Commit Tác vụ 2**
 
 ```bash
 git add src/server/budget_planner.py src/server/adaptive_scheduler.py tests/test_r6_geometric_mle_and_telemetry_io.py
@@ -380,7 +380,7 @@ git commit -m "perf(planner): batch step telemetry with persistent handle and lo
   - `ModalServingRunner.setup_environment()` chuyển tiếp `"enable_step_telemetry"` và `"step_telemetry_flush_every"`.
   - CLI `flexsds serve --no-step-telemetry`.
 
-- [ ] **Bước 1: Viết các bài test thất bại cho AC-05 và Review Focus #5**
+- [x] **Bước 1: Viết các bài test thất bại cho AC-05 và Review Focus #5**
 
 Bổ sung vào `do-an-ptit-d22/tests/test_r6_geometric_mle_and_telemetry_io.py`:
 ```python
@@ -474,12 +474,12 @@ def test_cli_no_step_telemetry_flag_forwards_opt_out(monkeypatch, capsys):
     assert '"enable_step_telemetry": false' in out
 ```
 
-- [ ] **Bước 2: Chạy test để xác nhận thất bại**
+- [x] **Bước 2: Chạy test để xác nhận thất bại**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_r6_geometric_mle_and_telemetry_io.py -k "runner_and_modal or cli_no_step" -v`
 Kết quả mong đợi: FAIL.
 
-- [ ] **Bước 3: Cập nhật `local_runner.py`, `modal_runner.py`, và `cli/main.py`**
+- [x] **Bước 3: Cập nhật `local_runner.py`, `modal_runner.py`, và `cli/main.py`**
 
 1. Trong `src/flexsds/server/local_runner.py`:
    - Validate `step_telemetry_flush_every` trong `_validate_execution_options()` (mặc định `64`; nếu được truyền phải là `int` không-`bool` `>= 1`).
@@ -492,12 +492,12 @@ Kết quả mong đợi: FAIL.
    - Thêm `--no-step-telemetry` (`action="store_true"`) vào `serve_parser`.
    - Truyền `"enable_step_telemetry": not args.no_step_telemetry` vào `cfg["serving"]`.
 
-- [ ] **Bước 4: Chạy test mới và test runner/matched cũ**
+- [x] **Bước 4: Chạy test mới và test runner/matched cũ**
 
 Chạy: `PYTHONPATH=src:. pytest tests/test_r6_geometric_mle_and_telemetry_io.py tests/test_matched_execution_contract.py tests/test_local_runner.py tests/test_modal_runner_cli.py -v`
 Kết quả mong đợi: 100% PASS.
 
-- [ ] **Bước 5: Commit Tác vụ 3**
+- [x] **Bước 5: Commit Tác vụ 3**
 
 ```bash
 git add src/flexsds/server/local_runner.py src/flexsds/server/modal_runner.py src/flexsds/cli/main.py tests/test_r6_geometric_mle_and_telemetry_io.py
@@ -512,7 +512,7 @@ git commit -m "feat(cli,runner): default batched step telemetry flush=64 and add
 - Create: `do-an-ptit-d22/logs/bugs/r6AlphaEstimatorAndTelemetryIoBug/progress.md`
 - Modify: `do-an-ptit-d22/logs/bugs/r6AlphaEstimatorAndTelemetryIoBug/plan.md` & `2026-11-24-r6-geometric-mle-alpha-and-batched-telemetry-spec.md`
 
-- [ ] **Bước 1: Chạy toàn bộ bộ test hồi quy offline (AC-06) và kiểm tra toàn vẹn profile A10G**
+- [x] **Bước 1: Chạy toàn bộ bộ test hồi quy offline (AC-06) và kiểm tra toàn vẹn profile A10G**
 
 Chạy từ `do-an-ptit-d22/`:
 ```bash
@@ -539,9 +539,9 @@ git diff -- src/flexsds/profiles/profile_sm_86_remote_a10g_fcda5486b12d.json
 ```
 Kết quả mong đợi: 100% PASS (0 failed) và `git diff` profile A10G rỗng.
 
-- [ ] **Bước 2: Ghi `progress.md` và cập nhật trạng thái spec/plan kèm hướng dẫn chạy kiểm chứng lại trên cùng 1 container A10 cho Dương**
+- [x] **Bước 2: Ghi `progress.md` và cập nhật trạng thái spec/plan kèm hướng dẫn chạy kiểm chứng lại trên cùng 1 container A10 cho Dương**
 
-- [ ] **Bước 3: Commit tài liệu tiến độ**
+- [x] **Bước 3: Commit tài liệu tiến độ**
 
 ```bash
 git add logs/bugs/r6AlphaEstimatorAndTelemetryIoBug/

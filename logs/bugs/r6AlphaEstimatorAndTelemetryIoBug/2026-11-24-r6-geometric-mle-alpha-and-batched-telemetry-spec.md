@@ -3,7 +3,7 @@
 - **Mã tài liệu**: SPEC-R6-ALPHA-IO-20261124
 - **Ngày tạo**: 2026-11-24
 - **Tác giả**: Đội ngũ phát triển FlexSDS (D22 PTIT)
-- **Trạng thái**: Bản nháp đề xuất chờ phê duyệt (Proposed — chưa sửa code)
+- **Trạng thái**: Đã triển khai mã nguồn và đạt kiểm thử offline (`AC-01`–`AC-06` pass trên nhánh `fix/r6-geometric-mle-and-batched-telemetry`; chờ đo xác nhận GPU `AC-07` trên cùng 1 container NVIDIA A10)
 - **Liên kết thực nghiệm**: Báo cáo ablation ngày 23/11/2026 trên NVIDIA A10 (`ablation-2311`, `r6-2311b`, `probe-2311`, mốc mã nguồn `develop@229b3e4`) và câu hỏi mở `M-09` trong `docs/03-quyet-dinh-thiet-ke.md`
 - **Phạm vi tác động**:
   - `src/proposer/controller.py` (`BudgetDecision`, `AdaptiveDraftController`)
