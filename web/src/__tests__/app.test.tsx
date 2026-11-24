@@ -257,6 +257,28 @@ describe("endpoints and alias flow", () => {
     }
   });
 
+  it("keeps asking a waking GPU for 15 minutes, then says it never answered", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const waking: Endpoint = { ...ENDPOINTS[0], status: "starting", status_message: "HTTP 503" };
+      const checkEndpoint = vi.fn(async () => waking);
+      open("endpoints", fakeApi({ checkEndpoint }));
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(await screen.findByRole("button", { name: "Kiểm tra vanilla" }));
+      const row = rowOf("vanilla");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(14 * 60_000);
+      });
+      expect(within(row).queryByText(/Không phản hồi/)).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2 * 60_000);
+      });
+      expect(await within(row).findByText("Không phản hồi sau 15 phút.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("confirms before deleting an endpoint", async () => {
     const api = fakeApi();
     open("endpoints", api);
