@@ -159,3 +159,66 @@ def test_mle_parameter_validation_clamping_and_reset():
     ctrl.reset(initial_alpha=0.65)
     assert ctrl.get_geometric_alpha() == pytest.approx(0.65)
     assert ctrl.get_stats()["total_tested_positions"] == 0
+
+
+def test_planner_batched_step_telemetry_opens_once_and_flushes_on_finish_and_close(tmp_path, monkeypatch):
+    """AC-04, NFR-02 & Review Focus #4: Flush theo lô 64 dòng chỉ open() 1 lần và tự flush khi finish/close."""
+    import builtins
+    from src.server.budget_planner import AdaptiveBudgetPlanner
+
+    step_path = tmp_path / "steps.jsonl"
+    real_open = builtins.open
+    open_count = 0
+
+    def counting_open(file, *args, **kwargs):
+        nonlocal open_count
+        if str(file) == str(step_path):
+            open_count += 1
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", counting_open)
+
+    planner = AdaptiveBudgetPlanner.from_env(
+        {
+            "FLEXSDS_PROFILE_PATH": str(A10G_PROFILE_PATH),
+            "ADAPTIVE_STEP_TELEMETRY_PATH": str(step_path),
+            "ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY": "64",
+        }
+    )
+    for _ in range(65):
+        planner.plan_step(["r1"], batch_size=1, kv_usage=0.1, free_vram_mb=16000.0)
+        planner.record_verification("r1", num_drafted=3, num_accepted=1)
+
+    # 130 bản ghi >= 2 lô 64 -> đã ghi đúng 128 dòng ra đĩa, chỉ open() 1 lần
+    assert open_count == 1
+    assert len(real_open(step_path, "r", encoding="utf-8").read().splitlines()) == 128
+
+    # finish_request tự flush nốt 2 bản ghi còn lại trong đệm
+    planner.finish_request("r1")
+    lines = [json.loads(line) for line in real_open(step_path, "r", encoding="utf-8").read().splitlines()]
+    assert len(lines) == 130
+    assert open_count == 1
+
+    # Kiểm tra các trường telemetry MLE mới (FR-02)
+    planned_rec = next(r for r in lines if r["record_type"] == "planned_decision")
+    fb_rec = next(r for r in lines if r["record_type"] == "verification_feedback")
+    assert planned_rec["alpha_estimator"] == "geometric_mle"
+    assert planned_rec["geometric_alpha_mle"] is not None
+    assert fb_rec["tested_draft_positions"] == 2
+    assert fb_rec["geometric_alpha_mle"] is not None
+
+    planner.close()
+    assert open_count == 1
+
+
+def test_planner_batched_io_error_does_not_crash_or_leak_buffer(tmp_path, caplog):
+    """Review Focus #3: Đường dẫn lỗi không làm sập plan_step/flush/close và không tích tụ buffer."""
+    from src.server.budget_planner import AdaptiveBudgetPlanner
+
+    bad_path = tmp_path / "missing_dir" / "steps.jsonl"
+    planner = AdaptiveBudgetPlanner(step_telemetry_path=str(bad_path), step_telemetry_flush_every=2)
+    planner.plan_step(["r1"], batch_size=1, kv_usage=0.1)
+    planner.plan_step(["r1"], batch_size=1, kv_usage=0.1)
+    assert planner._step_buffer == []
+    planner.close()
+    assert "step telemetry" in caplog.text.lower()
