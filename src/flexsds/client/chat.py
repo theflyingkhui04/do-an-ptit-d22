@@ -228,7 +228,10 @@ def run_interactive_chat(
         saved_ep = cfg_data.get("endpoint") or cfg_data.get("serving", {}).get("endpoint")
         if saved_ep and saved_ep.rstrip("/") == endpoint.rstrip("/"):
             try:
-                from flexsds.cli.serving_session import format_speculation_label
+                try:
+                    from flexsds.cli.serving_session import format_speculation_label
+                except ModuleNotFoundError:
+                    from src.flexsds.cli.serving_session import format_speculation_label
                 speculation_label = format_speculation_label(cfg_data)
             except Exception:
                 pass

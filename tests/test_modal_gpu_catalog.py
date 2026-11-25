@@ -188,6 +188,33 @@ def test_modal_a100_rejects_40gb_profile_on_host_and_accepts_80gb(tmp_path, monk
         cal.build_profile(cfg_80, _fake_measured_groups("NVIDIA A100-SXM4-40GB", "sm_80"), [1])
 
 
+def test_modal_a100_strict_mode_rejects_legacy_40gb_scalar_profile(tmp_path, monkeypatch):
+    """Strict host resolution must reject non-component-v2 scalar sm_80 profiles (e.g. 40 GB M4)."""
+    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path / "user")
+    monkeypatch.setattr(cm, "PROFILES_DIR", tmp_path / "bundled")
+    (tmp_path / "user").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "bundled").mkdir(parents=True, exist_ok=True)
+
+    legacy_scalar_40gb = {
+        "metadata": {
+            "gpu": "NVIDIA A100-SXM4-40GB",
+            "sm_architecture": "sm_80",
+            "scalar_only": True,
+            "measurement_status": "measured",
+        },
+        "cost_matrix_ms": {
+            f"k{k}_b{b}": 1.0 + k
+            for k in range(5)
+            for b in (1, 2, 4, 8, 16, 32)
+        },
+    }
+    (tmp_path / "user" / "profile_sm_80.json").write_text(json.dumps(legacy_scalar_40gb), encoding="utf-8")
+    (tmp_path / "bundled" / "profile_sm80.json").write_text(json.dumps(legacy_scalar_40gb), encoding="utf-8")
+
+    a100_hw = build_remote_hardware_info("modal", "A100")
+    assert cm.load_profile_for_hardware(a100_hw, strict=True, target_model="t", draft_model="d") == (None, "")
+
+
 def test_modal_l40s_never_matches_l4_profile_on_shared_sm89(tmp_path, monkeypatch):
     """Review Focus #2: L40S shares sm_89 with L4 and must never load an L4 profile."""
     monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path / "user")

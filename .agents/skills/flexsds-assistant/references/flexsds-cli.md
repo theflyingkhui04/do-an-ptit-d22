@@ -37,7 +37,7 @@ or missing local CUDA blocks real dispatch. Known Qwen/Llama cross-family pairs
 are rejected. This is heuristic validation, not tokenizer/kernel support.
 
 Threshold: estimates must fit 95% of budget. Local budget is detected free VRAM;
-remote budgets are T4 15000 MB, A10 22000 MB, L40S 46000 MB, A100 78000 MB (Colab also accepts L4 23000 MB). Those are conservative
+remote budgets are T4 15000 MB, A10 22000 MB, L40S 46000 MB, A100 78000 MB (Colab wizard also maps L4 23000 MB; CLI `--gpu` accepts T4/A10/L40S/A100). Those are conservative
 assumptions, not measured container memory. Laptop RAM/VRAM does not decide remote
 GPU compatibility. Unsafe dry-run prints "Launch blocked", shows the preview and
 returns 0. Unsafe real serving returns 2 with no runner call. Launch failure

@@ -66,7 +66,7 @@ def format_speculation_label(config: Optional[dict[str, Any]]) -> Optional[str]:
 
 def _clean_hardware_metadata(cfg: dict[str, Any]) -> dict[str, Any]:
     target_gpu = str(cfg.get('target_gpu') or '').strip()
-    if target_gpu and target_gpu.upper() in MODAL_GPU_NAMES:
+    if cfg.get('backend', 'modal') == 'modal' and target_gpu and target_gpu.upper() in MODAL_GPU_NAMES:
         spec = get_modal_gpu_spec(target_gpu)
         return {
             'device_name': f'NVIDIA {spec.name}',
@@ -149,9 +149,10 @@ def _export_api_config(endpoint: str, model: str, config: dict[str, Any], deploy
 
 def present_session(proc, output, *, endpoint, model, config, deploy):
     output.suspend()
+    cfg = config.get('serving', config) if isinstance(config, dict) and isinstance(config.get('serving'), dict) else (config or {})
     command = shlex.join(['flexsds', 'chat', '--endpoint', endpoint, '--model', model])
     print('\nEndpoint LLM created:')
-    for key, value in [('API', endpoint), ('Model', model), ('GPU', config.get('target_gpu', 'unknown')),
+    for key, value in [('API', endpoint), ('Model', model), ('GPU', cfg.get('target_gpu', 'unknown')),
                        ('Mode', 'Persistent deployment' if deploy else 'Development (keep this terminal open)'),
                        ('App', output.app_url), ('Logs', output.log_path)]:
         if value:

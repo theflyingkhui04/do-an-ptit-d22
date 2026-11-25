@@ -475,7 +475,7 @@ def load_profile_for_hardware(
         data = json.loads(path.read_text(encoding="utf-8"))
         if strict and data.get("metadata", {}).get("schema") == "flexsds-component-v2":
             validate_measured_profile(data, hw_info, target_model, draft_model)
-        elif strict and sm_arch != "sm_80":
+        elif strict:
             raise ValueError("Profile has no verified worker measurements; recalibrate or use static mode")
         if sm_arch == "sm_80" and data.get("metadata", {}).get("schema") != "flexsds-component-v2":
             meta = data.get("metadata", {})

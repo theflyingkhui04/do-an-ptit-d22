@@ -264,3 +264,130 @@ def test_chat_banner_does_not_hardcode_eagle31(monkeypatch, capsys):
     out_eagle2 = capsys.readouterr().out
     assert 'EAGLE-2 (Static)' in out_eagle2
     assert 'EAGLE-3.1' not in out_eagle2
+
+
+def test_build_api_config_payload_local_backend_preserves_local_hardware():
+    cfg = {
+        'backend': 'local',
+        'target_model': 'Qwen/Qwen2.5-7B-Instruct-AWQ',
+        'draft_model': 'duckhoi/qwen2.5-7b-eagle3.1-speculator',
+        'draft_method': 'eagle3',
+        'eagle_version': '3.1',
+        'enable_adaptive': True,
+        'target_gpu': 'A10',
+        'hardware': {
+            'device_name': 'NVIDIA GeForce RTX 4090',
+            'sm_architecture': 'sm_89',
+            'vram_gb': 24,
+            'free_vram_mb': 23000.0,
+        },
+    }
+    payload = serving_session.build_api_config_payload(
+        endpoint='http://localhost:8000/v1',
+        model='local-model',
+        config=cfg,
+        deploy=False,
+    )
+    assert payload['backend'] == 'local'
+    assert payload['hardware']['device_name'] == 'NVIDIA GeForce RTX 4090'
+    assert payload['hardware']['sm_architecture'] == 'sm_89'
+
+
+@pytest.mark.parametrize(
+    'eagle_version,expected_method,expected_label',
+    [
+        ('1', 'eagle', 'EAGLE-1 (Static)'),
+        ('2', 'eagle', 'EAGLE-2 (Static)'),
+        ('3', 'eagle3', 'EAGLE-3 (HardwareAdaptive)'),
+        ('3.1', 'eagle3', 'EAGLE-3.1 (HardwareAdaptive)'),
+    ],
+)
+def test_eagle_versions_e2e_compat_modal_env_and_export(
+    tmp_path, eagle_version, expected_method, expected_label
+):
+    import json
+    import struct
+    from flexsds.core.compatibility import check_compatibility
+    from flexsds.server.local_runner import LocalServingRunner
+    from flexsds.server.modal_runner import ModalServingRunner
+
+    def write_safetensors(directory, tensors):
+        header, payload = {}, b''
+        for name, (dtype, shape, raw) in tensors.items():
+            header[name] = {'dtype': dtype, 'shape': shape, 'data_offsets': [len(payload), len(payload) + len(raw)]}
+            payload += raw
+        encoded = json.dumps(header).encode()
+        (directory / 'model.safetensors').write_bytes(struct.pack('<Q', len(encoded)) + encoded + payload)
+
+    target, draft = tmp_path / 'target', tmp_path / 'draft'
+    target.mkdir()
+    draft.mkdir()
+    base_cfg = {
+        'architectures': ['Qwen3ForCausalLM'],
+        'hidden_size': 4,
+        'vocab_size': 4,
+        'num_hidden_layers': 2,
+        'num_attention_heads': 2,
+        'num_key_value_heads': 1,
+        'head_dim': 2,
+    }
+    (target / 'config.json').write_text(json.dumps(base_cfg), encoding='utf-8')
+    (target / 'tokenizer.json').write_text(
+        json.dumps({'model': {'type': 'BPE', 'vocab': {'a': 0, 'b': 1, 'c': 2, 'd': 3}, 'merges': []}, 'added_tokens': []}),
+        encoding='utf-8',
+    )
+    write_safetensors(target, {'weight': ('BF16', [4], b'\0' * 8)})
+
+    draft_cfg = dict(base_cfg, num_hidden_layers=1, target_model_name_or_path=str(target))
+    tensors = {
+        'd2t': ('I64', [2], struct.pack('<qq', 0, 2)),
+        't2d': ('BOOL', [4], bytes([1, 0, 0, 1])),
+    }
+    if eagle_version in ('1', '2'):
+        draft_cfg.update(architectures=['LlamaForCausalLM'], draft_vocab_size=4, eagle_version=eagle_version)
+        tensors['fc.weight'] = ('BF16', [4, 8], b'\0' * 64)
+    else:
+        draft_cfg.update(architectures=['LlamaForCausalLMEagle3'], draft_vocab_size=2)
+        tensors['fc.weight'] = ('BF16', [4, 12], b'\0' * 96)
+        if eagle_version == '3.1':
+            draft_cfg.update(fc_norm=True, norm_output=True, use_post_norm_feedback=True)
+            for i in range(3):
+                tensors[f'fc_norm.{i}.weight'] = ('BF16', [4], b'\0' * 8)
+
+    (draft / 'config.json').write_text(json.dumps(draft_cfg), encoding='utf-8')
+    write_safetensors(draft, tensors)
+
+    report = check_compatibility(str(target), str(draft), free_vram_mb=46000.0)
+    assert report.is_compatible is True, report.warnings
+    assert report.draft_method == expected_method
+    assert report.eagle_version == f'EAGLE-{eagle_version}'
+
+    cfg = {
+        'backend': 'modal',
+        'target_model': str(target),
+        'draft_model': str(draft),
+        'draft_method': report.draft_method,
+        'eagle_version': report.eagle_version,
+        'enable_adaptive': eagle_version in ('3', '3.1'),
+        'target_gpu': 'L40S',
+        'port': 8000,
+    }
+    vllm_cmd = LocalServingRunner().build_command(cfg)
+    spec_cfg = json.loads(vllm_cmd[vllm_cmd.index('--speculative-config') + 1])
+    assert spec_cfg['method'] == expected_method
+
+    env = ModalServingRunner().setup_environment(cfg)
+    forwarded = json.loads(env['FLEXSDS_SERVING_CONFIG'])
+    assert forwarded['draft_method'] == expected_method
+    assert forwarded['eagle_version'] == f'EAGLE-{eagle_version}'
+
+    payload = serving_session.build_api_config_payload(
+        endpoint='https://demo.modal.run/v1',
+        model='served-demo',
+        config=forwarded,
+        deploy=True,
+    )
+    assert payload['draft_method'] == expected_method
+    assert payload['eagle_version'] == eagle_version
+    assert payload['hardware']['device_name'] == 'NVIDIA L40S'
+    assert serving_session.format_speculation_label(payload) == expected_label

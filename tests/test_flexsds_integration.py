@@ -156,8 +156,8 @@ def test_colab_is_explicit_guidance_without_runner(machine, monkeypatch, capsys)
 def test_remote_budget_does_not_use_laptop_ram_or_vram(machine):
     machine.free_vram_mb = 1
     machine.is_cuda_available = False
-    preflight = compat.evaluate_serving_preflight(PAIR[2], PAIR[4], machine, "modal", "L4")
-    assert preflight.report.free_vram_mb == 23000
+    preflight = compat.evaluate_serving_preflight(PAIR[2], PAIR[4], machine, "modal", "A10")
+    assert preflight.report.free_vram_mb == 22000
     assert preflight.is_safe
 
 
