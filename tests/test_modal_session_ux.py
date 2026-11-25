@@ -49,11 +49,11 @@ def test_native_clear_preserves_other_profiles_and_requires_pair(manager):
     if os.name != 'nt': assert path.stat().st_mode & 0o077 == 0
 
 
-def session(output, proc=None, deploy=False):
+def session(output, proc=None, deploy=False, config=None):
     proc = proc or Mock()
     proc.poll.return_value = None
     serving_session.present_session(proc, output, endpoint='https://example.modal.run/v1',
-                                    model='served-model', config={'target_gpu': 'A10G'}, deploy=deploy)
+                                    model='served-model', config=config or {'target_gpu': 'A10'}, deploy=deploy)
     return proc
 
 
@@ -81,8 +81,12 @@ def test_chat_returns_to_actions_without_stopping_server(monkeypatch):
     monkeypatch.setattr(wizard, 'prompt_choice', lambda *a, **k: next(choices))
     run = Mock(return_value=0)
     monkeypatch.setattr(chat, 'run_interactive_chat', run)
-    proc = session(Mock())
-    run.assert_called_once_with(endpoint='https://example.modal.run/v1', model='served-model')
+    proc = session(Mock(), config={'target_gpu': 'A10', 'draft_method': 'eagle3', 'eagle_version': '3.1', 'enable_adaptive': True})
+    run.assert_called_once_with(
+        endpoint='https://example.modal.run/v1',
+        model='served-model',
+        speculation_label='EAGLE-3.1 (HardwareAdaptive)',
+    )
     proc.terminate.assert_not_called()
 
 
@@ -113,3 +117,150 @@ def test_clear_failure_does_not_claim_success(manager, monkeypatch, capsys):
     monkeypatch.setattr(modal_auth, 'native_profile', fail)
     assert main.main(['clear', 'modal']) == 1
     assert 'disconnect failed' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    'draft_method,eagle_version,enable_adaptive,expected_label',
+    [
+        ('eagle', '1', False, 'EAGLE-1 (Static)'),
+        ('eagle', '1', True, 'EAGLE-1 (HardwareAdaptive)'),
+        ('eagle', '2', False, 'EAGLE-2 (Static)'),
+        ('eagle', '2', True, 'EAGLE-2 (HardwareAdaptive)'),
+        ('eagle3', '3', False, 'EAGLE-3 (Static)'),
+        ('eagle3', '3', True, 'EAGLE-3 (HardwareAdaptive)'),
+        ('eagle3', '3.1', False, 'EAGLE-3.1 (Static)'),
+        ('eagle3', '3.1', True, 'EAGLE-3.1 (HardwareAdaptive)'),
+    ],
+)
+def test_build_api_config_payload_and_labels_cover_all_eagle_versions(
+    draft_method, eagle_version, enable_adaptive, expected_label
+):
+    cfg = {
+        'backend': 'modal',
+        'target_model': 'Qwen/Qwen2.5-7B-Instruct-AWQ',
+        'draft_model': 'org/draft-head',
+        'draft_method': draft_method,
+        'eagle_version': eagle_version,
+        'enable_adaptive': enable_adaptive,
+        'target_gpu': 'A100',
+        'max_num_seqs': 16,
+        'max_model_len': 8192,
+        'MODAL_TOKEN_ID': 'secret-id',
+        'MODAL_TOKEN_SECRET': 'secret-val',
+        'HF_TOKEN': 'hf-secret',
+        'api_key': 'sk-secret',
+    }
+    payload = serving_session.build_api_config_payload(
+        endpoint='https://demo--flexsds-serving-serve.modal.run/v1',
+        model='qwen2.5-7b-adaptive',
+        config=cfg,
+        deploy=True,
+    )
+    assert payload['endpoint'] == 'https://demo--flexsds-serving-serve.modal.run/v1'
+    assert payload['served_model'] == 'qwen2.5-7b-adaptive'
+    assert payload['target_model'] == 'Qwen/Qwen2.5-7B-Instruct-AWQ'
+    assert payload['draft_model'] == 'org/draft-head'
+    assert payload['draft_method'] == draft_method
+    assert payload['eagle_version'] == eagle_version
+    assert payload['enable_adaptive'] is enable_adaptive
+    assert payload['target_gpu'] == 'A100'
+    assert payload['modal_deploy'] is True
+    assert payload['hardware']['device_name'] == 'NVIDIA A100'
+    assert payload['hardware']['vram_gb'] == 80
+    assert payload['hardware']['tier'] == 'High'
+    assert payload['hardware']['sm_architecture'] == 'sm_80'
+    for secret in ('MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET', 'HF_TOKEN', 'api_key'):
+        assert secret not in payload
+    assert serving_session.format_speculation_label(cfg) == expected_label
+
+
+def test_build_api_config_payload_handles_vanilla_mode():
+    cfg = {
+        'target_model': 'Qwen/Qwen2.5-7B-Instruct-AWQ',
+        'draft_model': None,
+        'draft_method': 'none',
+        'eagle_version': None,
+        'disable_speculative': True,
+        'enable_adaptive': False,
+        'target_gpu': 'L40S',
+    }
+    payload = serving_session.build_api_config_payload(
+        endpoint='https://demo.modal.run/v1',
+        model='qwen2.5-7b-vanilla',
+        config=cfg,
+        deploy=False,
+    )
+    assert payload['draft_model'] is None
+    assert payload['draft_method'] == 'none'
+    assert payload['eagle_version'] is None
+    assert payload['enable_adaptive'] is False
+    assert payload['hardware']['device_name'] == 'NVIDIA L40S'
+    assert payload['hardware']['vram_gb'] == 48
+    assert serving_session.format_speculation_label(cfg) == 'Standard (Vanilla)'
+
+
+def test_export_api_config_json_action_writes_file_and_keeps_server_alive(tmp_path, monkeypatch, capsys):
+    import json
+    from flexsds.cli import wizard
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(serving_session.sys.stdin, 'isatty', lambda: True)
+    monkeypatch.setattr(serving_session.sys.stdout, 'isatty', lambda: True)
+    seen_choices = []
+
+    def choose(question, choices, **kwargs):
+        seen_choices.append(list(choices))
+        return choices[2] if len(seen_choices) == 1 else 'Watch log'
+
+    out_path = tmp_path / 'exported' / 'web_api_config.json'
+    monkeypatch.setattr(wizard, 'prompt_choice', choose)
+    monkeypatch.setattr(wizard, 'prompt_string', lambda q, default_val='': str(out_path))
+
+    proc = session(
+        Mock(),
+        deploy=False,
+        config={
+            'backend': 'modal',
+            'target_model': 'Qwen/Qwen2.5-7B-Instruct-AWQ',
+            'draft_model': 'duckhoi/qwen2.5-7b-eagle3.1-speculator',
+            'draft_method': 'eagle3',
+            'eagle_version': '3.1',
+            'enable_adaptive': True,
+            'target_gpu': 'A10',
+            'max_num_seqs': 32,
+            'max_model_len': 4096,
+        },
+    )
+    assert 'Export API config JSON (for web demo)' in seen_choices[0]
+    assert out_path.is_file()
+    saved = json.loads(out_path.read_text(encoding='utf-8'))
+    assert saved['endpoint'] == 'https://example.modal.run/v1'
+    assert saved['served_model'] == 'served-model'
+    assert saved['eagle_version'] == '3.1'
+    assert saved['target_gpu'] == 'A10'
+    assert saved['hardware']['device_name'] == 'NVIDIA A10'
+    text = capsys.readouterr().out
+    assert str(out_path.resolve()) in text
+    assert 'serving_config.json' in text
+    proc.terminate.assert_not_called()
+
+
+def test_chat_banner_does_not_hardcode_eagle31(monkeypatch, capsys):
+    from flexsds.client.chat import InteractiveChatSession
+
+    client = Mock()
+    client.base_url = 'https://example.modal.run/v1'
+    client.check_health.return_value = True
+    monkeypatch.setattr('builtins.input', lambda _: '/exit')
+
+    # Unknown speculation must NOT claim EAGLE-3.1 (HardwareAdaptive).
+    InteractiveChatSession(client, model='custom-model').start()
+    out_unknown = capsys.readouterr().out
+    assert 'custom-model' in out_unknown
+    assert 'EAGLE-3.1' not in out_unknown
+
+    # Explicit EAGLE-2 Static label must appear accurately.
+    InteractiveChatSession(client, model='llama-eagle2', speculation_label='EAGLE-2 (Static)').start()
+    out_eagle2 = capsys.readouterr().out
+    assert 'EAGLE-2 (Static)' in out_eagle2
+    assert 'EAGLE-3.1' not in out_eagle2

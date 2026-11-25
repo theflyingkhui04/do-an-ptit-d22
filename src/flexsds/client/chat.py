@@ -71,10 +71,12 @@ class InteractiveChatSession:
         client: FlexSDSClient,
         model: Optional[str] = None,
         temperature: float = 0.0,
+        speculation_label: Optional[str] = None,
     ) -> None:
         self.client = client
         self.model = model or "qwen2.5-7b-adaptive"
         self.temperature = temperature
+        self.speculation_label = speculation_label
         self.history: List[Dict[str, str]] = []
 
     def start(self) -> int:
@@ -93,7 +95,10 @@ class InteractiveChatSession:
                 pass
 
         print(f"\n\033[1;32m✔ Connected to FlexSDS Serving Endpoint:\033[0m \033[36m{self.client.base_url}\033[0m")
-        print(f"  Model: \033[1;37m{self.model}\033[0m | Speculation: \033[33mEAGLE-3.1 (HardwareAdaptive)\033[0m")
+        if self.speculation_label:
+            print(f"  Model: \033[1;37m{self.model}\033[0m | Speculation: \033[33m{self.speculation_label}\033[0m")
+        else:
+            print(f"  Model: \033[1;37m{self.model}\033[0m")
         print("  \033[90m(Type a message to chat, '/exit' to quit, '/clear' to reset context)\033[0m\n")
 
         while True:
@@ -199,23 +204,40 @@ def run_interactive_chat(
     endpoint: str = "http://localhost:8000/v1",
     model: Optional[str] = None,
     temperature: float = 0.0,
+    speculation_label: Optional[str] = None,
 ) -> int:
     """Entry point for CLI flexsds chat command."""
     import json
     from pathlib import Path
 
-    if endpoint == "http://localhost:8000/v1":
-        cfg_file = Path("serving_config.json")
-        if cfg_file.exists():
+    cfg_data = None
+    cfg_file = Path("serving_config.json")
+    if cfg_file.exists():
+        try:
+            with open(cfg_file, "r", encoding="utf-8") as f:
+                cfg_data = json.load(f)
+        except Exception:
+            cfg_data = None
+
+    if endpoint == "http://localhost:8000/v1" and isinstance(cfg_data, dict):
+        saved_ep = cfg_data.get("endpoint") or cfg_data.get("serving", {}).get("endpoint")
+        if saved_ep:
+            endpoint = saved_ep
+
+    if speculation_label is None and isinstance(cfg_data, dict):
+        saved_ep = cfg_data.get("endpoint") or cfg_data.get("serving", {}).get("endpoint")
+        if saved_ep and saved_ep.rstrip("/") == endpoint.rstrip("/"):
             try:
-                with open(cfg_file, "r", encoding="utf-8") as f:
-                    cfg_data = json.load(f)
-                saved_ep = cfg_data.get("endpoint") or cfg_data.get("serving", {}).get("endpoint")
-                if saved_ep:
-                    endpoint = saved_ep
+                from flexsds.cli.serving_session import format_speculation_label
+                speculation_label = format_speculation_label(cfg_data)
             except Exception:
                 pass
 
     client = FlexSDSClient(base_url=endpoint)
-    session = InteractiveChatSession(client, model=model, temperature=temperature)
+    session = InteractiveChatSession(
+        client,
+        model=model,
+        temperature=temperature,
+        speculation_label=speculation_label,
+    )
     return session.start()

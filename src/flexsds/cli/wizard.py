@@ -186,6 +186,7 @@ def _get_key_stroke() -> str:
 CHOICE_HELP = {
     'Watch log': 'View live server logs. Copy the chat command into another terminal; Ctrl+O closes the log viewer.',
     'Realtime chat with deployed LLM': 'Send messages to the verified endpoint with streaming responses. /exit returns here.',
+    'Export API config JSON (for web demo)': 'Save a secret-free JSON config file to import into the web demo.',
     "Launch serving": "Configure models, check compatibility, and start an inference API.",
     "Detect hardware": "Show local GPU, CUDA availability, and available memory.",
     "Running endpoint": "Browse deployed Modal endpoints, view details, chat, or stop a deployment.",
