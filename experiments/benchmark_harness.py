@@ -107,6 +107,34 @@ ENVIRONMENT_PROFILES = {
         "torch_cuda_version": "13.0",
         "mode": "server",
     },
+    "modal-t4-v1": {
+        "gpu": "T4",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
+    "modal-a10-v1": {
+        "gpu": "A10",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
+    "modal-l40s-v1": {
+        "gpu": "L40S",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
+    "modal-a100-v1": {
+        "gpu": "A100-80GB",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
 }
 
 SERVER_ENV_REQUIRED = (
@@ -272,6 +300,27 @@ def environment_info(
     return info, handle
 
 
+def _matches_modal_gpu_sku(expected: str, actual: object) -> bool:
+    """Strict GPU SKU match for Modal server profiles (reuses flexsds rules when available)."""
+    try:
+        from flexsds.core.hardware import matches_gpu_label
+        return matches_gpu_label(expected, str(actual or ""))
+    except ImportError:
+        import re
+        text = str(actual or "").upper()
+        tokens = set(re.findall(r"[A-Z0-9]+", text))
+        key = expected.upper()
+        if key == "T4":
+            return "T4" in tokens
+        if key == "A10":
+            return bool(tokens & {"A10", "A10G"})
+        if key == "L40S":
+            return "L40S" in tokens
+        if key == "A100-80GB":
+            return "A100" in tokens and "80GB" in tokens and "40GB" not in tokens
+        return key in tokens
+
+
 def validate_environment(env: dict, profile: str = ENVIRONMENT_PROFILE) -> list[str]:
     expected = {
         field: value
@@ -285,6 +334,10 @@ def validate_environment(env: dict, profile: str = ENVIRONMENT_PROFILE) -> list[
         if profile == "m4-a100-colab-v1" and field == "gpu":
             if "NVIDIA" not in str(actual_value) or "A100" not in str(actual_value):
                 mismatches.append(f"gpu: expected NVIDIA A100, got {actual_value}")
+            continue
+        if profile.startswith("modal-") and field == "gpu":
+            if not _matches_modal_gpu_sku(str(expected_value), actual_value):
+                mismatches.append(f"gpu: expected {expected_value}, got {actual_value}")
             continue
         if isinstance(expected_value, (tuple, list, set)):
             if actual_value not in expected_value:

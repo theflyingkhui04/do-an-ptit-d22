@@ -46,6 +46,7 @@ from experiments import modal_lanes as lanes
 
 APP_NAME = lanes.resolve_app_name(os.environ)
 GPU = lanes.resolve_gpu(os.environ)
+MODAL_GPU = lanes.modal_gpu_resource(GPU)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if modal.is_local():
     from experiments.bench_source import snapshot
@@ -111,7 +112,7 @@ app = modal.App(APP_NAME, image=image)
 # --------------------------------------------------------------------------
 # Image check and weights
 # --------------------------------------------------------------------------
-@app.function(gpu=GPU, timeout=15 * 60)
+@app.function(gpu=MODAL_GPU, timeout=15 * 60)
 def versions() -> dict:
     import torch
     import vllm
@@ -267,7 +268,7 @@ def _stop_vllm(proc: subprocess.Popen) -> None:
 def _server_options(lane: str) -> dict:
     return {
         "name": lane,
-        "gpu": GPU,
+        "gpu": MODAL_GPU,
         "env": lanes.server_env(lane, profile=PROFILE, run_id=RUN_ID),
         "volumes": SERVER_VOLUMES,
         "port": lanes.DEFAULT_PORT,
@@ -787,7 +788,7 @@ def _kv_capacity_tokens(llm) -> int | None:
 
 @app.function(
     image=profile_image,
-    gpu=GPU,
+    gpu=MODAL_GPU,
     timeout=3 * 60 * 60,
     volumes=SERVER_VOLUMES,
     env={"HF_HOME": lanes.HF_HOME, "HF_HUB_OFFLINE": "1", "VLLM_CACHE_ROOT": lanes.VLLM_CACHE_ROOT},

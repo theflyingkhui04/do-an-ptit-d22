@@ -123,16 +123,23 @@ class LocalServingRunner:
         effective_port = port if port is not None else serving_cfg.get("port", 8000)
         target_lower = target_model.lower()
 
-        # Xác định quantization và dtype
+        # Xác định quantization và dtype (T4 / sm_75 không hỗ trợ BF16 và awq_marlin)
+        target_gpu = str(serving_cfg.get("target_gpu") or "").strip().upper()
+        hw_cfg = serving_cfg.get("hardware") if isinstance(serving_cfg.get("hardware"), dict) else {}
+        sm_arch = str(hw_cfg.get("sm_architecture") or "").strip().lower()
+        is_turing_t4 = target_gpu == "T4" or sm_arch == "sm_75"
+        explicit_dtype = serving_cfg.get("dtype")
+        explicit_quant = serving_cfg.get("quantization")
+
         if "awq" in target_lower:
-            quantization = "awq_marlin"
-            dtype = "bfloat16"
+            quantization = explicit_quant or ("awq" if is_turing_t4 else "awq_marlin")
+            dtype = explicit_dtype or ("half" if is_turing_t4 else "bfloat16")
         elif "gptq" in target_lower:
-            quantization = "gptq"
-            dtype = "float16"
+            quantization = explicit_quant or "gptq"
+            dtype = explicit_dtype or "float16"
         else:
-            quantization = serving_cfg.get("quantization", "none")
-            dtype = serving_cfg.get("dtype", "bfloat16")
+            quantization = explicit_quant or "none"
+            dtype = explicit_dtype or ("half" if is_turing_t4 else "bfloat16")
 
         profile_data = None
         if serving_cfg.get('profile_path'):

@@ -31,6 +31,17 @@ def measurement_settings(config):
     return (2, 5) if mode == 'fast' else (WARMUP, REPEATS)
 
 
+def resolve_calibration_dtype_quant(target_model: str, sm_architecture: str):
+    """Select vLLM dtype/quantization compatible with the target GPU architecture."""
+    target_lower = target_model.lower()
+    is_turing = str(sm_architecture or '').strip().lower() == 'sm_75'
+    if 'awq' in target_lower:
+        return ('float16', 'awq') if is_turing else ('bfloat16', 'awq_marlin')
+    if 'gptq' in target_lower:
+        return ('float16', 'gptq')
+    return ('float16', None) if is_turing else ('bfloat16', None)
+
+
 def measure_cell_group(config, k, batches):
     """Runs only inside an isolated CUDA process (local or Modal)."""
     warmup, repeats = measurement_settings(config)
@@ -55,17 +66,16 @@ def measure_cell_group(config, k, batches):
     draft_revision = config.get('draft_revision') or HfApi().model_info(config['draft_model']).sha
     from vllm import LLM, SamplingParams
     from vllm.inputs import TokensPrompt
-    cfg = dict(model=config['target_model'], revision=target_revision, dtype='bfloat16', max_model_len=4096,
+    dtype, quantization = resolve_calibration_dtype_quant(config['target_model'], sm)
+    cfg = dict(model=config['target_model'], revision=target_revision, dtype=dtype, max_model_len=4096,
                max_num_seqs=32, max_num_batched_tokens=max(4096, max(batches)*CONTEXT),
                gpu_memory_utilization=0.85, enforce_eager=True, generation_config='vllm',
                compilation_config={'mode': 0},
                enable_prefix_caching=False, enable_chunked_prefill=False,
                async_scheduling=False,
                worker_extension_cls='flexsds.core.calibration_worker.CalibrationWorker')
-    if 'awq' in config['target_model'].lower():
-        cfg['quantization'] = 'awq_marlin'
-    elif 'gptq' in config['target_model'].lower():
-        cfg.update(quantization='gptq', dtype='float16')
+    if quantization:
+        cfg['quantization'] = quantization
     # Keep the drafter loaded at K=0: EAGLE still synchronizes its KV cache.
     cfg['speculative_config'] = dict(method=config['draft_method'], model=config['draft_model'],
                                      num_speculative_tokens=4, draft_sample_method='greedy',
