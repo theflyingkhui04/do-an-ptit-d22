@@ -42,10 +42,12 @@ def measure_cell_group(config, k, batches):
     if sm != config['sm_architecture']:
         raise RuntimeError(f"GPU mismatch: expected {config['sm_architecture']}, got {sm}")
     device = torch.cuda.get_device_name(0)
-    from flexsds.core.hardware import matches_gpu_label
+    from flexsds.core.hardware import MODAL_GPU_NAMES, matches_gpu_label, modal_gpu_resource
     expected = config.get('target_gpu')
-    if expected and not matches_gpu_label(expected, device):
-        raise RuntimeError(f'GPU mismatch: expected {expected}, got {device}')
+    if expected:
+        expected_label = modal_gpu_resource(expected) if str(expected).upper() in MODAL_GPU_NAMES else expected
+        if not matches_gpu_label(expected_label, device):
+            raise RuntimeError(f'GPU mismatch: expected {expected_label}, got {device}')
     if vllm.__version__ != '0.30.0':
         raise RuntimeError('Calibration requires vLLM 0.30.0')
     from huggingface_hub import HfApi
@@ -110,9 +112,12 @@ def build_profile(config, groups, batches):
     for k, group in zip(KS, groups):
         if group['sm_architecture'] != config['sm_architecture']:
             raise ValueError('Calibration hardware mismatch')
-        from flexsds.core.hardware import matches_gpu_label
-        if config.get('target_gpu') and not matches_gpu_label(config['target_gpu'], group['device']):
-            raise ValueError('Calibration GPU model mismatch')
+        from flexsds.core.hardware import MODAL_GPU_NAMES, matches_gpu_label, modal_gpu_resource
+        expected = config.get('target_gpu')
+        if expected:
+            expected_label = modal_gpu_resource(expected) if str(expected).upper() in MODAL_GPU_NAMES else expected
+            if not matches_gpu_label(expected_label, group['device']):
+                raise ValueError('Calibration GPU model mismatch')
         devices.add(group['device'])
         revisions.add((group.get('target_revision'), group.get('draft_revision')))
         if group.get('vllm_version') != '0.30.0':

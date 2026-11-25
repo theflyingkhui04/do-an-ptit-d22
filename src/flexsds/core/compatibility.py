@@ -458,7 +458,7 @@ OOM_ESTIMATE_REASON = "estimated VRAM exceeds 95% of the available memory budget
 
 
 def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
-                               backend: str = "local", target_gpu: str = "L4",
+                               backend: str = "local", target_gpu: str = "A10",
                                max_num_seqs: int = 32, max_model_len: int = 4096) -> ServingPreflight:
     """One metadata preflight policy shared by flag mode and wizard; no full weights.
 
@@ -467,8 +467,8 @@ def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
     """
     if any(type(value) is not int or value <= 0 for value in (max_num_seqs, max_model_len)):
         raise ValueError("Serving batch/context limits must be positive integers")
-    budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0}
-    available = hw_info.free_vram_mb if backend == "local" else budgets.get(target_gpu, 0.0)
+    from flexsds.core.hardware import remote_gpu_budget_mb
+    available = hw_info.free_vram_mb if backend == "local" else remote_gpu_budget_mb(backend, target_gpu)
     report = check_compatibility(target_model, draft_model, free_vram_mb=available,
                                  max_num_seqs=max_num_seqs, max_model_len=max_model_len)
     # One estimate and one policy; do not run a second name-based VRAM guard.
