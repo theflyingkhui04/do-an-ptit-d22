@@ -62,7 +62,7 @@ export function decodingLabel(decoding: Exclude<Decoding, "">, lang: Lang = "vi"
   return DECODING_LABELS_BY_LANG[lang][decoding];
 }
 
-export const GPU_SUGGESTIONS = ["NVIDIA A10G", "NVIDIA L4", "NVIDIA T4", "NVIDIA A100", "NVIDIA H100"];
+export const GPU_SUGGESTIONS = ["NVIDIA A10", "NVIDIA L40S", "NVIDIA A100", "NVIDIA T4", "NVIDIA H100"];
 
 /** Suggests the next unused short alias (#1, #2, ...) for a new endpoint. */
 export function nextAlias(endpoints: Pick<Endpoint, "name">[]): string {
@@ -116,13 +116,35 @@ const text = (value: unknown) => (typeof value === "string" && value.trim() ? va
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+function versionedEagleMethod(eagleVersion: string | undefined): string | undefined {
+  if (!eagleVersion) return undefined;
+  const norm = eagleVersion.toLowerCase().replace(/^eagle[\s_-]*/i, "").replace(/[\s_-]+/g, "");
+  if (norm === "1") return "eagle1";
+  if (norm === "2") return "eagle2";
+  if (norm === "3") return "eagle3";
+  if (norm === "3.1" || norm === "31") return "eagle3.1";
+  return undefined;
+}
+
+function normalizeGpuLabel(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  let cleaned = raw.replace(/^remote\s+/i, "").trim();
+  if (!cleaned) return undefined;
+  if (/^a10g$/i.test(cleaned)) cleaned = "A10";
+  if (/^nvidia\s+a10g$/i.test(cleaned)) return "NVIDIA A10";
+  if (/^(t4|a10|l4|l40s|a100|h100)$/i.test(cleaned)) {
+    return `NVIDIA ${cleaned.toUpperCase()}`;
+  }
+  return cleaned;
+}
+
 export function notesFromServingConfig(value: unknown): ServingNotes | null {
   if (!isObject(value)) return null;
   const serving = isObject(value.serving) ? value.serving : {};
   const hardware = isObject(value.hardware) ? value.hardware : {};
   const pick = (key: string) => (key in value ? value[key] : serving[key]);
   const draftModel = text(pick("draft_model"));
-  const method = text(pick("draft_method"));
+  const method = versionedEagleMethod(text(pick("eagle_version"))) ?? text(pick("draft_method"));
   const adaptive = Boolean(pick("enable_adaptive") ?? pick("adaptive_enabled"));
   let decoding: Decoding;
   if (!draftModel) {
@@ -131,7 +153,7 @@ export function notesFromServingConfig(value: unknown): ServingNotes | null {
     decoding = decodingOf({ draft_method: method ?? "eagle3", adaptive });
   }
   const notes: ServingNotes = { decoding };
-  const gpu = text(hardware.device_name) ?? text(pick("target_gpu"));
+  const gpu = normalizeGpuLabel(text(hardware.device_name) ?? text(pick("target_gpu")));
   if (gpu) notes.gpu = gpu;
   if (draftModel) notes.draft_model = draftModel;
   const target = text(pick("target_model"));

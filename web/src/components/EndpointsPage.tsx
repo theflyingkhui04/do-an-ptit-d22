@@ -30,7 +30,7 @@ function without<T>(record: Record<string, T>, key: string): Record<string, T> {
 
 // Kept in step with the real CLI by tests/test_web_cli_sample.py.
 export const SERVE_SAMPLE =
-  "flexsds serve --backend modal --gpu A10G --target Qwen/Qwen2.5-7B-Instruct-AWQ --draft duckhoi/qwen2.5-7b-eagle3.1-speculator";
+  "flexsds serve --backend modal --gpu A10 --target Qwen/Qwen2.5-7B-Instruct-AWQ --draft duckhoi/qwen2.5-7b-eagle3.1-speculator";
 export const SERVE_SAMPLE_HEADER = "Endpoint LLM created:";
 export const SERVE_SAMPLE_API = "https://…--flexsds-serving-serve.modal.run/v1";
 

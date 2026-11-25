@@ -216,7 +216,7 @@ describe("endpoints and alias flow", () => {
     await user.clear(within(drawer).getByLabelText("Alias"));
     await user.type(within(drawer).getByLabelText("Alias"), "#2 L4");
     await user.clear(within(drawer).getByLabelText("Chip"));
-    await user.type(within(drawer).getByLabelText("Chip"), "NVIDIA A10G");
+    await user.type(within(drawer).getByLabelText("Chip"), "NVIDIA A10");
     const decodingSelect = within(drawer).getByLabelText("Phương pháp giải mã");
     expect(within(decodingSelect).getByRole("option", { name: "EAGLE-1 (K cố định)" })).toBeInTheDocument();
     expect(within(decodingSelect).getByRole("option", { name: "EAGLE-1 (Hardware-Adaptive)" })).toBeInTheDocument();
@@ -233,7 +233,7 @@ describe("endpoints and alias flow", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(updateEndpoint).toHaveBeenCalledWith(FAST, {
       name: "#2 L4",
-      meta: { gpu: "NVIDIA A10G", draft_method: "eagle3.1" },
+      meta: { gpu: "NVIDIA A10", draft_method: "eagle3.1" },
     });
   });
 

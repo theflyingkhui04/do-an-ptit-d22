@@ -1,18 +1,59 @@
 import { describe, expect, it } from "vitest";
 
-import { agoText, agoVi, decodingOf, nextAlias, notesFor, notesFromServingConfig, shortReason, shortUrl } from "@/lib/endpoints";
+import {
+  GPU_SUGGESTIONS,
+  agoText,
+  agoVi,
+  decodingOf,
+  nextAlias,
+  notesFor,
+  notesFromServingConfig,
+  shortReason,
+  shortUrl,
+} from "@/lib/endpoints";
 
 describe("serving_config.json from the CLI", () => {
   it("reads the file the wizard writes (fields at the top level, GPU under hardware)", () => {
     const wizard = {
-      flexsds_version: "0.2.1", action: "serve", backend: "modal", target_model: "Qwen/Qwen2.5-7B-Instruct-AWQ",
-      draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator", draft_method: "eagle3", enable_adaptive: true,
-      target_gpu: "A10G", hardware: { device_name: "NVIDIA A10G", sm_architecture: "sm_86", free_vram_mb: 22000 },
+      flexsds_version: "0.3.4", action: "serve", backend: "modal", target_model: "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator", draft_method: "eagle3", eagle_version: "3.1",
+      enable_adaptive: true, target_gpu: "A10",
+      hardware: { device_name: "NVIDIA A10", sm_architecture: "sm_86", free_vram_mb: 22000 },
     };
     expect(notesFromServingConfig(wizard)).toEqual({
-      gpu: "NVIDIA A10G", decoding: "eagle3_adaptive", draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+      gpu: "NVIDIA A10", decoding: "eagle31_adaptive", draft_model: "duckhoi/qwen2.5-7b-eagle3.1-speculator",
       target_model: "Qwen/Qwen2.5-7B-Instruct-AWQ",
     });
+  });
+
+  it("maps EAGLE-1, EAGLE-2, EAGLE-3, and EAGLE-3.1 from eagle_version in CLI JSON", () => {
+    expect(notesFromServingConfig({
+      draft_model: "org/e1", draft_method: "eagle", eagle_version: "1", enable_adaptive: false,
+      hardware: { device_name: "Remote A10" },
+    })).toEqual({ gpu: "NVIDIA A10", decoding: "eagle1_static", draft_model: "org/e1" });
+
+    expect(notesFromServingConfig({
+      draft_model: "org/e2", draft_method: "eagle", eagle_version: "2", enable_adaptive: true,
+      hardware: { device_name: "NVIDIA L40S" },
+    })).toEqual({ gpu: "NVIDIA L40S", decoding: "eagle2_adaptive", draft_model: "org/e2" });
+
+    expect(notesFromServingConfig({
+      draft_model: "org/e3", draft_method: "eagle3", eagle_version: "3", enable_adaptive: false,
+      hardware: { device_name: "NVIDIA A100" },
+    })).toEqual({ gpu: "NVIDIA A100", decoding: "eagle3_static", draft_model: "org/e3" });
+
+    expect(notesFromServingConfig({
+      draft_model: "org/e31", draft_method: "eagle3", eagle_version: "EAGLE-3.1", enable_adaptive: false,
+      target_gpu: "T4",
+    })).toEqual({ gpu: "NVIDIA T4", decoding: "eagle31_static", draft_model: "org/e31" });
+  });
+
+  it("normalizes GPU suggestions to A10, L40S, A100, and T4", () => {
+    expect(GPU_SUGGESTIONS).toContain("NVIDIA A10");
+    expect(GPU_SUGGESTIONS).toContain("NVIDIA L40S");
+    expect(GPU_SUGGESTIONS).toContain("NVIDIA A100");
+    expect(GPU_SUGGESTIONS).toContain("NVIDIA T4");
+    expect(GPU_SUGGESTIONS).not.toContain("NVIDIA A10G");
   });
 
   it("also reads the nested serving block and its older adaptive_enabled name", () => {
