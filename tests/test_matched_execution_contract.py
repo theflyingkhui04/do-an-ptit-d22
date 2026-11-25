@@ -166,7 +166,7 @@ def test_modal_runner_forwards_matched_contract_keys_and_validates_early(capsys)
         match_adaptive_runtime=True,
         disable_prefix_caching=True,
         static_k=3,
-        target_gpu="A10G",
+        target_gpu="A10",
     )
     env = runner.setup_environment(cfg)
     payload = json.loads(env["FLEXSDS_SERVING_CONFIG"])
@@ -182,7 +182,7 @@ def test_modal_runner_forwards_matched_contract_keys_and_validates_early(capsys)
         enable_adaptive=False,
         disable_speculative=True,
         static_k=3,
-        target_gpu="A10G",
+        target_gpu="A10",
     )
     with pytest.raises(ValueError):
         runner.launch(invalid_cfg, deploy=False, dry_run=True)
@@ -218,7 +218,7 @@ def test_cli_vanilla_matched_modal_dry_run_succeeds_offline_without_draft(capsys
             "--backend",
             "modal",
             "--gpu",
-            "A10G",
+            "A10",
             "--target",
             "Qwen/Qwen2.5-7B-Instruct-AWQ",
             "--vanilla",

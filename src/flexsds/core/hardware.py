@@ -75,8 +75,10 @@ _MODAL_GPU_BY_NAME: dict[str, ModalGpuSpec] = {spec.name: spec for spec in MODAL
 
 COLAB_GPU_MAP: dict[str, tuple[str, float]] = {
     "T4": ("sm_75", 15000.0),
+    "A10": ("sm_86", 22000.0),
     "L4": ("sm_89", 23000.0),
-    "A100": ("sm_80", 40000.0),
+    "L40S": ("sm_89", 46000.0),
+    "A100": ("sm_80", 78000.0),
 }
 
 

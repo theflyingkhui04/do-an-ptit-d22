@@ -250,3 +250,124 @@ def test_preflight_uses_remote_budgets_for_all_modal_gpus(monkeypatch):
         result = evaluate_serving_preflight("target", "draft", hw, backend="modal", target_gpu=gpu)
         assert result.download.free_vram_mb == expected_mb
     assert captured == [15000.0, 22000.0, 46000.0, 78000.0]
+
+
+def test_modal_app_maps_a100_to_a100_80gb_and_rejects_removed_gpus(tmp_path, monkeypatch):
+    import runpy
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from flexsds.server import modal_image
+
+    source = Path(modal_image.__file__).with_name("modal_app.py")
+
+    def run_app_with_gpu(gpu_name):
+        monkeypatch.setenv(
+            "FLEXSDS_SERVING_CONFIG",
+            json.dumps({"target_gpu": gpu_name, "enable_adaptive": False}),
+        )
+        monkeypatch.delenv("FLEXSDS_SERVING_CONFIG_B64", raising=False)
+        image = Mock()
+        image.env.return_value = image
+        image.add_local_dir.return_value = image
+        image.add_local_file.return_value = image
+        app = Mock()
+        app.function.return_value = lambda fn: fn
+        monkeypatch.setitem(
+            sys.modules,
+            "modal",
+            SimpleNamespace(
+                App=Mock(return_value=app),
+                is_local=Mock(return_value=False),
+                Volume=SimpleNamespace(from_name=Mock()),
+                web_server=lambda *a, **kw: lambda fn: fn,
+            ),
+        )
+        monkeypatch.setattr(modal_image, "serving_image", lambda: image)
+        runpy.run_path(str(source))
+        return app.function.call_args.kwargs["gpu"]
+
+    assert run_app_with_gpu("T4") == "T4"
+    assert run_app_with_gpu("A10") == "A10"
+    assert run_app_with_gpu("L40S") == "L40S"
+    assert run_app_with_gpu("A100") == "A100-80GB"
+
+    for removed in ("L4", "A10G", "A100-40GB"):
+        with pytest.raises(ValueError, match="Unsupported Modal GPU"):
+            run_app_with_gpu(removed)
+
+
+def test_modal_calibration_accepts_catalog_gpus_and_rejects_removed(monkeypatch):
+    from pathlib import Path
+    from flexsds.server import modal_calibration
+
+    monkeypatch.setattr("flexsds.server.modal_auth.ensure_modal", lambda: None)
+    monkeypatch.setattr("flexsds.server.modal_auth.modal_command", lambda: ["modal"])
+
+    def fake_run(command, *, env, **kwargs):
+        Path(env["FLEXSDS_CALIBRATION_OUTPUT"]).write_text('[{"ok": true}]')
+
+    monkeypatch.setattr(modal_calibration, "run_logged_process", fake_run)
+    for gpu in ("T4", "A10", "L40S", "A100"):
+        assert modal_calibration.calibrate({"target_gpu": gpu}, [1]) == [{"ok": True}]
+
+    for bad in ("L4", "A10G", "A100-40GB"):
+        with pytest.raises(ValueError, match="Unsupported Modal calibration GPU"):
+            modal_calibration.calibrate({"target_gpu": bad}, [1])
+
+
+def test_cli_gpu_flags_and_wizard_footers_match_modal_catalog():
+    from flexsds.cli.main import parse_args
+    from flexsds.cli import wizard
+
+    assert parse_args(["serve"]).gpu == "A10"
+    assert parse_args(["profile"]).gpu == "A10"
+    for gpu in ("T4", "A10", "L40S", "A100"):
+        assert parse_args(["serve", "--gpu", gpu]).gpu == gpu
+        assert parse_args(["profile", "--gpu", gpu]).gpu == gpu
+
+    for rejected in ("L4", "A10G", "A100-40GB"):
+        with pytest.raises(SystemExit) as exc:
+            parse_args(["serve", "--gpu", rejected])
+        assert exc.value.code == 2
+        with pytest.raises(SystemExit) as exc:
+            parse_args(["profile", "--gpu", rejected])
+        assert exc.value.code == 2
+
+    assert wizard.MODAL_GPU_CHOICES == MODAL_GPU_CHOICES
+    for spec in MODAL_GPU_SPECS:
+        choice = modal_gpu_choice_label(spec)
+        desc = wizard.choice_description("Modal GPU:", choice)
+        assert f"[{spec.tier}]" in desc
+        assert f"{spec.vram_gb} GB VRAM" in desc
+        assert f"${spec.price_per_sec:.6f}/s" in desc
+
+    colab_desc = wizard.choice_description("Serving platform:", wizard.PLATFORM_CHOICES[1])
+    assert "notebook" in colab_desc.lower()
+
+
+def test_modal_runner_forwards_eagle_version():
+    from flexsds.server.modal_runner import ModalServingRunner
+
+    runner = ModalServingRunner()
+    cfg = {
+        "serving": {
+            "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+            "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+            "draft_method": "eagle3",
+            "eagle_version": "3.1",
+            "target_gpu": "A10",
+            "enable_adaptive": False,
+        }
+    }
+    forwarded = json.loads(runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"])
+    assert forwarded["eagle_version"] == "3.1"
+    assert forwarded["target_gpu"] == "A10"
+
+
+def test_colab_remote_budget_handles_default_and_colab_gpus():
+    assert remote_gpu_budget_mb("colab", "A10") == 22000.0
+    assert remote_gpu_budget_mb("colab", "T4") == 15000.0
+    assert remote_gpu_budget_mb("colab", "L4") == 23000.0
+    assert remote_gpu_budget_mb("colab", "A100") == 78000.0

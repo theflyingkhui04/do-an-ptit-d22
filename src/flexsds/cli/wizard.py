@@ -24,7 +24,17 @@ except ImportError:
 try:
     from flexsds import __version__
     from flexsds.cli.output import print_output as print
-    from flexsds.core.hardware import detect_hardware, HardwareInfo
+    from flexsds.core.hardware import (
+        DEFAULT_MODAL_GPU,
+        DEFAULT_MODAL_GPU_INDEX,
+        MODAL_GPU_CHOICES,
+        MODAL_GPU_SPECS,
+        HardwareInfo,
+        build_remote_hardware_info,
+        detect_hardware,
+        get_modal_gpu_spec,
+        modal_gpu_footer,
+    )
     from flexsds.core.compatibility import (
         evaluate_serving_preflight,
         ServingBlockedError,
@@ -40,7 +50,17 @@ try:
 except ModuleNotFoundError:
     from src.flexsds import __version__
     from src.flexsds.cli.output import print_output as print
-    from src.flexsds.core.hardware import detect_hardware, HardwareInfo
+    from src.flexsds.core.hardware import (
+        DEFAULT_MODAL_GPU,
+        DEFAULT_MODAL_GPU_INDEX,
+        MODAL_GPU_CHOICES,
+        MODAL_GPU_SPECS,
+        HardwareInfo,
+        build_remote_hardware_info,
+        detect_hardware,
+        get_modal_gpu_spec,
+        modal_gpu_footer,
+    )
     from src.flexsds.core.compatibility import (
         evaluate_serving_preflight,
         ServingBlockedError,
@@ -59,12 +79,6 @@ PLATFORM_CHOICES = [
     "Modal.com (Cloud Serverless GPU)",
     "Google Colab (Free GPU T4/L4)",
     "Local vLLM (Self-hosted GPU)",
-]
-
-MODAL_GPU_CHOICES = [
-    "A10G (Recommended - 24 GB VRAM)",
-    "L4 (24 GB VRAM - Capacity limited)",
-    "T4 (16 GB VRAM)",
 ]
 
 
@@ -180,12 +194,9 @@ CHOICE_HELP = {
     "Default:": "Use Qwen2.5-7B AWQ with the team's EAGLE-3.1 speculator.",
     "Custom Hugging Face model": "Enter your own target and draft model IDs or local paths.",
     "Modal.com": "Run on a cloud GPU using your Modal account.",
-    "Google Colab": "Prepare a notebook and connect through its tunnel URL.",
+    "Google Colab": "Generate a notebook to upload to Colab (GPU choice does not auto-provision).",
     "Local vLLM": "Run vLLM on this machine; requires a compatible CUDA GPU.",
-    "A10G": "24 GB GPU for the default AWQ target and EAGLE head.",
-    "L4": "24 GB cloud GPU; availability depends on Modal capacity.",
-    "T4": "16 GB GPU; check model memory and dtype compatibility.",
-    "A100 / L4": "Select the GPU available in your Colab runtime.",
+    "A100 / L4": "Hint only for VRAM estimate; select the actual GPU runtime inside Colab.",
     "Development": "Temporary Modal service; keep this terminal open to keep it running.",
     "Production": "Persistent Modal deployment; continues after the CLI exits.",
     "Calibrate": "Measure model costs on the selected GPU and save a real profile.",
@@ -211,6 +222,13 @@ def choice_description(question: str, choice: str) -> str:
             if question.startswith(prefix):
                 return descriptions[choice == "No"]
         return "Continue with this setting." if choice == "Yes" else "Skip this setting."
+    if question.startswith("Modal GPU"):
+        try:
+            return modal_gpu_footer(get_modal_gpu_spec(choice))
+        except ValueError:
+            pass
+    if question.startswith("Colab GPU"):
+        return "Hint only for VRAM estimate; select the actual GPU runtime inside Google Colab."
     for prefix, description in CHOICE_HELP.items():
         if choice.startswith(prefix):
             return description
@@ -446,8 +464,9 @@ def run_profile_measurement(hw_info):
     backend = "modal" if platform == "Modal" else "local"
     hardware = hw_info
     if backend == "modal":
-        gpu = prompt_choice("Modal GPU:", ["A10G", "L4", "T4"], default_idx=0)
-        hardware = HardwareInfo(f"Remote {gpu}", {"A10G": "sm_86", "L4": "sm_89", "T4": "sm_75"}[gpu], 0, 0, "unknown", True)
+        chosen = prompt_choice("Modal GPU:", MODAL_GPU_CHOICES, default_idx=DEFAULT_MODAL_GPU_INDEX)
+        gpu = get_modal_gpu_spec(chosen).name
+        hardware = build_remote_hardware_info("modal", gpu)
     target = prompt_string("Target model ID or path:", "Qwen/Qwen2.5-7B-Instruct-AWQ")
     draft = prompt_string("Draft speculator ID or path:", "duckhoi/qwen2.5-7b-eagle3.1-speculator")
     model, name = load_profile_for_hardware(hardware, strict=True, target_model=target, draft_model=draft)
@@ -528,15 +547,10 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
 
     platform_choice = prompt_choice("Serving platform:", PLATFORM_CHOICES, default_idx=0)
     backend = "modal" if "Modal" in platform_choice else ("colab" if "Colab" in platform_choice else "local")
-    target_gpu = "A10G"
+    target_gpu = DEFAULT_MODAL_GPU
     if backend == "modal":
-        modal_gpu_choices = [
-            "A10G (Recommended - 24 GB VRAM)",
-            "L4 (24 GB VRAM - Capacity limited)",
-            "T4 (16 GB VRAM)",
-        ]
-        chosen = prompt_choice("Modal GPU:", modal_gpu_choices, default_idx=0)
-        target_gpu = "A10G" if "A10G" in chosen else ("L4" if "L4" in chosen else "T4")
+        chosen = prompt_choice("Modal GPU:", MODAL_GPU_CHOICES, default_idx=DEFAULT_MODAL_GPU_INDEX)
+        target_gpu = get_modal_gpu_spec(chosen).name
     elif backend == "colab":
         gpu_choice = prompt_choice("Colab GPU:", ["T4", "A100 / L4"], default_idx=0)
         target_gpu = "T4" if "T4" in gpu_choice else "L4"
@@ -661,24 +675,7 @@ def run_interactive_wizard(hw_info: HardwareInfo) -> Dict[str, Any]:
 
     # Step 6: Profile Mapping
     if backend in ("modal", "colab"):
-        remote_sm_map = {
-            "A10G": "sm_86",
-            "L4": "sm_89",
-            "T4": "sm_75",
-            "A100": "sm_80",
-        }
-        target_sm = remote_sm_map.get(target_gpu, "sm_89")
-        budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0, "A100": 40000.0}
-        target_vram = budgets.get(target_gpu, 22000.0)
-        serving_hw = HardwareInfo(
-            device_name=f"Remote {target_gpu}",
-            sm_architecture=target_sm,
-            total_vram_mb=target_vram,
-            free_vram_mb=target_vram,
-            cuda_version="12.4",
-            is_cuda_available=True,
-            device_count=1,
-        )
+        serving_hw = build_remote_hardware_info(backend, target_gpu)
     else:
         serving_hw = hw_info
 

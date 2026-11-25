@@ -60,7 +60,7 @@ def test_profile_reaches_environment_and_controller(measured_profile, tmp_path, 
     from src.server.budget_planner import AdaptiveBudgetPlanner
     path = tmp_path / 'profile.json'; path.write_text(json.dumps(measured_profile))
     config = dict(target_model='target', draft_model='draft', draft_method='draft_model',
-                  enable_adaptive=True, target_gpu='A10G', profile_path=str(path))
+                  enable_adaptive=True, target_gpu='A10', profile_path=str(path))
     forwarded = json.loads(ModalServingRunner().setup_environment(config)['FLEXSDS_SERVING_CONFIG'])
     assert forwarded['profile_path'] == str(path)
     env = LocalServingRunner().setup_environment(config)
@@ -109,10 +109,10 @@ def test_cli_eagle_adaptive_with_measured_profile_reaches_modal_preview(measured
                   draft_model='duckhoi/qwen2.5-7b-eagle3.1-speculator', draft_method='eagle3')
     data = cal.build_profile(config, profile['evidence']['groups'], cal.BATCHES)
     monkeypatch.setattr(cm, 'USER_PROFILES_DIR', tmp_path)
-    path = cm.save_hardware_profile(data, 'sm_86', 'a10g')
+    path = cm.save_hardware_profile(data, 'sm_86', 'a10')
     seen = []
     monkeypatch.setattr(ModalServingRunner, 'launch', lambda self, cfg, **kw: seen.append((cfg, kw)))
-    assert main(['serve','--backend','modal','--gpu','A10G','--target',config['target_model'],
+    assert main(['serve','--backend','modal','--gpu','A10','--target',config['target_model'],
                  '--draft',config['draft_model'],'--dry-run']) == 0
     cfg = seen[0][0]['serving']
     assert cfg['enable_adaptive'] is True and cfg['draft_method'] == 'eagle3'

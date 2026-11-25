@@ -49,7 +49,7 @@ def test_image_config_survives_windows_paths_and_container_import(tmp_path, monk
     monkeypatch.chdir(tmp_path)
     profile = tmp_path / profile_name
     profile.write_text('{}', encoding='utf-8')
-    config = dict(target_gpu='A10G', profile_path=str(profile),
+    config = dict(target_gpu='A10', profile_path=str(profile),
                   target_model='model có dấu', enable_adaptive=True)
     monkeypatch.setenv('FLEXSDS_SERVING_CONFIG', json.dumps(config))
     monkeypatch.delenv('FLEXSDS_SERVING_CONFIG_B64', raising=False)

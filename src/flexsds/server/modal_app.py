@@ -24,12 +24,18 @@ if _pkg_root not in sys.path:
     sys.path.insert(0, _pkg_root)
 
 try:
+    from flexsds.core.hardware import DEFAULT_MODAL_GPU, MODAL_GPU_NAMES, modal_gpu_resource
     from flexsds.server.local_runner import LocalServingRunner
 except ModuleNotFoundError:
     try:
+        from src.flexsds.core.hardware import DEFAULT_MODAL_GPU, MODAL_GPU_NAMES, modal_gpu_resource
         from src.flexsds.server.local_runner import LocalServingRunner
     except ModuleNotFoundError:
         from local_runner import LocalServingRunner
+        DEFAULT_MODAL_GPU = "A10"
+        MODAL_GPU_NAMES = ("T4", "A10", "L40S", "A100")
+        def modal_gpu_resource(gpu: str) -> str:
+            return {"T4": "T4", "A10": "A10", "L40S": "L40S", "A100": "A100-80GB"}[gpu]
 
 APP_NAME = "flexsds-serving"
 # Image.env becomes a Dockerfile ENV instruction. Raw JSON containing Windows
@@ -41,9 +47,10 @@ SERVING_CONFIG = json.loads(
     if _encoded_config is not None else os.environ.get("FLEXSDS_SERVING_CONFIG", "{}")
 )
 PORT = int(SERVING_CONFIG.get("port", 8000))
-GPU = SERVING_CONFIG.get("target_gpu", "L4")
-if GPU not in {"L4", "T4", "A10G"} or not 1 <= PORT <= 65535:
+GPU = SERVING_CONFIG.get("target_gpu", DEFAULT_MODAL_GPU)
+if GPU not in MODAL_GPU_NAMES or not 1 <= PORT <= 65535:
     raise ValueError("Unsupported Modal GPU or serving port")
+MODAL_GPU = modal_gpu_resource(GPU)
 
 try:
     import modal
@@ -94,7 +101,7 @@ if modal is not None:
 
     volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)
 
-    @app.function(image=image, gpu=GPU, max_containers=1,
+    @app.function(image=image, gpu=MODAL_GPU, max_containers=1,
                   volumes={"/root/.cache/huggingface": volume}, timeout=3600)
     @modal.web_server(PORT, startup_timeout=600)
     def serve():
@@ -106,12 +113,14 @@ if modal is not None:
             from flexsds.core.hardware import HardwareInfo, matches_gpu_label
             from flexsds.core.cost_model import validate_measured_profile
             sm = 'sm_%d%d' % torch.cuda.get_device_capability(0)
+            actual_device = torch.cuda.get_device_name(0)
             data = json.loads(Path(runtime_config['profile_path']).read_text())
-            if not matches_gpu_label(data['metadata']['device'], torch.cuda.get_device_name(0)):
+            if (not matches_gpu_label(MODAL_GPU, actual_device)
+                    or not matches_gpu_label(data['metadata']['device'], actual_device)):
                 raise ValueError('Profile differs from actual Modal GPU')
             hardware = HardwareInfo(device_name=f"Remote {GPU}", sm_architecture=sm,
                                     total_vram_mb=0, free_vram_mb=0, cuda_version=torch.version.cuda,
-                                    is_cuda_available=True)
+                                    is_cuda_available=True, gpu_match_label=MODAL_GPU)
             validate_measured_profile(data, hardware, runtime_config.get('target_model'), runtime_config.get('draft_model'))
         runner = LocalServingRunner()
         # Do not use the laptop's preflight here: the CLI evaluated the remote budget.
