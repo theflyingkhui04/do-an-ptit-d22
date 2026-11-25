@@ -120,7 +120,11 @@ def _find_profile_in_dir(
 ) -> tuple[Path, dict[str, Any]] | None:
     if not profile_dir.is_dir():
         return None
-    for path in sorted(profile_dir.glob("profile_*.json")):
+    candidates = sorted(
+        profile_dir.glob("profile_*.json"),
+        key=lambda p: (p.stem.endswith("_fast"), p.name),
+    )
+    for path in candidates:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if data.get("metadata", {}).get("schema") != "flexsds-component-v2":
@@ -265,6 +269,7 @@ def plan(
     static_k: int = DEFAULT_STATIC_K,
     adaptive_max_k: int = DEFAULT_ADAPTIVE_MAX_K,
     match_adaptive_runtime: bool = False,
+    use_heterogeneous_vocab: bool = False,
     profile_dir: Path | str | None = None,
 ) -> dict[str, Any]:
     """Build a frozen, deterministic multi-GPU 3-node 3-lane benchmark plan (read-only)."""
@@ -335,6 +340,7 @@ def plan(
         "static_k": static_k,
         "adaptive_max_k": adaptive_max_k,
         "match_adaptive_runtime": bool(match_adaptive_runtime),
+        "use_heterogeneous_vocab": bool(use_heterogeneous_vocab),
         "vllm_runtime": runtime_patch.RUNTIME_LABEL,
         "warmup": WARMUP_REQUESTS,
         "repeats": REPEATS,
@@ -405,6 +411,7 @@ def build_cell_serving_config(
         "static_k": None if (is_vanilla or is_adaptive) else int(record["static_k"]),
         "max_k": int(record.get("adaptive_max_k", DEFAULT_ADAPTIVE_MAX_K)),
         "match_adaptive_runtime": False if is_adaptive else bool(record.get("match_adaptive_runtime", False)),
+        "use_heterogeneous_vocab": False if is_vanilla else bool(record.get("use_heterogeneous_vocab", False)),
         "max_model_len": int(cell["max_model_len"]),
         "max_num_seqs": 32,
         "port": 8000,
@@ -440,6 +447,81 @@ def save_plan(record: dict[str, Any], plan_root: Path = PLAN_ROOT) -> Path:
     with path.open("xb") as stream:
         stream.write(content)
     return out
+
+
+def load_plan(campaign_id: str, plan_root: Path = PLAN_ROOT) -> dict[str, Any]:
+    """Load an existing frozen campaign plan.json read-only without mutating disk."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", campaign_id):
+        raise ValueError("Invalid campaign_id")
+    base = plan_root if plan_root.is_absolute() else ROOT / plan_root
+    path = base / campaign_id / "plan.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"Frozen campaign plan not found: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def summarize_speculative_acceptance(raw: Sequence[dict[str, Any]], lane: str) -> tuple[float | None, float | None]:
+    """Validate and aggregate speculative counters; allows genuine adaptive K=0 cells with 0 drafts."""
+    from experiments import aggregate_results as agg
+
+    if lane == "vanilla":
+        return None, None
+    if lane == "static":
+        return agg.aggregate_static_acceptance(raw)
+
+    # Adaptive lane may legitimately pick K=0 for every step on high-batch or short-output cells.
+    drafted_total = 0
+    for record in raw:
+        server_metrics = record.get("server_metrics")
+        if not isinstance(server_metrics, dict):
+            continue
+        spec = server_metrics.get("speculative_decoding")
+        if not isinstance(spec, dict):
+            continue
+        drafted = spec.get("num_draft_tokens", 0)
+        accepted = spec.get("num_accepted_draft_tokens", 0)
+        steps = spec.get("num_spec_steps", 0)
+        if not all(type(v) is int for v in (drafted, accepted, steps)) or not 0 <= accepted <= drafted or steps < 0:
+            raise ValueError(f"Invalid adaptive native speculative counters: {spec!r}")
+        drafted_total += drafted
+
+    if drafted_total > 0:
+        return agg.aggregate_static_acceptance(raw)
+    return None, None
+
+
+def _validate_server_vllm_args(server: dict[str, Any], expected_cfg: dict[str, Any], lane: str) -> None:
+    args = server.get("vllm_args")
+    if args is None:
+        return
+    if not isinstance(args, list) or not all(isinstance(x, str) for x in args):
+        raise ValueError("Server vllm_args must be a list of strings")
+    has_spec = "--speculative-config" in args
+    if lane == "vanilla":
+        if has_spec or "--scheduler-cls" in args:
+            raise ValueError("Vanilla server vllm_args must not enable speculation or adaptive scheduler")
+    else:
+        if not has_spec:
+            raise ValueError(f"Lane {lane!r} vllm_args missing --speculative-config")
+        spec = json.loads(args[args.index("--speculative-config") + 1])
+        if spec.get("method") != expected_cfg["draft_method"]:
+            raise ValueError(f"Server vllm_args speculative method mismatch: {spec.get('method')!r}")
+        if spec.get("model") != expected_cfg["draft_model"]:
+            raise ValueError(f"Server vllm_args speculative model mismatch: {spec.get('model')!r}")
+        if lane == "static":
+            if spec.get("num_speculative_tokens") != expected_cfg["static_k"]:
+                raise ValueError(
+                    f"Server vllm_args static_k mismatch: expected {expected_cfg['static_k']}, "
+                    f"got {spec.get('num_speculative_tokens')!r}"
+                )
+            if "--scheduler-cls" in args:
+                raise ValueError("Static lane vllm_args must not set --scheduler-cls")
+        elif lane == "adaptive":
+            if "--scheduler-cls" not in args or "--distributed-executor-backend" not in args:
+                raise ValueError("Adaptive lane vllm_args missing scheduler or lineage executor")
+    if lane == "adaptive" or expected_cfg.get("match_adaptive_runtime"):
+        if "--enforce-eager" not in args or "--async-scheduling" not in args:
+            raise ValueError("Expected matched eager vLLM runtime flags in server vllm_args")
 
 
 def attempt_prefix(record: dict[str, Any], cell: dict[str, Any]) -> str:
@@ -511,14 +593,22 @@ def validate_cell(
         raise ValueError("Patched vLLM runtime (backport #55708) required for benchmark cells")
     if not server.get("instance_id"):
         raise ValueError("Missing server instance_id")
+    if server.get("lane") != cell["lane"] or server.get("run_id") != receipt["server_run_id"]:
+        raise ValueError("Server lane/run_id mismatch")
+    if server.get("source_commit") != record["commit"]:
+        raise ValueError("Server source_commit mismatch")
     if server.get("target_model") != record["target_model"]:
         raise ValueError("Server target_model mismatch")
     if server.get("draft_model") != expected_cfg["draft_model"]:
         raise ValueError("Server draft_model mismatch")
+    _validate_server_vllm_args(server, expected_cfg, cell["lane"])
     if cell["lane"] == "adaptive":
         sha = server.get("profile_sha256")
         if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha):
             raise ValueError("Adaptive benchmark cell missing verified profile_sha256")
+        expected_sha = receipt.get("expected_profile_sha256")
+        if expected_sha and sha != expected_sha:
+            raise ValueError("Adaptive benchmark cell profile_sha256 mismatch")
 
     if meta.get("endpoint_model_ids") != [expected_cfg["served_model_name"]]:
         raise ValueError("Missing endpoint model verification")
@@ -593,7 +683,8 @@ def validate_cell(
         raise ValueError("Measured execution began before warm-up completed")
 
     agg.validate_measured_records(raw)
-    acceptance = agg.aggregate_static_acceptance(raw) if cell["lane"] != "vanilla" else None
+    alpha_tau = summarize_speculative_acceptance(raw, cell["lane"])
+    acceptance = None if alpha_tau == (None, None) else alpha_tau
 
     summary = None
     if (out / "raw.vram.jsonl").exists():
@@ -737,7 +828,9 @@ def aggregate(
         raw = agg._load_jsonl(raw_path)
         row = agg.aggregate_raw_jsonl(raw_path)[0]
         if row["lane"] != "vanilla":
-            row["alpha"], row["tau"] = agg.aggregate_static_acceptance(raw)
+            alpha, tau = summarize_speculative_acceptance(raw, row["lane"])
+            row["alpha"] = "N/A" if alpha is None else alpha
+            row["tau"] = "N/A" if tau is None else tau
         row["gpu_tier"] = cell["gpu"]
         row["modal_gpu"] = cell["modal_gpu"]
         row["attempt_id"] = path.name
@@ -769,10 +862,18 @@ def aggregate(
     dest.parent.mkdir(parents=True, exist_ok=True)
     report_dest.parent.mkdir(parents=True, exist_ok=True)
 
+    def _semantic_summary(payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **payload,
+            "cells": [{k: v for k, v in r.items() if k != "timestamp"} for r in payload.get("cells", [])],
+        }
+
     serialized = (json.dumps(result, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-    if dest.exists() and dest.read_bytes() != serialized:
-        raise FileExistsError(f"Conflicting summary: {dest}")
-    if not dest.exists():
+    if dest.exists():
+        existing = json.loads(dest.read_text(encoding="utf-8"))
+        if _semantic_summary(existing) != _semantic_summary(result):
+            raise FileExistsError(f"Conflicting summary: {dest}")
+    else:
         dest.write_bytes(serialized)
 
     report_md = render_markdown_report(result)
@@ -795,9 +896,18 @@ def drive(
 ) -> None:
     """Sequentially deploy/submit/poll/collect/validate/stop every cell across all GPUs."""
     from experiments import modal_benchmark_runner as runner
+    try:
+        from flexsds.core.credentials import CredentialsManager
+        from flexsds.server import modal_auth
+    except ModuleNotFoundError:
+        from src.flexsds.core.credentials import CredentialsManager
+        from src.flexsds.server import modal_auth
 
     if runner._committed_bench_source() != record["commit"]:
         raise ValueError("Checkout must match the frozen campaign execution SHA")
+    modal_auth.ensure_modal()
+    if not modal_auth.prepare_modal_auth(CredentialsManager()):
+        raise RuntimeError("Modal credentials missing; run 'flexsds auth login --provider modal' first.")
 
     profiles = (
         ensure_adaptive_profiles(
@@ -850,7 +960,7 @@ def drive(
                 "FLEXSDS_BENCH_RUN_ID": run_id,
             }
             subprocess.run(
-                [sys.executable, "-m", "modal", "deploy", "-m", "experiments.modal_benchmark_runner"],
+                [*modal_auth.modal_command(), "deploy", "-m", "experiments.modal_benchmark_runner"],
                 cwd=REPO_ROOT,
                 env=env,
                 check=True,
@@ -945,8 +1055,40 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def format_campaign_status(record: dict[str, Any], plan_root: Path = PLAN_ROOT) -> list[str]:
+    from experiments import modal_benchmark_runner as runner
+
+    att_root = attempts_dir(record, plan_root)
+    lines: list[str] = []
+    for cell in record["cells"]:
+        history = attempts(record, cell, plan_root)
+        state = (
+            "COLLECTED"
+            if selected_attempt(record, cell, plan_root)
+            else (runner.bench_status(history[-1].name, evidence_root=att_root) if history else "NOT_SUBMITTED")
+        )
+        lines.append(f"{cell['key']} {state}")
+    return lines
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.action == "stop":
+        from experiments import modal_benchmark_runner as runner
+        runner.stop_app()
+        return 0
+    if args.action in ("status", "validate", "aggregate"):
+        record = load_plan(args.campaign_id)
+        if args.action == "status":
+            for line in format_campaign_status(record):
+                print(line)
+        elif args.action == "validate":
+            cells = validate_campaign(record)
+            print(f"VALID: {len(cells)} cells, {len(cells) * REPEATS * NUM_REQUESTS} measured requests")
+        else:
+            aggregate(record)
+        return 0
+
     sha = args.execution_sha or resolve_git_head()
     record = plan(
         args.campaign_id,
@@ -966,35 +1108,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.action == "plan":
         print(json.dumps(record, indent=2, ensure_ascii=False))
         return 0
-    if args.action == "stop":
-        from experiments import modal_benchmark_runner as runner
-        runner.stop_app()
-        return 0
-    save_plan(record)
-    if args.action == "run":
-        drive(
-            record,
-            retry_failed=args.retry_failed,
-            profile_dir=args.profile_dir,
-            auto_calibrate=args.auto_calibrate,
-            calibrate_mode=args.calibrate_mode,
-        )
-    elif args.action == "status":
-        from experiments import modal_benchmark_runner as runner
-        att_root = attempts_dir(record)
-        for cell in record["cells"]:
-            history = attempts(record, cell)
-            state = (
-                "COLLECTED"
-                if selected_attempt(record, cell)
-                else (runner.bench_status(history[-1].name, evidence_root=att_root) if history else "NOT_SUBMITTED")
-            )
-            print(cell["key"], state)
-    elif args.action == "validate":
-        cells = validate_campaign(record)
-        print(f"VALID: {len(cells)} cells, {len(cells) * REPEATS * NUM_REQUESTS} measured requests")
-    elif args.action == "aggregate":
-        aggregate(record)
+    drive(
+        record,
+        retry_failed=args.retry_failed,
+        profile_dir=args.profile_dir,
+        auto_calibrate=args.auto_calibrate,
+        calibrate_mode=args.calibrate_mode,
+    )
     return 0
 
 

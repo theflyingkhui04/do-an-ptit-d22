@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
-from pathlib import Path
+import subprocess
 from typing import Any
 
 try:
@@ -25,8 +25,16 @@ def _default_campaign_id(mode: str, *, preview: bool) -> str:
 
 def run_benchmark_command(args: Any) -> int:
     """Execute `flexsds benchmark` subcommand actions safely."""
-    action = getattr(args, "bench_action", None) or ("plan" if getattr(args, "dry_run", False) else "plan")
-    if getattr(args, "dry_run", False) and action in ("run", "plan"):
+    action = getattr(args, "bench_action", None) or "plan"
+    dry_run = bool(getattr(args, "dry_run", False))
+
+    if dry_run:
+        if action == "stop":
+            print("Dry-run: would stop Modal benchmark app (flexsds-benchmark); no Modal call was made.")
+            return 0
+        if action in ("status", "validate", "aggregate"):
+            print(f"--dry-run is not supported with 'flexsds benchmark {action}'.")
+            return 2
         action = "plan"
 
     if action == "stop":
@@ -34,16 +42,38 @@ def run_benchmark_command(args: Any) -> int:
 
         try:
             runner.stop_app()
-        except (RuntimeError, OSError, ValueError) as exc:
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
             print(f"Benchmark stop failed: {exc}")
             return 1
         print("Stopped Modal benchmark app (flexsds-benchmark).")
         return 0
 
+    if action in ("status", "validate", "aggregate"):
+        campaign_id = getattr(args, "campaign_id", None)
+        if not campaign_id:
+            print(f"--campaign-id is required for 'flexsds benchmark {action}'.")
+            return 2
+        try:
+            record = camp.load_plan(campaign_id)
+            if action == "status":
+                for line in camp.format_campaign_status(record):
+                    print(line)
+            elif action == "validate":
+                cells = camp.validate_campaign(record)
+                print(f"VALID: {len(cells)} cells, {len(cells) * camp.REPEATS * camp.NUM_REQUESTS} measured requests")
+            else:
+                camp.aggregate(record)
+                print(f"Aggregated campaign {campaign_id} successfully.")
+            return 0
+        except KeyboardInterrupt:
+            print("Benchmark operation interrupted.")
+            return 130
+        except (FileNotFoundError, RuntimeError, ValueError, OSError, subprocess.SubprocessError) as exc:
+            print(f"Benchmark {action} failed: {exc}")
+            return 1
+
     mode = getattr(args, "mode", "full")
-    campaign_id = getattr(args, "campaign_id", None) or _default_campaign_id(
-        mode, preview=(action == "plan" or bool(getattr(args, "dry_run", False)))
-    )
+    campaign_id = getattr(args, "campaign_id", None) or _default_campaign_id(mode, preview=(action == "plan"))
     try:
         sha = getattr(args, "execution_sha", None) or camp.resolve_git_head()
     except Exception:
@@ -69,7 +99,7 @@ def run_benchmark_command(args: Any) -> int:
         print(f"Invalid benchmark configuration: {exc}")
         return 2
 
-    if action == "plan" or getattr(args, "dry_run", False):
+    if action == "plan":
         if getattr(args, "json_output", False):
             print(json.dumps(record, indent=2, ensure_ascii=False))
         else:
@@ -77,44 +107,30 @@ def run_benchmark_command(args: Any) -> int:
         return 0
 
     try:
-        camp.save_plan(record)
-        if action == "run":
-            camp.drive(
-                record,
-                retry_failed=bool(getattr(args, "retry_failed", False)),
-                profile_dir=getattr(args, "profile_dir", None),
-                auto_calibrate=bool(getattr(args, "auto_calibrate", False)),
-                calibrate_mode=getattr(args, "calibrate_mode", "fast"),
-            )
-            return 0
-        if action == "status":
-            from experiments import modal_benchmark_runner as runner
-
-            att_root = camp.attempts_dir(record)
-            for cell in record["cells"]:
-                history = camp.attempts(record, cell)
-                state = (
-                    "COLLECTED"
-                    if camp.selected_attempt(record, cell)
-                    else (runner.bench_status(history[-1].name, evidence_root=att_root) if history else "NOT_SUBMITTED")
-                )
-                print(f"{cell['key']} {state}")
-            return 0
-        if action == "validate":
-            cells = camp.validate_campaign(record)
-            print(f"VALID: {len(cells)} cells, {len(cells) * camp.REPEATS * camp.NUM_REQUESTS} measured requests")
-            return 0
-        if action == "aggregate":
-            camp.aggregate(record)
-            print(f"Aggregated campaign {campaign_id} successfully.")
-            return 0
+        camp.drive(
+            record,
+            retry_failed=bool(getattr(args, "retry_failed", False)),
+            profile_dir=getattr(args, "profile_dir", None),
+            auto_calibrate=bool(getattr(args, "auto_calibrate", False)),
+            calibrate_mode=getattr(args, "calibrate_mode", "fast"),
+        )
+        print(f"\nBenchmark run complete for campaign {campaign_id}.")
+        print(f"Next: flexsds benchmark aggregate --campaign-id {campaign_id}")
+        return 0
     except KeyboardInterrupt:
         print("Benchmark interrupted; completed cells and remote Modal calls are preserved.")
         return 130
-    except (RuntimeError, ValueError, OSError) as exc:
-        print(f"Benchmark {action} failed: {exc}")
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        print(f"Benchmark run failed: {exc}")
         return 1
-    return 0
+
+
+def _prompt_static_k(wizard: Any, default: int = camp.DEFAULT_STATIC_K) -> int:
+    while True:
+        val = wizard.prompt_positive_int("Static K (1..8):", default)
+        if 1 <= val <= 8:
+            return val
+        print("Static K must be between 1 and 8.")
 
 
 def run_benchmark_wizard() -> dict[str, Any]:
@@ -161,7 +177,7 @@ def run_benchmark_wizard() -> dict[str, Any]:
         target_model = wizard.prompt_string("Target model ID or path:", target_model)
         draft_model = wizard.prompt_string("Draft speculator ID or path:", draft_model)
         draft_method = wizard.prompt_choice("Draft method:", ["eagle3", "eagle", "draft_model"], default_idx=0)
-        static_k = wizard.prompt_positive_int("Static K (1..8):", static_k)
+        static_k = _prompt_static_k(wizard, static_k)
 
     try:
         sha = camp.resolve_git_head()
@@ -211,10 +227,12 @@ def run_benchmark_wizard() -> dict[str, Any]:
     except KeyboardInterrupt:
         print("Benchmark cancelled.")
         return {"action": "abort", "exit_code": 130}
-    except (RuntimeError, ValueError, OSError) as exc:
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as exc:
         print(f"Benchmark failed: {exc}")
         return {"action": "abort", "exit_code": 1}
 
+    print(f"\nBenchmark complete. Campaign ID: {campaign_id}")
+    print(f"Aggregate results: flexsds benchmark aggregate --campaign-id {campaign_id}")
     return {
         "action": "benchmark",
         "campaign_id": campaign_id,

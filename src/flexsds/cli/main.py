@@ -340,6 +340,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
         print("Modal disconnected locally. Log in again when selecting Modal, or run flexsds auth login --provider modal.")
         return 0
+    if args.command == "benchmark":
+        try:
+            from flexsds.cli.benchmark import run_benchmark_command
+        except ModuleNotFoundError:
+            from src.flexsds.cli.benchmark import run_benchmark_command
+        return run_benchmark_command(args)
     hw_info = detect_hardware()
 
     if args.command == "stop":
@@ -432,13 +438,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         _, profile_name = load_profile_for_hardware(hw_info)
         print(f"\n\033[1;32m✔ Linked hardware profile: {profile_name}\033[0m")
         return 0
-
-    if args.command == "benchmark":
-        try:
-            from flexsds.cli.benchmark import run_benchmark_command
-        except ModuleNotFoundError:
-            from src.flexsds.cli.benchmark import run_benchmark_command
-        return run_benchmark_command(args)
 
     if args.command == "chat":
         return run_interactive_chat(

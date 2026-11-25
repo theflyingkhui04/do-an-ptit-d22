@@ -362,12 +362,12 @@ if modal is not None:
             profile_sha256 = data.get("metadata", {}).get("raw_sha256")
 
         runner = LocalServingRunner()
-        cmd = runner.build_command(runtime_cfg, port=PORT)
-        env = runner.setup_environment(runtime_cfg)
-
         lane = str(runtime_cfg.get("lane", "vanilla"))
         run_dir = Path(server_artifact_dir(GPU, lane, RUN_ID))
         run_dir.mkdir(parents=True, exist_ok=True)
+        runtime_cfg["telemetry_path"] = str(run_dir / "adaptive_telemetry.jsonl")
+        cmd = runner.build_command(runtime_cfg, port=PORT)
+        env = runner.setup_environment(runtime_cfg)
 
         pynvml.nvmlInit()
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)
@@ -405,7 +405,32 @@ if modal is not None:
 
         _VRAM_STOP.clear()
         threading.Thread(target=_sample_vram, args=(run_dir, _VRAM_STOP), daemon=True).start()
-        subprocess.Popen(cmd, env=env)
+        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+        def _pump_vllm_log() -> None:
+            if proc.stdout is None:
+                return
+            with (run_dir / "vllm.log").open("a", encoding="utf-8") as log_file:
+                for line in proc.stdout:
+                    sys.stdout.write(line)
+                    log_file.write(line)
+                    log_file.flush()
+
+        def _commit_weights_when_ready() -> None:
+            import urllib.request
+
+            deadline = time.monotonic() + 840.0
+            while time.monotonic() < deadline and proc.poll() is None:
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=5) as resp:
+                        if resp.status == 200:
+                            model_volume.commit()
+                            return
+                except OSError:
+                    time.sleep(5)
+
+        threading.Thread(target=_pump_vllm_log, daemon=True).start()
+        threading.Thread(target=_commit_weights_when_ready, daemon=True).start()
 
     @app.function(
         image=_base_image,
@@ -548,21 +573,63 @@ else:
     artifacts_volume = None
 
 
-def _require_modal() -> Any:
-    if modal is None:
-        raise RuntimeError("Modal Python SDK is required for remote benchmark operations")
-    return modal
+def _modal_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    from flexsds.core.credentials import CredentialsManager
+    from flexsds.server import modal_auth
+
+    modal_auth.ensure_modal()
+    if not modal_auth.prepare_modal_auth(CredentialsManager()):
+        raise RuntimeError("Modal credentials missing; run 'flexsds auth login --provider modal' first.")
+    env = dict(os.environ)
+    pythonpath_parts = [str(REPO_ROOT), str(SRC_ROOT)]
+    if env.get("PYTHONPATH"):
+        pythonpath_parts.append(env["PYTHONPATH"])
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+    if extra:
+        env.update(extra)
+    return env
+
+
+def _invoke_in_modal_interpreter(action: str, payload: dict[str, Any]) -> Any:
+    """Bridge Modal SDK calls through the installed Modal CLI interpreter (e.g. pipx venv)."""
+    import shutil
+    from flexsds.server import modal_auth
+
+    modal_auth.ensure_modal()
+    executable = shutil.which("modal")
+    interpreter_args = modal_auth._modal_interpreter_args(executable)
+    if not executable:
+        raise RuntimeError("Modal Python SDK is not installed in this environment and no 'modal' CLI was found.")
+    env = _modal_env()
+    proc = subprocess.run(
+        [*interpreter_args, str(Path(__file__).resolve()), "--sdk-action", action],
+        input=json.dumps(payload),
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if proc.returncode:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(f"Modal SDK action {action!r} failed: {detail}")
+    lines = [line for line in proc.stdout.splitlines() if line.strip()]
+    return json.loads(lines[-1]) if lines else None
 
 
 def stop_app() -> None:
+    from flexsds.server import modal_auth
+
+    env = _modal_env()
     apps = json.loads(
-        subprocess.check_output([sys.executable, "-m", "modal", "app", "list", "--json"], cwd=REPO_ROOT, text=True)
+        subprocess.check_output([*modal_auth.modal_command(), "app", "list", "--json"], cwd=REPO_ROOT, env=env, text=True)
     )
     for item in apps:
         if item.get("description") == APP_NAME and item.get("state") != "stopped":
             subprocess.run(
-                [sys.executable, "-m", "modal", "app", "stop", item["app_id"], "-y"],
+                [*modal_auth.modal_command(), "app", "stop", item["app_id"], "-y"],
                 cwd=REPO_ROOT,
+                env=env,
                 check=True,
             )
 
@@ -580,12 +647,30 @@ def bench_submit(
     evidence_root: Path,
     serving_config: dict[str, Any],
 ) -> str:
-    m = _require_modal()
+    if modal is None:
+        return str(
+            _invoke_in_modal_interpreter(
+                "bench_submit",
+                {
+                    "gpu": gpu,
+                    "lane": lane,
+                    "workload": workload,
+                    "concurrency": concurrency,
+                    "repeats": repeats,
+                    "num_requests": num_requests,
+                    "server_run_id": server_run_id,
+                    "bench_run_id": bench_run_id,
+                    "evidence_root": str(evidence_root),
+                    "serving_config": serving_config,
+                },
+            )
+        )
     record = {
         "gpu": gpu,
         "lane": lane,
         "server_run_id": server_run_id,
         "bench_run_id": bench_run_id,
+        "expected_profile_sha256": serving_config.get("profile_sha256") if lane == "adaptive" else None,
         "cell": {
             "workload": workload,
             "concurrency": concurrency,
@@ -602,7 +687,7 @@ def bench_submit(
     receipt = out / "submission.json"
     _save_submission(receipt, record)
 
-    identity = m.Function.from_name(APP_NAME, "benchmark_identity").remote()
+    identity = modal.Function.from_name(APP_NAME, "benchmark_identity").remote()
     if (
         identity.get("commit") != record["commit"]
         or identity.get("run_id") != server_run_id
@@ -613,7 +698,7 @@ def bench_submit(
     ):
         raise ValueError("Deployed benchmark identity mismatch; redeploy for this cell")
 
-    bench_fn = m.Function.from_name(APP_NAME, "bench")
+    bench_fn = modal.Function.from_name(APP_NAME, "bench")
     _save_submission(out / "spawn_attempt.json", identity)
     call = bench_fn.spawn(
         gpu,
@@ -635,12 +720,20 @@ def bench_submit(
 
 
 def _bench_result(call_id: str, submission: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
-    m = _require_modal()
+    if modal is None:
+        raise RuntimeError("Modal Python SDK is required for remote benchmark operations")
     try:
-        call = m.FunctionCall.from_id(call_id)
+        from modal.exception import OutputExpiredError
+    except ImportError:
+        OutputExpiredError = None  # type: ignore[assignment]
+    try:
+        call = modal.FunctionCall.from_id(call_id)
         return call.get() if timeout is None else call.get(timeout=timeout)
     except Exception as exc:
-        if type(exc).__name__ != "OutputExpiredError" or artifacts_volume is None:
+        is_expired = (OutputExpiredError is not None and isinstance(exc, OutputExpiredError)) or (
+            type(exc).__name__ == "OutputExpiredError"
+        )
+        if not is_expired or artifacts_volume is None:
             raise
         content = b"".join(artifacts_volume.read_file(f"flexsds_bench/bench/{submission['bench_run_id']}/result.json"))
         result = json.loads(content)
@@ -661,15 +754,25 @@ def bench_status(bench_run_id: str, *, evidence_root: Path) -> str:
         return "FAILED"
     if not record.get("call_id"):
         return "NOT_SUBMITTED"
-    m = _require_modal()
-    handle = m.FunctionCall.from_id(record["call_id"])
+    if modal is None:
+        return str(
+            _invoke_in_modal_interpreter(
+                "bench_status",
+                {"bench_run_id": bench_run_id, "evidence_root": str(evidence_root)},
+            )
+        )
+    try:
+        from modal.exception import TimeoutError as ModalTimeoutError
+    except ImportError:
+        ModalTimeoutError = TimeoutError  # type: ignore[assignment]
+    handle = modal.FunctionCall.from_id(record["call_id"])
     try:
         result = _bench_result(record["call_id"], record, timeout=0)
     except Exception as exc:
         graph = handle.get_call_graph()
         if any(node.status.name in ("FAILURE", "INIT_FAILURE", "TERMINATED", "TIMEOUT") for node in graph):
             return "FAILED"
-        if isinstance(exc, TimeoutError) or type(exc).__name__ == "TimeoutError":
+        if isinstance(exc, (TimeoutError, ModalTimeoutError)) or type(exc).__name__ == "TimeoutError":
             return "RUNNING" if any(node.task_id for node in graph) else "SUBMITTED"
         raise
     if result.get("returncode") != 0:
@@ -682,6 +785,15 @@ def bench_status(bench_run_id: str, *, evidence_root: Path) -> str:
 
 
 def bench_collect(call_id: str, *, evidence_root: Path) -> Path:
+    if modal is None:
+        return Path(
+            str(
+                _invoke_in_modal_interpreter(
+                    "bench_collect",
+                    {"call_id": call_id, "evidence_root": str(evidence_root)},
+                )
+            )
+        )
     if not isinstance(call_id, str) or not re.fullmatch(r"fc-[A-Za-z0-9]+", call_id):
         raise ValueError("A valid FunctionCall ID (fc-...) is required")
     matches = []
@@ -735,18 +847,48 @@ def bench_collect(call_id: str, *, evidence_root: Path) -> Path:
 
 
 def bench_recover(bench_run_id: str, call_id: str, *, evidence_root: Path) -> None:
+    if modal is None:
+        _invoke_in_modal_interpreter(
+            "bench_recover",
+            {"bench_run_id": bench_run_id, "call_id": call_id, "evidence_root": str(evidence_root)},
+        )
+        return
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", bench_run_id):
         raise ValueError("Invalid bench_run_id")
     if not re.fullmatch(r"fc-[A-Za-z0-9]+", call_id):
         raise ValueError("Invalid FunctionCall ID")
-    m = _require_modal()
     path = evidence_root / bench_run_id / "submission.json"
     record = json.loads(path.read_text(encoding="utf-8"))
     _validate_submission(record)
     if record["bench_run_id"] != bench_run_id or record.get("call_id") not in (None, call_id):
         raise ValueError("Conflicting recovery receipt")
-    result = m.FunctionCall.from_id(call_id).get(timeout=0)
+    result = modal.FunctionCall.from_id(call_id).get(timeout=0)
     _validate_bench_result(result, record)
     record["call_id"] = call_id
     _save_submission(path, record)
     print(f"FunctionCall: {call_id}", flush=True)
+
+
+def _sdk_bridge_main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sdk-action", choices=("bench_submit", "bench_status", "bench_collect", "bench_recover"), required=True)
+    args = parser.parse_args(argv)
+    payload = json.loads(sys.stdin.read())
+    evidence_root = Path(payload.pop("evidence_root"))
+    if args.sdk_action == "bench_submit":
+        result = bench_submit(evidence_root=evidence_root, **payload)
+    elif args.sdk_action == "bench_status":
+        result = bench_status(evidence_root=evidence_root, **payload)
+    elif args.sdk_action == "bench_collect":
+        result = str(bench_collect(evidence_root=evidence_root, **payload))
+    else:
+        bench_recover(evidence_root=evidence_root, **payload)
+        result = None
+    print(json.dumps(result))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_sdk_bridge_main())

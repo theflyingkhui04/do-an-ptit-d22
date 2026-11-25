@@ -695,5 +695,229 @@ def test_wizard_main_menu_stays_five_items_and_benchmark_lives_under_measure_now
     ]
 
 
+# --------------------------------------------------------------------------
+# Review-Fix Regressions (Critical #1, #2 & Important #1-#6)
+# --------------------------------------------------------------------------
+def test_flexsds_benchmark_dry_run_json_emits_pure_json_without_banner_or_cuda(monkeypatch, capsys):
+    """Important #1: --dry-run --json must not touch detect_hardware or print ASCII banner."""
+    from flexsds.cli import main as cli
+
+    monkeypatch.setattr(cli, "detect_hardware", lambda: pytest.fail("benchmark plan/dry-run must not probe local CUDA"))
+    assert cli.main(["benchmark", "--mode", "fast", "--dry-run", "--json", "--execution-sha", "a" * 40]) == 0
+    raw_out = capsys.readouterr().out
+    payload = json.loads(raw_out)
+    assert payload["mode"] == "fast" and payload["total_cells"] == 108
+
+
+def test_flexsds_benchmark_status_requires_campaign_id_and_stop_respects_dry_run(tmp_path, monkeypatch, capsys):
+    """Important #3: status/validate/aggregate require --campaign-id and never create orphan plans; stop --dry-run is safe."""
+    from flexsds.cli import main as cli
+    from experiments import run_benchmark_campaign as camp
+
+    monkeypatch.setattr(camp, "ROOT", tmp_path)
+    assert cli.main(["benchmark", "status"]) == 2
+    assert cli.main(["benchmark", "validate"]) == 2
+    assert cli.main(["benchmark", "aggregate"]) == 2
+    assert not (tmp_path / "experiments" / "runs" / "flexsds_bench").exists()
+
+    assert cli.main(["benchmark", "stop", "--dry-run"]) == 0
+    assert "dry-run" in capsys.readouterr().out.lower()
+
+
+def test_adaptive_k0_zero_draft_tokens_accepted_while_static_zero_rejected(tmp_path, monkeypatch):
+    """Critical #2: adaptive K=0 cells with 0 drafted tokens must validate and aggregate cleanly."""
+    from experiments import run_benchmark_campaign as camp
+    from experiments import vllm_runtime_patch as patch
+    from experiments.bench_source import snapshot
+    from experiments.workload_adapter import load_workload_rows, verify_workload_integrity
+
+    packed, commit = snapshot(camp.REPO_ROOT)
+    try:
+        w2_path = Path(packed.name) / lanes.workload_file("W2")
+        integrity = verify_workload_integrity(w2_path)
+        corpus = load_workload_rows(w2_path)
+    finally:
+        packed.cleanup()
+
+    record = camp.plan("k0-adaptive", commit, mode="fast", gpus=("A10",), workloads=("W2",), lanes_list=("vanilla", "static", "adaptive"))
+    record["concurrencies"] = [32]
+    record["cells"] = [c for c in record["cells"] if c["concurrency"] == 32]
+    plan_root = tmp_path / "runs"
+    monkeypatch.setattr(camp, "ROOT", tmp_path)
+    camp.save_plan(record, plan_root=plan_root)
+
+    prof_path = tmp_path / "p.json"
+    prof_path.write_text(
+        json.dumps({"models": {"target_revision": "a" * 40, "draft_revision": "b" * 40}, "metadata": {"raw_sha256": "c" * 64}}),
+        encoding="utf-8",
+    )
+
+    for idx, cell in enumerate(record["cells"]):
+        lane = cell["lane"]
+        attempt_id = f"{camp.attempt_prefix(record, cell)}001"
+        out = plan_root / record["campaign_id"] / "attempts" / attempt_id
+        out.mkdir(parents=True)
+        cfg = camp.build_cell_serving_config(
+            record, cell, profile_path=str(prof_path) if lane == "adaptive" else None
+        )
+        vllm_args = LocalServingRunner().build_command(cfg)
+        receipt = {
+            "gpu": "A10",
+            "lane": lane,
+            "server_run_id": attempt_id,
+            "bench_run_id": attempt_id,
+            "call_id": f"fc-k0{idx:03d}",
+            "commit": commit,
+            "expected_profile_sha256": ("c" * 64) if lane == "adaptive" else None,
+            "cell": {"workload": "W2", "concurrency": 32, "repeats": 5, "num_requests": 32},
+        }
+        server_env = {
+            "gpu": "NVIDIA A10",
+            "requested_gpu": "A10",
+            "modal_gpu": "A10",
+            "driver_version": "550.0",
+            "gpu_memory_total_mb": 24576.0,
+            "torch_version": "2.13.0+cu130",
+            "torch_cuda_version": "13.0",
+            "vllm_version": "0.30.0",
+            "dtype": cfg["dtype"],
+            "quantization": cfg["quantization"],
+            "lane": lane,
+            "run_id": attempt_id,
+            "instance_id": f"boot-k0-{idx}",
+            "source_commit": commit,
+            "target_model": record["target_model"],
+            "draft_model": cfg["draft_model"],
+            "served_model_name": cfg["served_model_name"],
+            "max_model_len": cfg["max_model_len"],
+            "runtime_variant": patch.RUNTIME_LABEL,
+            "vllm_outputs_sha256": patch.PATCHED_OUTPUTS_SHA256,
+            "vllm_args": vllm_args,
+            "profile_sha256": ("c" * 64) if lane == "adaptive" else None,
+        }
+        raw, warm = [], []
+        for repeat in range(6):
+            phase = "warmup" if repeat == 0 else "measured"
+            offset = ((repeat - 1) * (32 % len(corpus))) % len(corpus) if repeat else 0
+            for req_idx in range(3 if repeat == 0 else 32):
+                sample_index = (req_idx + offset) % len(corpus)
+                req = corpus[sample_index]["request"]
+                row = {
+                    "experiment_id": attempt_id,
+                    "lane": lane,
+                    "workload": "W2",
+                    "concurrency": 32,
+                    "phase": phase,
+                    "repeat_id": f"r{repeat:03}" if repeat else None,
+                    "request_id": f"{attempt_id}-{repeat}-{req_idx}",
+                    "request_index": req_idx,
+                    "commit": commit,
+                    "server_run_id": attempt_id,
+                    "server_instance_id": f"boot-k0-{idx}",
+                    "sample_policy": "cycle-rotate",
+                    "sample_id": corpus[sample_index]["sample_id"],
+                    "sample_index": sample_index,
+                    "sample_offset": offset,
+                    "canonical_sample_count": len(corpus),
+                    "success": True,
+                    "workload_file_sha256": integrity.actual_sha256,
+                    "metrics_complete": True,
+                    "http_status": 200,
+                    "model": cfg["served_model_name"],
+                    "temperature": req["temperature"],
+                    "seed": req["seed"],
+                    "max_completion_tokens": req["max_tokens"],
+                    "response_format": req.get("response_format"),
+                    "timestamp_utc": f"2026-11-25T00:0{repeat}:00+00:00",
+                    "e2e_ms": 1000.0,
+                    "ttft_ms": 12.0,
+                    "tpot_ms": 20.0 if lane == "vanilla" else (18.0 if lane == "static" else 19.0),
+                    "output_tokens": 50,
+                    "gpu": "NVIDIA A10",
+                    "run_id": f"{attempt_id}-run-{repeat}",
+                    "run_duration_s": 32.0,
+                    "run_vram_peak_mb": 12000.0,
+                }
+                if lane == "static":
+                    row["server_metrics"] = {
+                        "speculative_decoding": {
+                            "num_spec_steps": 5,
+                            "num_draft_tokens": 15,
+                            "num_accepted_draft_tokens": 9,
+                            "num_spec_tokens": 3,
+                        }
+                    }
+                elif lane == "adaptive":
+                    # Genuine K=0 adaptive step: 0 drafted, 0 accepted.
+                    row["server_metrics"] = {
+                        "speculative_decoding": {
+                            "num_spec_steps": 0,
+                            "num_draft_tokens": 0,
+                            "num_accepted_draft_tokens": 0,
+                            "num_spec_tokens": 0,
+                        }
+                    }
+                (raw if repeat else warm).append(row)
+        (out / "submission.json").write_text(json.dumps(receipt), encoding="utf-8")
+        (out / "bench.json").write_text(
+            json.dumps({**receipt, "returncode": 0, "server_instance_unchanged": True,
+                        "endpoint_model_ids": [cfg["served_model_name"]]}),
+            encoding="utf-8",
+        )
+        (out / "server_env.json").write_text(json.dumps(server_env), encoding="utf-8")
+        raw_text = "".join(json.dumps(r) + "\n" for r in raw)
+        (out / "raw.jsonl").write_text(raw_text, encoding="utf-8")
+        (out / "raw.vram.jsonl").write_text(raw_text, encoding="utf-8")
+        (out / "warmup.jsonl").write_text("".join(json.dumps(r) + "\n" for r in warm), encoding="utf-8")
+
+    monkeypatch.setattr(camp, "REPO_ROOT", Path(__file__).resolve().parents[1])
+    dest = tmp_path / "summary.json"
+    rep = tmp_path / "report.md"
+    first = camp.aggregate(record, plan_root=plan_root, destination=dest, report_destination=rep)
+    # Important #5: re-running aggregate must be idempotent despite wall-clock timestamp.
+    second = camp.aggregate(record, plan_root=plan_root, destination=dest, report_destination=rep)
+    assert len(first["cells"]) == len(second["cells"]) == 3
+    adaptive_row = next(r for r in first["cells"] if r["lane"] == "adaptive")
+    assert adaptive_row["alpha"] == "N/A" and adaptive_row["tau"] == "N/A"
+
+    # Important #2: mismatched static_k in vllm_args must fail validate_cell.
+    static_cell = next(c for c in record["cells"] if c["lane"] == "static")
+    static_dir = camp.attempts(record, static_cell, plan_root=plan_root)[0]
+    env_data = json.loads((static_dir / "server_env.json").read_text(encoding="utf-8"))
+    spec_idx = env_data["vllm_args"].index("--speculative-config") + 1
+    bad_spec = json.loads(env_data["vllm_args"][spec_idx])
+    bad_spec["num_speculative_tokens"] = 7
+    env_data["vllm_args"][spec_idx] = json.dumps(bad_spec)
+    (static_dir / "server_env.json").write_text(json.dumps(env_data), encoding="utf-8")
+    with pytest.raises(ValueError, match="vllm_args|static_k|speculative"):
+        camp.validate_cell(static_dir, record, static_cell)
+
+
+def test_modal_benchmark_runner_uses_modal_auth_and_pipx_cli_fallback(monkeypatch):
+    """Critical #1: stop_app and SDK bridge use modal_auth.modal_command/prepare_modal_auth."""
+    from experiments import modal_benchmark_runner as runner
+    from flexsds.server import modal_auth
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(modal_auth, "ensure_modal", lambda: None)
+    monkeypatch.setattr(modal_auth, "prepare_modal_auth", lambda mgr: True)
+    monkeypatch.setattr(modal_auth, "modal_command", lambda: ["/opt/pipx/bin/modal"])
+
+    def fake_check_output(cmd, **kwargs):
+        calls.append(list(cmd))
+        return json.dumps([{"app_id": "ap-123", "description": runner.APP_NAME, "state": "deployed"}])
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return Mock(returncode=0)
+
+    monkeypatch.setattr(runner.subprocess, "check_output", fake_check_output)
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    runner.stop_app()
+    assert calls[0][:4] == ["/opt/pipx/bin/modal", "app", "list", "--json"]
+    assert calls[1][:4] == ["/opt/pipx/bin/modal", "app", "stop", "ap-123"]
+
+
+
 
 
