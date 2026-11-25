@@ -191,7 +191,15 @@ CHOICE_HELP = {
     "Detect hardware": "Show local GPU, CUDA availability, and available memory.",
     "Running endpoint": "Browse deployed Modal endpoints, view details, chat, or stop a deployment.",
     "Delete Modal token": "Remove local Modal credentials and disconnect the active Modal profile.",
-    "Measure & available profile GPU": "List available profiles and measure GPU costs in Fast or Full mode.",
+    "Measure & available profile GPU": "List available profiles, calibrate GPU costs, or run the 3-node multi-GPU benchmark.",
+    "GPU cost profile": "Measure worker component latencies (K=0..4, B=1..32) to build an adaptive cost profile.",
+    "Multi-GPU benchmark": "Run 3 nodes (W1_V3, W2, W3) x 4 Modal GPUs (T4, A10, L40S, A100) x 3 lanes.",
+    "Full benchmark": "All 6 concurrencies (1, 2, 4, 8, 16, 32), 3 warm-up + 5x32 requests/cell (216 cells).",
+    "Fast benchmark": "Reduced concurrencies (1, 8, 32), keeping full 3 warm-up + 5x32 requests/cell (108 cells).",
+    "All 4 Modal GPUs": "Run across all 4 production Modal GPUs: T4 (16 GB), A10 (24 GB), L40S (48 GB), A100 (80 GB).",
+    "Preview plan": "Inspect the benchmark cell matrix and per-GPU profile readiness without Modal calls.",
+    "Run benchmark now": "Deploy and run the benchmark campaign on Modal (fails closed if any adaptive GPU profile is missing).",
+    "Auto-calibrate missing GPUs": "Calibrate missing GPU profiles on Modal first, then run the benchmark campaign.",
     "Default:": "Use Qwen2.5-7B AWQ with the team's EAGLE-3.1 speculator.",
     "Custom Hugging Face model": "Enter your own target and draft model IDs or local paths.",
     "Modal.com": "Run on a cloud GPU using your Modal account.",
@@ -461,6 +469,18 @@ def run_profile_import():
 
 
 def run_profile_measurement(hw_info):
+    measure_type = prompt_choice(
+        "Measurement type:",
+        ["GPU cost profile (calibration)", "Multi-GPU benchmark (3 nodes × 4 GPUs)"],
+        default_idx=0,
+    )
+    if measure_type.startswith("Multi-GPU benchmark"):
+        try:
+            from flexsds.cli.benchmark import run_benchmark_wizard
+        except ModuleNotFoundError:
+            from src.flexsds.cli.benchmark import run_benchmark_wizard
+        return run_benchmark_wizard()
+
     platform = prompt_choice("Measurement platform:", ["Modal", "Local CUDA (including Colab runtime)"], default_idx=0)
     backend = "modal" if platform == "Modal" else "local"
     hardware = hw_info

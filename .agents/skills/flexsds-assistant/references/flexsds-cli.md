@@ -9,6 +9,7 @@ Version remains 0.2.0-alpha: record execution Git SHA too. No JSON output contra
 | --help, --version | Parser exits before detection | Read-only, 0; parser errors 2 |
 | detect | Torch detection, exceptions fall back to CPU/RAM | Inspection, 0; RAM is not VRAM |
 | profile | sm_89 -> L4; sm_75 -> T4; other -> L4; missing file -> analytical_fallback | Lookup, not calibration or validated hardware support |
+| benchmark | [plan\|run\|status\|validate\|aggregate\|stop], --mode {full,fast}, --gpus, --workloads, --lanes, --auto-calibrate, --dry-run | Multi-GPU 3-node (W1_V3/W2/W3) x 4 GPUs (T4/A10/L40S/A100) x 3 lanes (vanilla/static/adaptive); full=216 cells, fast=108 cells |
 | auth status | Masked stored credentials | Reads ~/.flexsds/credentials; no provider validation or environment-only token report |
 | auth login | --provider {modal,huggingface,cloudflare}, --key; getpass prompt | Writes credentials; never recommend --token with a secret in argv |
 | auth logout | Optional --provider, otherwise all stored providers | Deletes stored keys and matching process environment; explicit intent |

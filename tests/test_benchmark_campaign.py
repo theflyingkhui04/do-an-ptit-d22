@@ -610,4 +610,90 @@ def test_modal_benchmark_runner_submit_and_collect_roundtrip(tmp_path, monkeypat
     assert (out / "server_env.json").is_file()
 
 
+# --------------------------------------------------------------------------
+# Task 4: flexsds benchmark CLI & Measure -> Measure now wizard integration
+# --------------------------------------------------------------------------
+def test_flexsds_benchmark_cli_full_and_fast_dry_run_without_modal(monkeypatch, capsys):
+    from flexsds.cli import main as cli
+    from flexsds.core.hardware import HardwareInfo
+
+    monkeypatch.setattr(cli, "detect_hardware", lambda: HardwareInfo("CPU", "cpu", 0, 0, "N/A", False))
+    monkeypatch.setattr(cli, "print_banner", lambda hw: None)
+
+    assert cli.main(["benchmark", "plan", "--mode", "full", "--dry-run", "--execution-sha", "a" * 40]) == 0
+    full_out = capsys.readouterr().out
+    assert "216 cells" in full_out
+    assert "T4, A10, L40S, A100" in full_out
+    assert "W1_V3, W2, W3" in full_out
+    assert "vanilla, static, adaptive" in full_out
+    assert "[1, 2, 4, 8, 16, 32]" in full_out
+
+    assert cli.main(["benchmark", "--mode", "fast", "--dry-run", "--json", "--execution-sha", "a" * 40]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "fast"
+    assert payload["concurrencies"] == [1, 8, 32]
+    assert payload["total_cells"] == 108
+    assert payload["gpus"] == ["T4", "A10", "L40S", "A100"]
+    assert payload["workloads"] == ["W1_V3", "W2", "W3"]
+    assert payload["lanes"] == ["vanilla", "static", "adaptive"]
+
+
+def test_wizard_main_menu_stays_five_items_and_benchmark_lives_under_measure_now(tmp_path, monkeypatch, capsys):
+    from flexsds.cli import wizard
+    from flexsds.core import cost_model as cm
+    from flexsds.core.hardware import HardwareInfo
+
+    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path / "empty")
+    seen_main_choices: list[list[str]] = []
+
+    def choose(question, choices, default_idx=0):
+        if question == "Select action:":
+            seen_main_choices.append(list(choices))
+            return "Measure & available profile GPU"
+        if question == "Profile action:":
+            return "Measure now"
+        if question == "Measurement type:":
+            assert choices[0].startswith("GPU cost profile")
+            assert any("benchmark" in c.lower() for c in choices)
+            return choices[1]
+        if question == "Benchmark mode:":
+            return next(c for c in choices if "Fast benchmark" in c)
+        if question == "Benchmark hardware:":
+            return next(c for c in choices if "All 4 Modal GPUs" in c)
+        if question == "Model pair:":
+            return choices[0]
+        if question == "Benchmark action:":
+            return next(c for c in choices if "Preview plan" in c)
+        return choices[default_idx]
+
+    monkeypatch.setattr(wizard, "prompt_choice", choose)
+    result = wizard.run_profile_wizard(HardwareInfo("CPU", "cpu", 0, 0, "N/A", False))
+    assert result["action"] == "benchmark"
+    assert result["mode"] == "fast"
+    assert result["total_cells"] == 108
+    assert result["dry_run"] is True
+    out = capsys.readouterr().out
+    assert "108 cells" in out
+    assert "T4, A10, L40S, A100" in out
+
+    # Confirm main menu does NOT add a 6th 'Run benchmark' entry.
+    def abort_after_main(question, choices, default_idx=0):
+        if question == "Select action:":
+            seen_main_choices.append(list(choices))
+            raise KeyboardInterrupt
+        return choices[default_idx]
+
+    monkeypatch.setattr(wizard, "prompt_choice", abort_after_main)
+    with pytest.raises(KeyboardInterrupt):
+        wizard.run_interactive_wizard(HardwareInfo("CPU", "cpu", 0, 0, "N/A", False))
+    assert seen_main_choices[-1] == [
+        "Launch serving",
+        "Detect hardware",
+        "Measure & available profile GPU",
+        "Delete Modal token",
+        "Running endpoint",
+    ]
+
+
+
 

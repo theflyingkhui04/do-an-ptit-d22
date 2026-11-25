@@ -93,6 +93,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "detect": "flexsds detect",
         "inspect": "flexsds inspect duckhoi/qwen2.5-7b-eagle3.1-speculator",
         "profile": "flexsds profile --benchmark --backend modal --gpu A10",
+        "benchmark": "flexsds benchmark --mode fast --dry-run",
         "stop": "flexsds stop",
         "auth": "flexsds auth status",
         "login": "flexsds auth login --provider modal",
@@ -149,6 +150,43 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     profile_parser.add_argument("--measure-mode", choices=["fast", "full"], default="full", help="Measurement repetitions: fast (5) or full (50)")
     profile_parser.add_argument("--backend", choices=["local", "modal"], default="local", help="Where to run calibration")
     profile_parser.add_argument("--gpu", choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="GPU to allocate for Modal calibration")
+
+    # Command: benchmark
+    bench_parser = add_command(
+        subparsers,
+        "benchmark",
+        help="Plan, run, validate, or aggregate the multi-GPU 3-node 3-lane Modal benchmark",
+    )
+    bench_parser.add_argument(
+        "bench_action",
+        nargs="?",
+        choices=["plan", "run", "status", "validate", "aggregate", "stop"],
+        default="plan",
+        help="Campaign lifecycle action",
+    )
+    bench_parser.add_argument(
+        "--mode",
+        choices=["full", "fast"],
+        default="full",
+        help="Concurrency grid: full (1,2,4,8,16,32 -> 216 cells) or fast (1,8,32 -> 108 cells)",
+    )
+    bench_parser.add_argument("--campaign-id", type=str, default=None, help="Explicit benchmark campaign identifier")
+    bench_parser.add_argument("--execution-sha", type=str, default=None, help="Committed 40-char Git SHA (defaults to HEAD)")
+    bench_parser.add_argument("--gpus", type=str, default="all", help="Comma-separated GPUs (T4,A10,L40S,A100) or 'all'")
+    bench_parser.add_argument("--workloads", type=str, default="all", help="Comma-separated workloads (W1_V3,W2,W3) or 'all'")
+    bench_parser.add_argument("--lanes", type=str, default="all", help="Comma-separated lanes (vanilla,static,adaptive) or 'all'")
+    bench_parser.add_argument("--target", type=str, default="Qwen/Qwen2.5-7B-Instruct-AWQ", help="Target model identifier")
+    bench_parser.add_argument("--draft", type=str, default="duckhoi/qwen2.5-7b-eagle3.1-speculator", help="Draft model or speculator identifier")
+    bench_parser.add_argument("--draft-method", choices=["eagle", "eagle3", "draft_model"], default="eagle3", help="Speculative decoding method")
+    bench_parser.add_argument("--static-k", type=int, default=3, help="Fixed speculative draft budget K for static lane (1..8)")
+    bench_parser.add_argument("--adaptive-max-k", type=int, default=4, help="Maximum K ceiling for adaptive lane (1..8)")
+    bench_parser.add_argument("--match-adaptive-runtime", action="store_true", help="Run vanilla/static with eager V1 runtime parity")
+    bench_parser.add_argument("--profile-dir", type=str, default=None, help="Optional extra directory for verified GPU cost profiles")
+    bench_parser.add_argument("--auto-calibrate", action="store_true", help="Calibrate missing Modal GPUs automatically before running adaptive lane")
+    bench_parser.add_argument("--calibrate-mode", choices=["fast", "full"], default="fast", help="Calibration mode when --auto-calibrate is enabled")
+    bench_parser.add_argument("--retry-failed", action="store_true", help="Submit a new attempt for a failed cell")
+    bench_parser.add_argument("--dry-run", action="store_true", help="Preview benchmark matrix and GPU profile readiness without Modal calls")
+    bench_parser.add_argument("--json", dest="json_output", action="store_true", help="Output raw plan JSON instead of summary text")
 
     # Command: stop
     add_command(subparsers, "stop", help="Stop running local FlexSDS server")
@@ -394,6 +432,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         _, profile_name = load_profile_for_hardware(hw_info)
         print(f"\n\033[1;32m✔ Linked hardware profile: {profile_name}\033[0m")
         return 0
+
+    if args.command == "benchmark":
+        try:
+            from flexsds.cli.benchmark import run_benchmark_command
+        except ModuleNotFoundError:
+            from src.flexsds.cli.benchmark import run_benchmark_command
+        return run_benchmark_command(args)
 
     if args.command == "chat":
         return run_interactive_chat(
