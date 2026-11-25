@@ -10,7 +10,7 @@ Run from the repository root with the conda env ``doan-d22``:
 
     modal run -m experiments.modal_ocr --run-id 20261108-m501-ocr-a10g
 
-Switches: PTIT_OCR_GPU (default A10G).
+Switches: PTIT_OCR_GPU (default A10).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 REMOTE_PROJECT_ROOT = "/root/project"
 HF_HOME = "/root/.cache/huggingface"
 VLLM_VERSION = "0.30.0"
-GPU = os.environ.get("PTIT_OCR_GPU", "A10G")
+GPU = os.environ.get("PTIT_OCR_GPU", "A10")
 PORT = 8000
 CONCURRENCY = 8
 DEFAULT_SAMPLES = Path("data/processed/m0_04_mcocr_devset/samples.jsonl")

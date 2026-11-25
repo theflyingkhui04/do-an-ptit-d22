@@ -19,7 +19,7 @@ Deploy-time switches (environment variables on the machine that deploys):
     PTIT_KEEP_WARM=1     keep one container per lane up (benchmarks only; costs credit)
     PTIT_SCALEDOWN_SECONDS  idle seconds before a container stops (default 300)
     PTIT_LANES           comma-separated lanes to deploy (default: all three)
-    PTIT_GPU             L4 (default, reference) | A10G | T4 (T4 needs fp16-fallback)
+    PTIT_GPU             L4 (default, reference) | A10 | T4 (T4 needs fp16-fallback)
     PTIT_MAX_MODEL_LEN   4096 (default) | 8192 (needed by workload W1_V2, [M5-01])
     PTIT_APP_NAME        ptit-vllm (default) | another Modal app name, e.g. ptit-vllm-demo
                          ([M5-01] web demo lanes, never replaced by benchmark deploys)

@@ -2,13 +2,13 @@
 
 **Đề tài:** FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs
 
-CLI đã nối Hardware-Adaptive EAGLE theo đường scalar M4, có regression CPU/source contract. Đã có functional GPU verification ở batch 1 trên Modal A10G; full-grid, lossless và speedup chưa được nghiệm thu trong lượt này.
+CLI đã nối Hardware-Adaptive EAGLE theo đường scalar M4, có regression CPU/source contract. Đã có functional GPU verification ở batch 1 trên Modal A10; full-grid, lossless và speedup chưa được nghiệm thu trong lượt này.
 
 ## Hành vi sau sửa ngày 14/11/2026
 
 Calibration và serving dùng chung CUDA development image `nvidia/cuda:13.0.3-devel-ubuntu22.04`, pin vLLM 0.30.0. FlashInfer JIT cần `nvcc`; chỉ cài torch/vLLM lên `debian_slim` chưa đủ cho đường chạy này. Xem [CUDA stack trên Modal](https://modal.com/docs/guide/cuda).
 
-Modal resource `A10G` có thể báo tên CUDA `NVIDIA A10`. Hai tên này được chuẩn hóa cùng alias; kiểm tra `sm_86` vẫn giữ nguyên. RTX 3090 cùng kiến trúc không được coi là A10G.
+Modal resource `A10` (alias cũ `A10G`) báo tên CUDA `NVIDIA A10`. Kiểm tra `sm_86` và nhãn GPU vẫn giữ nguyên; RTX 3090 cùng kiến trúc không được coi là A10. Danh mục Modal chuẩn hiện có 4 cấu hình: `T4` (Low, 16 GB), `A10` (Medium, 24 GB), `L40S` (High, 48 GB) và `A100` (High, 80 GB — ánh xạ sang Modal `A100-80GB`).
 
 
 - EAGLE-3 hỗ trợ cấu hình **adaptive scalar K=0..4**, sequential drafting, async scheduler và paired lineage executor. `--no-adaptive` chọn static K=4. Không hỗ trợ parallel drafting hoặc tree topology qua đường này.
@@ -19,16 +19,16 @@ Modal resource `A10G` có thể báo tên CUDA `NVIDIA A10`. Hai tên này đư�
 - Profile analytical cũ, kể cả `profile_sm_86_remote_a10g.json` có nhãn `micro_benchmark_calibrated`, không đạt empirical gate. File cũ không bị tự xóa. Profile mới có hậu tố identity của cặp model/revision để tránh ghi đè profile của cặp model khác.
 - CLI legacy `--allow-fallback` không cho analytical profile vượt empirical gate.
 
-## Test EAGLE serving trên Modal A10G
+## Test EAGLE serving trên Modal A10
 
 ```bash
-flexsds serve --backend modal --gpu A10G \
+flexsds serve --backend modal --gpu A10 \
   --target Qwen/Qwen2.5-7B-Instruct-AWQ \
   --draft duckhoi/qwen2.5-7b-eagle3.1-speculator \
   --no-adaptive
 ```
 
-Hoặc chạy wizard, chọn Modal/A10G và tắt HardwareAdaptive để dùng static. Static không yêu cầu hardware profile.
+Hoặc chạy wizard, chọn Modal/A10 và tắt HardwareAdaptive để dùng static. Static không yêu cầu hardware profile.
 
 Luồng thành công cần có `Inference verified: .../v1 (model=...)`. CLI gọi `/health`, `/v1/models`, rồi `/v1/completions` với một output token. URL được tạo hoặc process còn sống chưa đủ để báo ready. Lần kiểm tra này kích hoạt cold start thực của endpoint.
 
@@ -37,7 +37,7 @@ Development dùng `modal serve`: giữ terminal mở; Ctrl-C dừng phiên. `--d
 ## Đo profile thực trên GPU Modal
 
 ```bash
-flexsds profile --benchmark --backend modal --gpu A10G \
+flexsds profile --benchmark --backend modal --gpu A10 \
   --target Qwen/Qwen2.5-7B-Instruct-AWQ \
   --draft duckhoi/qwen2.5-7b-eagle3.1-speculator
 ```
@@ -78,4 +78,4 @@ Calibration và serving mặc định hiện một dòng `[x%] tác vụ đang c
 
 `flexsds clear modal` xóa token Modal trong FlexSDS và profile Modal hiện hành ở máy này; giữ các profile khác. FlexSDS bỏ qua token cũ còn được shell truyền vào sau khi clear. Đăng nhập lại trong wizard, bằng `flexsds auth login --provider modal`, hoặc `modal setup`. Lệnh không thu hồi token trên cloud và không dừng app đang chạy.
 
-Sau khi kiểm tra inference thành công, CLI hiển thị `Endpoint LLM created:` cùng API, model, GPU, mode và đường dẫn log, rồi cho chọn **Watch log** hoặc **Realtime chat with deployed LLM**. Lệnh `flexsds chat --endpoint ... --model ...` được in sẵn để mở ở terminal khác. `/exit` rời chat về menu. Development serving cần giữ terminal hiện tại mở; Ctrl+C kết thúc phiên.
+Sau khi kiểm tra inference thành công, CLI hiển thị `Endpoint LLM created:` cùng API, model, GPU, mode và đường dẫn log, rồi cho chọn **Watch log**, **Realtime chat with deployed LLM**, hoặc **Export API config JSON (for web demo)** để xuất file JSON nhập vào web demo. Lệnh `flexsds chat --endpoint ... --model ...` được in sẵn để mở ở terminal khác. `/exit` rời chat về menu. Development serving cần giữ terminal hiện tại mở; Ctrl+C kết thúc phiên.

@@ -320,7 +320,7 @@ def test_validate_campaign_requires_every_cell_and_fresh_servers(monkeypatch, tm
 
     ids = iter(range(100))
     monkeypatch.setattr(m5, "validate_cell", lambda p: {"server_instance_id": f"boot-{next(ids)}"})
-    monkeypatch.setattr(m5, "server_gpu", lambda p: "NVIDIA A10G")
+    monkeypatch.setattr(m5, "server_gpu", lambda p: "NVIDIA A10")
     with pytest.raises(ValueError, match="L4"):
         m5.validate_campaign(record)
 

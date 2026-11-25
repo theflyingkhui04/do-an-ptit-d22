@@ -537,7 +537,7 @@ def test_gpu_defaults_to_l4():
     assert lanes.resolve_gpu({"PTIT_GPU": ""}) == "L4"
 
 
-@pytest.mark.parametrize("gpu", ["L4", "A10G", "T4"])
+@pytest.mark.parametrize("gpu", ["L4", "A10", "T4"])
 def test_gpu_override_from_env(gpu):
     assert lanes.resolve_gpu({"PTIT_GPU": gpu}) == gpu
 

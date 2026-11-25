@@ -22,7 +22,7 @@ Version remains 0.2.0-alpha: record execution Git SHA too. No JSON output contra
 | Bare/incomplete serve | Interactive wizard, even incomplete --dry-run | Never automate: config writes/launch possible; unsafe guard -> CLI 2 before writing/launching |
 
 Serve flags: --target, --draft, --backend {modal,local,colab} (default modal),
---gpu {L4,T4,A10G} (default L4; remote budget/Modal allocation), --port (1..65535,
+--gpu {T4,A10,L40S,A100} (default A10; remote budget/Modal allocation; A100 maps to Modal A100-80GB), --port (1..65535,
 default 8000), --background, --deploy, --no-adaptive, --dry-run.
 Pass both exact nonempty model IDs, explicitly select backend, use argv arrays.
 Printed joined commands are not shell-escaped.
@@ -37,7 +37,7 @@ or missing local CUDA blocks real dispatch. Known Qwen/Llama cross-family pairs
 are rejected. This is heuristic validation, not tokenizer/kernel support.
 
 Threshold: estimates must fit 95% of budget. Local budget is detected free VRAM;
-remote budgets are L4 23000 MB, T4 15000 MB, A10G 22000 MB. Those are conservative
+remote budgets are T4 15000 MB, A10 22000 MB, L40S 46000 MB, A100 78000 MB (Colab also accepts L4 23000 MB). Those are conservative
 assumptions, not measured container memory. Laptop RAM/VRAM does not decide remote
 GPU compatibility. Unsafe dry-run prints "Launch blocked", shows the preview and
 returns 0. Unsafe real serving returns 2 with no runner call. Launch failure

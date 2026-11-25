@@ -59,12 +59,12 @@ DTYPE_PROFILES: dict[str, dict[str, str]] = {
 }
 DEFAULT_PROFILE = "l4-bf16"
 
-# L4 is the reference GPU for M3 measurements. A10G (24 GB, sm_86, BF16) is a
+# L4 is the reference GPU for M3 measurements. A10 (24 GB, sm_86, BF16) is a
 # fallback for functional runs when Modal has no L4 capacity; T4 needs
 # PTIT_DTYPE_PROFILE=fp16-fallback. Latency from a non-L4 GPU is not
 # comparable with L4 results.
 DEFAULT_GPU = "L4"
-SUPPORTED_GPUS = ("L4", "A10G", "T4")
+SUPPORTED_GPUS = ("L4", "A10", "T4")
 
 
 def resolve_gpu(environ: Mapping[str, str]) -> str:
