@@ -438,3 +438,176 @@ def test_aggregate_computes_speedup_per_gpu_independently(tmp_path, monkeypatch)
         camp.validate_cell(a100_dir, record, a100_cell)
 
 
+# --------------------------------------------------------------------------
+# Task 3: Dedicated Modal benchmark app runner (offline mocked modal SDK)
+# --------------------------------------------------------------------------
+def _load_modal_benchmark_runner(monkeypatch, cfg: dict):
+    import base64
+    import importlib.util
+    import sys
+    from types import SimpleNamespace
+
+    encoded = base64.b64encode(json.dumps(cfg).encode("utf-8")).decode("ascii")
+    monkeypatch.setenv("FLEXSDS_BENCH_CONFIG_B64", encoded)
+    monkeypatch.setenv("FLEXSDS_BENCH_RUN_ID", cfg.get("run_id", "bench-run-1"))
+
+    image = Mock()
+    for method in ("pip_install", "uv_pip_install", "entrypoint", "env", "add_local_dir", "add_local_file", "run_commands"):
+        getattr(image, method).return_value = image
+
+    fn_calls: list[dict] = []
+    app = Mock()
+
+    def fake_function(**kwargs):
+        fn_calls.append(kwargs)
+        return lambda f: f
+
+    app.function.side_effect = fake_function
+    web_server = Mock(side_effect=lambda *a, **kw: lambda f: f)
+    fake_modal = SimpleNamespace(
+        App=Mock(return_value=app),
+        Image=SimpleNamespace(from_registry=Mock(return_value=image)),
+        Volume=SimpleNamespace(from_name=Mock(return_value="volume")),
+        web_server=web_server,
+        is_local=lambda: True,
+        Function=SimpleNamespace(from_name=Mock()),
+        FunctionCall=SimpleNamespace(from_id=Mock()),
+        current_function_call_id=lambda: "fc-current01",
+    )
+    monkeypatch.setitem(sys.modules, "modal", fake_modal)
+    runner_path = Path(__file__).resolve().parents[1] / "experiments" / "modal_benchmark_runner.py"
+    spec = importlib.util.spec_from_file_location("test_modal_benchmark_runner_mod", runner_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module, fake_modal, image, fn_calls, web_server
+
+
+def test_modal_benchmark_runner_allocates_a100_80gb_patches_vllm_and_mounts_profile(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    prof = tmp_path / "profile_a100.json"
+    prof.write_text(json.dumps({"metadata": {"raw_sha256": "e" * 64}}), encoding="utf-8")
+    record = camp.plan("bench-a100", "a" * 40, mode="fast", gpus=("A100",), workloads=("W1_V3",), lanes_list=("adaptive",))
+    cfg = camp.build_cell_serving_config(record, record["cells"][0], profile_path=str(prof))
+    cfg["run_id"] = "bench-a100-run1"
+    cfg["source_commit"] = "a" * 40
+
+    module, fake_modal, image, fn_calls, web_server = _load_modal_benchmark_runner(monkeypatch, cfg)
+    assert module.APP_NAME == "flexsds-benchmark"
+    assert module.MODAL_GPU == "A100-80GB"
+    # Verify server decorator got A100-80GB and max_containers=1
+    server_fn_kwargs = next(kw for kw in fn_calls if kw.get("gpu") == "A100-80GB")
+    assert server_fn_kwargs["max_containers"] == 1
+    assert server_fn_kwargs["scaledown_window"] == 60
+    web_server.assert_called_once_with(8000, startup_timeout=900)
+    # Verify backport patch command and mounted profile file
+    run_cmd_args = [call.args[0] for call in image.run_commands.call_args_list]
+    assert any("vllm_runtime_patch.py" in str(arg) for arg in run_cmd_args)
+    added_files = [call.kwargs.get("remote_path") or (call.args[1] if len(call.args) > 1 else None)
+                   for call in image.add_local_file.call_args_list]
+    assert "/root/project/hardware_profile.json" in added_files
+
+    # Verify harness CLI arguments use modal-a100-v1, m3-fixed3, and 600s timeout for W1_V3
+    harness_args = module.build_harness_args(
+        lane="adaptive",
+        gpu="A100",
+        base_url="https://any-workspace--flexsds-benchmark-serve.modal.run/v1",
+        served_model_name="flexsds-bench-adaptive",
+        server_env_json="/artifacts/server_env.json",
+        raw_out="/artifacts/raw.jsonl",
+        summary_csv="/artifacts/h.csv",
+        experiment_id="bench-a100-run1",
+        workload="W1_V3",
+        concurrency=32,
+        repeats=5,
+        num_requests=32,
+    )
+    assert harness_args[harness_args.index("--environment-profile") + 1] == "modal-a100-v1"
+    assert harness_args[harness_args.index("--warmup-policy") + 1] == "m3-fixed3"
+    assert harness_args[harness_args.index("--timeout-s") + 1] == "600"
+
+
+def test_modal_benchmark_runner_submit_and_collect_roundtrip(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record = camp.plan("bench-t4", "a" * 40, mode="fast", gpus=("T4",), workloads=("W2",), lanes_list=("vanilla",))
+    cfg = camp.build_cell_serving_config(record, record["cells"][0])
+    cfg["run_id"] = "bench-t4-run1"
+    cfg["source_commit"] = "a" * 40
+
+    module, fake_modal, _, _, _ = _load_modal_benchmark_runner(monkeypatch, cfg)
+    monkeypatch.setattr(module, "_committed_bench_source", lambda: "a" * 40)
+
+    identity_fn = Mock()
+    identity_fn.remote.return_value = {
+        "commit": "a" * 40,
+        "run_id": "bench-t4-run1",
+        "gpu": "T4",
+        "modal_gpu": "T4",
+        "lane": "vanilla",
+        "max_model_len": 4096,
+        "vllm_runtime": "backport-55708",
+    }
+    bench_fn = Mock()
+    bench_fn.spawn.return_value = Mock(object_id="fc-bench123")
+
+    def fake_from_name(app_name, fn_name):
+        assert app_name == "flexsds-benchmark"
+        return identity_fn if fn_name == "benchmark_identity" else bench_fn
+
+    fake_modal.Function.from_name.side_effect = fake_from_name
+
+    evidence_root = tmp_path / "attempts"
+    call_id = module.bench_submit(
+        gpu="T4",
+        lane="vanilla",
+        workload="W2",
+        concurrency=8,
+        repeats=5,
+        num_requests=32,
+        server_run_id="bench-t4-run1",
+        bench_run_id="bench-t4-run1",
+        evidence_root=evidence_root,
+        serving_config=cfg,
+    )
+    assert call_id == "fc-bench123"
+    receipt = json.loads((evidence_root / "bench-t4-run1" / "submission.json").read_text(encoding="utf-8"))
+    assert receipt["call_id"] == "fc-bench123"
+    assert receipt["gpu"] == "T4"
+
+    raw_line = json.dumps({
+        "experiment_id": "bench-t4-run1",
+        "lane": "vanilla",
+        "commit": "a" * 40,
+        "workload": "W2",
+        "concurrency": 8,
+    }) + "\n"
+    fake_result = {
+        "gpu": "T4",
+        "lane": "vanilla",
+        "server_run_id": "bench-t4-run1",
+        "bench_run_id": "bench-t4-run1",
+        "cell": {"workload": "W2", "concurrency": 8, "repeats": 5, "num_requests": 32},
+        "commit": "a" * 40,
+        "call_id": "fc-bench123",
+        "returncode": 0,
+        "server_ready_wait_s": 42.5,
+        "join_error": None,
+        "server_instance_unchanged": True,
+        "endpoint_model_ids": ["flexsds-bench-vanilla"],
+        "server_env": {"lane": "vanilla", "run_id": "bench-t4-run1", "gpu": "Tesla T4"},
+        "harness_log": "ok\n",
+        "raw": raw_line,
+        "joined": raw_line,
+        "warmup": raw_line,
+        "timestamp_utc": "2026-11-25T16:00:00+00:00",
+    }
+    fake_modal.FunctionCall.from_id.return_value = Mock(get=Mock(return_value=fake_result))
+    out = module.bench_collect("fc-bench123", evidence_root=evidence_root)
+    assert (out / "bench.json").is_file()
+    assert (out / "raw.vram.jsonl").is_file()
+    assert (out / "server_env.json").is_file()
+
+
+
