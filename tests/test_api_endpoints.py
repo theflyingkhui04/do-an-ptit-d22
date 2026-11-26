@@ -91,7 +91,7 @@ def test_probe_reads_the_model_behind_the_served_name():
 
 
 def test_a_sleeping_endpoint_is_told_apart_from_a_broken_one():
-    for status in (502, 503, 504):
+    for status in (303, 502, 503, 504):  # 303: Modal held the call past 150 s while the GPU cold-starts
         response = httpx.Response(status, json={"error": "no upstreams available"})
         with pytest.raises(EndpointError) as info:
             probe("https://x.modal.direct/v1", None, client(lambda r, response=response: response))

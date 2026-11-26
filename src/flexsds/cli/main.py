@@ -78,6 +78,17 @@ def positive_int(value):
     return number
 
 
+def scaledown_seconds(value):
+    """argparse type for --scaledown-window: seconds a Modal GPU stays up after the last request (2..3600)."""
+    try:
+        seconds = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--scaledown-window must be an integer number of seconds") from exc
+    if not 2 <= seconds <= 3600:
+        raise argparse.ArgumentTypeError("--scaledown-window must be between 2 and 3600 seconds")
+    return seconds
+
+
 def calibration_batches(value):
     """argparse type for --batches: a subset of the calibration grid 1,2,4,8,16,32."""
     try:
@@ -238,6 +249,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     serve_parser.add_argument("--gpu", type=canonical_modal_gpu_name, choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="Remote GPU memory budget and Modal allocation")
     serve_parser.add_argument(
         "--port", type=int, default=8000, help="API server port"
+    )
+    serve_parser.add_argument(
+        "--scaledown-window", type=scaledown_seconds, default=300,
+        help="Modal: seconds the GPU stays up after the last request (default 300; a cold start can exceed Modal's 150 s web limit)",
     )
     serve_parser.add_argument(
         "--background", action="store_true", help="Run local server as background daemon"
@@ -528,6 +543,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "static_k": None,
                     "max_num_seqs": args.max_num_seqs,
                     "max_model_len": args.max_model_len,
+                    "scaledown_window": args.scaledown_window,
                     "allow_oom_risk": args.allow_oom_risk,
                     "profile_path": None,
                     "hardware": {
@@ -603,6 +619,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "disable_prefix_caching": args.no_prefix_caching,
                     "static_k": args.static_k,
                     "max_num_seqs": args.max_num_seqs, "max_model_len": args.max_model_len,
+                    "scaledown_window": args.scaledown_window,
                     "allow_oom_risk": args.allow_oom_risk,
                     "profile_path": str(resolve_profile_path(profile_name)) if not args.no_adaptive else None,
                     "hardware": {

@@ -320,3 +320,23 @@ def test_cli_vanilla_without_target_on_local_cpu_blocks_instead_of_opening_wizar
     rc = cli_main.main(["serve", "--backend", "local", "--vanilla"])
     assert rc == 2
     assert "cuda gpu unavailable" in capsys.readouterr().out.lower()
+
+
+def test_cli_scaledown_window_reaches_the_serving_config(capsys):
+    from flexsds.cli.main import main
+
+    argv = ["serve", "--backend", "modal", "--gpu", "A10", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--vanilla",
+            "--dry-run"]
+    assert main(argv + ["--scaledown-window", "600"]) == 0
+    assert '"scaledown_window": 600' in capsys.readouterr().out
+    assert main(argv) == 0
+    assert '"scaledown_window": 300' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value", ["1", "3601", "abc"])
+def test_cli_scaledown_window_is_bounded(value, capsys):
+    from flexsds.cli.main import main
+
+    with pytest.raises(SystemExit):
+        main(["serve", "--backend", "modal", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--vanilla", "--dry-run",
+              "--scaledown-window", value])

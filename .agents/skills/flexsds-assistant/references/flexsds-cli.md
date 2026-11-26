@@ -24,7 +24,9 @@ Version remains 0.2.0-alpha: record execution Git SHA too. No JSON output contra
 
 Serve flags: --target, --draft, --backend {modal,local,colab} (default modal),
 --gpu {T4,A10,L40S,A100} (default A10; remote budget/Modal allocation; A100 maps to Modal A100-80GB), --port (1..65535,
-default 8000), --background, --deploy, --no-adaptive, --dry-run.
+default 8000), --background, --deploy, --no-adaptive, --dry-run, --scaledown-window (Modal: seconds the GPU
+stays up after the last request, 2..3600, default 300; a longer cold start than Modal's 150 s web limit reaches
+clients as HTTP 303).
 Pass both exact nonempty model IDs, explicitly select backend, use argv arrays.
 Printed joined commands are not shell-escaped.
 

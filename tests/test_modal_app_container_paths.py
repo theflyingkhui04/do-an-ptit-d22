@@ -131,3 +131,12 @@ def test_modal_serve_accepts_concurrent_inputs(monkeypatch):
     order = _decorators_applied_to_serve(
         monkeypatch, {"target_gpu": "A10", "enable_adaptive": False, "max_num_seqs": 48})
     assert dict(order)["concurrent"]["max_inputs"] == 96
+
+
+def test_modal_serve_keeps_the_gpu_awake_for_the_configured_window(monkeypatch):
+    """Modal's default ~60 s scale-down makes the next demo call a cold start (~4.5 min > Modal's 150 s web limit)."""
+    order = _decorators_applied_to_serve(monkeypatch, {"target_gpu": "A10", "enable_adaptive": False,
+                                                       "scaledown_window": 600})
+    assert dict(order)["function"]["scaledown_window"] == 600
+    default = _decorators_applied_to_serve(monkeypatch, {"target_gpu": "A10", "enable_adaptive": False})
+    assert dict(default)["function"]["scaledown_window"] == 300

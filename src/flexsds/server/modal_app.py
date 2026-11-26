@@ -108,7 +108,11 @@ if modal is not None:
     # client sending 8 or 32 parallel requests is served one by one (measured on Modal 26/11/2026).
     MAX_INPUTS = max(64, 2 * int(SERVING_CONFIG.get("max_num_seqs", 32)))
 
-    @app.function(image=image, gpu=MODAL_GPU, max_containers=1,
+    # Modal's default scale-down (~60 s) turns every pause into a cold start; a cold start held past
+    # Modal's 150 s web limit reaches clients as HTTP 303. Keep the GPU up for a configurable window.
+    SCALEDOWN_WINDOW = int(SERVING_CONFIG.get("scaledown_window", 300))
+
+    @app.function(image=image, gpu=MODAL_GPU, max_containers=1, scaledown_window=SCALEDOWN_WINDOW,
                   volumes={"/root/.cache/huggingface": volume}, timeout=3600)
     @modal.concurrent(max_inputs=MAX_INPUTS)
     @modal.web_server(PORT, startup_timeout=600)
