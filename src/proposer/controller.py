@@ -641,6 +641,13 @@ class AdaptiveDraftController(BudgetController):
             non_monotonic_cost=non_monotonic,
         )
 
+    def decision_alpha(self) -> Tuple[float, str]:
+        """Alpha that decides the budget and the estimator it came from (shared by select_budget and the planner)."""
+        estimator = self._resolved_alpha_estimator()
+        if estimator == "geometric_mle":
+            return self.get_geometric_alpha(), estimator
+        return self.get_effective_alpha(), estimator
+
     def select_budget(
         self,
         batch_size: int = 1,
@@ -648,12 +655,7 @@ class AdaptiveDraftController(BudgetController):
         kv_cache_usage_pct: float = 0.0,
     ) -> BudgetDecision:
         """Selects optimal budget k* using geometric MLE / unbiased alpha, memory guard, and hardware cost profile."""
-        estimator = self._resolved_alpha_estimator()
-        decision_alpha = (
-            self.get_geometric_alpha()
-            if estimator == "geometric_mle"
-            else self.get_effective_alpha()
-        )
+        decision_alpha, estimator = self.decision_alpha()
 
         # 1. Memory Pressure Rule (Chống OOM — ưu tiên cao nhất)
         mem_decision = self.apply_memory_pressure_rule(

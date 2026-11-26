@@ -61,6 +61,9 @@ def finish_launch(proc, background: bool = False) -> int:
             output.close()
 
 
+K_SELECTION_MODES = frozenset({"batch", "max_k"})
+
+
 class LocalServingRunner:
     """Khởi chạy và quản lý vòng đời máy chủ vLLM cục bộ với FlexSDS."""
 
@@ -84,6 +87,9 @@ class LocalServingRunner:
         if flush_every is not None:
             if isinstance(flush_every, bool) or not isinstance(flush_every, int) or flush_every < 1:
                 raise ValueError("step_telemetry_flush_every must be a positive integer")
+        k_selection = serving_cfg.get("k_selection")
+        if k_selection is not None and k_selection not in K_SELECTION_MODES:
+            raise ValueError(f"k_selection must be one of {sorted(K_SELECTION_MODES)}: {k_selection!r}")
 
     def describe_execution_contract(self, config: Dict[str, Any]) -> str:
         """Trả về nhãn hợp đồng thực thi chuẩn cho log đối chứng và dry-run."""
@@ -123,16 +129,23 @@ class LocalServingRunner:
         effective_port = port if port is not None else serving_cfg.get("port", 8000)
         target_lower = target_model.lower()
 
-        # Xác định quantization và dtype
+        # Xác định quantization và dtype (T4 / sm_75 không hỗ trợ BF16 và awq_marlin)
+        target_gpu = str(serving_cfg.get("target_gpu") or "").strip().upper()
+        hw_cfg = serving_cfg.get("hardware") if isinstance(serving_cfg.get("hardware"), dict) else {}
+        sm_arch = str(hw_cfg.get("sm_architecture") or "").strip().lower()
+        is_turing_t4 = target_gpu == "T4" or sm_arch == "sm_75"
+        explicit_dtype = serving_cfg.get("dtype")
+        explicit_quant = serving_cfg.get("quantization")
+
         if "awq" in target_lower:
-            quantization = "awq_marlin"
-            dtype = "bfloat16"
+            quantization = explicit_quant or ("awq" if is_turing_t4 else "awq_marlin")
+            dtype = explicit_dtype or ("half" if is_turing_t4 else "bfloat16")
         elif "gptq" in target_lower:
-            quantization = "gptq"
-            dtype = "float16"
+            quantization = explicit_quant or "gptq"
+            dtype = explicit_dtype or "float16"
         else:
-            quantization = serving_cfg.get("quantization", "none")
-            dtype = serving_cfg.get("dtype", "bfloat16")
+            quantization = explicit_quant or "none"
+            dtype = explicit_dtype or ("half" if is_turing_t4 else "bfloat16")
 
         profile_data = None
         if serving_cfg.get('profile_path'):
@@ -275,6 +288,7 @@ class LocalServingRunner:
                 "ADAPTIVE_STRICT",
                 "ADAPTIVE_STEP_TELEMETRY_PATH",
                 "ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY",
+                "ADAPTIVE_K_SELECTION",
                 "ADAPTIVE_STARTUP_TELEMETRY_PATH",
                 "ADAPTIVE_CONTROLLER_KWARGS",
             ):
@@ -303,6 +317,8 @@ class LocalServingRunner:
         env["ADAPTIVE_MAX_K"] = str(serving_cfg.get("max_k", 4))
         env["ADAPTIVE_MIN_BATCH_K"] = "0"
         env["ADAPTIVE_PER_REQUEST"] = "1"
+        if enable_adaptive:
+            env["ADAPTIVE_K_SELECTION"] = serving_cfg.get("k_selection") or "batch"
         return env
 
     def launch(

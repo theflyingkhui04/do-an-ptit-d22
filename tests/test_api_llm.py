@@ -191,3 +191,36 @@ def test_a_failing_progress_hook_never_breaks_the_call():
         {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1}})))
     lane.progress = boom
     assert lane.chat_completions({"messages": []})["choices"][0]["message"]["content"] == "x"
+
+
+def test_modal_303_waits_on_models_then_posts_once_more():
+    """Modal answers 303 when a cold start holds a request past 150 s. Wait on the cheap /models route
+    instead of re-posting, so at most one abandoned generation runs next to the measured one."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(f"{request.method} {request.url.path}")
+        if request.method == "POST":
+            if calls.count("POST /v1/chat/completions") == 1:
+                return httpx.Response(303, headers={"location": "https://x.test/v1/chat/completions?__modal_function_call_id=fc-1"})
+            return httpx.Response(200, content=sse({"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}]}))
+        if calls.count("GET /v1/models") < 3:
+            return httpx.Response(303 if len(calls) == 2 else 503)
+        return httpx.Response(200, json={"data": [{"id": "qwen2.5-7b-adaptive"}]})
+
+    events: list[dict] = []
+    lane = caller(handler)
+    lane.progress = events.append
+    assert lane.chat_completions({"messages": []})["choices"][0]["message"]["content"] == "ok"
+    assert calls == ["POST /v1/chat/completions", "GET /v1/models", "GET /v1/models", "GET /v1/models",
+                     "POST /v1/chat/completions"]
+    assert [e["reason"] for e in events if e["kind"] == "waiting"][0] == "HTTP 303"
+
+
+def test_modal_303_stops_after_the_ready_timeout():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(303)
+
+    lane = caller(handler, clock=Clock(0.0, 0.0, 2000.0))
+    with pytest.raises(LLMError, match="not ready after"):
+        lane.chat_completions({"messages": []})

@@ -22,6 +22,8 @@ from src.proposer.controller import BudgetDecision
 # Free VRAM value passed to the controller when no reading is available,
 # so the VRAM guard never fires on a missing signal.
 NO_VRAM_READING_MB = 1.0e9
+K_SELECTION_MODES = frozenset({"max_k", "batch"})
+DEFAULT_PROBE_INTERVAL = 20
 logger = logging.getLogger(__name__)
 
 
@@ -54,7 +56,18 @@ class AdaptiveBudgetPlanner:
         step_telemetry_path: Optional[str] = None,
         step_telemetry_flush_every: int = 1,
         hardware_profile: Optional[dict] = None,
+        k_selection: str = "max_k",
+        probe_alpha_cap: float = 0.80,
     ):
+        if k_selection not in K_SELECTION_MODES:
+            raise ValueError(f"k_selection must be one of {sorted(K_SELECTION_MODES)}: {k_selection!r}")
+        if (
+            isinstance(probe_alpha_cap, bool)
+            or not isinstance(probe_alpha_cap, (int, float))
+            or not math.isfinite(probe_alpha_cap)
+            or not 0.0 < probe_alpha_cap <= 1.0
+        ):
+            raise ValueError("probe_alpha_cap must be finite and in (0, 1]")
         if max_k < 0 or min_batch_k < 0:
             raise ValueError("max_k and min_batch_k must be non-negative")
         if (
@@ -79,6 +92,15 @@ class AdaptiveBudgetPlanner:
         self._last_decisions: Dict[str, dict] = {}
         self._scheduled_runtime_modes: Dict[str, str] = {}
         self._plan_sequence = 0
+        self.k_selection = k_selection
+        self._probe_alpha_cap = float(probe_alpha_cap)
+        # In batch mode probing belongs to the planner: per-request probes would drag the whole batch into a
+        # drafting step (batch K = max(k_i)), so the controllers' own probing is disabled.
+        self._batch_probe_interval = int(self.adapter.controller_kwargs.get("probe_interval", DEFAULT_PROBE_INTERVAL))
+        self._batch_fallback_steps = 0
+        profile = self.adapter.controller_kwargs.get("cost_profile")
+        if k_selection == "batch" and bool(getattr(profile, "matrix", None)):
+            self.adapter.controller_kwargs["probe_interval"] = 0
         self._step_buffer: List[str] = []
         self._step_fh = None
         self._step_io_state: Dict[str, object] = {"fh": None, "buf": self._step_buffer, "path": step_telemetry_path}
@@ -148,10 +170,27 @@ class AdaptiveBudgetPlanner:
         if not per_request_k:
             return StepPlan(batch_k=0, per_request_k={})
 
-        batch_k = max(max(per_request_k.values()), self.min_batch_k)
-        batch_k = min(batch_k, self.max_k)
-        if not self.per_request:
-            per_request_k = {req_id: batch_k for req_id in per_request_k}
+        batch = self._select_batch_k(decisions, batch_size) if self.k_selection == "batch" else None
+        batch_probe = False
+        if batch is not None and batch["best_k"] > 0:
+            self._batch_fallback_steps = 0
+        if batch is None:
+            batch_k = max(max(per_request_k.values()), self.min_batch_k)
+            batch_k = min(batch_k, self.max_k)
+            if not self.per_request:
+                per_request_k = {req_id: batch_k for req_id in per_request_k}
+        else:
+            batch_k = min(max(batch["best_k"], self.min_batch_k), self.max_k)
+            batch_probe = batch["best_k"] == 0 and self._probe_due(batch)
+            if batch_probe:
+                batch_k = batch["probe_k"]
+            guard_cap = {
+                req_id: decision.k if decision.decision_policy == "memory_guard" else self.max_k
+                for req_id, decision in decisions.items()
+            }
+            per_request_k = {req_id: min(batch_k, guard_cap[req_id]) for req_id in per_request_k}
+            batch_k = max(per_request_k.values())
+            nodes = dict(per_request_k)
         batch_node_count = max(nodes.values())
         self._plan_sequence += 1
         for req_id, decision in decisions.items():
@@ -163,12 +202,56 @@ class AdaptiveBudgetPlanner:
             record.update(request_id=req_id, lane="adaptive", record_type="planned_decision",
                           controller_class=f"{type(self.adapter.get_controller(req_id)).__module__}.{type(self.adapter.get_controller(req_id)).__name__}",
                           plan_sequence=self._plan_sequence, scalar_runtime_budget=per_request_k[req_id],
-                          batch_scalar_budget=batch_k, batch_node_count=batch_node_count)
+                          batch_scalar_budget=batch_k, batch_node_count=batch_node_count,
+                          batch_k_selected=batch_k if batch is not None else None,
+                          batch_score=batch["score"] if batch is not None else None,
+                          batch_score_k0=batch["score_k0"] if batch is not None else None,
+                          batch_probe=batch_probe)
             self._last_decisions[req_id] = record
             self._write_step(record)
         return StepPlan(batch_k=batch_k, per_request_k=per_request_k,
                         batch_node_count=batch_node_count, per_request_node_count=nodes,
                         per_request_decisions=decisions, plan_sequence=self._plan_sequence)
+
+    def _select_batch_k(self, decisions: Dict[str, BudgetDecision], batch_size: int) -> Optional[dict]:
+        """One K for the whole batch: argmax_K of sum_i E[tau_i(K)] / C(K, B) (None without a cost matrix)."""
+        controllers = {req_id: self.adapter.get_controller(req_id) for req_id in decisions}
+        first = next(iter(controllers.values()))
+        profile = getattr(first, "cost_profile", None)
+        if not bool(getattr(profile, "matrix", None)) or not callable(getattr(first, "decision_alpha", None)):
+            return None  # no measured cost table or another controller type: keep the per-request path
+        budgets = sorted({0} | {k for k in first.candidate_budgets if 0 < k <= self.max_k})
+        costs = {k: profile.get_cost(k, batch_size) for k in budgets}
+        c_ref = min(costs.values())  # K=0 is costed at C_ref(B), as in the per-request rule (noisy cells C(k,B) < C(0,B))
+        alphas = [controller.decision_alpha()[0] for controller in controllers.values()]
+        score = {k: sum(first.estimate_expected_tokens(k, a) for a in alphas) / costs[k] for k in budgets}
+        score[0] = len(alphas) / c_ref
+        best_k = 0
+        for k in budgets[1:]:
+            if score[k] >= getattr(first, 'min_speedup_ratio', 1.05) * score[0] and score[k] > score[best_k] + 1e-9:
+                best_k = k
+        guarded = any(d.decision_policy == "memory_guard" for d in decisions.values())
+        return {"best_k": best_k, "score": score[best_k], "score_k0": score[0], "budgets": budgets,
+                "costs": costs, "c_ref": c_ref, "controller": first, "guarded": guarded}
+
+    def _probe_due(self, batch: dict) -> bool:
+        """Counts batch-wide K=0 steps and decides whether this step may probe (sets batch['probe_k'])."""
+        if batch["guarded"] or self._batch_probe_interval <= 0:
+            return False
+        self._batch_fallback_steps = min(self._batch_fallback_steps + 1, self._batch_probe_interval)
+        if self._batch_fallback_steps < self._batch_probe_interval:
+            return False
+        feasible = [
+            (star, k)
+            for k in batch["budgets"][1:]
+            if (star := batch["controller"].solve_break_even_alpha(k, batch["costs"][k] / batch["c_ref"])) is not None
+            and star <= self._probe_alpha_cap
+        ]
+        if not feasible:
+            return False
+        batch["probe_k"] = min(feasible)[1]
+        self._batch_fallback_steps = 0
+        return True
 
     def record_scheduled_budget(self, req_id: str, batch_k: int, placeholder_k: int,
                                 *, dynamic: bool, schedule_sequence: int,
@@ -380,8 +463,11 @@ class AdaptiveBudgetPlanner:
                 f"ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY must be a positive integer: {raw_flush_every!r}"
             ) from exc
 
+        raw_cap = env.get("ADAPTIVE_BATCH_PROBE_ALPHA_CAP", "").strip()
         return cls(
             adapter=AdaptiveProposerAdapter(controller_kwargs=controller_kwargs),
+            k_selection=env.get("ADAPTIVE_K_SELECTION", "max_k").strip() or "max_k",
+            probe_alpha_cap=float(raw_cap) if raw_cap else 0.80,
             max_k=int(env.get("ADAPTIVE_MAX_K", "4")),
             min_batch_k=int(env.get("ADAPTIVE_MIN_BATCH_K", "0")),
             per_request=_env_flag(env.get("ADAPTIVE_PER_REQUEST", "1")),

@@ -176,7 +176,7 @@ python scripts\run_pipeline_e2e.py --base-url http://localhost:11434/v1 --model 
 Re-run Node 2/3 on an existing database without calling Node 1 again:
 `--skip-node1 --db <path>`.
 Record the serving GPU in the summary with `--hardware <label>` (e.g.
-`modal-A10G`; Modal GPU is chosen at deploy time with `PTIT_GPU`).
+`modal-A10`; Modal GPU is chosen at deploy time with `PTIT_GPU`).
 
 Outputs in `experiments/runs/m3_06/<run_id>-<lane>/`: `node1/`,
 `node1_summary.json`, `invoices.sqlite` (not committed), `node2_results.jsonl`,
@@ -215,7 +215,7 @@ valid outputs into SQLite.
 ## Running Node 1 on a serving lane (M4-03)
 
 ```powershell
-python scripts\run_node1_extractor.py --lane eagle --hardware modal-A10G
+python scripts\run_node1_extractor.py --lane eagle --hardware modal-A10
 python scripts\run_node1_extractor.py --lane static --backend local
 ```
 

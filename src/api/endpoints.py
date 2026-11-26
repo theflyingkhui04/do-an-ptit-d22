@@ -108,7 +108,7 @@ def probe(url: str, api_key: str | None, client: httpx.Client) -> dict[str, Any]
                                            "flexsds serve còn chạy không.") from exc
     if response.status_code in (401, 403):
         raise EndpointError("auth_failed", f"Endpoint từ chối khoá API (HTTP {response.status_code}).")
-    if response.status_code in (502, 503, 504):
+    if response.status_code in (303, 502, 503, 504):  # 303: Modal held the call past 150 s (GPU cold start)
         raise EndpointError("not_ready", f"Endpoint chưa sẵn sàng (HTTP {response.status_code}): GPU đang khởi động "
                                          "hoặc đang ngủ, hoặc phiên flexsds serve đã dừng. Chờ vài phút rồi kiểm tra lại.")
     if response.status_code != 200:

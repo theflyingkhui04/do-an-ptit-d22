@@ -98,6 +98,12 @@ class LaneCaller:
                 with self._client.stream("POST", url, json=body, headers=headers) as response:
                     if response.status_code == 503:
                         response.read()
+                    elif response.status_code == 303:
+                        # Modal held the request past its 150 s web limit while the GPU cold-starts. Do not
+                        # re-post now (each post would queue one more generation): wait on /models first.
+                        response.read()
+                        self._wait_until_ready(headers, start)
+                        continue
                     elif response.status_code != 200:
                         detail = response.read().decode("utf-8", errors="replace")[:300]
                         raise self._error(f"HTTP {response.status_code} from {url}: {detail}")
@@ -119,6 +125,27 @@ class LaneCaller:
             self._report("waiting", tries=tries, waited_s=self._clock() - start, reason=reason,
                          retry_in_s=self.poll_s, ready_timeout_s=self.ready_timeout_s)
             self._sleep(self.poll_s)
+
+    def _wait_until_ready(self, headers: dict[str, str], start: float) -> None:
+        """Poll GET /models (cheap, no generation) until the cold-starting endpoint answers 200."""
+        url = f"{self.base_url}/models"
+        tries = 0
+        reason = "HTTP 303"
+        while True:
+            if self._clock() - start >= self.ready_timeout_s:
+                raise self._error(f"not ready after {self.ready_timeout_s:.0f} s ({reason})")
+            tries += 1
+            self._report("waiting", tries=tries, waited_s=self._clock() - start, reason=reason,
+                         retry_in_s=self.poll_s, ready_timeout_s=self.ready_timeout_s)
+            self._sleep(self.poll_s)
+            try:
+                response = self._client.get(url, headers={k: v for k, v in headers.items() if k != "Accept"})
+            except httpx.HTTPError as exc:
+                reason = type(exc).__name__
+                continue
+            if response.status_code == 200:
+                return
+            reason = f"HTTP {response.status_code}"
 
     def _consume(self, response: httpx.Response, start: float) -> dict[str, Any]:
         parts: list[str] = []

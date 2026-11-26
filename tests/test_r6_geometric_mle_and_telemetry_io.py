@@ -238,7 +238,7 @@ def test_runner_and_modal_step_telemetry_batching_and_opt_out(monkeypatch):
         "draft_revision": data["models"]["draft_revision"],
         "profile_path": str(A10G_PROFILE_PATH),
         "enable_adaptive": True,
-        "target_gpu": "A10G",
+        "target_gpu": "A10",
     }
 
     local_runner = LocalServingRunner()
@@ -300,7 +300,7 @@ def test_cli_no_step_telemetry_flag_forwards_opt_out(monkeypatch, capsys):
             "--backend",
             "modal",
             "--gpu",
-            "A10G",
+            "A10",
             "--target",
             data["models"]["target"],
             "--draft",
@@ -340,12 +340,12 @@ def test_adversarial_edge_cases_adapter_telemetry_env_validation_and_modal_launc
     modal_runner = ModalServingRunner()
     with pytest.raises(ValueError):
         modal_runner.launch(
-            {"serving": {"target_gpu": "A10G", "enable_adaptive": False, "step_telemetry_flush_every": 0}},
+            {"serving": {"target_gpu": "A10", "enable_adaptive": False, "step_telemetry_flush_every": 0}},
             dry_run=True,
         )
     assert (
         modal_runner.launch(
-            {"serving": {"target_gpu": "A10G", "enable_step_telemetry": False}},
+            {"serving": {"target_gpu": "A10", "enable_step_telemetry": False}},
             dry_run=True,
         )
         is None

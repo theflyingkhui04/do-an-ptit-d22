@@ -49,7 +49,7 @@ def test_image_config_survives_windows_paths_and_container_import(tmp_path, monk
     monkeypatch.chdir(tmp_path)
     profile = tmp_path / profile_name
     profile.write_text('{}', encoding='utf-8')
-    config = dict(target_gpu='A10G', profile_path=str(profile),
+    config = dict(target_gpu='A10', profile_path=str(profile),
                   target_model='model có dấu', enable_adaptive=True)
     monkeypatch.setenv('FLEXSDS_SERVING_CONFIG', json.dumps(config))
     monkeypatch.delenv('FLEXSDS_SERVING_CONFIG_B64', raising=False)
@@ -64,6 +64,7 @@ def test_image_config_survives_windows_paths_and_container_import(tmp_path, monk
         App=Mock(return_value=app), is_local=local,
         Volume=SimpleNamespace(from_name=Mock()),
         web_server=lambda *a, **kw: lambda fn: fn,
+        concurrent=lambda *a, **kw: lambda fn: fn,
     ))
     monkeypatch.setattr(modal_image, 'serving_image', lambda: image)
     source = Path(modal_image.__file__).with_name('modal_app.py')
@@ -83,3 +84,59 @@ def test_image_config_survives_windows_paths_and_container_import(tmp_path, monk
     local.return_value = False
     container = runpy.run_path(str(source))
     assert container['SERVING_CONFIG'] == remote
+
+
+def _decorators_applied_to_serve(monkeypatch, serving_config):
+    """Load modal_app.py with a recording fake `modal`; return decorator names, innermost first."""
+    import json as _json
+    import runpy
+    import sys
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from flexsds.server import modal_image
+
+    order: list[tuple[str, dict]] = []
+
+    def recorder(name):
+        def factory(*args, **kwargs):
+            def apply(fn):
+                order.append((name, kwargs))
+                return fn
+            return apply
+        return factory
+
+    image = Mock()
+    image.env.return_value = image
+    image.add_local_dir.return_value = image
+    image.add_local_file.return_value = image
+    app = Mock()
+    app.function.side_effect = recorder("function")
+    monkeypatch.setenv("FLEXSDS_SERVING_CONFIG", _json.dumps(serving_config))
+    monkeypatch.delenv("FLEXSDS_SERVING_CONFIG_B64", raising=False)
+    monkeypatch.setitem(sys.modules, "modal", SimpleNamespace(
+        App=Mock(return_value=app), is_local=Mock(return_value=False),
+        Volume=SimpleNamespace(from_name=Mock()),
+        web_server=recorder("web_server"), concurrent=recorder("concurrent")))
+    monkeypatch.setattr(modal_image, "serving_image", lambda: image)
+    runpy.run_path(str(modal_image.__file__).replace("modal_image.py", "modal_app.py"))
+    return order
+
+
+def test_modal_serve_accepts_concurrent_inputs(monkeypatch):
+    """Without @modal.concurrent Modal hands a web_server container one request at a time (25 s vs 4.4 s, 26/11)."""
+    order = _decorators_applied_to_serve(monkeypatch, {"target_gpu": "A10", "enable_adaptive": False})
+    assert [name for name, _ in order] == ["web_server", "concurrent", "function"]
+    assert dict(order)["concurrent"]["max_inputs"] == 64
+
+    order = _decorators_applied_to_serve(
+        monkeypatch, {"target_gpu": "A10", "enable_adaptive": False, "max_num_seqs": 48})
+    assert dict(order)["concurrent"]["max_inputs"] == 96
+
+
+def test_modal_serve_keeps_the_gpu_awake_for_the_configured_window(monkeypatch):
+    """Modal's default ~60 s scale-down makes the next demo call a cold start (~4.5 min > Modal's 150 s web limit)."""
+    order = _decorators_applied_to_serve(monkeypatch, {"target_gpu": "A10", "enable_adaptive": False,
+                                                       "scaledown_window": 600})
+    assert dict(order)["function"]["scaledown_window"] == 600
+    default = _decorators_applied_to_serve(monkeypatch, {"target_gpu": "A10", "enable_adaptive": False})
+    assert dict(default)["function"]["scaledown_window"] == 300

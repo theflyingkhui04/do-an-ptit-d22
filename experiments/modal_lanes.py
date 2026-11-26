@@ -59,12 +59,27 @@ DTYPE_PROFILES: dict[str, dict[str, str]] = {
 }
 DEFAULT_PROFILE = "l4-bf16"
 
-# L4 is the reference GPU for M3 measurements. A10G (24 GB, sm_86, BF16) is a
-# fallback for functional runs when Modal has no L4 capacity; T4 needs
-# PTIT_DTYPE_PROFILE=fp16-fallback. Latency from a non-L4 GPU is not
-# comparable with L4 results.
+# L4 is the reference GPU for M3 measurements. Production Modal GPUs are
+# T4 (16 GB, sm_75, fp16-fallback), A10 (24 GB, sm_86, BF16), L40S (48 GB, sm_89, BF16),
+# and A100 (80 GB, sm_80, BF16, mapped to Modal "A100-80GB").
 DEFAULT_GPU = "L4"
-SUPPORTED_GPUS = ("L4", "A10G", "T4")
+SUPPORTED_GPUS = ("L4", "T4", "A10", "L40S", "A100")
+
+GPU_MODAL_RESOURCE: dict[str, str] = {
+    "L4": "L4",
+    "T4": "T4",
+    "A10": "A10",
+    "L40S": "L40S",
+    "A100": "A100-80GB",
+}
+
+GPU_ENVIRONMENT_PROFILES: dict[str, str] = {
+    "L4": "m3-l4-modal-v1",
+    "T4": "modal-t4-v1",
+    "A10": "modal-a10-v1",
+    "L40S": "modal-l40s-v1",
+    "A100": "modal-a100-v1",
+}
 
 
 def resolve_gpu(environ: Mapping[str, str]) -> str:
@@ -72,6 +87,24 @@ def resolve_gpu(environ: Mapping[str, str]) -> str:
     if gpu not in SUPPORTED_GPUS:
         raise ValueError(f"PTIT_GPU must be one of {SUPPORTED_GPUS}, got {gpu!r}")
     return gpu
+
+
+def modal_gpu_resource(gpu: str) -> str:
+    if gpu not in GPU_MODAL_RESOURCE:
+        raise ValueError(f"Unsupported Modal GPU {gpu!r}; expected one of {SUPPORTED_GPUS}")
+    return GPU_MODAL_RESOURCE[gpu]
+
+
+def default_dtype_profile(gpu: str) -> str:
+    if gpu not in SUPPORTED_GPUS:
+        raise ValueError(f"Unsupported Modal GPU {gpu!r}; expected one of {SUPPORTED_GPUS}")
+    return "fp16-fallback" if gpu == "T4" else "l4-bf16"
+
+
+def environment_profile_for_gpu(gpu: str) -> str:
+    if gpu not in GPU_ENVIRONMENT_PROFILES:
+        raise ValueError(f"Unsupported Modal GPU {gpu!r}; expected one of {SUPPORTED_GPUS}")
+    return GPU_ENVIRONMENT_PROFILES[gpu]
 
 COMMON_SERVING_ARGS = [
     "--generation-config", "vllm",
@@ -331,6 +364,7 @@ def bench_harness_args(
     repeats: int,
     num_requests: int,
     warmup_requests: int = 3,
+    environment_profile: str = L4_ENVIRONMENT_PROFILE,
 ) -> list[str]:
     """benchmark_harness arguments for one cell against a Modal lane.
 
@@ -356,7 +390,7 @@ def bench_harness_args(
         "--experiment-id", experiment_id,
         "--raw-out", raw_out,
         "--summary-csv", summary_csv,
-        "--environment-profile", L4_ENVIRONMENT_PROFILE,
+        "--environment-profile", environment_profile,
         "--server-env-json", server_env_json,
         *timeout,
     ]

@@ -74,11 +74,11 @@ class ModalServingRunner:
         """Forward non-secret serving settings and package paths for app construction."""
         cfg = config.get("serving", config)
         keys = (
-            "target_model", "draft_model", "draft_method", "use_heterogeneous_vocab",
+            "target_model", "draft_model", "draft_method", "eagle_version", "use_heterogeneous_vocab",
             "target_revision", "draft_revision", "port", "enable_adaptive",
             "target_gpu", "max_model_len", "max_num_seqs", "profile_path",
             "match_adaptive_runtime", "disable_speculative", "disable_prefix_caching", "static_k",
-            "enable_step_telemetry", "step_telemetry_flush_every",
+            "enable_step_telemetry", "step_telemetry_flush_every", "k_selection", "scaledown_window",
         )
         if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
             # Calibration also uses this method without the serving launch preflight.

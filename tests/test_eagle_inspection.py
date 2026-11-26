@@ -169,11 +169,11 @@ def test_kv_estimate_scales_with_configured_capacity(models):
 def test_one_preflight_estimate_and_specific_block_reason(models, monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr('flexsds.core.compatibility.pre_download_guard', lambda *a, **k: pytest.fail('Duplicate heuristic guard'))
-    result = evaluate_serving_preflight(str(models[0]), str(models[1]), SimpleNamespace(), 'modal', 'A10G')
+    result = evaluate_serving_preflight(str(models[0]), str(models[1]), SimpleNamespace(), 'modal', 'A10')
     assert result.is_safe
     assert result.download.vram_needed_mb == result.report.total_vram_needed_mb
     write_config(models[1], target_model_name_or_path='wrong/model')
-    result = evaluate_serving_preflight(str(models[0]), str(models[1]), SimpleNamespace(), 'modal', 'A10G')
+    result = evaluate_serving_preflight(str(models[0]), str(models[1]), SimpleNamespace(), 'modal', 'A10')
     assert not result.is_safe
     assert 'trained target/draft pairing' in result.reasons[0]
 

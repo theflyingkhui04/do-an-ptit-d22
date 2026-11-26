@@ -16,7 +16,7 @@ FlexSDS nghiên cứu và xây dựng serving engine kết hợp **EAGLE specula
 
 Bài toán trọng tâm là giảm độ trễ decode và hạn chế negative speedup khi workload, batch hoặc phần cứng thay đổi. Các cấu hình vanilla và speculative decoding bằng draft model độc lập được dùng làm đối chứng. Ứng dụng hóa đơn tiếng Việt cung cấp workload để đánh giá engine.
 
-**Hardware-Adaptive EAGLE là mục tiêu chính của sản phẩm.** CLI đã nối EAGLE vào đường scalar adaptive K của nhánh M4: controller → scheduler → proposer → verification feedback/lineage. Tích hợp đã qua regression CPU/source contract và functional GPU smoke test trên Modal A10G ở batch 1. So sánh lossless và hiệu năng end-to-end vẫn cần nghiệm thu riêng.
+**Hardware-Adaptive EAGLE là mục tiêu chính của sản phẩm.** CLI đã nối EAGLE vào đường scalar adaptive K của nhánh M4: controller → scheduler → proposer → verification feedback/lineage. Tích hợp đã qua regression CPU/source contract và functional GPU smoke test trên Modal A10 ở batch 1. So sánh lossless và hiệu năng end-to-end vẫn cần nghiệm thu riêng.
 
 ## 2. Trạng thái triển khai
 
@@ -24,7 +24,7 @@ Bài toán trọng tâm là giảm độ trễ decode và hạn chế negative s
 |---|---|
 | EAGLE serving qua CLI | Endpoint Modal adaptive đã trả health/models/completion và ba request 128 tokens ở max_num_seqs=1. Local GPU và full capacity cần nghiệm thu riêng. |
 | Hardware-Adaptive EAGLE | Đã nối scalar dynamic K, async scheduler và paired lineage executor theo nhánh M4. Yêu cầu profile measured v2 và source vLLM 0.30.0 đúng hash; đã quan sát K=0/2/3 và feedback có lineage trên GPU ở batch 1. |
-| Calibration GPU | Đã đo thật K=0..4, batch 1, context=1024 trên Modal A10G: 275 raw records. Full grid tới batch 32 chưa được kiểm tra trong lượt này. |
+| Calibration GPU | Đã đo thật K=0..4, batch 1, context=1024 trên Modal A10: 275 raw records. Full grid tới batch 32 chưa được kiểm tra trong lượt này. |
 | Hardware profile | Strict gate từ chối synthetic profile cũ; profile được truyền tới container và cost consumer của scalar scheduler. |
 | Scalar scheduler | Dùng chung cơ chế dynamic K cho sequential EAGLE và nhánh nghiên cứu `draft_model`; lịch sử các lane đối chứng giữ nguyên. |
 | Readiness | CLI kiểm tra `/health`, `/v1/models` và completion trước khi báo `Inference verified`. Tạo URL chưa chứng minh model sẵn sàng. |
@@ -49,10 +49,10 @@ flexsds
 
 Package CLI không tự cài GPU runtime. Local serving/calibration cần CUDA và vLLM 0.30.0 trong môi trường chạy. Modal cần Modal CLI và credentials đã cấu hình; image GPU được khai báo trong source.
 
-### Chạy Hardware-Adaptive EAGLE trên Modal A10G
+### Chạy Hardware-Adaptive EAGLE trên Modal A10
 
 ```bash
-flexsds serve --backend modal --gpu A10G \
+flexsds serve --backend modal --gpu A10 \
   --target Qwen/Qwen2.5-7B-Instruct-AWQ \
   --draft duckhoi/qwen2.5-7b-eagle3.1-speculator
 ```
@@ -62,7 +62,7 @@ flexsds serve --backend modal --gpu A10G \
 ### Đo hardware profile trên GPU Modal
 
 ```bash
-flexsds profile --benchmark --backend modal --gpu A10G \
+flexsds profile --benchmark --backend modal --gpu A10 \
   --target Qwen/Qwen2.5-7B-Instruct-AWQ \
   --draft duckhoi/qwen2.5-7b-eagle3.1-speculator
 ```

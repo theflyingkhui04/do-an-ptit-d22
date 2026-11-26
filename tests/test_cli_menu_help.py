@@ -28,7 +28,7 @@ def test_footer_stays_one_terminal_row(monkeypatch):
     assert line.endswith('...')
 
 
-@pytest.mark.parametrize('command',[['detect'],['inspect'],['profile'],['serve'],['stop'],['chat'],['monitor'],
+@pytest.mark.parametrize('command',[['detect'],['inspect'],['profile'],['benchmark'],['serve'],['stop'],['chat'],['monitor'],
                                      ['auth'],['auth','login'],['auth','status'],['auth','logout']])
 def test_each_command_help_has_usage_and_example_without_runtime(command,monkeypatch,capsys):
     def forbidden(*args,**kwargs): pytest.fail('Help must not inspect hardware')

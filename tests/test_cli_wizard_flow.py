@@ -25,31 +25,10 @@ def test_cli_serve_flags_parser():
 
 
 def test_modal_gpu_selection_extraction():
-    """Kiểm tra trích xuất chính xác tên GPU từ chuỗi lựa chọn hiển thị có kèm ghi chú."""
-    choices = [
-        "A10G (Recommended - 24 GB VRAM)",
-        "L4 (24 GB VRAM - Capacity limited)",
-        "T4 (16 GB VRAM)",
-    ]
+    """Kiểm tra trích xuất chính xác tên GPU từ chuỗi lựa chọn hiển thị có kèm phân loại."""
+    from flexsds.core.hardware import MODAL_GPU_CHOICES, get_modal_gpu_spec
 
-    def extract_gpu(choice_str: str) -> str:
-        for gpu in ["A10G", "L4", "T4"]:
-            if choice_str.startswith(gpu):
-                return gpu
-        return "A10G"
-
-    assert extract_gpu(choices[0]) == "A10G"
-    assert extract_gpu(choices[1]) == "L4"
-    assert extract_gpu(choices[2]) == "T4"
-
-    # Also test wizard's inline extraction logic:
-    # target_gpu = "A10G" if "A10G" in chosen else ("L4" if "L4" in chosen else "T4")
-    def wizard_inline_extract(chosen: str) -> str:
-        return "A10G" if "A10G" in chosen else ("L4" if "L4" in chosen else "T4")
-
-    assert wizard_inline_extract(choices[0]) == "A10G"
-    assert wizard_inline_extract(choices[1]) == "L4"
-    assert wizard_inline_extract(choices[2]) == "T4"
+    assert [get_modal_gpu_spec(c).name for c in MODAL_GPU_CHOICES] == ["T4", "A10", "L40S", "A100"]
 
 
 def test_wizard_disabled_adaptive_skips_profile_mapping():
@@ -70,56 +49,42 @@ def test_wizard_disabled_adaptive_skips_profile_mapping():
 def test_wizard_remote_serving_hardware_resolution(tmp_path, monkeypatch):
     monkeypatch.setattr("flexsds.core.cost_model.USER_PROFILES_DIR", tmp_path)
     """Kiểm tra logic phân giải đúng kiến trúc GPU đích khi chạy Modal/Colab."""
-    from flexsds.core.hardware import HardwareInfo
+    from flexsds.core.hardware import HardwareInfo, build_remote_hardware_info
     from flexsds.core.cost_model import load_profile_for_hardware
-
-    remote_sm_map = {
-        "A10G": "sm_86",
-        "L4": "sm_89",
-        "T4": "sm_75",
-        "A100": "sm_80",
-    }
-    budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0, "A100": 40000.0}
-
-    def resolve_serving_hw(backend: str, target_gpu: str, local_hw: HardwareInfo) -> HardwareInfo:
-        if backend in ("modal", "colab"):
-            target_sm = remote_sm_map.get(target_gpu, "sm_89")
-            target_vram = budgets.get(target_gpu, 22000.0)
-            return HardwareInfo(
-                device_name=f"Remote {target_gpu}",
-                sm_architecture=target_sm,
-                total_vram_mb=target_vram,
-                free_vram_mb=target_vram,
-                cuda_version="12.4",
-                is_cuda_available=True,
-                device_count=1,
-            )
-        return local_hw
 
     cpu_hw = HardwareInfo("AMD Ryzen", "cpu", 16000.0, 16000.0, "N/A", False)
 
-    # Test Modal A10G
-    modal_a10g_hw = resolve_serving_hw("modal", "A10G", cpu_hw)
-    assert modal_a10g_hw.sm_architecture == "sm_86"
-    assert "A10G" in modal_a10g_hw.device_name
-    _, a10g_prof = load_profile_for_hardware(modal_a10g_hw, strict=False)
-    assert a10g_prof == "profile_sm_86_remote_a10g_fcda5486b12d.json"
+    # Test Modal A10
+    modal_a10_hw = build_remote_hardware_info("modal", "A10")
+    assert modal_a10_hw.sm_architecture == "sm_86"
+    assert "A10" in modal_a10_hw.device_name
+    _, a10_prof = load_profile_for_hardware(modal_a10_hw, strict=False)
+    assert a10_prof == "profile_sm_86_remote_a10g_fcda5486b12d.json"
 
-    # Test Modal L4
-    modal_l4_hw = resolve_serving_hw("modal", "L4", cpu_hw)
-    assert modal_l4_hw.sm_architecture == "sm_89"
-    _, l4_prof = load_profile_for_hardware(modal_l4_hw, strict=False)
-    assert l4_prof == "profile_sm89_l4.json"
+    # Test Modal L40S
+    modal_l40s_hw = build_remote_hardware_info("modal", "L40S")
+    assert modal_l40s_hw.sm_architecture == "sm_89"
+    assert modal_l40s_hw.free_vram_mb == 46000.0
+
+    # Test Modal A100 (maps to Modal A100-80GB)
+    modal_a100_hw = build_remote_hardware_info("modal", "A100")
+    assert modal_a100_hw.sm_architecture == "sm_80"
+    assert modal_a100_hw.gpu_match_label == "A100-80GB"
+    assert modal_a100_hw.free_vram_mb == 78000.0
 
     # Test Modal T4
-    modal_t4_hw = resolve_serving_hw("modal", "T4", cpu_hw)
+    modal_t4_hw = build_remote_hardware_info("modal", "T4")
     assert modal_t4_hw.sm_architecture == "sm_75"
     _, t4_prof = load_profile_for_hardware(modal_t4_hw, strict=False)
     assert t4_prof == "profile_sm75_t4.json"
 
-    # Test Local giữ nguyên CPU
-    local_hw = resolve_serving_hw("local", "L4", cpu_hw)
-    assert local_hw.sm_architecture == "cpu"
+    # Test Colab L4
+    colab_l4_hw = build_remote_hardware_info("colab", "L4")
+    assert colab_l4_hw.sm_architecture == "sm_89"
+    _, l4_prof = load_profile_for_hardware(colab_l4_hw, strict=False)
+    assert l4_prof == "profile_sm89_l4.json"
+
+    assert cpu_hw.sm_architecture == "cpu"
 
 
 def test_wizard_uncalibrated_gpu_abort_action(tmp_path, monkeypatch, capsys):
@@ -141,7 +106,7 @@ def test_wizard_uncalibrated_gpu_abort_action(tmp_path, monkeypatch, capsys):
         if "platform" in q:
             return "Modal.com (Cloud Serverless GPU)"
         if "modal gpu" in q:
-            return "A10G (Recommended - 24 GB VRAM)"
+            return "A10 [Medium] (Recommended)"
         if "missing" in q:
             return "Abort setup"
         return choices[default_idx]
@@ -190,7 +155,7 @@ def test_wizard_uncalibrated_gpu_switch_static_action(tmp_path, monkeypatch, cap
         if "platform" in q:
             return "Modal.com (Cloud Serverless GPU)"
         if "modal gpu" in q:
-            return "A10G (Recommended - 24 GB VRAM)"
+            return "A10 [Medium] (Recommended)"
         if "missing" in q:
             return "Switch to static speculation (serve without HardwareAdaptive)"
         return choices[default_idx]
@@ -255,7 +220,7 @@ def test_wizard_uncalibrated_gpu_calibrate_action(tmp_path, monkeypatch, capsys)
         if "platform" in q:
             return "Modal.com (Cloud Serverless GPU)"
         if "modal gpu" in q:
-            return "A10G (Recommended - 24 GB VRAM)"
+            return "A10 [Medium] (Recommended)"
         if "missing" in q:
             return "Calibrate GPU profile now (run micro-benchmark)"
         return choices[default_idx]

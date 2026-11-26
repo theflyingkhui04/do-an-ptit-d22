@@ -9,9 +9,10 @@ from flexsds.cli.process_progress import run_logged_process
 
 
 def calibrate(config, batches):
+    from flexsds.core.hardware import MODAL_GPU_NAMES
     from flexsds.server.modal_runner import ModalServingRunner
     from flexsds.core.calibration import KS
-    if config.get('target_gpu') not in {'A10G', 'L4', 'T4'}:
+    if config.get('target_gpu') not in MODAL_GPU_NAMES:
         raise ValueError('Unsupported Modal calibration GPU')
     from flexsds.server.modal_auth import ensure_modal, modal_command
     ensure_modal()

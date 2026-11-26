@@ -209,7 +209,7 @@ def test_invalid_pairing_cannot_start_calibration(monkeypatch, tmp_path):
     monkeypatch.setattr('flexsds.core.compatibility.check_compatibility', lambda *a: report)
     monkeypatch.setattr('flexsds.server.modal_calibration.calibrate', lambda *a: pytest.fail('Invalid pair allocated GPU calibration'))
     with pytest.raises(ValueError, match='Tokenizer mismatch'):
-        run_hardware_micro_benchmark(HardwareInfo('Remote A10G','sm_86',0,0,'',True), target_dir=tmp_path, backend='modal')
+        run_hardware_micro_benchmark(HardwareInfo('Remote A10','sm_86',0,0,'',True), target_dir=tmp_path, backend='modal')
     assert not list(tmp_path.iterdir())
 
 

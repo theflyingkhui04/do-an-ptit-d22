@@ -33,6 +33,8 @@ WORKLOAD_FILES = {"W1": "experiments/configs/w1_v3/node1_chat_requests.jsonl",
                   "W3": "experiments/configs/w3_v2/chat_requests.jsonl"}
 DEVSET_SAMPLES = Path("data/processed/m0_04_mcocr_devset/samples.jsonl")
 REQUEST_TIMEOUT_S = 600.0
+WAKE_TIMEOUT_S = 1200.0  # same 20 min budget as a Node 1 call waiting for a sleeping Modal GPU
+WAKE_POLL_S = 10.0
 
 
 def load_requests(workload: str, n: int, repo_root: Path = REPO_ROOT) -> list[dict[str, Any]]:
@@ -106,8 +108,13 @@ class BenchService:
     def __init__(self, store: Any, registry: Any, *, pipeline: Any = None, reports: Any = None,
                  repo_root: Path = REPO_ROOT, async_client: Callable[[], httpx.AsyncClient] | None = None,
                  spawn: Callable[..., Any] | None = None, new_id: Callable[[], str] | None = None,
-                 clock: Callable[[], float] = time.perf_counter, redact: Callable[[str], str] = lambda s: s) -> None:
+                 clock: Callable[[], float] = time.perf_counter, redact: Callable[[str], str] = lambda s: s,
+                 asleep: Callable[[float], Any] = asyncio.sleep, ready_timeout_s: float = WAKE_TIMEOUT_S,
+                 poll_s: float = WAKE_POLL_S) -> None:
         self.store = store
+        self._asleep = asleep
+        self.ready_timeout_s = ready_timeout_s
+        self.poll_s = poll_s
         self.registry = registry
         self.pipeline = pipeline
         self.reports = reports
@@ -149,6 +156,24 @@ class BenchService:
             with self._lock:
                 self._active = None
 
+    async def _wake(self, client: httpx.AsyncClient, conn: dict[str, Any]) -> None:
+        """Poll GET /models until 200 so no measured request carries a cold start."""
+        headers = {"Authorization": f"Bearer {conn['api_key']}"} if conn.get("api_key") else {}
+        start = self._clock()
+        last = "no answer"
+        while True:
+            try:
+                response = await client.get(f"{conn['base_url']}/models", headers=headers, timeout=60.0)
+                if response.status_code == 200:
+                    return
+                last = f"HTTP {response.status_code}"
+            except httpx.HTTPError as exc:
+                last = type(exc).__name__
+            if self._clock() - start >= self.ready_timeout_s:
+                raise RuntimeError(f"{conn.get('name') or conn['endpoint_id']} chưa thức dậy sau "
+                                   f"{self.ready_timeout_s / 60:.0f} phút ({last})")
+            await self._asleep(self.poll_s)
+
     def _baseline_in(self, ids: list[str]) -> str | None:
         baseline = self.registry.baseline()
         return baseline["endpoint_id"] if baseline and baseline["endpoint_id"] in ids else None
@@ -179,6 +204,8 @@ class BenchService:
 
         async def main() -> None:
             async with self._async_client() as client:
+                # Measure warm servers only: a sleeping GPU answers 303/503 (or nothing) for minutes.
+                await asyncio.gather(*(self._wake(client, c) for c in connections))
                 for load in loads:
                     for _ in range(config["repeats"]):
                         outcomes = await asyncio.gather(*(one_endpoint(client, c, load) for c in connections))

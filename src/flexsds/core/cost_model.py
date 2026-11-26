@@ -439,7 +439,8 @@ def validate_measured_profile(data, hardware=None, target_model=None, draft_mode
         raise ValueError('Profile GPU architecture mismatch')
     if hardware and hardware.is_cuda_available:
         from flexsds.core.hardware import matches_gpu_label
-        if not matches_gpu_label(hardware.device_name.removeprefix('Remote '), meta['device']):
+        expected_label = getattr(hardware, "gpu_match_label", None) or hardware.device_name.removeprefix("Remote ")
+        if not matches_gpu_label(expected_label, meta['device']):
             raise ValueError('Profile GPU model mismatch')
     if target_model and data['models']['target'] != target_model:
         raise ValueError('Profile target model mismatch')
@@ -474,7 +475,7 @@ def load_profile_for_hardware(
         data = json.loads(path.read_text(encoding="utf-8"))
         if strict and data.get("metadata", {}).get("schema") == "flexsds-component-v2":
             validate_measured_profile(data, hw_info, target_model, draft_model)
-        elif strict and sm_arch != "sm_80":
+        elif strict:
             raise ValueError("Profile has no verified worker measurements; recalibrate or use static mode")
         if sm_arch == "sm_80" and data.get("metadata", {}).get("schema") != "flexsds-component-v2":
             meta = data.get("metadata", {})
@@ -527,8 +528,16 @@ def load_profile_for_hardware(
                 if not strict:
                     raise
 
-    # M4 invariant: A100 must use the measured scalar profile.
+    # M4 invariant: A100 must use a measured sm_80 profile, never L4/analytical fallback.
     if sm_arch == "sm_80":
+        if strict:
+            for path in sorted(PROFILES_DIR.glob("profile_sm*80*.json")):
+                try:
+                    return load_checked(path)
+                except ValueError:
+                    continue
+            return None, ""
+
         profile_path = PROFILES_DIR / "profile_sm80.json"
 
         if profile_path.exists():
@@ -630,7 +639,7 @@ def run_hardware_micro_benchmark(
     if backend == "local" and hw_info.device_name.startswith("Remote "):
         raise ValueError("Remote GPU calibration requires backend='modal'")
     if backend == "local" and not hw_info.is_cuda_available:
-        raise RuntimeError("Calibration requires a real CUDA GPU; use --backend modal --gpu A10G")
+        raise RuntimeError("Calibration requires a real CUDA GPU; use --backend modal --gpu A10")
     report = check_compatibility(target_model, draft_model, hw_info.free_vram_mb)
     if report.draft_method == "unsupported" or not report.is_compatible:
         raise ValueError("Calibration blocked: " + "; ".join(report.blocking_reasons))

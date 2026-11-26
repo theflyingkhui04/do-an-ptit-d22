@@ -169,7 +169,7 @@ def generate_srs_data():
         ],
         [
             "REQ-SRV-04", "Phục vụ", "Khởi chạy ứng dụng Modal Serverless độc lập",
-            "Khởi chạy máy chủ phục vụ trên đám mây Modal Cloud với GPU L4/A10G thông qua file modal_app.py chuyên dụng.",
+            "Khởi chạy máy chủ phục vụ trên đám mây Modal Cloud với GPU T4/A10/L40S/A100 thông qua file modal_app.py chuyên dụng.",
             "Cấu hình serving và thông tin xác thực Modal hợp lệ.",
             "Xây dựng lệnh 'modal run src/flexsds/server/modal_app.py --gpu <tên_gpu>' hoặc 'modal deploy ...', nạp token xác thực tự động.",
             "Tiến trình Modal khởi động thành công trên đám mây; giám sát giữ container sống để phục vụ request.",

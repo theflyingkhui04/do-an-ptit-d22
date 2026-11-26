@@ -166,7 +166,7 @@ def test_modal_runner_forwards_matched_contract_keys_and_validates_early(capsys)
         match_adaptive_runtime=True,
         disable_prefix_caching=True,
         static_k=3,
-        target_gpu="A10G",
+        target_gpu="A10",
     )
     env = runner.setup_environment(cfg)
     payload = json.loads(env["FLEXSDS_SERVING_CONFIG"])
@@ -182,7 +182,7 @@ def test_modal_runner_forwards_matched_contract_keys_and_validates_early(capsys)
         enable_adaptive=False,
         disable_speculative=True,
         static_k=3,
-        target_gpu="A10G",
+        target_gpu="A10",
     )
     with pytest.raises(ValueError):
         runner.launch(invalid_cfg, deploy=False, dry_run=True)
@@ -218,7 +218,7 @@ def test_cli_vanilla_matched_modal_dry_run_succeeds_offline_without_draft(capsys
             "--backend",
             "modal",
             "--gpu",
-            "A10G",
+            "A10",
             "--target",
             "Qwen/Qwen2.5-7B-Instruct-AWQ",
             "--vanilla",
@@ -320,3 +320,23 @@ def test_cli_vanilla_without_target_on_local_cpu_blocks_instead_of_opening_wizar
     rc = cli_main.main(["serve", "--backend", "local", "--vanilla"])
     assert rc == 2
     assert "cuda gpu unavailable" in capsys.readouterr().out.lower()
+
+
+def test_cli_scaledown_window_reaches_the_serving_config(capsys):
+    from flexsds.cli.main import main
+
+    argv = ["serve", "--backend", "modal", "--gpu", "A10", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--vanilla",
+            "--dry-run"]
+    assert main(argv + ["--scaledown-window", "600"]) == 0
+    assert '"scaledown_window": 600' in capsys.readouterr().out
+    assert main(argv) == 0
+    assert '"scaledown_window": 300' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value", ["1", "3601", "abc"])
+def test_cli_scaledown_window_is_bounded(value, capsys):
+    from flexsds.cli.main import main
+
+    with pytest.raises(SystemExit):
+        main(["serve", "--backend", "modal", "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--vanilla", "--dry-run",
+              "--scaledown-window", value])

@@ -79,7 +79,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--base-url", help="Override the lane URL (e.g. local Ollama http://localhost:11434/v1).")
     parser.add_argument("--model", help="Override the served model name.")
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--hardware", help="GPU/host label recorded in e2e_summary.json (e.g. modal-A10G).")
+    parser.add_argument("--hardware", help="GPU/host label recorded in e2e_summary.json (e.g. modal-A10).")
     parser.add_argument("--output-root", type=Path, default=REPO_ROOT / "experiments/runs/m3_06")
     parser.add_argument("--limit", type=int, default=30, help="Number of W1 invoices for Node 1.")
     parser.add_argument("--timeout", type=float, default=900.0)

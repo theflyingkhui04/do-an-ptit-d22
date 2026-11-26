@@ -4,7 +4,7 @@
     # then, per arm and set (lane vanilla, no DB):
     python scripts/run_node1_extractor.py --lane vanilla --backend modal --source-policy restore --no-db \
         --requests <run>/<set>/requests_<arm>.jsonl --package-manifest <run>/<set>/manifest_<arm>.json \
-        --run-id <set>_<arm> --output-dir <run>/<set>/out_<arm> --hardware modal-A10G
+        --run-id <set>_<arm> --output-dir <run>/<set>/out_<arm> --hardware modal-A10
     python scripts/node1_marks_experiment.py score --run-id 20261114-m501-node1-marks --set select
     python scripts/node1_marks_experiment.py score --run-id 20261114-m501-node1-marks --set devset
 
