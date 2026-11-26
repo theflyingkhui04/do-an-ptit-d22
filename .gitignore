@@ -77,3 +77,14 @@ hf_cache/
 # ===== Hệ điều hành =====
 .DS_Store
 Thumbs.db
+
+# ===== Local-only tool workspaces and generated data (never committed) =====
+# Browser-automation screenshots and Superpowers plugin scratch space
+.playwright-mcp/
+.superpowers/
+# Pipeline databases written by experiment runs (rebuildable, may hold invoice data)
+experiments/runs/**/*.sqlite
+# Paused Adaptive v1 fix measurements (branch fix/m2-02-lane3-scheduler-overhead, not part of the record)
+experiments/runs/m2_02_v1/
+# Raw per-step adaptive telemetry (tens of MB); the run folder keeps serving_steps.jsonl.gz + .sha256
+experiments/runs/flexsds_bench/**/telemetry/serving_steps.jsonl
