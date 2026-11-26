@@ -42,6 +42,8 @@ def run_benchmark_command(args: Any) -> int:
 
         try:
             runner.stop_app()
+            if getattr(args, "campaign_id", None):
+                runner.release_locks(args.campaign_id)
         except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
             print(f"Benchmark stop failed: {exc}")
             return 1
@@ -92,7 +94,6 @@ def run_benchmark_command(args: Any) -> int:
             draft_method=getattr(args, "draft_method", camp.DEFAULT_DRAFT_METHOD),
             static_k=getattr(args, "static_k", camp.DEFAULT_STATIC_K),
             adaptive_max_k=getattr(args, "adaptive_max_k", camp.DEFAULT_ADAPTIVE_MAX_K),
-            match_adaptive_runtime=bool(getattr(args, "match_adaptive_runtime", False)),
             profile_dir=getattr(args, "profile_dir", None),
         )
     except ValueError as exc:
@@ -106,6 +107,18 @@ def run_benchmark_command(args: Any) -> int:
             print("\n" + camp.format_plan_overview(record) + "\n")
         return 0
 
+    print("\n" + camp.format_plan_overview(record) + "\n")
+    if getattr(args, "allow_uncommitted", False):
+        from experiments import modal_benchmark_runner as runner
+
+        record["allow_uncommitted"] = True
+        record["source_digest"] = runner.committed_bench_source(allow_uncommitted=True)[1]
+        print(f"Uncommitted source: recording digest {record['source_digest'][:16]}... instead of a clean commit.")
+    if not getattr(args, "yes", False):
+        answer = input("Start this benchmark on Modal and spend the estimated GPU cost? [y/N]: ").strip().lower()
+        if answer not in ("y", "yes"):
+            print("Benchmark not started.")
+            return 1
     try:
         camp.drive(
             record,
@@ -223,7 +236,7 @@ def run_benchmark_wizard() -> dict[str, Any]:
         calibrate_mode = wizard.prompt_measurement_mode()
 
     try:
-        camp.drive(record, auto_calibrate=auto_calibrate, calibrate_mode=calibrate_mode)
+        camp.drive(record, auto_calibrate=auto_calibrate, calibrate_mode=calibrate_mode, wait=False)
     except KeyboardInterrupt:
         print("Benchmark cancelled.")
         return {"action": "abort", "exit_code": 130}
@@ -231,8 +244,9 @@ def run_benchmark_wizard() -> dict[str, Any]:
         print(f"Benchmark failed: {exc}")
         return {"action": "abort", "exit_code": 1}
 
-    print(f"\nBenchmark complete. Campaign ID: {campaign_id}")
-    print(f"Aggregate results: flexsds benchmark aggregate --campaign-id {campaign_id}")
+    print(f"\nSubmitted to Modal. You can close this terminal; campaign ID: {campaign_id}")
+    print(f"Progress: flexsds benchmark status --campaign-id {campaign_id}")
+    print(f"When every GPU is done: flexsds benchmark aggregate --campaign-id {campaign_id}")
     return {
         "action": "benchmark",
         "campaign_id": campaign_id,

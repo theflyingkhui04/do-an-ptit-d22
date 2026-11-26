@@ -42,6 +42,22 @@ def resolve_calibration_dtype_quant(target_model: str, sm_architecture: str):
     return ('float16', None) if is_turing else ('bfloat16', None)
 
 
+def check_calibration_device(config, device):
+    """Modal GPUs must be exactly the requested card (A10 never A10G); other targets keep the lenient label match."""
+    from flexsds.core.hardware import (MODAL_GPU_NAMES, canonical_modal_gpu_name, device_matches_exactly,
+                                       matches_gpu_label)
+    expected = config.get('target_gpu')
+    if not expected:
+        return
+    token = canonical_modal_gpu_name(expected)
+    if token in MODAL_GPU_NAMES:
+        if not device_matches_exactly(token, device):
+            wanted = {'T4': 'Tesla T4', 'A100': 'NVIDIA A100 80GB'}.get(token, f'NVIDIA {token}')
+            raise RuntimeError(f'GPU mismatch: expected {wanted}, got {device}')
+    elif not matches_gpu_label(expected, device):
+        raise RuntimeError(f'GPU mismatch: expected {expected}, got {device}')
+
+
 def measure_cell_group(config, k, batches):
     """Runs only inside an isolated CUDA process (local or Modal)."""
     warmup, repeats = measurement_settings(config)
@@ -53,12 +69,7 @@ def measure_cell_group(config, k, batches):
     if sm != config['sm_architecture']:
         raise RuntimeError(f"GPU mismatch: expected {config['sm_architecture']}, got {sm}")
     device = torch.cuda.get_device_name(0)
-    from flexsds.core.hardware import MODAL_GPU_NAMES, matches_gpu_label, modal_gpu_resource
-    expected = config.get('target_gpu')
-    if expected:
-        expected_label = modal_gpu_resource(expected) if str(expected).upper() in MODAL_GPU_NAMES else expected
-        if not matches_gpu_label(expected_label, device):
-            raise RuntimeError(f'GPU mismatch: expected {expected_label}, got {device}')
+    check_calibration_device(config, device)
     if vllm.__version__ != '0.30.0':
         raise RuntimeError('Calibration requires vLLM 0.30.0')
     from huggingface_hub import HfApi
@@ -122,12 +133,10 @@ def build_profile(config, groups, batches):
     for k, group in zip(KS, groups):
         if group['sm_architecture'] != config['sm_architecture']:
             raise ValueError('Calibration hardware mismatch')
-        from flexsds.core.hardware import MODAL_GPU_NAMES, matches_gpu_label, modal_gpu_resource
-        expected = config.get('target_gpu')
-        if expected:
-            expected_label = modal_gpu_resource(expected) if str(expected).upper() in MODAL_GPU_NAMES else expected
-            if not matches_gpu_label(expected_label, group['device']):
-                raise ValueError('Calibration GPU model mismatch')
+        try:
+            check_calibration_device(config, group['device'])
+        except RuntimeError as exc:
+            raise ValueError('Calibration GPU model mismatch') from exc
         devices.add(group['device'])
         revisions.add((group.get('target_revision'), group.get('draft_revision')))
         if group.get('vllm_version') != '0.30.0':

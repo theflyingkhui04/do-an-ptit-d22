@@ -1,25 +1,25 @@
-"""Dedicated Modal app (`flexsds-benchmark`) for multi-GPU 3-node 3-lane benchmarks.
+"""Modal app `flexsds-benchmark`: one container per GPU for the multi-GPU 3-node 3-lane benchmark.
 
-Isolated from M3/M5 (`ptit-vllm`), web demo (`ptit-vllm-demo`), and interactive serving
-(`flexsds-serving`), while sharing the `ptit-model-cache`, `ptit-vllm-cache`, and
-`ptit-run-artifacts` volumes. Works on any authenticated Modal workspace without hardcoded
-workspace names or custom proxy-token secrets.
+Design: openspec/changes/flexsds-bench-one-container-per-gpu/design.md. Each GPU tier has its own Modal
+function (`run_gpu_<GPU>`). Inside, `experiments.bench_gpu_session.run_session` starts vLLM per
+(workload, lane) on 127.0.0.1:8000 and runs the canonical harness against it, so requests never pass Modal's
+web proxy (which serves a web_server container one request at a time). Card identity is checked before any
+model is loaded; a wrong card (e.g. NVIDIA A10G for A10) returns in seconds and the laptop asks again.
+
+Laptop side: `submit_gpu` (spawn with wrong-card retries and a per-GPU lock), `gpu_call_state`,
+`collect_gpu` (volume -> attempts/<attempt_id>/), `release_locks`, `stop_app`. On machines where Modal only
+lives in the `modal` CLI's interpreter (pipx), the same actions run through `--sdk-action`.
 """
 from __future__ import annotations
 
-import base64
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
-import threading
 import time
 from typing import Any
-import uuid
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
@@ -29,185 +29,73 @@ for candidate in (str(REPO_ROOT), str(SRC_ROOT)):
 
 from experiments import modal_lanes as lanes
 from experiments import vllm_runtime_patch as runtime_patch
-from flexsds.core.hardware import DEFAULT_MODAL_GPU, MODAL_GPU_NAMES, HardwareInfo, matches_gpu_label, modal_gpu_resource
-from flexsds.server.local_runner import LocalServingRunner
+from experiments.bench_gpu_session import WrongGpu, build_harness_args  # noqa: F401 (re-exported)
+from flexsds.core.hardware import MODAL_GPU_NAMES, modal_gpu_resource
 
 APP_NAME = os.environ.get("FLEXSDS_BENCH_APP_NAME", "flexsds-benchmark")
+LOCK_NAME = os.environ.get("FLEXSDS_BENCH_LOCK_NAME", "flexsds-benchmark-lock")
 ARTIFACTS_ROOT = lanes.ARTIFACTS_ROOT
-SERVER_ENV_FILE = "server_env.json"
-RAW_FILE = "raw.jsonl"
-DEFAULT_PORT = 8000
-
-_encoded_cfg = os.environ.get("FLEXSDS_BENCH_CONFIG_B64")
-BENCH_CONFIG: dict[str, Any] = (
-    json.loads(base64.b64decode(_encoded_cfg, validate=True).decode("utf-8"))
-    if _encoded_cfg
-    else {
-        "target_gpu": DEFAULT_MODAL_GPU,
-        "lane": "vanilla",
-        "port": DEFAULT_PORT,
-        "max_model_len": 4096,
-        "vllm_runtime": "backport-55708",
-        "run_id": os.environ.get("FLEXSDS_BENCH_RUN_ID", "unconfigured"),
-        "source_commit": os.environ.get("FLEXSDS_BENCH_COMMIT", "unknown"),
-    }
+RESULTS_PREFIX = "flexsds_bench"
+GPU_TIMEOUT_S = 20 * 3600
+SOURCE_PATHS = ("src", "experiments")
+SOURCE_EXCLUDES = (
+    ":(exclude)experiments/runs", ":(exclude)experiments/results", ":(exclude)experiments/notebooks",
+    ":(exclude)**/__pycache__/**", ":(exclude)**/*.ipynb",
 )
 
-GPU = str(BENCH_CONFIG.get("target_gpu") or DEFAULT_MODAL_GPU).upper()
-if GPU not in MODAL_GPU_NAMES:
-    raise ValueError(f"Unsupported Modal benchmark GPU {GPU!r}; expected one of {MODAL_GPU_NAMES}")
-MODAL_GPU = modal_gpu_resource(GPU)
-PORT = int(BENCH_CONFIG.get("port", DEFAULT_PORT))
-if not 1 <= PORT <= 65535:
-    raise ValueError(f"Invalid benchmark serving port: {PORT}")
-RUN_ID = str(os.environ.get("FLEXSDS_BENCH_RUN_ID") or BENCH_CONFIG.get("run_id") or "unconfigured")
-SOURCE_COMMIT = str(BENCH_CONFIG.get("source_commit") or os.environ.get("FLEXSDS_BENCH_COMMIT") or "unknown")
+
+def function_name(gpu: str) -> str:
+    if gpu not in MODAL_GPU_NAMES:
+        raise ValueError(f"Unsupported Modal benchmark GPU {gpu!r}; expected one of {MODAL_GPU_NAMES}")
+    return f"run_gpu_{gpu}"
 
 
-def server_artifact_dir(gpu: str, lane: str, run_id: str) -> str:
-    return f"{ARTIFACTS_ROOT}/flexsds_bench/{gpu}/{lane}/{run_id}"
+def lock_key(campaign_id: str, gpu: str) -> str:
+    return f"{campaign_id}:{gpu}"
 
 
-def build_harness_args(
-    *,
-    lane: str,
-    gpu: str,
-    base_url: str,
-    served_model_name: str,
-    server_env_json: str,
-    raw_out: str,
-    summary_csv: str,
-    experiment_id: str,
-    workload: str,
-    concurrency: int,
-    repeats: int,
-    num_requests: int,
-    warmup_requests: int = 3,
-) -> list[str]:
-    """Build experiments.benchmark_harness argv for one multi-GPU FlexSDS cell."""
-    workload_path = lanes.workload_file(workload)
-    serving = lanes.workload_serving(workload)
-    timeout = [] if serving["timeout_s"] is None else ["--timeout-s", str(serving["timeout_s"])]
-    env_profile = lanes.environment_profile_for_gpu(gpu)
-    return [
-        "--lane", lane,
-        "--workload", workload,
-        "--endpoint", f"{base_url.rstrip('/')}/chat/completions",
-        "--model", served_model_name,
-        "--workload-file", workload_path,
-        "--sample-policy", "cycle-rotate",
-        "--concurrency", str(concurrency),
-        "--repeats", str(repeats),
-        "--num-requests", str(num_requests),
-        "--warmup-requests", str(warmup_requests),
-        "--warmup-policy", "m3-fixed3",
-        "--experiment-id", experiment_id,
-        "--raw-out", raw_out,
-        "--summary-csv", summary_csv,
-        "--environment-profile", env_profile,
-        "--server-env-json", server_env_json,
-        *timeout,
-    ]
+def volume_dir(campaign_id: str, gpu: str) -> str:
+    return f"{RESULTS_PREFIX}/{campaign_id}/{gpu}"
+
+
+# --------------------------------------------------------------------------------------------------
+# Source identity: a committed SHA, or (explicitly allowed) a digest of the uploaded working tree.
+# --------------------------------------------------------------------------------------------------
+def _git(*args: str) -> str:
+    git = ["git", "-c", f"safe.directory={REPO_ROOT.as_posix()}"]
+    return subprocess.check_output([*git, *args], cwd=REPO_ROOT, text=True).strip()
+
+
+def source_digest(repo_root: Path = REPO_ROOT) -> str:
+    """SHA-256 over path + bytes of every uploaded source file (tracked or new, not ignored)."""
+    listed = subprocess.check_output(
+        ["git", "-c", f"safe.directory={repo_root.as_posix()}", "ls-files", "--cached", "--others",
+         "--exclude-standard", "--", *SOURCE_PATHS, *SOURCE_EXCLUDES], cwd=repo_root, text=True)
+    digest = hashlib.sha256()
+    for rel in sorted(set(line for line in listed.splitlines() if line.strip())):
+        path = repo_root / rel
+        if path.is_file():
+            digest.update(rel.encode("utf-8") + b"\0")
+            digest.update(path.read_bytes().replace(b"\r\n", b"\n") + b"\0")
+    return digest.hexdigest()
+
+
+def committed_bench_source(*, allow_uncommitted: bool = False) -> tuple[str, str | None]:
+    """(HEAD SHA, None) for a clean tree; (HEAD SHA, working-tree digest) only when explicitly allowed."""
+    commit = _git("rev-parse", "HEAD")
+    changed = _git("diff", "--name-only", "HEAD", "--", *SOURCE_PATHS, *SOURCE_EXCLUDES)
+    untracked = _git("ls-files", "--others", "--exclude-standard", "--", *SOURCE_PATHS, *SOURCE_EXCLUDES)
+    if changed or untracked:
+        if not allow_uncommitted:
+            raise RuntimeError("Commit uploaded source/config changes before benchmark submission "
+                               "(or pass --allow-uncommitted to record a source digest instead)")
+        return commit, source_digest()
+    return commit, None
 
 
 def _committed_bench_source() -> str:
-    git = ["git", "-c", f"safe.directory={REPO_ROOT.as_posix()}"]
-    source = [
-        "src",
-        "experiments",
-        ":(exclude)experiments/runs",
-        ":(exclude)experiments/results",
-        ":(exclude)experiments/notebooks",
-        ":(exclude)**/__pycache__/**",
-        ":(exclude)**/*.ipynb",
-    ]
-    commit = subprocess.check_output([*git, "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
-    changed = subprocess.check_output([*git, "diff", "--name-only", "HEAD", "--", *source], cwd=REPO_ROOT, text=True).strip()
-    untracked = subprocess.check_output(
-        [*git, "ls-files", "--others", "--exclude-standard", "--", *source], cwd=REPO_ROOT, text=True
-    ).strip()
-    if changed or untracked:
-        raise RuntimeError("Commit uploaded source/config changes before benchmark submission")
-    return commit
-
-
-def _validate_submission(record: dict[str, Any]) -> None:
-    for key in ("server_run_id", "bench_run_id"):
-        if not isinstance(record.get(key), str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", record[key]):
-            raise ValueError(f"Invalid {key}")
-    if record.get("gpu") not in MODAL_GPU_NAMES:
-        raise ValueError("Invalid GPU")
-    if record.get("lane") not in ("vanilla", "static", "adaptive"):
-        raise ValueError("Invalid lane")
-    if not re.fullmatch(r"[0-9a-f]{40}", record.get("commit", "")):
-        raise ValueError("Submission requires a committed Git SHA")
-    cell = record.get("cell", {})
-    if cell.get("workload") not in lanes.ALL_WORKLOADS:
-        raise ValueError("Invalid workload")
-    for key in ("concurrency", "repeats", "num_requests"):
-        if type(cell.get(key)) is not int or cell[key] < 1:
-            raise ValueError(f"Invalid {key}")
-    if not record.get("submitted_at_utc"):
-        raise ValueError("Missing submission timestamp")
-
-
-def _save_submission(path: Path, record: dict[str, Any]) -> None:
-    temporary = path.with_name(f".submission-{uuid.uuid4().hex}.tmp")
-    with temporary.open("x", encoding="utf-8", newline="\n") as stream:
-        stream.write(json.dumps(record, indent=2) + "\n")
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
-
-
-def _validate_bench_result(result: dict[str, Any], submission: dict[str, Any]) -> None:
-    for key in ("gpu", "lane", "server_run_id", "bench_run_id", "cell", "commit"):
-        if result.get(key) != submission[key]:
-            raise ValueError(f"Remote benchmark metadata mismatch: {key}")
-    if result.get("returncode") != 0:
-        raise RuntimeError(
-            f"Remote harness failed: returncode={result.get('returncode')}; "
-            f"artifacts: /flexsds_bench/bench/{submission['bench_run_id']}"
-        )
-    server = result.get("server_env") or {}
-    if server.get("lane") != submission["lane"] or server.get("run_id") != submission["server_run_id"]:
-        raise ValueError("Remote server environment lane/run mismatch")
-    expected = {
-        "experiment_id": submission["bench_run_id"],
-        "lane": submission["lane"],
-        "commit": submission["commit"],
-        "workload": submission["cell"]["workload"],
-        "concurrency": submission["cell"]["concurrency"],
-    }
-    for artifact in ("raw", "joined"):
-        content = result.get(artifact)
-        if artifact == "joined" and content is None:
-            continue
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError(f"Missing {artifact} artifact")
-        for line in content.splitlines():
-            row = json.loads(line)
-            if any(row.get(key) != value for key, value in expected.items()):
-                raise ValueError(f"{artifact} artifact metadata mismatch")
-
-
-def _wait_server_ready(base_url: str, api_key: str | None = None, timeout_s: float = 1200.0) -> float:
-    import urllib.request
-
-    start = time.monotonic()
-    health = base_url[: -len("/v1")] + "/health"
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    while True:
-        try:
-            req = urllib.request.Request(health, headers=headers)
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                if resp.status == 200:
-                    return time.monotonic() - start
-        except OSError:
-            pass
-        if time.monotonic() - start > timeout_s:
-            raise TimeoutError(f"{health} not ready after {timeout_s:.0f} s")
-        time.sleep(10)
+    """Backward-compatible strict check used by older callers."""
+    return committed_bench_source()[0]
 
 
 try:
@@ -219,360 +107,171 @@ except ImportError:
 if modal is not None:
     from flexsds.server.modal_image import serving_image
 
-    container_config = dict(BENCH_CONFIG)
-    if container_config.get("profile_path"):
-        container_config["profile_path"] = "/root/project/hardware_profile.json"
-
-    _base_image = (
+    _image = (
         serving_image()
         .uv_pip_install("aiohttp", "nvidia-ml-py")
-        .add_local_file(
-            str(REPO_ROOT / "experiments" / "vllm_runtime_patch.py"),
-            "/root/vllm_runtime_patch.py",
-            copy=True,
-        )
+        .add_local_file(str(REPO_ROOT / "experiments" / "vllm_runtime_patch.py"), "/root/vllm_runtime_patch.py",
+                        copy=True)
         .run_commands("python /root/vllm_runtime_patch.py")
-        .env(
-            {
-                "PYTHONPATH": "/root/project:/root/project/src",
-                "HF_HOME": lanes.HF_HOME,
-                "VLLM_CACHE_ROOT": lanes.VLLM_CACHE_ROOT,
-                "FLEXSDS_BENCH_CONFIG_B64": base64.b64encode(
-                    json.dumps(container_config).encode("utf-8")
-                ).decode("ascii"),
-                "FLEXSDS_BENCH_RUN_ID": RUN_ID,
-                "FLEXSDS_BENCH_COMMIT": SOURCE_COMMIT,
-            }
-        )
+        .env({"PYTHONPATH": "/root/project:/root/project/src", "HF_HOME": lanes.HF_HOME,
+              "VLLM_CACHE_ROOT": lanes.VLLM_CACHE_ROOT, "VLLM_USE_V2_MODEL_RUNNER": "0",
+              "PYTHONIOENCODING": "utf-8"})
     )
     if modal.is_local():
-        _base_image = _base_image.add_local_dir(
-            str(REPO_ROOT / "src"),
-            remote_path="/root/project/src",
-            ignore=["**/__pycache__/**"],
-        ).add_local_dir(
-            str(REPO_ROOT / "experiments"),
-            remote_path="/root/project/experiments",
-            ignore=["runs/**", "results/**", "notebooks/**", "**/__pycache__/**", "**/*.ipynb"],
-        )
-        selected_profile = BENCH_CONFIG.get("profile_path")
-        if BENCH_CONFIG.get("enable_adaptive") and selected_profile:
-            profile_file = Path(selected_profile)
-            if not profile_file.is_file():
-                raise ValueError(f"Selected hardware profile artifact is missing: {selected_profile}")
-            _base_image = _base_image.add_local_file(
-                str(profile_file),
-                remote_path="/root/project/hardware_profile.json",
-            )
+        _image = _image.add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/project/src",
+                                      ignore=["**/__pycache__/**"]).add_local_dir(
+            str(REPO_ROOT / "experiments"), remote_path="/root/project/experiments",
+            ignore=["runs/**", "results/**", "notebooks/**", "**/__pycache__/**", "**/*.ipynb"])
 
     model_volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)
     vllm_cache_volume = modal.Volume.from_name("ptit-vllm-cache", create_if_missing=True)
     artifacts_volume = modal.Volume.from_name("ptit-run-artifacts", create_if_missing=True)
-    SERVER_VOLUMES = {
-        lanes.HF_HOME: model_volume,
-        lanes.VLLM_CACHE_ROOT: vllm_cache_volume,
-        ARTIFACTS_ROOT: artifacts_volume,
-    }
-
+    VOLUMES = {lanes.HF_HOME: model_volume, lanes.VLLM_CACHE_ROOT: vllm_cache_volume,
+               ARTIFACTS_ROOT: artifacts_volume}
     app = modal.App(APP_NAME)
-    _VRAM_STOP = threading.Event()
+    _COMMON = dict(image=_image, max_containers=1, scaledown_window=2, timeout=GPU_TIMEOUT_S, volumes=VOLUMES)
 
-    def _sample_vram(run_dir: Path, stop: threading.Event, interval_s: float = 0.25, commit_every_s: float = 10.0) -> None:
-        import pynvml
+    @app.function(gpu=modal_gpu_resource("T4"), **_COMMON)
+    def run_gpu_T4(record_json: str, cells_json: str, profile_text: str | None) -> dict[str, Any]:
+        return _gpu_main("T4", record_json, cells_json, profile_text)
 
-        pynvml.nvmlInit()
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        last_commit = time.monotonic()
-        with (run_dir / "vram.jsonl").open("a", encoding="utf-8") as out:
-            while not stop.is_set():
-                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                out.write(
-                    json.dumps(
-                        {
-                            "ts_utc": datetime.now(timezone.utc).isoformat(),
-                            "used_mb": round(mem.used / 1024**2, 2),
-                            "total_mb": round(mem.total / 1024**2, 2),
-                        }
-                    )
-                    + "\n"
-                )
-                out.flush()
-                if time.monotonic() - last_commit >= commit_every_s:
-                    artifacts_volume.commit()
-                    last_commit = time.monotonic()
-                stop.wait(interval_s)
+    @app.function(gpu=modal_gpu_resource("A10"), **_COMMON)
+    def run_gpu_A10(record_json: str, cells_json: str, profile_text: str | None) -> dict[str, Any]:
+        return _gpu_main("A10", record_json, cells_json, profile_text)
 
-    @app.function(image=_base_image, cpu=0.125, timeout=60)
-    def benchmark_identity() -> dict[str, Any]:
-        return {
-            "commit": SOURCE_COMMIT,
-            "run_id": RUN_ID,
-            "gpu": GPU,
-            "modal_gpu": MODAL_GPU,
-            "lane": BENCH_CONFIG.get("lane", "vanilla"),
-            "max_model_len": int(BENCH_CONFIG.get("max_model_len", 4096)),
-            "vllm_runtime": BENCH_CONFIG.get("vllm_runtime", "backport-55708"),
-        }
+    @app.function(gpu=modal_gpu_resource("L40S"), **_COMMON)
+    def run_gpu_L40S(record_json: str, cells_json: str, profile_text: str | None) -> dict[str, Any]:
+        return _gpu_main("L40S", record_json, cells_json, profile_text)
 
-    @app.function(
-        image=_base_image,
-        gpu=MODAL_GPU,
-        max_containers=1,
-        min_containers=0,
-        scaledown_window=60,
-        timeout=3600,
-        volumes=SERVER_VOLUMES,
-    )
-    @modal.web_server(PORT, startup_timeout=900)
-    def serve() -> None:
-        import pynvml
-        import torch
-        import vllm
-        from flexsds.core.cost_model import validate_measured_profile
-
-        runtime_cfg = dict(BENCH_CONFIG)
-        if runtime_cfg.get("profile_path"):
-            runtime_cfg["profile_path"] = "/root/project/hardware_profile.json"
-
-        actual_device = torch.cuda.get_device_name(0)
-        if not matches_gpu_label(MODAL_GPU, actual_device):
-            raise ValueError(f"Actual Modal GPU mismatch: expected {MODAL_GPU}, got {actual_device}")
-
-        profile_sha256 = None
-        if runtime_cfg.get("enable_adaptive", False):
-            sm = "sm_%d%d" % torch.cuda.get_device_capability(0)
-            data = json.loads(Path(runtime_cfg["profile_path"]).read_text(encoding="utf-8"))
-            if not matches_gpu_label(data["metadata"]["device"], actual_device):
-                raise ValueError("Profile differs from actual Modal GPU")
-            hardware = HardwareInfo(
-                device_name=f"Remote {GPU}",
-                sm_architecture=sm,
-                total_vram_mb=0,
-                free_vram_mb=0,
-                cuda_version=torch.version.cuda,
-                is_cuda_available=True,
-                gpu_match_label=MODAL_GPU,
-            )
-            validate_measured_profile(
-                data,
-                hardware,
-                runtime_cfg.get("target_model"),
-                runtime_cfg.get("draft_model"),
-            )
-            profile_sha256 = data.get("metadata", {}).get("raw_sha256")
-
-        runner = LocalServingRunner()
-        lane = str(runtime_cfg.get("lane", "vanilla"))
-        run_dir = Path(server_artifact_dir(GPU, lane, RUN_ID))
-        run_dir.mkdir(parents=True, exist_ok=True)
-        runtime_cfg["telemetry_path"] = str(run_dir / "adaptive_telemetry.jsonl")
-        cmd = runner.build_command(runtime_cfg, port=PORT)
-        env = runner.setup_environment(runtime_cfg)
-
-        pynvml.nvmlInit()
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        driver = pynvml.nvmlSystemGetDriverVersion()
-        server_env = {
-            "gpu": actual_device,
-            "requested_gpu": GPU,
-            "modal_gpu": MODAL_GPU,
-            "driver_version": driver.decode() if isinstance(driver, bytes) else str(driver),
-            "gpu_memory_total_mb": round(pynvml.nvmlDeviceGetMemoryInfo(handle).total / 1024**2, 2),
-            "torch_version": torch.__version__,
-            "torch_cuda_version": torch.version.cuda,
-            "vllm_version": vllm.__version__,
-            "dtype": runtime_cfg.get("dtype"),
-            "quantization": runtime_cfg.get("quantization"),
-            "lane": lane,
-            "run_id": RUN_ID,
-            "instance_id": str(uuid.uuid4()),
-            "modal_task_id": os.environ.get("MODAL_TASK_ID"),
-            "started_at_utc": datetime.now(timezone.utc).isoformat(),
-            "source_commit": SOURCE_COMMIT,
-            "target_model": runtime_cfg.get("target_model"),
-            "draft_model": runtime_cfg.get("draft_model"),
-            "served_model_name": runtime_cfg.get("served_model_name"),
-            "max_model_len": int(runtime_cfg.get("max_model_len", 4096)),
-            "runtime_variant": runtime_patch.RUNTIME_LABEL,
-            "vllm_outputs_sha256": hashlib.sha256(
-                (Path(vllm.__file__).parent / "outputs.py").read_bytes()
-            ).hexdigest(),
-            "vllm_args": cmd,
-            "profile_sha256": profile_sha256,
-        }
-        (run_dir / SERVER_ENV_FILE).write_text(json.dumps(server_env, indent=2) + "\n", encoding="utf-8")
-        artifacts_volume.commit()
-
-        _VRAM_STOP.clear()
-        threading.Thread(target=_sample_vram, args=(run_dir, _VRAM_STOP), daemon=True).start()
-        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-
-        def _pump_vllm_log() -> None:
-            if proc.stdout is None:
-                return
-            with (run_dir / "vllm.log").open("a", encoding="utf-8") as log_file:
-                for line in proc.stdout:
-                    sys.stdout.write(line)
-                    log_file.write(line)
-                    log_file.flush()
-
-        def _commit_weights_when_ready() -> None:
-            import urllib.request
-
-            deadline = time.monotonic() + 840.0
-            while time.monotonic() < deadline and proc.poll() is None:
-                try:
-                    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=5) as resp:
-                        if resp.status == 200:
-                            model_volume.commit()
-                            return
-                except OSError:
-                    time.sleep(5)
-
-        threading.Thread(target=_pump_vllm_log, daemon=True).start()
-        threading.Thread(target=_commit_weights_when_ready, daemon=True).start()
-
-    @app.function(
-        image=_base_image,
-        cpu=2,
-        timeout=4 * 60 * 60,
-        max_containers=1,
-        volumes={ARTIFACTS_ROOT: artifacts_volume},
-    )
-    def bench(
-        gpu: str,
-        lane: str,
-        server_run_id: str,
-        bench_run_id: str,
-        cell: dict[str, Any],
-        git_commit: str,
-        served_model_name: str,
-    ) -> dict[str, Any]:
-        import urllib.request
-        from experiments.modal_vram_join import join_vram, load_jsonl
-
-        if SOURCE_COMMIT != git_commit or RUN_ID != server_run_id or GPU != gpu:
-            raise ValueError("Deployed benchmark source/gpu/run identity mismatch")
-
-        serve_fn = modal.Function.from_name(APP_NAME, "serve")
-        web_url = serve_fn.get_web_url()
-        if not web_url:
-            raise RuntimeError(f"Modal app {APP_NAME!r} serve function has no web URL")
-        base_url = web_url.rstrip("/") + "/v1"
-        api_key = os.environ.get("FLEXSDS_BENCH_API_KEY")
-
-        server_dir = Path(server_artifact_dir(gpu, lane, server_run_id))
-        out_dir = Path(ARTIFACTS_ROOT) / "flexsds_bench" / "bench" / bench_run_id
-        artifacts_volume.reload()
-        out_dir.mkdir(parents=True, exist_ok=False)
-        artifacts_volume.commit()
-
-        ready_s = _wait_server_ready(base_url, api_key=api_key)
-        artifacts_volume.reload()
-        server_before = json.loads((server_dir / SERVER_ENV_FILE).read_text(encoding="utf-8"))
-        if (
-            server_before.get("source_commit") != git_commit
-            or server_before.get("run_id") != server_run_id
-            or server_before.get("lane") != lane
-            or not server_before.get("instance_id")
-        ):
-            raise ValueError("Server source/run/instance mismatch")
-        with (server_dir / "benchmark_claim.json").open("x", encoding="utf-8") as stream:
-            json.dump({"bench_run_id": bench_run_id, "instance_id": server_before["instance_id"]}, stream)
-        artifacts_volume.commit()
-
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        req = urllib.request.Request(base_url + "/models", headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as response:
-            model_ids = [item["id"] for item in json.load(response)["data"]]
-        if model_ids != [served_model_name]:
-            raise ValueError(f"Endpoint model identity mismatch: expected [{served_model_name}], got {model_ids}")
-
-        args = build_harness_args(
-            lane=lane,
-            gpu=gpu,
-            base_url=base_url,
-            served_model_name=served_model_name,
-            server_env_json=str(server_dir / SERVER_ENV_FILE),
-            raw_out=str(out_dir / RAW_FILE),
-            summary_csv=str(out_dir / "harness_header.csv"),
-            experiment_id=bench_run_id,
-            **cell,
-        )
-        env = {
-            **os.environ,
-            "PTIT_GIT_COMMIT": git_commit,
-            "PTIT_SERVER_ENV_ROOT": ARTIFACTS_ROOT,
-            "PYTHONIOENCODING": "utf-8",
-        }
-        if api_key:
-            env["OPENAI_API_KEY"] = api_key
-
-        commit_stop = threading.Event()
-
-        def preserve_partial() -> None:
-            while not commit_stop.wait(10):
-                artifacts_volume.commit()
-
-        committer = threading.Thread(target=preserve_partial, daemon=True)
-        committer.start()
-        try:
-            with (out_dir / "harness.log").open("x", encoding="utf-8") as log:
-                proc = subprocess.run(
-                    [sys.executable, "-u", "-m", "experiments.benchmark_harness", *args],
-                    cwd="/root/project",
-                    env=env,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                )
-        finally:
-            commit_stop.set()
-            committer.join(timeout=30)
-            artifacts_volume.commit()
-
-        harness_log = (out_dir / "harness.log").read_text(encoding="utf-8")
-        result: dict[str, Any] = {
-            "gpu": gpu,
-            "lane": lane,
-            "returncode": proc.returncode,
-            "server_ready_wait_s": round(ready_s, 2),
-            "harness_log": harness_log,
-            "raw": None,
-            "joined": None,
-            "server_env": server_before,
-            "join_error": None,
-            "server_run_id": server_run_id,
-            "bench_run_id": bench_run_id,
-            "cell": cell,
-            "commit": git_commit,
-            "endpoint_model_ids": model_ids,
-            "call_id": modal.current_function_call_id(),
-        }
-        raw_path = out_dir / RAW_FILE
-        warmup_path = out_dir / "warmup.jsonl"
-        result["warmup"] = warmup_path.read_text(encoding="utf-8") if warmup_path.exists() else None
-        if raw_path.exists():
-            result["raw"] = raw_path.read_text(encoding="utf-8")
-        if proc.returncode == 0 and raw_path.exists():
-            time.sleep(12)
-            artifacts_volume.reload()
-            final_server = json.loads((server_dir / SERVER_ENV_FILE).read_text(encoding="utf-8"))
-            result["server_instance_unchanged"] = final_server == server_before
-            try:
-                joined = join_vram(load_jsonl(raw_path), load_jsonl(server_dir / "vram.jsonl"))
-                result["joined"] = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in joined)
-            except (OSError, ValueError, KeyError) as exc:
-                result["join_error"] = str(exc)
-        result["timestamp_utc"] = datetime.now(timezone.utc).isoformat()
-        (out_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False) + "\n", encoding="utf-8")
-        artifacts_volume.commit()
-        return result
+    @app.function(gpu=modal_gpu_resource("A100"), **_COMMON)
+    def run_gpu_A100(record_json: str, cells_json: str, profile_text: str | None) -> dict[str, Any]:
+        return _gpu_main("A100", record_json, cells_json, profile_text)
 else:
     app = None
     artifacts_volume = None
 
 
+# --------------------------------------------------------------------------------------------------
+# Container side
+# --------------------------------------------------------------------------------------------------
+def _gpu_main(gpu: str, record_json: str, cells_json: str, profile_text: str | None) -> dict[str, Any]:
+    import pynvml
+    import torch
+
+    from experiments import bench_gpu_session as sess
+
+    record = json.loads(record_json)
+    cells = json.loads(cells_json)
+    device = torch.cuda.get_device_name(0)
+    pynvml.nvmlInit()
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    uuid_raw = pynvml.nvmlDeviceGetUUID(handle)
+    gpu_uuid = uuid_raw.decode() if isinstance(uuid_raw, bytes) else str(uuid_raw)
+    driver_raw = pynvml.nvmlSystemGetDriverVersion()
+    driver = driver_raw.decode() if isinstance(driver_raw, bytes) else str(driver_raw)
+    try:
+        sess.check_gpu(gpu, device)
+    except sess.WrongGpu as exc:
+        return {"stopped": str(exc), "gpu_name": device}
+
+    call_id = modal.current_function_call_id()
+    locks = modal.Dict.from_name(LOCK_NAME, create_if_missing=True)
+    key = lock_key(record["campaign_id"], gpu)
+    if not locks.put(key, call_id, skip_if_exists=True) and locks.get(key) != call_id:
+        return {"stopped": f"Busy: {key} is held by {locks.get(key)}", "gpu_name": device}
+
+    out_root = Path(ARTIFACTS_ROOT) / volume_dir(record["campaign_id"], gpu)
+    try:
+        result = sess.run_session(
+            record, gpu, cells, out_root=out_root, device_name=device, gpu_uuid=gpu_uuid, driver=driver,
+            profile_text=profile_text, call_id=call_id, start_server=_start_vllm, stop_server=_stop_vllm,
+            run_harness=_run_harness, sample=lambda: sess.MetricsSampler(vram=lambda: _vram_used_mb(handle)),
+            persist=artifacts_volume.commit)
+    finally:
+        if locks.get(key) == call_id:
+            locks.pop(key)
+        artifacts_volume.commit()
+    return {**result, "gpu_name": device, "gpu_uuid": gpu_uuid, "driver_version": driver}
+
+
+def _vram_used_mb(handle: Any) -> float:
+    import pynvml
+    return round(pynvml.nvmlDeviceGetMemoryInfo(handle).used / 1024**2, 2)
+
+
+def _get(url: str) -> int:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            return response.status
+    except OSError:
+        return 0
+
+
+def _start_vllm(cfg: dict[str, Any], server_dir: Path) -> dict[str, Any]:
+    """vLLM on 127.0.0.1:8000 for one (workload, lane); ready when /health and /v1/models answer."""
+    import urllib.request
+
+    import pynvml
+    import torch
+    import vllm
+    from flexsds.server.local_runner import LocalServingRunner
+
+    runner = LocalServingRunner()
+    cfg = dict(cfg, telemetry_path=str(server_dir / "telemetry" / "serving_trace.jsonl"))
+    cmd = runner.build_command(cfg, port=8000)
+    env = {**os.environ, **runner.setup_environment(cfg)}
+    log = open(server_dir / "vllm.log", "a", encoding="utf-8")
+    proc = subprocess.Popen(cmd, env=env, cwd=server_dir, stdout=log, stderr=subprocess.STDOUT)
+    started = time.monotonic()
+    while time.monotonic() - started < 900:
+        if proc.poll() is not None:
+            log.close()
+            raise RuntimeError(f"vLLM exited early with code {proc.returncode} (see {server_dir / 'vllm.log'})")
+        if _get("http://127.0.0.1:8000/health") == 200 and _get("http://127.0.0.1:8000/v1/models") == 200:
+            break
+        time.sleep(5)
+    else:
+        proc.kill()
+        log.close()
+        raise TimeoutError("vLLM was not ready within 15 minutes")
+    with urllib.request.urlopen("http://127.0.0.1:8000/v1/models", timeout=10) as response:
+        model_ids = [item["id"] for item in json.load(response)["data"]]
+    pynvml.nvmlInit()
+    total = pynvml.nvmlDeviceGetMemoryInfo(pynvml.nvmlDeviceGetHandleByIndex(0)).total
+    model_volume.commit()
+    return {"proc": proc, "log": log, "cmd": cmd, "model_ids": model_ids, "ready_s": round(time.monotonic() - started, 1),
+            "vllm_version": vllm.__version__, "torch_version": torch.__version__,
+            "torch_cuda_version": torch.version.cuda, "gpu_memory_total_mb": round(total / 1024**2, 2),
+            "runtime_variant": runtime_patch.RUNTIME_LABEL,
+            "vllm_outputs_sha256": hashlib.sha256((Path(vllm.__file__).parent / "outputs.py").read_bytes()).hexdigest()}
+
+
+def _stop_vllm(server: dict[str, Any]) -> None:
+    proc = server["proc"]
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=90)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=30)
+    server["log"].close()
+    deadline = time.monotonic() + 60
+    while _get("http://127.0.0.1:8000/health") and time.monotonic() < deadline:
+        time.sleep(2)
+    time.sleep(5)
+
+
+def _run_harness(args: list[str], env: dict[str, str], log_path: Path) -> int:
+    with open(log_path, "w", encoding="utf-8") as log:
+        return subprocess.run([sys.executable, "-u", "-m", "experiments.benchmark_harness", *args],
+                              cwd="/root/project", env=env, stdout=log, stderr=subprocess.STDOUT).returncode
+
+
+# --------------------------------------------------------------------------------------------------
+# Laptop side
+# --------------------------------------------------------------------------------------------------
 def _modal_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     from flexsds.core.credentials import CredentialsManager
     from flexsds.server import modal_auth
@@ -581,10 +280,8 @@ def _modal_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     if not modal_auth.prepare_modal_auth(CredentialsManager()):
         raise RuntimeError("Modal credentials missing; run 'flexsds auth login --provider modal' first.")
     env = dict(os.environ)
-    pythonpath_parts = [str(REPO_ROOT), str(SRC_ROOT)]
-    if env.get("PYTHONPATH"):
-        pythonpath_parts.append(env["PYTHONPATH"])
-    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+    parts = [str(REPO_ROOT), str(SRC_ROOT)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])
+    env["PYTHONPATH"] = os.pathsep.join(parts)
     if extra:
         env.update(extra)
     return env
@@ -597,296 +294,193 @@ def _invoke_in_modal_interpreter(action: str, payload: dict[str, Any]) -> Any:
 
     modal_auth.ensure_modal()
     executable = shutil.which("modal")
-    interpreter_args = modal_auth._modal_interpreter_args(executable)
     if not executable:
         raise RuntimeError("Modal Python SDK is not installed in this environment and no 'modal' CLI was found.")
-    env = _modal_env()
-    proc = subprocess.run(
-        [*interpreter_args, str(Path(__file__).resolve()), "--sdk-action", action],
-        input=json.dumps(payload),
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    proc = subprocess.run([*modal_auth._modal_interpreter_args(executable), str(Path(__file__).resolve()),
+                           "--sdk-action", action], input=json.dumps(payload), cwd=REPO_ROOT, env=_modal_env(),
+                          capture_output=True, text=True, encoding="utf-8")
     if proc.returncode:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        raise RuntimeError(f"Modal SDK action {action!r} failed: {detail}")
+        raise RuntimeError(f"Modal SDK action {action!r} failed: {(proc.stderr or proc.stdout or '').strip()}")
     lines = [line for line in proc.stdout.splitlines() if line.strip()]
     return json.loads(lines[-1]) if lines else None
 
 
+# modal.call_graph.InputStatus: PENDING=0, SUCCESS=1, FAILURE=2, TERMINATED=3, TIMEOUT=4, INIT_FAILURE=5
+_DEAD_INPUT_STATUSES = {2, 3, 4, 5}
+
+
+def _call_graph_status(call: Any) -> int | None:
+    """Status of the root input of a function call, or None when Modal cannot tell."""
+    try:
+        graph = call.get_call_graph()
+        return int(graph[0].status) if graph else None
+    except Exception:  # noqa: BLE001 - older SDKs / transient errors: fall back to "still running"
+        return None
+
+
+def gpu_call_state(call_id: str) -> str:
+    """RUNNING, DONE (session finished) or FAILED (crashed, stopped, wrong card, busy)."""
+    if modal is None:
+        return str(_invoke_in_modal_interpreter("gpu_call_state", {"call_id": call_id}))
+    call = modal.FunctionCall.from_id(call_id)
+    try:
+        result = call.get(timeout=0)
+    except Exception as exc:  # noqa: BLE001 - Modal raises its own TimeoutError and remote errors
+        if isinstance(exc, TimeoutError) or type(exc).__name__ == "TimeoutError":
+            # A call whose container died (e.g. SIGINT) can keep timing out here forever: ask the call graph.
+            return "FAILED" if _call_graph_status(call) in _DEAD_INPUT_STATUSES else "RUNNING"
+        return "FAILED"
+    if not isinstance(result, dict) or result.get("stopped"):
+        return "FAILED"
+    return "DONE"
+
+
+def submit_gpu(record: dict[str, Any], gpu: str, cell_keys: list[str], profile_text: str | None, *,
+               tries: int = 12, wait_s: float = 30, poll_s: float = 10, attempts: dict[str, int] | None = None,
+               max_wait_s: float = 3600) -> str:
+    """Spawn the GPU session; ask again while Modal hands out another card. Returns the running call id."""
+    if modal is None:
+        return str(_invoke_in_modal_interpreter("submit_gpu", {
+            "record": record, "gpu": gpu, "cell_keys": cell_keys, "profile_text": profile_text, "tries": tries,
+            "wait_s": wait_s, "poll_s": poll_s, "attempts": attempts or {}}))
+    key = lock_key(record["campaign_id"], gpu)
+    locks = modal.Dict.from_name(LOCK_NAME, create_if_missing=True)
+    holder = locks.get(key) if locks.contains(key) else None
+    if holder:
+        if gpu_call_state(holder) == "RUNNING":
+            raise RuntimeError(f"{gpu} is already running in call {holder}; collect it or stop it first")
+        locks.pop(key)  # stale: that call is finished or gone
+    by_key = {c["key"]: c for c in record["cells"]}
+    cells = [dict(by_key[k], attempt=(attempts or {}).get(k, 1)) for k in cell_keys]
+    function = modal.Function.from_name(APP_NAME, function_name(gpu))
+    last = ""
+    for attempt in range(1, tries + 1):
+        call = function.spawn(json.dumps(record), json.dumps(cells), profile_text)
+        started = time.monotonic()
+        while True:
+            try:
+                result = call.get(timeout=0)
+            except Exception as exc:  # noqa: BLE001
+                if not (isinstance(exc, TimeoutError) or type(exc).__name__ == "TimeoutError"):
+                    raise
+                if locks.contains(key) and locks.get(key) == call.object_id:
+                    return call.object_id  # right card, session running
+                if time.monotonic() - started > max_wait_s:
+                    raise RuntimeError(f"{gpu}: call {call.object_id} has not started within {max_wait_s:.0f} s") from exc
+                time.sleep(poll_s)
+                continue
+            stopped = str(result.get("stopped") or "") if isinstance(result, dict) else ""
+            if stopped.startswith("WrongGpu"):
+                last = stopped
+                print(f"{gpu}: try {attempt}/{tries}: {stopped}", flush=True)
+                break
+            if stopped:
+                raise RuntimeError(f"{gpu}: {stopped}")
+            return call.object_id  # finished already (e.g. every cell failed fast); collect will show why
+        time.sleep(wait_s)
+    raise RuntimeError(f"{gpu}: Modal did not hand out the exact card in {tries} tries; last: {last}")
+
+
+def collect_gpu(campaign_id: str, gpu: str, evidence_root: Path) -> list[str]:
+    """Copy finished cells of one GPU from the artifacts volume to <evidence_root>/<attempt_id>/."""
+    evidence_root = Path(evidence_root)
+    if modal is None:
+        return list(_invoke_in_modal_interpreter("collect_gpu", {
+            "campaign_id": campaign_id, "gpu": gpu, "evidence_root": str(evidence_root)}))
+    volume = modal.Volume.from_name("ptit-run-artifacts")
+    base = volume_dir(campaign_id, gpu)
+    files: dict[str, dict[str, str]] = {}
+    for entry in volume.listdir(base, recursive=True):
+        if getattr(getattr(entry, "type", None), "value", 1) != 1:  # FileEntryType.FILE; skip directories
+            continue
+        rel = entry.path[len(base) + 1:] if entry.path.startswith(base + "/") else entry.path
+        top, _, name = rel.partition("/")
+        if name:
+            files.setdefault(top, {})[name] = entry.path
+
+    def read(path: str) -> bytes:
+        return b"".join(volume.read_file(path))
+
+    collected: list[str] = []
+    for top, names in sorted(files.items()):
+        if top == "_servers":
+            for name, path in names.items():
+                target = evidence_root.parent / "servers" / gpu / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(read(path))
+            continue
+        if top.startswith("_"):
+            continue
+        if "bench.json" not in names:
+            if "failure.json" in names:  # the cell failed inside the container (server, profile, ...)
+                target = evidence_root.parent / "failures" / f"{top}.json"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(read(names["failure.json"]))
+            continue
+        bench = json.loads(read(names["bench.json"]))
+        out = evidence_root / bench["bench_run_id"]
+        out.mkdir(parents=True, exist_ok=True)
+        payloads = {name: read(path) for name, path in names.items() if "/" not in name}
+        for name, content in payloads.items():
+            target = out / name
+            if target.exists() and target.read_bytes() != content:
+                raise FileExistsError(f"Conflicting existing evidence: {target}")
+        for name, content in payloads.items():
+            if not (out / name).exists():
+                (out / name).write_bytes(content)
+        collected.append(top)
+    return collected
+
+
+def release_locks(campaign_id: str) -> None:
+    """Drop every GPU lock of one campaign (used by `flexsds benchmark stop`)."""
+    if modal is None:
+        _invoke_in_modal_interpreter("release_locks", {"campaign_id": campaign_id})
+        return
+    locks = modal.Dict.from_name(LOCK_NAME, create_if_missing=True)
+    for gpu in MODAL_GPU_NAMES:
+        key = lock_key(campaign_id, gpu)
+        if locks.contains(key):
+            locks.pop(key)
+
+
+def deploy_app() -> None:
+    """Deploy `flexsds-benchmark` from this checkout (all four run_gpu_* functions)."""
+    from flexsds.server import modal_auth
+
+    subprocess.run([*modal_auth.modal_command(), "deploy", "-m", "experiments.modal_benchmark_runner"],
+                   cwd=REPO_ROOT, env=_modal_env(), check=True)
+
+
 def stop_app() -> None:
+    """Stop the deployed benchmark app (cancels every running GPU session)."""
     from flexsds.server import modal_auth
 
     env = _modal_env()
-    apps = json.loads(
-        subprocess.check_output([*modal_auth.modal_command(), "app", "list", "--json"], cwd=REPO_ROOT, env=env, text=True)
-    )
+    apps = json.loads(subprocess.check_output([*modal_auth.modal_command(), "app", "list", "--json"],
+                                              cwd=REPO_ROOT, env=env, text=True))
     for item in apps:
         if item.get("description") == APP_NAME and item.get("state") != "stopped":
-            subprocess.run(
-                [*modal_auth.modal_command(), "app", "stop", item["app_id"], "-y"],
-                cwd=REPO_ROOT,
-                env=env,
-                check=True,
-            )
+            subprocess.run([*modal_auth.modal_command(), "app", "stop", item["app_id"], "-y"],
+                           cwd=REPO_ROOT, env=env, check=True)
 
 
-def bench_submit(
-    *,
-    gpu: str,
-    lane: str,
-    workload: str,
-    concurrency: int,
-    repeats: int,
-    num_requests: int,
-    server_run_id: str,
-    bench_run_id: str,
-    evidence_root: Path,
-    serving_config: dict[str, Any],
-) -> str:
-    if modal is None:
-        return str(
-            _invoke_in_modal_interpreter(
-                "bench_submit",
-                {
-                    "gpu": gpu,
-                    "lane": lane,
-                    "workload": workload,
-                    "concurrency": concurrency,
-                    "repeats": repeats,
-                    "num_requests": num_requests,
-                    "server_run_id": server_run_id,
-                    "bench_run_id": bench_run_id,
-                    "evidence_root": str(evidence_root),
-                    "serving_config": serving_config,
-                },
-            )
-        )
-    record = {
-        "gpu": gpu,
-        "lane": lane,
-        "server_run_id": server_run_id,
-        "bench_run_id": bench_run_id,
-        "expected_profile_sha256": serving_config.get("profile_sha256") if lane == "adaptive" else None,
-        "cell": {
-            "workload": workload,
-            "concurrency": concurrency,
-            "repeats": repeats,
-            "num_requests": num_requests,
-        },
-        "commit": _committed_bench_source(),
-        "submitted_at_utc": datetime.now(timezone.utc).isoformat(),
-        "call_id": None,
-    }
-    _validate_submission(record)
-    out = evidence_root / bench_run_id
-    out.mkdir(parents=True, exist_ok=False)
-    receipt = out / "submission.json"
-    _save_submission(receipt, record)
-
-    identity = modal.Function.from_name(APP_NAME, "benchmark_identity").remote()
-    if (
-        identity.get("commit") != record["commit"]
-        or identity.get("run_id") != server_run_id
-        or identity.get("gpu") != gpu
-        or identity.get("lane") != lane
-        or identity.get("max_model_len") != serving_config["max_model_len"]
-        or identity.get("vllm_runtime") != "backport-55708"
-    ):
-        raise ValueError("Deployed benchmark identity mismatch; redeploy for this cell")
-
-    bench_fn = modal.Function.from_name(APP_NAME, "bench")
-    _save_submission(out / "spawn_attempt.json", identity)
-    call = bench_fn.spawn(
-        gpu,
-        lane,
-        server_run_id,
-        bench_run_id,
-        record["cell"],
-        record["commit"],
-        serving_config["served_model_name"],
-    )
-    call_id = call.object_id
-    if not isinstance(call_id, str) or not re.fullmatch(r"fc-[A-Za-z0-9]+", call_id):
-        raise RuntimeError("Modal did not return a valid FunctionCall ID")
-    print(f"FunctionCall: {call_id}", flush=True)
-    record["call_id"] = call_id
-    _save_submission(receipt, record)
-    print(f"Receipt: {receipt}", flush=True)
-    return call_id
-
-
-def _bench_result(call_id: str, submission: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
-    if modal is None:
-        raise RuntimeError("Modal Python SDK is required for remote benchmark operations")
-    try:
-        from modal.exception import OutputExpiredError
-    except ImportError:
-        OutputExpiredError = None  # type: ignore[assignment]
-    try:
-        call = modal.FunctionCall.from_id(call_id)
-        return call.get() if timeout is None else call.get(timeout=timeout)
-    except Exception as exc:
-        is_expired = (OutputExpiredError is not None and isinstance(exc, OutputExpiredError)) or (
-            type(exc).__name__ == "OutputExpiredError"
-        )
-        if not is_expired or artifacts_volume is None:
-            raise
-        content = b"".join(artifacts_volume.read_file(f"flexsds_bench/bench/{submission['bench_run_id']}/result.json"))
-        result = json.loads(content)
-        if result.get("call_id") != call_id:
-            raise ValueError("Archived result/FunctionCall identity mismatch")
-        return result
-
-
-def bench_status(bench_run_id: str, *, evidence_root: Path) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", bench_run_id):
-        raise ValueError("Invalid bench_run_id")
-    out = evidence_root / bench_run_id
-    if not out.exists():
-        return "NOT_SUBMITTED"
-    record = json.loads((out / "submission.json").read_text(encoding="utf-8"))
-    _validate_submission(record)
-    if (out / "validation_failure.json").exists():
-        return "FAILED"
-    if not record.get("call_id"):
-        return "NOT_SUBMITTED"
-    if modal is None:
-        return str(
-            _invoke_in_modal_interpreter(
-                "bench_status",
-                {"bench_run_id": bench_run_id, "evidence_root": str(evidence_root)},
-            )
-        )
-    try:
-        from modal.exception import TimeoutError as ModalTimeoutError
-    except ImportError:
-        ModalTimeoutError = TimeoutError  # type: ignore[assignment]
-    handle = modal.FunctionCall.from_id(record["call_id"])
-    try:
-        result = _bench_result(record["call_id"], record, timeout=0)
-    except Exception as exc:
-        graph = handle.get_call_graph()
-        if any(node.status.name in ("FAILURE", "INIT_FAILURE", "TERMINATED", "TIMEOUT") for node in graph):
-            return "FAILED"
-        if isinstance(exc, (TimeoutError, ModalTimeoutError)) or type(exc).__name__ == "TimeoutError":
-            return "RUNNING" if any(node.task_id for node in graph) else "SUBMITTED"
-        raise
-    if result.get("returncode") != 0:
-        return "FAILED"
-    try:
-        _validate_bench_result(result, record)
-    except (ValueError, RuntimeError):
-        return "FAILED"
-    return "COLLECTED" if (out / "bench.json").exists() else "COMPLETED"
-
-
-def bench_collect(call_id: str, *, evidence_root: Path) -> Path:
-    if modal is None:
-        return Path(
-            str(
-                _invoke_in_modal_interpreter(
-                    "bench_collect",
-                    {"call_id": call_id, "evidence_root": str(evidence_root)},
-                )
-            )
-        )
-    if not isinstance(call_id, str) or not re.fullmatch(r"fc-[A-Za-z0-9]+", call_id):
-        raise ValueError("A valid FunctionCall ID (fc-...) is required")
-    matches = []
-    for path in evidence_root.glob("*/submission.json"):
-        record = json.loads(path.read_text(encoding="utf-8"))
-        if record.get("call_id") == call_id:
-            matches.append((path, record))
-    if len(matches) != 1:
-        raise ValueError(f"Expected exactly one local submission receipt for {call_id}; found {len(matches)}")
-    receipt, submission = matches[0]
-    _validate_submission(submission)
-    if receipt.parent.name != submission["bench_run_id"]:
-        raise ValueError("Submission receipt/run directory mismatch")
-
-    result = _bench_result(call_id, submission)
-    _validate_bench_result(result, submission)
-    summary = {key: result[key] for key in ("gpu", "lane", "returncode", "server_ready_wait_s", "join_error")}
-    summary.update(
-        {
-            key: submission[key]
-            for key in ("bench_run_id", "server_run_id", "cell", "commit", "call_id", "submitted_at_utc")
-        }
-    )
-    summary["timestamp_utc"] = result["timestamp_utc"]
-    summary["server_instance_unchanged"] = result.get("server_instance_unchanged", False)
-    summary["endpoint_model_ids"] = result.get("endpoint_model_ids")
-
-    files: dict[str, str] = {
-        "harness.log": result["harness_log"],
-        SERVER_ENV_FILE: json.dumps(result["server_env"], indent=2) + "\n",
-        RAW_FILE: result["raw"],
-        "bench.json": json.dumps(summary, indent=2) + "\n",
-    }
-    if result.get("warmup") is not None:
-        files["warmup.jsonl"] = result["warmup"]
-    if result.get("joined") is not None:
-        files["raw.vram.jsonl"] = result["joined"]
-
-    out = receipt.parent
-    for name, content in files.items():
-        path = out / name
-        if path.exists() and path.read_bytes() != content.encode("utf-8"):
-            raise FileExistsError(f"Conflicting existing evidence: {path}")
-    for name, content in files.items():
-        path = out / name
-        if not path.exists():
-            with path.open("x", encoding="utf-8", newline="\n") as stream:
-                stream.write(content)
-    print(f"Collected {call_id}: {out}")
-    return out
-
-
-def bench_recover(bench_run_id: str, call_id: str, *, evidence_root: Path) -> None:
-    if modal is None:
-        _invoke_in_modal_interpreter(
-            "bench_recover",
-            {"bench_run_id": bench_run_id, "call_id": call_id, "evidence_root": str(evidence_root)},
-        )
-        return
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", bench_run_id):
-        raise ValueError("Invalid bench_run_id")
-    if not re.fullmatch(r"fc-[A-Za-z0-9]+", call_id):
-        raise ValueError("Invalid FunctionCall ID")
-    path = evidence_root / bench_run_id / "submission.json"
-    record = json.loads(path.read_text(encoding="utf-8"))
-    _validate_submission(record)
-    if record["bench_run_id"] != bench_run_id or record.get("call_id") not in (None, call_id):
-        raise ValueError("Conflicting recovery receipt")
-    result = modal.FunctionCall.from_id(call_id).get(timeout=0)
-    _validate_bench_result(result, record)
-    record["call_id"] = call_id
-    _save_submission(path, record)
-    print(f"FunctionCall: {call_id}", flush=True)
+SDK_ACTIONS = {
+    "submit_gpu": lambda p: submit_gpu(p["record"], p["gpu"], p["cell_keys"], p["profile_text"], tries=p["tries"],
+                                       wait_s=p["wait_s"], poll_s=p["poll_s"], attempts=p.get("attempts")),
+    "gpu_call_state": lambda p: gpu_call_state(p["call_id"]),
+    "collect_gpu": lambda p: collect_gpu(p["campaign_id"], p["gpu"], Path(p["evidence_root"])),
+    "release_locks": lambda p: release_locks(p["campaign_id"]),
+}
 
 
 def _sdk_bridge_main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sdk-action", choices=("bench_submit", "bench_status", "bench_collect", "bench_recover"), required=True)
+    parser.add_argument("--sdk-action", choices=tuple(SDK_ACTIONS), required=True)
     args = parser.parse_args(argv)
-    payload = json.loads(sys.stdin.read())
-    evidence_root = Path(payload.pop("evidence_root"))
-    if args.sdk_action == "bench_submit":
-        result = bench_submit(evidence_root=evidence_root, **payload)
-    elif args.sdk_action == "bench_status":
-        result = bench_status(evidence_root=evidence_root, **payload)
-    elif args.sdk_action == "bench_collect":
-        result = str(bench_collect(evidence_root=evidence_root, **payload))
-    else:
-        bench_recover(evidence_root=evidence_root, **payload)
-        result = None
-    print(json.dumps(result))
+    print(json.dumps(SDK_ACTIONS[args.sdk_action](json.loads(sys.stdin.read()))))
     return 0
 
 

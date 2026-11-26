@@ -254,7 +254,9 @@ def test_ensure_adaptive_profiles_fail_closed_and_auto_calibrate(tmp_path, monke
     assert all(resolved[g]["status"] == "ready" for g in ("T4", "A10", "L40S", "A100"))
 
 
-def test_aggregate_computes_speedup_per_gpu_independently(tmp_path, monkeypatch):
+def _make_valid_campaign(tmp_path, monkeypatch, *, campaign_id, gpus, concurrency, tpot_map, gpu_device,
+                         lanes_list=("vanilla", "static", "adaptive")):
+    """Write one complete, valid attempt per cell in the one-container-per-GPU evidence layout."""
     from experiments import run_benchmark_campaign as camp
     from experiments import vllm_runtime_patch as patch
     from experiments.bench_source import snapshot
@@ -267,22 +269,88 @@ def test_aggregate_computes_speedup_per_gpu_independently(tmp_path, monkeypatch)
         corpus = load_workload_rows(w2_path)
     finally:
         packed.cleanup()
-
-    record = camp.plan(
-        "cpu-multi-gpu",
-        commit,
-        mode="fast",
-        gpus=("T4", "A100"),
-        workloads=("W2",),
-        lanes_list=("vanilla", "static", "adaptive"),
-    )
-    # Keep only concurrency=1 so fixture creation stays super fast while exercising multi-GPU aggregation.
-    record["concurrencies"] = [1]
-    record["cells"] = [c for c in record["cells"] if c["concurrency"] == 1]
-
+    record = camp.plan(campaign_id, commit, mode="fast", gpus=gpus, workloads=("W2",), lanes_list=lanes_list)
+    record["concurrencies"] = [concurrency]
+    record["cells"] = [c for c in record["cells"] if c["concurrency"] == concurrency]
     plan_root = tmp_path / "runs"
     monkeypatch.setattr(camp, "ROOT", tmp_path)
     camp.save_plan(record, plan_root=plan_root)
+    prof = tmp_path / "prof.json"
+    prof.write_text(json.dumps({"models": {"target_revision": "a" * 40, "draft_revision": "b" * 40},
+                                "metadata": {"raw_sha256": "d" * 64}}), encoding="utf-8")
+    instances: dict[tuple[str, str], str] = {}
+    for idx, cell in enumerate(record["cells"]):
+        gpu, lane = cell["gpu"], cell["lane"]
+        attempt_id = f"{camp.attempt_prefix(record, cell)}001"
+        out = plan_root / record["campaign_id"] / "attempts" / attempt_id
+        out.mkdir(parents=True)
+        cfg = camp.build_cell_serving_config(record, cell, profile_path=str(prof) if lane == "adaptive" else None)
+        instance = instances.setdefault((gpu, lane), f"boot-{gpu}-{lane}")
+        server_run_id = f"srv-{gpu}-{lane}"
+        receipt = {"gpu": gpu, "lane": lane, "server_run_id": server_run_id, "bench_run_id": attempt_id,
+                   "call_id": f"fc-{gpu}", "commit": commit,
+                   "cell": {"workload": "W2", "concurrency": concurrency, "repeats": 5, "num_requests": 32}}
+        server_env = {
+            "gpu": gpu_device[gpu], "gpu_uuid": f"GPU-{gpu}", "requested_gpu": gpu,
+            "modal_gpu": lanes.modal_gpu_resource(gpu), "driver_version": "610.57.04",
+            "gpu_memory_total_mb": 23028.0, "torch_version": "2.13.0+cu130", "torch_cuda_version": "13.0",
+            "vllm_version": "0.30.0", "dtype": cfg["dtype"], "quantization": cfg["quantization"], "lane": lane,
+            "run_id": server_run_id, "instance_id": instance, "source_commit": commit,
+            "target_model": record["target_model"], "draft_model": cfg["draft_model"],
+            "served_model_name": cfg["served_model_name"], "max_model_len": cfg["max_model_len"],
+            "runtime_variant": patch.RUNTIME_LABEL, "vllm_outputs_sha256": patch.PATCHED_OUTPUTS_SHA256,
+            "vllm_args": LocalServingRunner().build_command(cfg, port=8000),
+            "profile_sha256": ("d" * 64) if lane == "adaptive" else None,
+        }
+        if lane == "adaptive":
+            receipt["expected_profile_sha256"] = "d" * 64
+        raw, warm, samples = [], [], []
+        for repeat in range(6):
+            phase = "warmup" if repeat == 0 else "measured"
+            offset = ((repeat - 1) * (32 % len(corpus))) % len(corpus) if repeat else 0
+            start, end = f"2026-11-25T00:0{repeat}:00+00:00", f"2026-11-25T00:0{repeat}:40+00:00"
+            if repeat:
+                samples.append({"ts_utc": f"2026-11-25T00:0{repeat}:20+00:00", "running": float(concurrency),
+                                "waiting": 0.0, "used_mb": 9000.0})
+            for req_idx in range(3 if repeat == 0 else 32):
+                sample_index = (req_idx + offset) % len(corpus)
+                req = corpus[sample_index]["request"]
+                row = {
+                    "experiment_id": attempt_id, "lane": lane, "workload": "W2", "concurrency": concurrency,
+                    "phase": phase, "repeat_id": f"r{repeat:03}" if repeat else None,
+                    "request_id": f"{attempt_id}-{repeat}-{req_idx}", "request_index": req_idx, "commit": commit,
+                    "server_run_id": server_run_id, "server_instance_id": instance, "sample_policy": "cycle-rotate",
+                    "sample_id": corpus[sample_index]["sample_id"], "sample_index": sample_index,
+                    "sample_offset": offset, "canonical_sample_count": len(corpus), "success": True,
+                    "workload_file_sha256": integrity.actual_sha256, "metrics_complete": True, "http_status": 200,
+                    "model": cfg["served_model_name"], "temperature": req["temperature"], "seed": req["seed"],
+                    "max_completion_tokens": req["max_tokens"], "response_format": req.get("response_format"),
+                    "timestamp_utc": start, "e2e_ms": 1000.0, "ttft_ms": 12.0, "tpot_ms": tpot_map[(gpu, lane)],
+                    "output_tokens": 50, "gpu": gpu_device[gpu], "run_id": f"{attempt_id}-run-{repeat}",
+                    "run_started_at_utc": start, "run_finished_at_utc": end, "run_duration_s": 32.0,
+                    "run_vram_peak_mb": 9000.0,
+                }
+                if lane != "vanilla":
+                    row["server_metrics"] = {"speculative_decoding": {
+                        "num_spec_steps": 5, "num_draft_tokens": 15, "num_accepted_draft_tokens": 9,
+                        "num_spec_tokens": 3}}
+                (raw if repeat else warm).append(row)
+        (out / "submission.json").write_text(json.dumps(receipt), encoding="utf-8")
+        (out / "bench.json").write_text(json.dumps({**receipt, "returncode": 0, "server_instance_unchanged": True,
+                                                    "endpoint_model_ids": [cfg["served_model_name"]]}),
+                                        encoding="utf-8")
+        (out / "server_env.json").write_text(json.dumps(server_env), encoding="utf-8")
+        raw_text = "".join(json.dumps(r) + "\n" for r in raw)
+        (out / "raw.jsonl").write_text(raw_text, encoding="utf-8")
+        (out / "raw.vram.jsonl").write_text(raw_text, encoding="utf-8")
+        (out / "warmup.jsonl").write_text("".join(json.dumps(r) + "\n" for r in warm), encoding="utf-8")
+        (out / "concurrency.jsonl").write_text("".join(json.dumps(r) + "\n" for r in samples), encoding="utf-8")
+    monkeypatch.setattr(camp, "REPO_ROOT", Path(__file__).resolve().parents[1])
+    return record, plan_root
+
+
+def test_aggregate_computes_speedup_per_gpu_independently(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
 
     tpot_map = {
         ("T4", "vanilla"): 40.0,
@@ -293,124 +361,9 @@ def test_aggregate_computes_speedup_per_gpu_independently(tmp_path, monkeypatch)
         ("A100", "adaptive"): 5.0,
     }
     gpu_device = {"T4": "Tesla T4", "A100": "NVIDIA A100-SXM4-80GB"}
-    profile_sha = "d" * 64
+    record, plan_root = _make_valid_campaign(tmp_path, monkeypatch, campaign_id="cpu-multi-gpu", gpus=("T4", "A100"),
+                                             concurrency=1, tpot_map=tpot_map, gpu_device=gpu_device)
 
-    for idx, cell in enumerate(record["cells"]):
-        gpu = cell["gpu"]
-        lane = cell["lane"]
-        attempt_id = f"{camp.attempt_prefix(record, cell)}001"
-        out = plan_root / record["campaign_id"] / "attempts" / attempt_id
-        out.mkdir(parents=True)
-        cfg = camp.build_cell_serving_config(
-            record,
-            cell,
-            profile_path=str(tmp_path / "prof.json") if lane == "adaptive" else None,
-        )
-        receipt = {
-            "gpu": gpu,
-            "lane": lane,
-            "server_run_id": attempt_id,
-            "bench_run_id": attempt_id,
-            "call_id": f"fc-test{idx:03d}",
-            "commit": commit,
-            "cell": {
-                "workload": "W2",
-                "concurrency": 1,
-                "repeats": 5,
-                "num_requests": 32,
-            },
-        }
-        server_env = {
-            "gpu": gpu_device[gpu],
-            "requested_gpu": gpu,
-            "modal_gpu": lanes.modal_gpu_resource(gpu),
-            "driver_version": "550.0",
-            "gpu_memory_total_mb": 15360.0 if gpu == "T4" else 81920.0,
-            "torch_version": "2.13.0+cu130",
-            "torch_cuda_version": "13.0",
-            "vllm_version": "0.30.0",
-            "dtype": cfg["dtype"],
-            "quantization": cfg["quantization"],
-            "lane": lane,
-            "run_id": attempt_id,
-            "instance_id": f"boot-{idx}",
-            "source_commit": commit,
-            "target_model": record["target_model"],
-            "draft_model": cfg["draft_model"],
-            "served_model_name": cfg["served_model_name"],
-            "max_model_len": cfg["max_model_len"],
-            "runtime_variant": patch.RUNTIME_LABEL,
-            "vllm_outputs_sha256": patch.PATCHED_OUTPUTS_SHA256,
-            "profile_sha256": profile_sha if lane == "adaptive" else None,
-        }
-        raw, warm = [], []
-        for repeat in range(6):
-            phase = "warmup" if repeat == 0 else "measured"
-            offset = ((repeat - 1) * (32 % len(corpus))) % len(corpus) if repeat else 0
-            for req_idx in range(3 if repeat == 0 else 32):
-                sample_index = (req_idx + offset) % len(corpus)
-                req = corpus[sample_index]["request"]
-                row = {
-                    "experiment_id": attempt_id,
-                    "lane": lane,
-                    "workload": "W2",
-                    "concurrency": 1,
-                    "phase": phase,
-                    "repeat_id": f"r{repeat:03}" if repeat else None,
-                    "request_id": f"{attempt_id}-{repeat}-{req_idx}",
-                    "request_index": req_idx,
-                    "commit": commit,
-                    "server_run_id": attempt_id,
-                    "server_instance_id": f"boot-{idx}",
-                    "sample_policy": "cycle-rotate",
-                    "sample_id": corpus[sample_index]["sample_id"],
-                    "sample_index": sample_index,
-                    "sample_offset": offset,
-                    "canonical_sample_count": len(corpus),
-                    "success": True,
-                    "workload_file_sha256": integrity.actual_sha256,
-                    "metrics_complete": True,
-                    "http_status": 200,
-                    "model": cfg["served_model_name"],
-                    "temperature": req["temperature"],
-                    "seed": req["seed"],
-                    "max_completion_tokens": req["max_tokens"],
-                    "response_format": req.get("response_format"),
-                    "timestamp_utc": f"2026-11-25T00:0{repeat}:00+00:00",
-                    "e2e_ms": 1000.0,
-                    "ttft_ms": 12.0,
-                    "tpot_ms": tpot_map[(gpu, lane)],
-                    "output_tokens": 50,
-                    "gpu": gpu_device[gpu],
-                    "run_id": f"{attempt_id}-run-{repeat}",
-                    "run_duration_s": 32.0,
-                    "run_vram_peak_mb": 9000.0,
-                }
-                if lane != "vanilla":
-                    row["server_metrics"] = {
-                        "speculative_decoding": {
-                            "num_spec_steps": 5,
-                            "num_draft_tokens": 15,
-                            "num_accepted_draft_tokens": 9,
-                            "num_spec_tokens": 3,
-                        }
-                    }
-                (raw if repeat else warm).append(row)
-
-        (out / "submission.json").write_text(json.dumps(receipt), encoding="utf-8")
-        (out / "bench.json").write_text(
-            json.dumps({**receipt, "returncode": 0, "server_instance_unchanged": True,
-                        "endpoint_model_ids": [cfg["served_model_name"]]}),
-            encoding="utf-8",
-        )
-        (out / "server_env.json").write_text(json.dumps(server_env), encoding="utf-8")
-        raw_text = "".join(json.dumps(r) + "\n" for r in raw)
-        (out / "raw.jsonl").write_text(raw_text, encoding="utf-8")
-        (out / "raw.vram.jsonl").write_text(raw_text, encoding="utf-8")
-        (out / "warmup.jsonl").write_text("".join(json.dumps(r) + "\n" for r in warm), encoding="utf-8")
-
-    # Need snapshot to read from the real repo root while evidence lives in tmp_path.
-    monkeypatch.setattr(camp, "REPO_ROOT", Path(__file__).resolve().parents[1])
     dest = tmp_path / "summary.json"
     report_dest = tmp_path / "report.md"
     result = camp.aggregate(record, plan_root=plan_root, destination=dest, report_destination=report_dest)
@@ -440,178 +393,6 @@ def test_aggregate_computes_speedup_per_gpu_independently(tmp_path, monkeypatch)
 
 # --------------------------------------------------------------------------
 # Task 3: Dedicated Modal benchmark app runner (offline mocked modal SDK)
-# --------------------------------------------------------------------------
-def _load_modal_benchmark_runner(monkeypatch, cfg: dict):
-    import base64
-    import importlib.util
-    import sys
-    from types import SimpleNamespace
-
-    encoded = base64.b64encode(json.dumps(cfg).encode("utf-8")).decode("ascii")
-    monkeypatch.setenv("FLEXSDS_BENCH_CONFIG_B64", encoded)
-    monkeypatch.setenv("FLEXSDS_BENCH_RUN_ID", cfg.get("run_id", "bench-run-1"))
-
-    image = Mock()
-    for method in ("pip_install", "uv_pip_install", "entrypoint", "env", "add_local_dir", "add_local_file", "run_commands"):
-        getattr(image, method).return_value = image
-
-    fn_calls: list[dict] = []
-    app = Mock()
-
-    def fake_function(**kwargs):
-        fn_calls.append(kwargs)
-        return lambda f: f
-
-    app.function.side_effect = fake_function
-    web_server = Mock(side_effect=lambda *a, **kw: lambda f: f)
-    fake_modal = SimpleNamespace(
-        App=Mock(return_value=app),
-        Image=SimpleNamespace(from_registry=Mock(return_value=image)),
-        Volume=SimpleNamespace(from_name=Mock(return_value="volume")),
-        web_server=web_server,
-        is_local=lambda: True,
-        Function=SimpleNamespace(from_name=Mock()),
-        FunctionCall=SimpleNamespace(from_id=Mock()),
-        current_function_call_id=lambda: "fc-current01",
-    )
-    monkeypatch.setitem(sys.modules, "modal", fake_modal)
-    runner_path = Path(__file__).resolve().parents[1] / "experiments" / "modal_benchmark_runner.py"
-    spec = importlib.util.spec_from_file_location("test_modal_benchmark_runner_mod", runner_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module, fake_modal, image, fn_calls, web_server
-
-
-def test_modal_benchmark_runner_allocates_a100_80gb_patches_vllm_and_mounts_profile(tmp_path, monkeypatch):
-    from experiments import run_benchmark_campaign as camp
-
-    prof = tmp_path / "profile_a100.json"
-    prof.write_text(json.dumps({"metadata": {"raw_sha256": "e" * 64}}), encoding="utf-8")
-    record = camp.plan("bench-a100", "a" * 40, mode="fast", gpus=("A100",), workloads=("W1_V3",), lanes_list=("adaptive",))
-    cfg = camp.build_cell_serving_config(record, record["cells"][0], profile_path=str(prof))
-    cfg["run_id"] = "bench-a100-run1"
-    cfg["source_commit"] = "a" * 40
-
-    module, fake_modal, image, fn_calls, web_server = _load_modal_benchmark_runner(monkeypatch, cfg)
-    assert module.APP_NAME == "flexsds-benchmark"
-    assert module.MODAL_GPU == "A100-80GB"
-    # Verify server decorator got A100-80GB and max_containers=1
-    server_fn_kwargs = next(kw for kw in fn_calls if kw.get("gpu") == "A100-80GB")
-    assert server_fn_kwargs["max_containers"] == 1
-    assert server_fn_kwargs["scaledown_window"] == 60
-    web_server.assert_called_once_with(8000, startup_timeout=900)
-    # Verify backport patch command and mounted profile file
-    run_cmd_args = [call.args[0] for call in image.run_commands.call_args_list]
-    assert any("vllm_runtime_patch.py" in str(arg) for arg in run_cmd_args)
-    added_files = [call.kwargs.get("remote_path") or (call.args[1] if len(call.args) > 1 else None)
-                   for call in image.add_local_file.call_args_list]
-    assert "/root/project/hardware_profile.json" in added_files
-
-    # Verify harness CLI arguments use modal-a100-v1, m3-fixed3, and 600s timeout for W1_V3
-    harness_args = module.build_harness_args(
-        lane="adaptive",
-        gpu="A100",
-        base_url="https://any-workspace--flexsds-benchmark-serve.modal.run/v1",
-        served_model_name="flexsds-bench-adaptive",
-        server_env_json="/artifacts/server_env.json",
-        raw_out="/artifacts/raw.jsonl",
-        summary_csv="/artifacts/h.csv",
-        experiment_id="bench-a100-run1",
-        workload="W1_V3",
-        concurrency=32,
-        repeats=5,
-        num_requests=32,
-    )
-    assert harness_args[harness_args.index("--environment-profile") + 1] == "modal-a100-v1"
-    assert harness_args[harness_args.index("--warmup-policy") + 1] == "m3-fixed3"
-    assert harness_args[harness_args.index("--timeout-s") + 1] == "600"
-
-
-def test_modal_benchmark_runner_submit_and_collect_roundtrip(tmp_path, monkeypatch):
-    from experiments import run_benchmark_campaign as camp
-
-    record = camp.plan("bench-t4", "a" * 40, mode="fast", gpus=("T4",), workloads=("W2",), lanes_list=("vanilla",))
-    cfg = camp.build_cell_serving_config(record, record["cells"][0])
-    cfg["run_id"] = "bench-t4-run1"
-    cfg["source_commit"] = "a" * 40
-
-    module, fake_modal, _, _, _ = _load_modal_benchmark_runner(monkeypatch, cfg)
-    monkeypatch.setattr(module, "_committed_bench_source", lambda: "a" * 40)
-
-    identity_fn = Mock()
-    identity_fn.remote.return_value = {
-        "commit": "a" * 40,
-        "run_id": "bench-t4-run1",
-        "gpu": "T4",
-        "modal_gpu": "T4",
-        "lane": "vanilla",
-        "max_model_len": 4096,
-        "vllm_runtime": "backport-55708",
-    }
-    bench_fn = Mock()
-    bench_fn.spawn.return_value = Mock(object_id="fc-bench123")
-
-    def fake_from_name(app_name, fn_name):
-        assert app_name == "flexsds-benchmark"
-        return identity_fn if fn_name == "benchmark_identity" else bench_fn
-
-    fake_modal.Function.from_name.side_effect = fake_from_name
-
-    evidence_root = tmp_path / "attempts"
-    call_id = module.bench_submit(
-        gpu="T4",
-        lane="vanilla",
-        workload="W2",
-        concurrency=8,
-        repeats=5,
-        num_requests=32,
-        server_run_id="bench-t4-run1",
-        bench_run_id="bench-t4-run1",
-        evidence_root=evidence_root,
-        serving_config=cfg,
-    )
-    assert call_id == "fc-bench123"
-    receipt = json.loads((evidence_root / "bench-t4-run1" / "submission.json").read_text(encoding="utf-8"))
-    assert receipt["call_id"] == "fc-bench123"
-    assert receipt["gpu"] == "T4"
-
-    raw_line = json.dumps({
-        "experiment_id": "bench-t4-run1",
-        "lane": "vanilla",
-        "commit": "a" * 40,
-        "workload": "W2",
-        "concurrency": 8,
-    }) + "\n"
-    fake_result = {
-        "gpu": "T4",
-        "lane": "vanilla",
-        "server_run_id": "bench-t4-run1",
-        "bench_run_id": "bench-t4-run1",
-        "cell": {"workload": "W2", "concurrency": 8, "repeats": 5, "num_requests": 32},
-        "commit": "a" * 40,
-        "call_id": "fc-bench123",
-        "returncode": 0,
-        "server_ready_wait_s": 42.5,
-        "join_error": None,
-        "server_instance_unchanged": True,
-        "endpoint_model_ids": ["flexsds-bench-vanilla"],
-        "server_env": {"lane": "vanilla", "run_id": "bench-t4-run1", "gpu": "Tesla T4"},
-        "harness_log": "ok\n",
-        "raw": raw_line,
-        "joined": raw_line,
-        "warmup": raw_line,
-        "timestamp_utc": "2026-11-25T16:00:00+00:00",
-    }
-    fake_modal.FunctionCall.from_id.return_value = Mock(get=Mock(return_value=fake_result))
-    out = module.bench_collect("fc-bench123", evidence_root=evidence_root)
-    assert (out / "bench.json").is_file()
-    assert (out / "raw.vram.jsonl").is_file()
-    assert (out / "server_env.json").is_file()
-
-
-# --------------------------------------------------------------------------
-# Task 4: flexsds benchmark CLI & Measure -> Measure now wizard integration
 # --------------------------------------------------------------------------
 def test_flexsds_benchmark_cli_full_and_fast_dry_run_without_modal(monkeypatch, capsys):
     from flexsds.cli import main as cli
@@ -727,148 +508,18 @@ def test_flexsds_benchmark_status_requires_campaign_id_and_stop_respects_dry_run
 def test_adaptive_k0_zero_draft_tokens_accepted_while_static_zero_rejected(tmp_path, monkeypatch):
     """Critical #2: adaptive K=0 cells with 0 drafted tokens must validate and aggregate cleanly."""
     from experiments import run_benchmark_campaign as camp
-    from experiments import vllm_runtime_patch as patch
-    from experiments.bench_source import snapshot
-    from experiments.workload_adapter import load_workload_rows, verify_workload_integrity
 
-    packed, commit = snapshot(camp.REPO_ROOT)
-    try:
-        w2_path = Path(packed.name) / lanes.workload_file("W2")
-        integrity = verify_workload_integrity(w2_path)
-        corpus = load_workload_rows(w2_path)
-    finally:
-        packed.cleanup()
-
-    record = camp.plan("k0-adaptive", commit, mode="fast", gpus=("A10",), workloads=("W2",), lanes_list=("vanilla", "static", "adaptive"))
-    record["concurrencies"] = [32]
-    record["cells"] = [c for c in record["cells"] if c["concurrency"] == 32]
-    plan_root = tmp_path / "runs"
-    monkeypatch.setattr(camp, "ROOT", tmp_path)
-    camp.save_plan(record, plan_root=plan_root)
-
-    prof_path = tmp_path / "p.json"
-    prof_path.write_text(
-        json.dumps({"models": {"target_revision": "a" * 40, "draft_revision": "b" * 40}, "metadata": {"raw_sha256": "c" * 64}}),
-        encoding="utf-8",
-    )
-
-    for idx, cell in enumerate(record["cells"]):
-        lane = cell["lane"]
-        attempt_id = f"{camp.attempt_prefix(record, cell)}001"
-        out = plan_root / record["campaign_id"] / "attempts" / attempt_id
-        out.mkdir(parents=True)
-        cfg = camp.build_cell_serving_config(
-            record, cell, profile_path=str(prof_path) if lane == "adaptive" else None
-        )
-        vllm_args = LocalServingRunner().build_command(cfg)
-        receipt = {
-            "gpu": "A10",
-            "lane": lane,
-            "server_run_id": attempt_id,
-            "bench_run_id": attempt_id,
-            "call_id": f"fc-k0{idx:03d}",
-            "commit": commit,
-            "expected_profile_sha256": ("c" * 64) if lane == "adaptive" else None,
-            "cell": {"workload": "W2", "concurrency": 32, "repeats": 5, "num_requests": 32},
-        }
-        server_env = {
-            "gpu": "NVIDIA A10",
-            "requested_gpu": "A10",
-            "modal_gpu": "A10",
-            "driver_version": "550.0",
-            "gpu_memory_total_mb": 24576.0,
-            "torch_version": "2.13.0+cu130",
-            "torch_cuda_version": "13.0",
-            "vllm_version": "0.30.0",
-            "dtype": cfg["dtype"],
-            "quantization": cfg["quantization"],
-            "lane": lane,
-            "run_id": attempt_id,
-            "instance_id": f"boot-k0-{idx}",
-            "source_commit": commit,
-            "target_model": record["target_model"],
-            "draft_model": cfg["draft_model"],
-            "served_model_name": cfg["served_model_name"],
-            "max_model_len": cfg["max_model_len"],
-            "runtime_variant": patch.RUNTIME_LABEL,
-            "vllm_outputs_sha256": patch.PATCHED_OUTPUTS_SHA256,
-            "vllm_args": vllm_args,
-            "profile_sha256": ("c" * 64) if lane == "adaptive" else None,
-        }
-        raw, warm = [], []
-        for repeat in range(6):
-            phase = "warmup" if repeat == 0 else "measured"
-            offset = ((repeat - 1) * (32 % len(corpus))) % len(corpus) if repeat else 0
-            for req_idx in range(3 if repeat == 0 else 32):
-                sample_index = (req_idx + offset) % len(corpus)
-                req = corpus[sample_index]["request"]
-                row = {
-                    "experiment_id": attempt_id,
-                    "lane": lane,
-                    "workload": "W2",
-                    "concurrency": 32,
-                    "phase": phase,
-                    "repeat_id": f"r{repeat:03}" if repeat else None,
-                    "request_id": f"{attempt_id}-{repeat}-{req_idx}",
-                    "request_index": req_idx,
-                    "commit": commit,
-                    "server_run_id": attempt_id,
-                    "server_instance_id": f"boot-k0-{idx}",
-                    "sample_policy": "cycle-rotate",
-                    "sample_id": corpus[sample_index]["sample_id"],
-                    "sample_index": sample_index,
-                    "sample_offset": offset,
-                    "canonical_sample_count": len(corpus),
-                    "success": True,
-                    "workload_file_sha256": integrity.actual_sha256,
-                    "metrics_complete": True,
-                    "http_status": 200,
-                    "model": cfg["served_model_name"],
-                    "temperature": req["temperature"],
-                    "seed": req["seed"],
-                    "max_completion_tokens": req["max_tokens"],
-                    "response_format": req.get("response_format"),
-                    "timestamp_utc": f"2026-11-25T00:0{repeat}:00+00:00",
-                    "e2e_ms": 1000.0,
-                    "ttft_ms": 12.0,
-                    "tpot_ms": 20.0 if lane == "vanilla" else (18.0 if lane == "static" else 19.0),
-                    "output_tokens": 50,
-                    "gpu": "NVIDIA A10",
-                    "run_id": f"{attempt_id}-run-{repeat}",
-                    "run_duration_s": 32.0,
-                    "run_vram_peak_mb": 12000.0,
-                }
-                if lane == "static":
-                    row["server_metrics"] = {
-                        "speculative_decoding": {
-                            "num_spec_steps": 5,
-                            "num_draft_tokens": 15,
-                            "num_accepted_draft_tokens": 9,
-                            "num_spec_tokens": 3,
-                        }
-                    }
-                elif lane == "adaptive":
-                    # Genuine K=0 adaptive step: 0 drafted, 0 accepted.
-                    row["server_metrics"] = {
-                        "speculative_decoding": {
-                            "num_spec_steps": 0,
-                            "num_draft_tokens": 0,
-                            "num_accepted_draft_tokens": 0,
-                            "num_spec_tokens": 0,
-                        }
-                    }
-                (raw if repeat else warm).append(row)
-        (out / "submission.json").write_text(json.dumps(receipt), encoding="utf-8")
-        (out / "bench.json").write_text(
-            json.dumps({**receipt, "returncode": 0, "server_instance_unchanged": True,
-                        "endpoint_model_ids": [cfg["served_model_name"]]}),
-            encoding="utf-8",
-        )
-        (out / "server_env.json").write_text(json.dumps(server_env), encoding="utf-8")
-        raw_text = "".join(json.dumps(r) + "\n" for r in raw)
-        (out / "raw.jsonl").write_text(raw_text, encoding="utf-8")
-        (out / "raw.vram.jsonl").write_text(raw_text, encoding="utf-8")
-        (out / "warmup.jsonl").write_text("".join(json.dumps(r) + "\n" for r in warm), encoding="utf-8")
+    tpot = {("A10", "vanilla"): 20.0, ("A10", "static"): 18.0, ("A10", "adaptive"): 19.0}
+    record, plan_root = _make_valid_campaign(tmp_path, monkeypatch, campaign_id="k0-adaptive", gpus=("A10",),
+                                             concurrency=32, tpot_map=tpot, gpu_device={"A10": "NVIDIA A10"})
+    adaptive_cell = next(c for c in record["cells"] if c["lane"] == "adaptive")
+    adaptive_dir = camp.attempts(record, adaptive_cell, plan_root=plan_root)[0]
+    for name in ("raw.jsonl", "raw.vram.jsonl"):
+        rows = [json.loads(l) for l in (adaptive_dir / name).read_text(encoding="utf-8").splitlines()]
+        for row in rows:  # genuine K=0 adaptive steps: 0 drafted, 0 accepted
+            row["server_metrics"] = {"speculative_decoding": {"num_spec_steps": 0, "num_draft_tokens": 0,
+                                                              "num_accepted_draft_tokens": 0, "num_spec_tokens": 0}}
+        (adaptive_dir / name).write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
 
     monkeypatch.setattr(camp, "REPO_ROOT", Path(__file__).resolve().parents[1])
     dest = tmp_path / "summary.json"
@@ -921,3 +572,322 @@ def test_modal_benchmark_runner_uses_modal_auth_and_pipx_cli_fallback(monkeypatc
 
 
 
+
+
+# --------------------------------------------------------------------------
+# One container per GPU (openspec/changes/flexsds-bench-one-container-per-gpu)
+# --------------------------------------------------------------------------
+def test_all_lanes_run_eager_async_without_prefix_cache(tmp_path):
+    from experiments import run_benchmark_campaign as camp
+
+    record = camp.plan("bench-parity", "a" * 40, mode="fast", gpus="A10", workloads="W2")
+    assert record["lifecycle"] == "one-container-per-gpu"
+    assert record["match_adaptive_runtime"] is True
+    assert record["disable_prefix_caching"] is True
+    profile = tmp_path / "p.json"
+    profile.write_text("{}", encoding="utf-8")
+    for cell in (c for c in record["cells"] if c["concurrency"] == 8):
+        cfg = camp.build_cell_serving_config(
+            record, cell, profile_path=str(profile) if cell["lane"] == "adaptive" else None)
+        cmd = LocalServingRunner().build_command(cfg, port=8000)
+        for flag in ("--enforce-eager", "--async-scheduling", "--no-enable-prefix-caching"):
+            assert flag in cmd, (cell["lane"], flag)
+
+
+def test_benchmark_cli_no_longer_offers_match_adaptive_runtime():
+    from flexsds.cli.main import parse_args
+
+    with pytest.raises(SystemExit) as exc:
+        parse_args(["benchmark", "plan", "--match-adaptive-runtime"])
+    assert exc.value.code == 2
+    with pytest.raises(TypeError):
+        from experiments import run_benchmark_campaign as camp
+        camp.plan("x", "a" * 40, mode="fast", match_adaptive_runtime=False)
+
+
+def _a10_campaign(tmp_path, monkeypatch, concurrency=8):
+    tpot = {("A10", "vanilla"): 20.0, ("A10", "static"): 16.0, ("A10", "adaptive"): 17.0}
+    return _make_valid_campaign(tmp_path, monkeypatch, campaign_id="a10-check", gpus=("A10",),
+                                concurrency=concurrency, tpot_map=tpot, gpu_device={"A10": "NVIDIA A10"})
+
+
+def _cell_dir(record, plan_root, lane):
+    from experiments import run_benchmark_campaign as camp
+    cell = next(c for c in record["cells"] if c["lane"] == lane)
+    return cell, camp.attempts(record, cell, plan_root=plan_root)[0]
+
+
+def _edit_json(path, **changes):
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update(changes)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_validate_cell_accepts_the_new_layout(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+    record, plan_root = _a10_campaign(tmp_path, monkeypatch)
+    assert len(camp.validate_campaign(record, plan_root=plan_root)) == 3
+
+
+def test_validate_cell_rejects_a10g_server(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+    record, plan_root = _a10_campaign(tmp_path, monkeypatch)
+    cell, out = _cell_dir(record, plan_root, "vanilla")
+    _edit_json(out / "server_env.json", gpu="NVIDIA A10G")
+    with pytest.raises(ValueError, match="NVIDIA A10G"):
+        camp.validate_cell(out, record, cell)
+
+
+def test_validate_cell_rejects_serialized_concurrency(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+    record, plan_root = _a10_campaign(tmp_path, monkeypatch, concurrency=8)
+    cell, out = _cell_dir(record, plan_root, "static")
+    rows = [json.loads(l) for l in (out / "concurrency.jsonl").read_text(encoding="utf-8").splitlines()]
+    (out / "concurrency.jsonl").write_text("".join(json.dumps({**r, "running": 1.0}) + "\n" for r in rows),
+                                           encoding="utf-8")
+    with pytest.raises(ValueError, match="concurrency"):
+        camp.validate_cell(out, record, cell)
+
+
+def test_validate_cell_rejects_missing_prefix_cache_flag_and_missing_args(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+    record, plan_root = _a10_campaign(tmp_path, monkeypatch)
+    cell, out = _cell_dir(record, plan_root, "vanilla")
+    env = json.loads((out / "server_env.json").read_text(encoding="utf-8"))
+    _edit_json(out / "server_env.json", vllm_args=[a for a in env["vllm_args"] if a != "--no-enable-prefix-caching"])
+    with pytest.raises(ValueError, match="--no-enable-prefix-caching"):
+        camp.validate_cell(out, record, cell)
+    _edit_json(out / "server_env.json", vllm_args=None)
+    with pytest.raises(ValueError, match="vllm_args"):
+        camp.validate_cell(out, record, cell)
+
+
+def test_validate_campaign_requires_one_card_per_gpu(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+    record, plan_root = _a10_campaign(tmp_path, monkeypatch)
+    _, out = _cell_dir(record, plan_root, "adaptive")
+    _edit_json(out / "server_env.json", gpu_uuid="GPU-other")
+    with pytest.raises(ValueError, match="more than one card"):
+        camp.validate_campaign(record, plan_root=plan_root)
+
+
+def test_validate_campaign_rejects_one_vllm_process_shared_by_two_lanes(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+    record, plan_root = _a10_campaign(tmp_path, monkeypatch)
+    vanilla = json.loads(_cell_dir(record, plan_root, "vanilla")[1].joinpath("server_env.json").read_text(encoding="utf-8"))
+    cell, out = _cell_dir(record, plan_root, "static")
+    _edit_json(out / "server_env.json", instance_id=vanilla["instance_id"])
+    for name in ("raw.jsonl", "raw.vram.jsonl", "warmup.jsonl"):
+        rows = [json.loads(l) for l in (out / name).read_text(encoding="utf-8").splitlines()]
+        (out / name).write_text("".join(json.dumps({**r, "server_instance_id": vanilla["instance_id"]}) + "\n"
+                                        for r in rows), encoding="utf-8")
+    with pytest.raises(ValueError, match="instance"):
+        camp.validate_campaign(record, plan_root=plan_root)
+
+
+def test_drive_resumes_only_missing_cells_and_skips_running_gpu(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record = camp.plan("resume1", "a" * 40, mode="fast", gpus=("T4", "A10"), workloads=("W2",))
+    plan_root = tmp_path / "runs"
+    monkeypatch.setattr(camp, "ROOT", tmp_path)
+    t4_keys = [c["key"] for c in record["cells"] if c["gpu"] == "T4"]
+    done = set(t4_keys[:5])
+    calls_file = plan_root / "resume1" / "gpu_calls.json"
+    calls_file.parent.mkdir(parents=True)
+    calls_file.write_text(json.dumps({"A10": "fc-a10", "T4": "fc-t4-old"}), encoding="utf-8")
+    submitted: list[tuple[str, list[str]]] = []
+    deployed: list[bool] = []
+
+    class FakeRunner:
+        def committed_bench_source(self, allow_uncommitted=False):
+            return "a" * 40, None
+
+        def gpu_call_state(self, call_id):
+            return {"fc-a10": "RUNNING", "fc-t4-old": "DONE"}[call_id]
+
+        def collect_gpu(self, campaign_id, gpu, evidence_root):
+            return []
+
+        def submit_gpu(self, rec, gpu, keys, profile_text, **kwargs):
+            submitted.append((gpu, list(keys)))
+            return f"fc-{gpu}-new"
+
+        def deploy_app(self):
+            deployed.append(True)
+
+    monkeypatch.setattr(camp, "_runner", lambda: FakeRunner())
+    monkeypatch.setattr(camp, "_ensure_modal_login", lambda: None)
+    monkeypatch.setattr(camp, "ensure_adaptive_profiles", lambda *a, **k: {
+        g: {"profile_path": None, "status": "ready"} for g in ("T4", "A10")})
+    monkeypatch.setattr(camp, "selected_attempt", lambda rec, cell, root=None: object() if cell["key"] in done else None)
+    camp.drive(record, plan_root=plan_root, wait=False)
+    assert submitted == [("T4", [k for k in t4_keys if k not in done])]
+    assert deployed == [True]  # the app is deployed once, before the first submission
+    assert json.loads(calls_file.read_text(encoding="utf-8")) == {"A10": "fc-a10", "T4": "fc-T4-new"}
+
+
+def test_plan_overview_prints_cost_estimate_per_gpu():
+    from experiments import run_benchmark_campaign as camp
+    record = camp.plan("cost", "a" * 40, mode="fast")
+    text = camp.format_plan_overview(record)
+    assert "Estimated GPU time" in text
+    for gpu in ("T4", "A10", "L40S", "A100"):
+        assert f"  - {gpu}" in text
+    assert "USD" in text
+    est = camp.estimate_cost(record)
+    assert set(est) == {"T4", "A10", "L40S", "A100"}
+    assert all(v["usd"] > 0 and v["hours"] > 0 for v in est.values())
+
+
+def test_run_asks_before_spending_unless_yes(monkeypatch, capsys):
+    from flexsds.cli import benchmark as bench_cli
+    from experiments import run_benchmark_campaign as camp
+    from types import SimpleNamespace
+
+    drove: list[bool] = []
+    monkeypatch.setattr(camp, "drive", lambda record, **kw: drove.append(True))
+    monkeypatch.setattr(camp, "resolve_git_head", lambda: "a" * 40)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    args = SimpleNamespace(bench_action="run", dry_run=False, mode="fast", gpus="A10", workloads="W2", lanes="all",
+                           campaign_id="ask1", execution_sha="a" * 40, yes=False)
+    assert bench_cli.run_benchmark_command(args) == 1
+    assert drove == []
+    assert "USD" in capsys.readouterr().out
+    args.yes = True
+    assert bench_cli.run_benchmark_command(args) == 0
+    assert drove == [True]
+
+
+def test_drive_keeps_going_when_one_gpu_cannot_be_submitted(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record = camp.plan("partial1", "a" * 40, mode="fast", gpus=("T4", "A10"), workloads=("W2",))
+    plan_root = tmp_path / "runs"
+    monkeypatch.setattr(camp, "ROOT", tmp_path)
+    submitted: list[str] = []
+
+    class FakeRunner:
+        def committed_bench_source(self, allow_uncommitted=False):
+            return "a" * 40, None
+
+        def deploy_app(self):
+            pass
+
+        def gpu_call_state(self, call_id):
+            return "DONE"
+
+        def collect_gpu(self, campaign_id, gpu, evidence_root):
+            return []
+
+        def submit_gpu(self, rec, gpu, keys, profile_text, **kwargs):
+            if gpu == "T4":
+                raise RuntimeError("T4: Modal did not hand out the exact card in 12 tries")
+            submitted.append(gpu)
+            return "fc-a10"
+
+    monkeypatch.setattr(camp, "_runner", lambda: FakeRunner())
+    monkeypatch.setattr(camp, "_ensure_modal_login", lambda: None)
+    monkeypatch.setattr(camp, "ensure_adaptive_profiles", lambda *a, **k: {
+        g: {"profile_path": None, "status": "ready"} for g in ("T4", "A10")})
+    with pytest.raises(RuntimeError, match="T4: Modal did not hand out"):
+        camp.drive(record, plan_root=plan_root, wait=False)
+    assert submitted == ["A10"]
+    assert json.loads((plan_root / "partial1" / "gpu_calls.json").read_text(encoding="utf-8")) == {"A10": "fc-a10"}
+
+
+def test_drive_wait_survives_transient_modal_errors(tmp_path, monkeypatch):
+    """A dropped connection while waiting must not end the run: the GPU session keeps going on Modal."""
+    from experiments import run_benchmark_campaign as camp
+
+    record = camp.plan("flaky1", "a" * 40, mode="fast", gpus=("A10",), workloads=("W2",))
+    plan_root = tmp_path / "runs"
+    monkeypatch.setattr(camp, "ROOT", tmp_path)
+    calls_file = plan_root / "flaky1" / "gpu_calls.json"
+    calls_file.parent.mkdir(parents=True)
+    calls_file.write_text(json.dumps({"A10": "fc-a10"}), encoding="utf-8")
+    states = iter(["RUNNING", "RUNNING", ConnectionError("Connection lost"), "RUNNING", "DONE"])
+    collects: list[int] = []
+
+    class FakeRunner:
+        def committed_bench_source(self, allow_uncommitted=False):
+            return "a" * 40, None
+
+        def deploy_app(self):
+            pass
+
+        def gpu_call_state(self, call_id):
+            state = next(states)
+            if isinstance(state, Exception):
+                raise state
+            return state
+
+        def collect_gpu(self, campaign_id, gpu, evidence_root):
+            collects.append(1)
+            if len(collects) == 2:
+                raise OSError("StreamTerminatedError: Connection lost")
+            return []
+
+    monkeypatch.setattr(camp, "_runner", lambda: FakeRunner())
+    monkeypatch.setattr(camp, "_ensure_modal_login", lambda: None)
+    monkeypatch.setattr(camp, "ensure_adaptive_profiles", lambda *a, **k: {"A10": {"profile_path": None}})
+    monkeypatch.setattr(camp, "selected_attempt", lambda rec, cell, root=None: None)
+    monkeypatch.setattr(camp.time, "sleep", lambda s: None)
+    camp.drive(record, plan_root=plan_root, wait=True, poll_s=0)
+    assert len(collects) >= 3  # kept collecting after both errors, and once more at the end
+
+
+def test_drive_wait_gives_up_after_many_consecutive_errors(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record = camp.plan("flaky2", "a" * 40, mode="fast", gpus=("A10",), workloads=("W2",))
+    plan_root = tmp_path / "runs"
+    monkeypatch.setattr(camp, "ROOT", tmp_path)
+    calls_file = plan_root / "flaky2" / "gpu_calls.json"
+    calls_file.parent.mkdir(parents=True)
+    calls_file.write_text(json.dumps({"A10": "fc-a10"}), encoding="utf-8")
+    first = [True]
+
+    class FakeRunner:
+        def committed_bench_source(self, allow_uncommitted=False):
+            return "a" * 40, None
+
+        def gpu_call_state(self, call_id):
+            if first[0]:
+                first[0] = False
+                return "RUNNING"
+            raise ConnectionError("Connection lost")
+
+        def collect_gpu(self, campaign_id, gpu, evidence_root):
+            return []
+
+    monkeypatch.setattr(camp, "_runner", lambda: FakeRunner())
+    monkeypatch.setattr(camp, "_ensure_modal_login", lambda: None)
+    monkeypatch.setattr(camp, "ensure_adaptive_profiles", lambda *a, **k: {"A10": {"profile_path": None}})
+    monkeypatch.setattr(camp.time, "sleep", lambda s: None)
+    with pytest.raises(RuntimeError, match="flexsds benchmark status"):
+        camp.drive(record, plan_root=plan_root, wait=True, poll_s=0)
+
+
+def test_status_lists_cells_that_failed_inside_the_container(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record = camp.plan("fails1", "a" * 40, mode="fast", gpus=("T4",), workloads=("W2",))
+    plan_root = tmp_path / "runs"
+    monkeypatch.setattr(camp, "ROOT", tmp_path)
+    failures = plan_root / "fails1" / "failures"
+    failures.mkdir(parents=True)
+    (failures / "T4__static__W2__c8.json").write_text(json.dumps(
+        {"status": "failed:server", "error": "RuntimeError: vLLM exited early with code 1"}), encoding="utf-8")
+
+    class FakeRunner:
+        def gpu_call_state(self, call_id):
+            return "DONE"
+
+        def collect_gpu(self, campaign_id, gpu, evidence_root):
+            return []
+
+    monkeypatch.setattr(camp, "_runner", lambda: FakeRunner())
+    lines = camp.format_campaign_status(record, plan_root=plan_root)
+    assert lines[0].startswith("T4: 0/9 cells valid")
+    assert any("T4__static__W2__c8" in l and "failed:server" in l and "vLLM exited early" in l for l in lines)

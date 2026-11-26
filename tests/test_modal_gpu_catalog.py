@@ -14,6 +14,8 @@ from flexsds.core.hardware import (
     MODAL_GPU_SPECS,
     HardwareInfo,
     build_remote_hardware_info,
+    canonical_modal_gpu_name,
+    device_matches_exactly,
     get_modal_gpu_spec,
     matches_gpu_label,
     modal_gpu_choice_label,
@@ -112,7 +114,7 @@ def test_modal_gpu_labels_and_footers_show_tier_vram_and_pricing():
         assert f"~${spec.price_per_hour:.2f}/h" in footer
 
 
-@pytest.mark.parametrize("bad_gpu", ["L4", "A10G", "A100-40GB", "H100", ""])
+@pytest.mark.parametrize("bad_gpu", ["L4", "A100-40GB", "H100", ""])
 def test_get_modal_gpu_spec_rejects_removed_or_unknown_gpus(bad_gpu):
     with pytest.raises(ValueError, match="Unsupported Modal GPU"):
         get_modal_gpu_spec(bad_gpu)
@@ -309,6 +311,7 @@ def test_modal_app_maps_a100_to_a100_80gb_and_rejects_removed_gpus(tmp_path, mon
                 is_local=Mock(return_value=False),
                 Volume=SimpleNamespace(from_name=Mock()),
                 web_server=lambda *a, **kw: lambda fn: fn,
+                concurrent=lambda *a, **kw: lambda fn: fn,
             ),
         )
         monkeypatch.setattr(modal_image, "serving_image", lambda: image)
@@ -320,7 +323,8 @@ def test_modal_app_maps_a100_to_a100_80gb_and_rejects_removed_gpus(tmp_path, mon
     assert run_app_with_gpu("L40S") == "L40S"
     assert run_app_with_gpu("A100") == "A100-80GB"
 
-    for removed in ("L4", "A10G", "A100-40GB"):
+    assert run_app_with_gpu("A10G") == "A10"  # legacy name in old serving configs
+    for removed in ("L4", "A100-40GB"):
         with pytest.raises(ValueError, match="Unsupported Modal GPU"):
             run_app_with_gpu(removed)
 
@@ -354,7 +358,9 @@ def test_cli_gpu_flags_and_wizard_footers_match_modal_catalog():
         assert parse_args(["serve", "--gpu", gpu]).gpu == gpu
         assert parse_args(["profile", "--gpu", gpu]).gpu == gpu
 
-    for rejected in ("L4", "A10G", "A100-40GB"):
+    assert parse_args(["serve", "--gpu", "A10G"]).gpu == "A10"
+    assert parse_args(["profile", "--gpu", "a10g"]).gpu == "A10"
+    for rejected in ("L4", "A100-40GB"):
         with pytest.raises(SystemExit) as exc:
             parse_args(["serve", "--gpu", rejected])
         assert exc.value.code == 2
@@ -398,3 +404,66 @@ def test_colab_remote_budget_handles_default_and_colab_gpus():
     assert remote_gpu_budget_mb("colab", "T4") == 15000.0
     assert remote_gpu_budget_mb("colab", "L4") == 23000.0
     assert remote_gpu_budget_mb("colab", "A100") == 78000.0
+
+
+@pytest.mark.parametrize(
+    "gpu,device,expected",
+    [
+        ("A10", "NVIDIA A10", True),
+        ("A10", "NVIDIA A10G", False),
+        ("A10", "NVIDIA RTX 3090", False),
+        ("T4", "Tesla T4", True),
+        ("T4", "NVIDIA T4", True),
+        ("L40S", "NVIDIA L40S", True),
+        ("L40S", "NVIDIA L4", False),
+        ("A100", "NVIDIA A100-SXM4-80GB", True),
+        ("A100", "NVIDIA A100 80GB PCIe", True),
+        ("A100", "NVIDIA A100-SXM4-40GB", False),
+    ],
+)
+def test_device_matches_exactly_pins_one_card_per_modal_gpu(gpu, device, expected):
+    assert device_matches_exactly(gpu, device) is expected
+
+
+def test_a10g_is_the_legacy_name_of_a10():
+    assert get_modal_gpu_spec("A10G").name == "A10"
+    assert canonical_modal_gpu_name("a10g") == "A10"
+    assert canonical_modal_gpu_name("L40S") == "L40S"
+
+
+def test_l4_is_rejected_with_the_reason_and_the_supported_list():
+    with pytest.raises(ValueError, match="L4 is not available on Modal") as exc:
+        get_modal_gpu_spec("L4")
+    assert "T4, A10, L40S, A100" in str(exc.value)
+
+
+def test_calibration_measurement_rejects_a10g_when_a10_was_requested():
+    with pytest.raises(RuntimeError, match="GPU mismatch: expected NVIDIA A10, got NVIDIA A10G"):
+        cal.check_calibration_device({"target_gpu": "A10"}, "NVIDIA A10G")
+    cal.check_calibration_device({"target_gpu": "A10"}, "NVIDIA A10")
+    cal.check_calibration_device({}, "NVIDIA GeForce RTX 5060 Laptop GPU")
+
+
+def test_profile_batches_flag_limits_the_calibration_grid(monkeypatch):
+    """T4 (16 GB) holds only ~8.4k KV tokens after AWQ + EAGLE: B=16, 32 at context 1024 cannot be measured."""
+    from flexsds.cli import main as cli
+    from flexsds.cli.main import parse_args
+
+    assert parse_args(["profile"]).batches is None
+    assert parse_args(["profile", "--batches", "1,2,4,8"]).batches == [1, 2, 4, 8]
+    for bad in ("3", "1,64", "x"):
+        with pytest.raises(SystemExit):
+            parse_args(["profile", "--batches", bad])
+
+    seen = {}
+
+    def fake_benchmark(**kwargs):
+        seen.update(kwargs)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "run_hardware_micro_benchmark", fake_benchmark)
+    monkeypatch.setattr(cli, "print_banner", lambda hw: None)
+    monkeypatch.setattr(cli, "detect_hardware", lambda: HardwareInfo("CPU", "cpu", 0, 0, "N/A", False))
+    cli.main(["profile", "--benchmark", "--backend", "modal", "--gpu", "T4", "--batches", "1,2,4,8",
+              "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator"])
+    assert seen["batch_sizes"] == [1, 2, 4, 8]

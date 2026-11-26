@@ -99,15 +99,45 @@ def modal_gpu_footer(spec: ModalGpuSpec) -> str:
     )
 
 
+# Legacy names accepted for old configs and scripts (Modal now sells the A10G class as "A10").
+_MODAL_GPU_ALIASES: dict[str, str] = {"A10G": "A10"}
+
+
+def canonical_modal_gpu_name(gpu: str) -> str:
+    """Upper-case catalog name for a Modal GPU, mapping legacy aliases (A10G -> A10)."""
+    token = str(gpu or "").strip().split()[0].upper() if str(gpu or "").strip() else ""
+    return _MODAL_GPU_ALIASES.get(token, token)
+
+
 def get_modal_gpu_spec(gpu: str) -> ModalGpuSpec:
     """Resolve a canonical Modal GPU name or wizard menu choice to its spec."""
-    token = str(gpu or "").strip().split()[0].upper() if str(gpu or "").strip() else ""
+    token = canonical_modal_gpu_name(gpu)
     spec = _MODAL_GPU_BY_NAME.get(token)
     if spec is None:
-        raise ValueError(
-            f"Unsupported Modal GPU: {gpu!r}. Supported: {', '.join(MODAL_GPU_NAMES)}"
-        )
+        supported = ", ".join(MODAL_GPU_NAMES)
+        if token == "L4":
+            raise ValueError(
+                f"Unsupported Modal GPU: 'L4'. L4 is not available on Modal for FlexSDS; supported: {supported}"
+            )
+        raise ValueError(f"Unsupported Modal GPU: {gpu!r}. Supported: {supported}")
     return spec
+
+
+def device_matches_exactly(gpu: str, device_name: str) -> bool:
+    """Exact CUDA device name accepted when measuring or calibrating on a Modal GPU.
+
+    Unlike matches_gpu_label (lenient, for serving), A10 accepts only "NVIDIA A10": Modal's A10
+    class also hands out "NVIDIA A10G" (AWS, 300 W), which is measurably slower.
+    """
+    name = str(device_name or "").strip()
+    token = canonical_modal_gpu_name(gpu)
+    if token == "T4":
+        return name in {"Tesla T4", "NVIDIA T4"}
+    if token in {"A10", "L40S"}:
+        return name == f"NVIDIA {token}"
+    if token == "A100":
+        return name.startswith("NVIDIA A100") and "80GB" in name.upper()
+    return False
 
 
 def modal_gpu_resource(gpu: str) -> str:

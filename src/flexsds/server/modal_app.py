@@ -24,11 +24,11 @@ if _pkg_root not in sys.path:
     sys.path.insert(0, _pkg_root)
 
 try:
-    from flexsds.core.hardware import DEFAULT_MODAL_GPU, MODAL_GPU_NAMES, modal_gpu_resource
+    from flexsds.core.hardware import DEFAULT_MODAL_GPU, MODAL_GPU_NAMES, canonical_modal_gpu_name, modal_gpu_resource
     from flexsds.server.local_runner import LocalServingRunner
 except ModuleNotFoundError:
     try:
-        from src.flexsds.core.hardware import DEFAULT_MODAL_GPU, MODAL_GPU_NAMES, modal_gpu_resource
+        from src.flexsds.core.hardware import DEFAULT_MODAL_GPU, MODAL_GPU_NAMES, canonical_modal_gpu_name, modal_gpu_resource
         from src.flexsds.server.local_runner import LocalServingRunner
     except ModuleNotFoundError:
         from local_runner import LocalServingRunner
@@ -36,6 +36,9 @@ except ModuleNotFoundError:
         MODAL_GPU_NAMES = ("T4", "A10", "L40S", "A100")
         def modal_gpu_resource(gpu: str) -> str:
             return {"T4": "T4", "A10": "A10", "L40S": "L40S", "A100": "A100-80GB"}[gpu]
+        def canonical_modal_gpu_name(gpu: str) -> str:
+            token = str(gpu or "").strip().upper()
+            return "A10" if token == "A10G" else token
 
 APP_NAME = "flexsds-serving"
 # Image.env becomes a Dockerfile ENV instruction. Raw JSON containing Windows
@@ -47,7 +50,7 @@ SERVING_CONFIG = json.loads(
     if _encoded_config is not None else os.environ.get("FLEXSDS_SERVING_CONFIG", "{}")
 )
 PORT = int(SERVING_CONFIG.get("port", 8000))
-GPU = SERVING_CONFIG.get("target_gpu", DEFAULT_MODAL_GPU)
+GPU = canonical_modal_gpu_name(SERVING_CONFIG.get("target_gpu", DEFAULT_MODAL_GPU))
 if GPU not in MODAL_GPU_NAMES or not 1 <= PORT <= 65535:
     raise ValueError("Unsupported Modal GPU or serving port")
 MODAL_GPU = modal_gpu_resource(GPU)
@@ -101,8 +104,13 @@ if modal is not None:
 
     volume = modal.Volume.from_name("ptit-model-cache", create_if_missing=True)
 
+    # Without @modal.concurrent a web_server container receives one HTTP request at a time, so a
+    # client sending 8 or 32 parallel requests is served one by one (measured on Modal 26/11/2026).
+    MAX_INPUTS = max(64, 2 * int(SERVING_CONFIG.get("max_num_seqs", 32)))
+
     @app.function(image=image, gpu=MODAL_GPU, max_containers=1,
                   volumes={"/root/.cache/huggingface": volume}, timeout=3600)
+    @modal.concurrent(max_inputs=MAX_INPUTS)
     @modal.web_server(PORT, startup_timeout=600)
     def serve():
         runtime_config = dict(SERVING_CONFIG)

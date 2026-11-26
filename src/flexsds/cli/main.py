@@ -12,6 +12,7 @@ try:
     from flexsds.cli.wizard import run_interactive_wizard
     from flexsds.core.hardware import (
         DEFAULT_MODAL_GPU,
+        canonical_modal_gpu_name,
         MODAL_GPU_NAMES,
         HardwareInfo,
         build_remote_hardware_info,
@@ -41,6 +42,7 @@ except ModuleNotFoundError:
     from src.flexsds.cli.wizard import run_interactive_wizard
     from src.flexsds.core.hardware import (
         DEFAULT_MODAL_GPU,
+        canonical_modal_gpu_name,
         MODAL_GPU_NAMES,
         HardwareInfo,
         build_remote_hardware_info,
@@ -74,6 +76,17 @@ def positive_int(value):
     if number <= 0:
         raise argparse.ArgumentTypeError("Expected a positive integer")
     return number
+
+
+def calibration_batches(value):
+    """argparse type for --batches: a subset of the calibration grid 1,2,4,8,16,32."""
+    try:
+        batches = sorted({int(part) for part in str(value).split(",") if part.strip()})
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--batches must be integers such as 1,2,4,8") from exc
+    if not batches or any(b not in (1, 2, 4, 8, 16, 32) for b in batches):
+        raise argparse.ArgumentTypeError("--batches must be chosen from 1,2,4,8,16,32")
+    return batches
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -148,8 +161,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
 
     profile_parser.add_argument("--measure-mode", choices=["fast", "full"], default="full", help="Measurement repetitions: fast (5) or full (50)")
+    profile_parser.add_argument("--batches", type=calibration_batches, default=None,
+                                help="Comma-separated batch sizes from 1,2,4,8,16,32 (default: all); e.g. 1,2,4,8 on T4 where B=16,32 do not fit the KV cache")
     profile_parser.add_argument("--backend", choices=["local", "modal"], default="local", help="Where to run calibration")
-    profile_parser.add_argument("--gpu", choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="GPU to allocate for Modal calibration")
+    profile_parser.add_argument("--gpu", type=canonical_modal_gpu_name, choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="GPU to allocate for Modal calibration")
 
     # Command: benchmark
     bench_parser = add_command(
@@ -180,11 +195,13 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     bench_parser.add_argument("--draft-method", choices=["eagle", "eagle3", "draft_model"], default="eagle3", help="Speculative decoding method")
     bench_parser.add_argument("--static-k", type=int, default=3, help="Fixed speculative draft budget K for static lane (1..8)")
     bench_parser.add_argument("--adaptive-max-k", type=int, default=4, help="Maximum K ceiling for adaptive lane (1..8)")
-    bench_parser.add_argument("--match-adaptive-runtime", action="store_true", help="Run vanilla/static with eager V1 runtime parity")
     bench_parser.add_argument("--profile-dir", type=str, default=None, help="Optional extra directory for verified GPU cost profiles")
     bench_parser.add_argument("--auto-calibrate", action="store_true", help="Calibrate missing Modal GPUs automatically before running adaptive lane")
     bench_parser.add_argument("--calibrate-mode", choices=["fast", "full"], default="fast", help="Calibration mode when --auto-calibrate is enabled")
     bench_parser.add_argument("--retry-failed", action="store_true", help="Submit a new attempt for a failed cell")
+    bench_parser.add_argument("--yes", action="store_true", help="Do not ask before spending GPU time on Modal")
+    bench_parser.add_argument("--allow-uncommitted", action="store_true",
+                              help="Measure the working tree; record a source digest instead of a clean commit")
     bench_parser.add_argument("--dry-run", action="store_true", help="Preview benchmark matrix and GPU profile readiness without Modal calls")
     bench_parser.add_argument("--json", dest="json_output", action="store_true", help="Output raw plan JSON instead of summary text")
 
@@ -218,7 +235,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     serve_parser.add_argument("--allow-oom-risk", action="store_true", help="Continue despite estimated VRAM risk; other compatibility failures still block")
     serve_parser.add_argument("--max-num-seqs", type=positive_int, default=32, help="Maximum concurrent sequences")
     serve_parser.add_argument("--max-model-len", type=positive_int, default=4096, help="Maximum context length per sequence")
-    serve_parser.add_argument("--gpu", choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="Remote GPU memory budget and Modal allocation")
+    serve_parser.add_argument("--gpu", type=canonical_modal_gpu_name, choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="Remote GPU memory budget and Modal allocation")
     serve_parser.add_argument(
         "--port", type=int, default=8000, help="API server port"
     )
@@ -424,7 +441,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             try:
                 cost_model, saved_path = run_hardware_micro_benchmark(
                     hw_info=hw_info, target_model=target_model, draft_model=draft_model, backend=args.backend,
-                    measurement_mode=args.measure_mode,
+                    measurement_mode=args.measure_mode, batch_sizes=args.batches,
                 )
             except KeyboardInterrupt:
                 print("Calibration cancelled.")

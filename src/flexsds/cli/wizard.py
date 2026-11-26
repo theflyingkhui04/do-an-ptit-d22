@@ -198,7 +198,7 @@ CHOICE_HELP = {
     "Fast benchmark": "Reduced concurrencies (1, 8, 32), keeping full 3 warm-up + 5x32 requests/cell (108 cells).",
     "All 4 Modal GPUs": "Run across all 4 production Modal GPUs: T4 (16 GB), A10 (24 GB), L40S (48 GB), A100 (80 GB).",
     "Preview plan": "Inspect the benchmark cell matrix and per-GPU profile readiness without Modal calls.",
-    "Run benchmark now": "Deploy and run the benchmark campaign on Modal (fails closed if any adaptive GPU profile is missing).",
+    "Run benchmark now": "One Modal container per GPU runs every cell (exact card, real concurrency); fails closed if an adaptive GPU profile is missing.",
     "Auto-calibrate missing GPUs": "Calibrate missing GPU profiles on Modal first, then run the benchmark campaign.",
     "Default:": "Use Qwen2.5-7B AWQ with the team's EAGLE-3.1 speculator.",
     "Custom Hugging Face model": "Enter your own target and draft model IDs or local paths.",

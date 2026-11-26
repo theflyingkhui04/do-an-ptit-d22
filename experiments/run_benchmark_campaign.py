@@ -12,16 +12,12 @@ Matrix contract:
 from __future__ import annotations
 
 import argparse
-import base64
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
-import hashlib
+from datetime import datetime, timedelta
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
-import sys
 import time
 from typing import Any, Sequence
 
@@ -36,7 +32,7 @@ try:
         MODAL_GPU_NAMES,
         build_remote_hardware_info,
         get_modal_gpu_spec,
-        matches_gpu_label,
+        device_matches_exactly,
     )
 except ModuleNotFoundError:
     from src.flexsds.core import cost_model as cm
@@ -44,7 +40,7 @@ except ModuleNotFoundError:
         MODAL_GPU_NAMES,
         build_remote_hardware_info,
         get_modal_gpu_spec,
-        matches_gpu_label,
+        device_matches_exactly,
     )
 
 
@@ -268,7 +264,6 @@ def plan(
     draft_method: str = DEFAULT_DRAFT_METHOD,
     static_k: int = DEFAULT_STATIC_K,
     adaptive_max_k: int = DEFAULT_ADAPTIVE_MAX_K,
-    match_adaptive_runtime: bool = False,
     use_heterogeneous_vocab: bool = False,
     profile_dir: Path | str | None = None,
 ) -> dict[str, Any]:
@@ -339,14 +334,16 @@ def plan(
         "draft_method": draft_method,
         "static_k": static_k,
         "adaptive_max_k": adaptive_max_k,
-        "match_adaptive_runtime": bool(match_adaptive_runtime),
+        # Same execution contract for every lane: eager + async scheduling, no prefix cache (design 4.4).
+        "match_adaptive_runtime": True,
+        "disable_prefix_caching": True,
         "use_heterogeneous_vocab": bool(use_heterogeneous_vocab),
         "vllm_runtime": runtime_patch.RUNTIME_LABEL,
         "warmup": WARMUP_REQUESTS,
         "repeats": REPEATS,
         "num_requests": NUM_REQUESTS,
         "sample_policy": "cycle-rotate",
-        "lifecycle": "fresh-server-per-cell",
+        "lifecycle": "one-container-per-gpu",
         "total_cells": len(cells),
         "total_measured_requests": len(cells) * REPEATS * NUM_REQUESTS,
         "profile_readiness": readiness,
@@ -410,7 +407,9 @@ def build_cell_serving_config(
         "enable_adaptive": is_adaptive,
         "static_k": None if (is_vanilla or is_adaptive) else int(record["static_k"]),
         "max_k": int(record.get("adaptive_max_k", DEFAULT_ADAPTIVE_MAX_K)),
-        "match_adaptive_runtime": False if is_adaptive else bool(record.get("match_adaptive_runtime", False)),
+        # The adaptive lane is eager + async by construction; vanilla and static are matched to it.
+        "match_adaptive_runtime": not is_adaptive,
+        "disable_prefix_caching": True,
         "use_heterogeneous_vocab": False if is_vanilla else bool(record.get("use_heterogeneous_vocab", False)),
         "max_model_len": int(cell["max_model_len"]),
         "max_num_seqs": 32,
@@ -493,7 +492,7 @@ def summarize_speculative_acceptance(raw: Sequence[dict[str, Any]], lane: str) -
 def _validate_server_vllm_args(server: dict[str, Any], expected_cfg: dict[str, Any], lane: str) -> None:
     args = server.get("vllm_args")
     if args is None:
-        return
+        raise ValueError("Server vllm_args missing; the launch command must be recorded for every cell")
     if not isinstance(args, list) or not all(isinstance(x, str) for x in args):
         raise ValueError("Server vllm_args must be a list of strings")
     has_spec = "--speculative-config" in args
@@ -519,9 +518,10 @@ def _validate_server_vllm_args(server: dict[str, Any], expected_cfg: dict[str, A
         elif lane == "adaptive":
             if "--scheduler-cls" not in args or "--distributed-executor-backend" not in args:
                 raise ValueError("Adaptive lane vllm_args missing scheduler or lineage executor")
-    if lane == "adaptive" or expected_cfg.get("match_adaptive_runtime"):
-        if "--enforce-eager" not in args or "--async-scheduling" not in args:
-            raise ValueError("Expected matched eager vLLM runtime flags in server vllm_args")
+    # Every lane runs the matched eager + async runtime without prefix caching (design 4.4).
+    for flag in ("--enforce-eager", "--async-scheduling", "--no-enable-prefix-caching"):
+        if flag not in args:
+            raise ValueError(f"Lane {lane!r} vllm_args missing {flag}")
 
 
 def attempt_prefix(record: dict[str, Any], cell: dict[str, Any]) -> str:
@@ -569,9 +569,12 @@ def validate_cell(
     if meta.get("returncode") != 0 or meta.get("server_instance_unchanged") is not True:
         raise ValueError("Failed harness or server restarted during cell")
 
-    expected_modal_gpu = lanes.modal_gpu_resource(cell["gpu"])
-    if not matches_gpu_label(expected_modal_gpu, str(server.get("gpu") or "")):
-        raise ValueError(f"Server GPU mismatch: expected {expected_modal_gpu}, got {server.get('gpu')!r}")
+    if not device_matches_exactly(cell["gpu"], str(server.get("gpu") or "")):
+        raise ValueError(f"Server GPU mismatch: {cell['gpu']} must be its exact card, got {server.get('gpu')!r}")
+    if not server.get("gpu_uuid"):
+        raise ValueError("Server gpu_uuid missing")
+    if record.get("source_digest") and server.get("source_digest") != record["source_digest"]:
+        raise ValueError("Server source_digest differs from the campaign's uncommitted source digest")
 
     expected_cfg = build_cell_serving_config(
         record,
@@ -682,6 +685,15 @@ def validate_cell(
     if warm_finished > min(datetime.fromisoformat(r["timestamp_utc"]) for r in raw):
         raise ValueError("Measured execution began before warm-up completed")
 
+    from experiments.bench_gpu_session import concurrency_check
+
+    samples = agg._load_jsonl(out / "concurrency.jsonl") if (out / "concurrency.jsonl").exists() else []
+    inflight = concurrency_check(samples, raw, cell["concurrency"])
+    if not inflight["ok"]:
+        worst = min((v["peak_inflight"] for v in inflight["per_repeat"].values()), default=0.0)
+        raise ValueError(f"Requested concurrency {cell['concurrency']} not reached in vLLM "
+                         f"(lowest per-repeat peak running+waiting: {worst:g})")
+
     agg.validate_measured_records(raw)
     alpha_tau = summarize_speculative_acceptance(raw, cell["lane"])
     acceptance = None if alpha_tau == (None, None) else alpha_tau
@@ -717,6 +729,8 @@ def validate_cell(
         "request_failures": 0,
         "workload_hash": integrity.actual_sha256,
         "server_instance_id": server["instance_id"],
+        "gpu_uuid": server["gpu_uuid"],
+        "concurrency_per_repeat": inflight["per_repeat"],
         "speculative_alpha_tau": acceptance,
         "measured_duration_s": duration,
         "output_tokens_per_s": sum(r["output_tokens"] for r in raw) / duration,
@@ -743,17 +757,23 @@ def selected_attempt(
 
 
 def validate_campaign(record: dict[str, Any], plan_root: Path = PLAN_ROOT) -> list[Path]:
+    """Every cell valid; one card per GPU; a vLLM process never serves two (workload, lane) groups."""
     selected = [selected_attempt(record, cell, plan_root) for cell in record["cells"]]
     missing = [c["key"] for c, p in zip(record["cells"], selected) if p is None]
     if missing:
         raise ValueError(f"Incomplete campaign ({len(missing)} missing cells): {missing[:10]}")
     paths = [p for p in selected if p is not None]
-    instance_ids = [
-        validate_cell(path, record, cell)["server_instance_id"]
-        for path, cell in zip(paths, record["cells"])
-    ]
-    if len(set(instance_ids)) != len(paths):
-        raise ValueError("Server instance reused between scientific cells")
+    cards: dict[str, set[str]] = defaultdict(set)
+    owner: dict[str, tuple[str, str, str]] = {}
+    for path, cell in zip(paths, record["cells"]):
+        checked = validate_cell(path, record, cell)
+        cards[cell["gpu"]].add(checked["gpu_uuid"])
+        group = (cell["gpu"], cell["workload"], cell["lane"])
+        if owner.setdefault(checked["server_instance_id"], group) != group:
+            raise ValueError(f"vLLM instance {checked['server_instance_id']} shared by {owner[checked['server_instance_id']]} and {group}")
+    for gpu, uuids in cards.items():
+        if len(uuids) > 1:
+            raise ValueError(f"{gpu} was measured on more than one card: {sorted(uuids)}")
     return paths
 
 
@@ -885,6 +905,90 @@ def aggregate(
     return result
 
 
+# Rough A10 seconds per cell (3 warm-up + 5 x 32 requests), averaged over the three lanes; from the
+# 25/11/2026 A10 runs (batchk-2511*). Other GPUs scale by a guessed speed factor. Shown as a rough estimate.
+_A10_CELL_SECONDS = {
+    "W1_V3": {1: 1430, 2: 800, 4: 480, 8: 270, 16: 255, 32: 255},
+    "W2": {1: 224, 2: 130, 4: 70, 8: 30, 16: 25, 32: 25},
+    "W3": {1: 900, 2: 500, 4: 300, 8: 165, 16: 150, 32: 150},
+}
+_GPU_SPEED_FACTOR = {"T4": 2.6, "A10": 1.0, "L40S": 0.6, "A100": 0.55}
+_SERVER_START_S = 120  # one vLLM start per (workload, lane)
+_CONTAINER_START_S = 300  # image pull + model cache per GPU container
+
+
+def estimate_cost(record: dict[str, Any]) -> dict[str, dict[str, float]]:
+    """Rough GPU hours and USD per GPU for the cells of a plan (Modal catalog prices)."""
+    out: dict[str, dict[str, float]] = {}
+    for gpu in record["gpus"]:
+        cells = [c for c in record["cells"] if c["gpu"] == gpu]
+        measure = sum(_A10_CELL_SECONDS[c["workload"]][c["concurrency"]] for c in cells) * 1.1
+        groups = {(c["workload"], c["lane"]) for c in cells}
+        seconds = measure * _GPU_SPEED_FACTOR[gpu] + len(groups) * _SERVER_START_S + _CONTAINER_START_S
+        hours = seconds / 3600
+        out[gpu] = {"hours": round(hours, 2), "usd": round(hours * get_modal_gpu_spec(gpu).price_per_hour, 2)}
+    return out
+
+
+def _runner():
+    from experiments import modal_benchmark_runner as runner
+    return runner
+
+
+def _ensure_modal_login() -> None:
+    try:
+        from flexsds.core.credentials import CredentialsManager
+        from flexsds.server import modal_auth
+    except ModuleNotFoundError:
+        from src.flexsds.core.credentials import CredentialsManager
+        from src.flexsds.server import modal_auth
+    modal_auth.ensure_modal()
+    if not modal_auth.prepare_modal_auth(CredentialsManager()):
+        raise RuntimeError("Modal credentials missing; run 'flexsds auth login --provider modal' first.")
+
+
+def _calls_path(record: dict[str, Any], plan_root: Path) -> Path:
+    return _campaign_dir(record, plan_root) / "gpu_calls.json"
+
+
+def _load_calls(record: dict[str, Any], plan_root: Path) -> dict[str, str]:
+    path = _calls_path(record, plan_root)
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def _save_calls(record: dict[str, Any], plan_root: Path, calls: dict[str, str]) -> None:
+    path = _calls_path(record, plan_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(calls, indent=2) + "\n", encoding="utf-8")
+
+
+MAX_CONSECUTIVE_POLL_ERRORS = 30
+
+
+def _wait_and_collect(runner: Any, record: dict[str, Any], calls: dict[str, str], att_root: Path,
+                      poll_s: float) -> None:
+    """Collect until no GPU call runs. A dropped connection only skips one poll: the sessions keep running
+    on Modal, so the laptop gives up only after many consecutive failures."""
+    failures = 0
+    while True:
+        try:
+            running = any(runner.gpu_call_state(c) == "RUNNING" for c in calls.values())
+            for gpu in calls:
+                runner.collect_gpu(record["campaign_id"], gpu, att_root)
+            failures = 0
+            if not running:
+                return
+        except Exception as exc:  # network / Modal API hiccup; KeyboardInterrupt still stops the loop
+            failures += 1
+            print(f"Polling Modal failed ({failures}/{MAX_CONSECUTIVE_POLL_ERRORS}): {type(exc).__name__}: {exc}",
+                  flush=True)
+            if failures >= MAX_CONSECUTIVE_POLL_ERRORS:
+                raise RuntimeError(
+                    f"Lost contact with Modal {failures} times in a row; the GPU sessions keep running there. "
+                    f"Resume with: flexsds benchmark status --campaign-id {record['campaign_id']}") from exc
+        time.sleep(poll_s)
+
+
 def drive(
     record: dict[str, Any],
     *,
@@ -893,119 +997,65 @@ def drive(
     profile_dir: Path | str | None = None,
     auto_calibrate: bool = False,
     calibrate_mode: str = "fast",
+    wait: bool = True,
+    poll_s: float = 60.0,
 ) -> None:
-    """Sequentially deploy/submit/poll/collect/validate/stop every cell across all GPUs."""
-    from experiments import modal_benchmark_runner as runner
-    try:
-        from flexsds.core.credentials import CredentialsManager
-        from flexsds.server import modal_auth
-    except ModuleNotFoundError:
-        from src.flexsds.core.credentials import CredentialsManager
-        from src.flexsds.server import modal_auth
+    """One Modal call per GPU for its missing cells; resumable. A GPU whose call still runs is only collected.
 
-    if runner._committed_bench_source() != record["commit"]:
+    `retry_failed` is accepted for CLI compatibility: missing or invalid cells are always resubmitted on `run`.
+    """
+    runner = _runner()
+    commit, digest = runner.committed_bench_source(allow_uncommitted=bool(record.get("allow_uncommitted")))
+    if commit != record["commit"]:
         raise ValueError("Checkout must match the frozen campaign execution SHA")
-    modal_auth.ensure_modal()
-    if not modal_auth.prepare_modal_auth(CredentialsManager()):
-        raise RuntimeError("Modal credentials missing; run 'flexsds auth login --provider modal' first.")
-
+    if record.get("source_digest") and digest != record["source_digest"]:
+        raise ValueError("Uploaded source changed since the campaign was planned (source_digest differs)")
+    _ensure_modal_login()
     profiles = (
-        ensure_adaptive_profiles(
-            record["gpus"],
-            target_model=record["target_model"],
-            draft_model=record["draft_model"],
-            profile_dir=profile_dir,
-            auto_calibrate=auto_calibrate,
-            calibrate_mode=calibrate_mode,
-        )
-        if "adaptive" in record["lanes"]
-        else {}
+        ensure_adaptive_profiles(record["gpus"], target_model=record["target_model"], draft_model=record["draft_model"],
+                                 profile_dir=profile_dir, auto_calibrate=auto_calibrate, calibrate_mode=calibrate_mode)
+        if "adaptive" in record["lanes"] else {}
     )
-
     save_plan(record, plan_root)
     att_root = attempts_dir(record, plan_root)
     att_root.mkdir(parents=True, exist_ok=True)
+    calls = _load_calls(record, plan_root)
+    deployed = False
+    errors: list[str] = []
 
-    for cell in record["cells"]:
-        if selected_attempt(record, cell, plan_root):
-            print(f"COLLECTED {cell['key']}; skipping", flush=True)
+    for gpu in record["gpus"]:
+        previous = calls.get(gpu)
+        if previous:
+            runner.collect_gpu(record["campaign_id"], gpu, att_root)
+            if runner.gpu_call_state(previous) == "RUNNING":
+                print(f"{gpu}: call {previous} still running; collected finished cells", flush=True)
+                continue
+        cells = [c for c in record["cells"] if c["gpu"] == gpu]
+        missing = [c for c in cells if not selected_attempt(record, c, plan_root)]
+        if not missing:
+            print(f"{gpu}: all {len(cells)} cells collected", flush=True)
             continue
+        if not deployed:
+            runner.deploy_app()  # once per run, from this checkout (the source the plan records)
+            deployed = True
+        numbers = {c["key"]: len(attempts(record, c, plan_root)) + 1 for c in missing}
+        profile_path = (profiles.get(gpu) or {}).get("profile_path")
+        profile_text = Path(profile_path).read_text(encoding="utf-8") if profile_path else None
+        try:
+            call_id = runner.submit_gpu(record, gpu, [c["key"] for c in missing], profile_text, attempts=numbers)
+        except RuntimeError as exc:  # e.g. wrong card 12 times: the other GPUs still run
+            errors.append(str(exc))
+            print(f"{gpu}: not submitted: {exc}", flush=True)
+            continue
+        calls[gpu] = call_id
+        _save_calls(record, plan_root, calls)
+        print(f"{gpu}: submitted {len(missing)} cells as call {call_id}; the run continues on Modal if this "
+              f"machine sleeps (resume: flexsds benchmark status --campaign-id {record['campaign_id']})", flush=True)
 
-        history = attempts(record, cell, plan_root)
-        pending = history[-1] if history else None
-        state = runner.bench_status(pending.name, evidence_root=att_root) if pending else "NOT_SUBMITTED"
-        if pending and state == "NOT_SUBMITTED" and (pending / "spawn_attempt.json").exists():
-            raise RuntimeError("Spawn outcome unknown; recover the existing call; NEVER auto-resubmit")
-        if state == "FAILED" or (state == "NOT_SUBMITTED" and pending):
-            if not retry_failed:
-                raise RuntimeError(f"{pending}: {state}; inspect evidence, then use --retry-failed")
-            runner.stop_app()
-            pending = None
-
-        if pending is None:
-            number = len(history) + 1
-            if number > 999:
-                raise ValueError("Too many attempts")
-            run_id = f"{attempt_prefix(record, cell)}{number:03d}"
-            profile_path = profiles[cell["gpu"]]["profile_path"] if cell["lane"] == "adaptive" else None
-            cell_cfg = build_cell_serving_config(record, cell, profile_path=profile_path)
-            cell_cfg["run_id"] = run_id
-            cell_cfg["source_commit"] = record["commit"]
-            encoded_cfg = base64.b64encode(json.dumps(cell_cfg).encode("utf-8")).decode("ascii")
-
-            runner.stop_app()
-            env = {
-                **os.environ,
-                "FLEXSDS_BENCH_CONFIG_B64": encoded_cfg,
-                "FLEXSDS_BENCH_RUN_ID": run_id,
-            }
-            subprocess.run(
-                [*modal_auth.modal_command(), "deploy", "-m", "experiments.modal_benchmark_runner"],
-                cwd=REPO_ROOT,
-                env=env,
-                check=True,
-            )
-            runner.bench_submit(
-                gpu=cell["gpu"],
-                lane=cell["lane"],
-                workload=cell["workload"],
-                concurrency=cell["concurrency"],
-                repeats=REPEATS,
-                num_requests=NUM_REQUESTS,
-                server_run_id=run_id,
-                bench_run_id=run_id,
-                evidence_root=att_root,
-                serving_config=cell_cfg,
-            )
-            pending = att_root / run_id
-
-        while True:
-            state = runner.bench_status(pending.name, evidence_root=att_root)
-            print(f"{state} {cell['key']} {pending.name}", flush=True)
-            if state in ("COMPLETED", "COLLECTED"):
-                receipt = json.loads((pending / "submission.json").read_text(encoding="utf-8"))
-                runner.bench_collect(receipt["call_id"], evidence_root=att_root)
-                try:
-                    validated = validate_cell(pending, record, cell)
-                except (ValueError, KeyError, OSError) as exc:
-                    failure = pending / "validation_failure.json"
-                    if not failure.exists():
-                        failure.write_bytes(
-                            (json.dumps({"status": "INVALID-PROTOCOL", "error": str(exc)}) + "\n").encode("utf-8")
-                        )
-                    runner.stop_app()
-                    raise
-                vpath = pending / "validation.json"
-                if not vpath.exists():
-                    vpath.write_bytes((json.dumps(validated, indent=2) + "\n").encode("utf-8"))
-                runner.stop_app()
-                break
-            if state == "FAILED":
-                runner.stop_app()
-                raise RuntimeError(f"Failed attempt preserved: {pending}; inspect before --retry-failed")
-            if state == "NOT_SUBMITTED":
-                raise RuntimeError(f"No call ID: {pending}; inspect before explicit new attempt")
-            time.sleep(15)
+    if wait:
+        _wait_and_collect(runner, record, calls, att_root, poll_s)
+    if errors:
+        raise RuntimeError("; ".join(errors) + " (run again to retry these GPUs)")
 
 
 def format_plan_overview(record: dict[str, Any]) -> str:
@@ -1022,6 +1072,12 @@ def format_plan_overview(record: dict[str, Any]) -> str:
         f"{record['repeats'] * record['num_requests']} measured/cell",
         f"Total matrix       : {record['total_cells']} cells ({record['total_measured_requests']:,} measured requests)",
     ]
+    estimate = estimate_cost(record)
+    lines.append("Estimated GPU time (rough, +/-50%; Modal list prices):")
+    for gpu in record["gpus"]:
+        lines.append(f"  - {gpu:<4} {estimate[gpu]['hours']:.1f} h ~ {estimate[gpu]['usd']:.2f} USD")
+    lines.append(f"  = total {sum(v['hours'] for v in estimate.values()):.1f} h ~ "
+                 f"{sum(v['usd'] for v in estimate.values()):.2f} USD")
     readiness = record.get("profile_readiness") or {}
     if readiness:
         lines.append("Adaptive GPU profile readiness:")
@@ -1047,27 +1103,52 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--draft-method", choices=("eagle", "eagle3", "draft_model"), default=DEFAULT_DRAFT_METHOD)
     parser.add_argument("--static-k", type=int, default=DEFAULT_STATIC_K)
     parser.add_argument("--adaptive-max-k", type=int, default=DEFAULT_ADAPTIVE_MAX_K)
-    parser.add_argument("--match-adaptive-runtime", action="store_true")
     parser.add_argument("--profile-dir", type=Path, default=None)
     parser.add_argument("--auto-calibrate", action="store_true")
     parser.add_argument("--calibrate-mode", choices=("fast", "full"), default="fast")
     parser.add_argument("--retry-failed", action="store_true")
+    parser.add_argument("--allow-uncommitted", action="store_true")
     return parser
 
 
-def format_campaign_status(record: dict[str, Any], plan_root: Path = PLAN_ROOT) -> list[str]:
-    from experiments import modal_benchmark_runner as runner
-
+def format_campaign_status(record: dict[str, Any], plan_root: Path = PLAN_ROOT, *, collect: bool = True) -> list[str]:
+    """One line per GPU (cells collected, card, call state), then the invalid cells with their reason."""
+    runner = _runner()
     att_root = attempts_dir(record, plan_root)
+    calls = _load_calls(record, plan_root)
     lines: list[str] = []
-    for cell in record["cells"]:
-        history = attempts(record, cell, plan_root)
-        state = (
-            "COLLECTED"
-            if selected_attempt(record, cell, plan_root)
-            else (runner.bench_status(history[-1].name, evidence_root=att_root) if history else "NOT_SUBMITTED")
-        )
-        lines.append(f"{cell['key']} {state}")
+    invalid: list[str] = []
+    valid_keys: set[str] = set()
+    for gpu in record["gpus"]:
+        call_id = calls.get(gpu)
+        if collect and call_id:
+            runner.collect_gpu(record["campaign_id"], gpu, att_root)
+        cells = [c for c in record["cells"] if c["gpu"] == gpu]
+        done, card = 0, "?"
+        for cell in cells:
+            for out in attempts(record, cell, plan_root):
+                try:
+                    checked = validate_cell(out, record, cell)
+                except (ValueError, KeyError, OSError) as exc:
+                    if (out / "bench.json").exists():
+                        invalid.append(f"  {cell['key']} ({out.name}): {exc}")
+                    continue
+                done += 1
+                valid_keys.add(cell["key"])
+                card = f"{checked['server_gpu']} ({checked['gpu_uuid'][:12]})"
+                break
+        state = runner.gpu_call_state(call_id) if call_id else "not submitted"
+        lines.append(f"{gpu}: {done}/{len(cells)} cells valid, card {card}, call {state}")
+    failures_dir = _campaign_dir(record, plan_root) / "failures"
+    failed = sorted(failures_dir.glob("*.json")) if failures_dir.is_dir() else []
+    for path in failed:
+        if path.stem in valid_keys:  # an earlier container failure, since measured successfully
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        invalid.append(f"  {path.stem}: {data.get('status')}: {data.get('error')}")
+    if invalid:
+        lines.append("Invalid or failed cells:")
+        lines.extend(invalid)
     return lines
 
 
@@ -1102,12 +1183,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         draft_method=args.draft_method,
         static_k=args.static_k,
         adaptive_max_k=args.adaptive_max_k,
-        match_adaptive_runtime=args.match_adaptive_runtime,
         profile_dir=args.profile_dir,
     )
     if args.action == "plan":
         print(json.dumps(record, indent=2, ensure_ascii=False))
         return 0
+    if args.allow_uncommitted:
+        record["allow_uncommitted"] = True
+        record["source_digest"] = _runner().committed_bench_source(allow_uncommitted=True)[1]
     drive(
         record,
         retry_failed=args.retry_failed,
