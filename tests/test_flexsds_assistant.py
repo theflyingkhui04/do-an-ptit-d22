@@ -31,7 +31,7 @@ def invoke(args, cwd):
 
 @pytest.mark.parametrize("args, expected", [
     (["--version"], __version__),
-    (["--help"], "{clear,detect,profile,stop,auth,serve,chat,monitor}"),
+    (["--help"], "{clear,detect,inspect,profile,benchmark,stop,auth,serve,chat,monitor}"),
     (["detect"], "Hardware:"),
     (["profile"], "Linked hardware profile:"),
     (PAIR + ["--backend", "local", "--dry-run"], "Dry-run execution command:"),
@@ -99,6 +99,7 @@ def test_oom_warning_still_returns_zero(cpu_cli, monkeypatch, capsys):
 
 def test_missing_runner_binary_returns_nonzero_with_error(cpu_cli, monkeypatch, capsys):
     cpu_cli.is_cuda_available = True
+    cpu_cli.free_vram_mb = cpu_cli.total_vram_mb = 24000  # the VRAM guard must not stop the call first
     # Controlled stand-in only: no actual serving process can be created.
     monkeypatch.setattr(subprocess, "Popen", Mock(side_effect=FileNotFoundError))
     assert cli.main(PAIR + ["--backend", "local"]) == 1

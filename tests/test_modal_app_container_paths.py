@@ -47,7 +47,11 @@ def test_image_config_survives_windows_paths_and_container_import(tmp_path, monk
     """Execute both host construction and container hydration without cloud calls."""
     from flexsds.server import modal_image
     monkeypatch.chdir(tmp_path)
-    profile = tmp_path / profile_name
+    relative = Path(profile_name)
+    if relative.is_absolute():  # Windows: keep the drive-style path inside tmp_path
+        relative = Path(*relative.parts[1:])
+    profile = tmp_path / relative
+    profile.parent.mkdir(parents=True, exist_ok=True)
     profile.write_text('{}', encoding='utf-8')
     config = dict(target_gpu='A10', profile_path=str(profile),
                   target_model='model có dấu', enable_adaptive=True)
