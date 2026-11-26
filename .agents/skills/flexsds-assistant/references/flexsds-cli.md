@@ -42,8 +42,10 @@ are rejected. This is heuristic validation, not tokenizer/kernel support.
 Threshold: estimates must fit 95% of budget. Local budget is detected free VRAM;
 remote budgets are T4 15000 MB, A10 22000 MB, L40S 46000 MB, A100 78000 MB (Colab wizard also maps L4 23000 MB; CLI `--gpu` accepts T4/A10/L40S/A100). Those are conservative
 assumptions, not measured container memory. Laptop RAM/VRAM does not decide remote
-GPU compatibility. Unsafe dry-run prints "Launch blocked", shows the preview and
-returns 0. Unsafe real serving returns 2 with no runner call. Launch failure
+GPU compatibility. A dry-run blocked only by the VRAM estimate or missing local
+CUDA prints "Launch blocked", shows the preview and returns 0; an unsupported or
+incompatible model pair returns 2 even with --dry-run (no valid command exists).
+Unsafe real serving returns 2 with no runner call. Launch failure
 returns 1; foreground child exits propagate. Started process/background PID/
 successful deployment is not endpoint readiness or performance evidence.
 ADAPTIVE_ENABLE_VRAM_GUARD controls runtime speculative budgets separately.

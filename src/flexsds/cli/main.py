@@ -581,7 +581,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                     print("Launch blocked: " + "; ".join(reasons))
                 if args.backend != "local":
                     print(f"Remote {target_gpu} memory budget is estimated, not measured free VRAM.")
-                if reasons:
+                # CLI contract: a preview blocked only by this machine's limits (VRAM estimate, no CUDA)
+                # prints "Launch blocked", still shows the command and returns 0. A real launch, or a
+                # model pair that is unsupported/incompatible, is refused with 2 before any runner call.
+                if reasons and not (args.dry_run and preflight.preview_allowed(args.allow_oom_risk)):
                     return 2
 
                 if not args.no_adaptive:
