@@ -78,7 +78,7 @@ class ModalServingRunner:
             "target_revision", "draft_revision", "port", "enable_adaptive",
             "target_gpu", "max_model_len", "max_num_seqs", "profile_path",
             "match_adaptive_runtime", "disable_speculative", "disable_prefix_caching", "static_k",
-            "enable_step_telemetry", "step_telemetry_flush_every",
+            "enable_step_telemetry", "step_telemetry_flush_every", "k_selection",
         )
         if (self.cred_mgr.path.parent / 'modal_logged_out').exists():
             # Calibration also uses this method without the serving launch preflight.

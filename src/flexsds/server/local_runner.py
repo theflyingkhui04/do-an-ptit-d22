@@ -61,6 +61,9 @@ def finish_launch(proc, background: bool = False) -> int:
             output.close()
 
 
+K_SELECTION_MODES = frozenset({"batch", "max_k"})
+
+
 class LocalServingRunner:
     """Khởi chạy và quản lý vòng đời máy chủ vLLM cục bộ với FlexSDS."""
 
@@ -84,6 +87,9 @@ class LocalServingRunner:
         if flush_every is not None:
             if isinstance(flush_every, bool) or not isinstance(flush_every, int) or flush_every < 1:
                 raise ValueError("step_telemetry_flush_every must be a positive integer")
+        k_selection = serving_cfg.get("k_selection")
+        if k_selection is not None and k_selection not in K_SELECTION_MODES:
+            raise ValueError(f"k_selection must be one of {sorted(K_SELECTION_MODES)}: {k_selection!r}")
 
     def describe_execution_contract(self, config: Dict[str, Any]) -> str:
         """Trả về nhãn hợp đồng thực thi chuẩn cho log đối chứng và dry-run."""
@@ -282,6 +288,7 @@ class LocalServingRunner:
                 "ADAPTIVE_STRICT",
                 "ADAPTIVE_STEP_TELEMETRY_PATH",
                 "ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY",
+                "ADAPTIVE_K_SELECTION",
                 "ADAPTIVE_STARTUP_TELEMETRY_PATH",
                 "ADAPTIVE_CONTROLLER_KWARGS",
             ):
@@ -310,6 +317,8 @@ class LocalServingRunner:
         env["ADAPTIVE_MAX_K"] = str(serving_cfg.get("max_k", 4))
         env["ADAPTIVE_MIN_BATCH_K"] = "0"
         env["ADAPTIVE_PER_REQUEST"] = "1"
+        if enable_adaptive:
+            env["ADAPTIVE_K_SELECTION"] = serving_cfg.get("k_selection") or "batch"
         return env
 
     def launch(
