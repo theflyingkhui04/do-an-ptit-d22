@@ -109,7 +109,39 @@ Ghi lại các quyết định lớn và **lý do** — để bảo vệ trướ
 - **Lý do:** đúng quy tắc versioning trong `src/pipeline/README.md`; giữ được phân phối latency mà vẫn có số cấp lần chạy.
 - **Bằng chứng:** `src/pipeline/sqlite/schema.sql`, `scripts/init_invoice_sqlite.py`, `tests/test_invoice_sqlite_v2.py`, `data/processed/invoices.db` (không commit), `experiments/runs/m4_03/`.
 
+## QĐ-18 *(đề xuất — chờ Khôi duyệt)* — Web demo M5-01: Next.js trên Vercel, FastAPI trên Render, Postgres trên Supabase, mô hình trên Modal
+- **Bối cảnh:** [04](04-quy-trinh-va-ke-hoach.md) (tầng COULD và mốc M5) ghi web demo dùng Streamlit/Gradio. Hội đồng cần mở được bằng một đường dẫn trình duyệt; GPU của đề tài chỉ có trên Modal; Streamlit/Gradio không chạy được trên Vercel và phải giữ một tiến trình Python luôn chạy.
+- **Đề xuất:** tách bốn tầng — giao diện Next.js (`web/`) trên Vercel; API FastAPI (`src/api/`) trên Render; Postgres và Storage trên Supabase (schema `demo`, role ghi `demo_writer` và role chỉ đọc `demo_reader`); OCR thư viện và các endpoint vLLM trên Modal. Mục tiêu của M5 không đổi, chỉ thay công nghệ giao diện.
+- **Lý do:** đường dẫn cố định cho hội đồng; GPU chỉ chạy khi có endpoint; role chỉ đọc cho SQL do Node 2 sinh; Vercel, Render và Supabase có gói miễn phí, Modal tính tiền theo thời gian GPU chạy.
+- **Hệ quả:** mâu thuẫn với dòng Streamlit/Gradio trong [04](04-quy-trinh-va-ke-hoach.md) — QĐ này thay thế phần công nghệ đó, không sửa nội dung cũ. Render miễn phí ngủ khi không có request (~50 s để thức dậy).
+- **Bằng chứng:** `web/`, `src/api/`, `render.yaml`, `src/pipeline/postgres/schema.sql`, `src/pipeline/postgres/roles.sql`, `experiments/modal_ocr_lib.py`; PR #46, PR #51; [chuong-3-7](chuong-3-7-web-console.md) §3.7.2.
+
+## QĐ-19 *(đề xuất — chờ Khôi duyệt)* — Web không điều khiển GPU; endpoint do `flexsds serve` tạo; mọi kết quả so với một endpoint mốc
+- **Bối cảnh:** QĐ-06 đóng gói hệ thống qua endpoint tương thích OpenAI; QĐ-08 coi pipeline là dụng cụ đo.
+- **Đề xuất:**
+  1. Web không có endpoint dựng sẵn và không bật, tắt hay thăm dò ngầm GPU; người dùng dán địa chỉ API do `flexsds serve` in ra.
+  2. Mỗi node chạy song song trên các endpoint được chọn và luôn chạy kèm **một** endpoint mốc do người dùng chọn; không có mốc thì chỉ hiện số tuyệt đối.
+  3. Số đo tốc độ trên web là đo trực tiếp, có nhiễu, không thay số chính thức của campaign M3-05; giao diện ghi rõ điều này.
+  4. Giai đoạn bảo vệ (quyết định của chủ sở hữu ngày 23/11/2026): mật khẩu demo đặt sẵn lúc build để mở là vào thẳng màn chính; chấp nhận mật khẩu công khai trong bundle; đổi `DEMO_KEY` sau buổi bảo vệ.
+- **Lý do:** giữ đúng vai trò dụng cụ đo — web chỉ so sánh những gì CLI của đề tài thực sự phục vụ; tránh tự đánh thức GPU (tốn tiền) khi không ai xem.
+- **Bằng chứng:** `src/api/endpoints.py`, `web/src/components/EndpointsPage.tsx`, `web/src/components/ResultPage.tsx`, `web/src/components/Console.tsx`; commit `94019d7`, `c647774`, `563ace8`; [chuong-3-7](chuong-3-7-web-console.md) §3.7.4–3.7.5.
+
 ---
+
+## Đối chiếu tài liệu với code (23/11/2026)
+
+Đối chiếu các nhận định trong `docs/` với code trên `develop` (`229b3e4`) và `main` (`d38023b`). Mỗi dòng ghi điều code thật cho thấy; các QĐ cũ giữ nguyên, phần cần chốt nằm ở M-06 → M-10 bên dưới.
+
+| # | Tài liệu đang ghi | Code / số liệu thật cho thấy | Bằng chứng |
+|---|---|---|---|
+| Đ-1 | QĐ-10: không tự huấn luyện đầu nháp | Đã tự huấn luyện EAGLE-3.1 (M3-04, QĐ-12): SpecForge, 3 epoch, 15.000 step trên A100-80GB, top-1 66,37%. Code huấn luyện ở repo ngoài; trong repo chỉ có worklog. Hai revision Hugging Face mà code dùng (`c3adca7e` cho lane thí nghiệm, `d9016c38` cho CLI) có cùng `model.safetensors` và `config.json` | `logs/Khoi/M3-04/M3-04_worklogs.md`, `experiments/m4_treatments.py:14`, `src/flexsds/profiles/profile_sm_86_remote_a10g_fcda5486b12d.json` |
+| Đ-2 | [04](04-quy-trinh-va-ke-hoach.md) mốc 23/10: "Adaptive v0 đã triệt tiêu tăng tốc âm" | Có cổng an toàn (α < 0,65 → k = 0, thăm dò định kỳ) nhưng số đo vẫn âm: M2 (T4) W3 0,58–0,75× ở mọi mức tải (`m2_w3_gate.json` = FAIL); M3-05 (L4) W3 0,47–0,75×, W2 từ 4 người dùng 0,67–0,87× | `src/proposer/controller.py:397`, `experiments/results/m2_w3_gate.json`, `experiments/results/m3_sweep_4lanes_summary.json` |
+| Đ-3 | [09](09-dac-ta-san-pham-flexsds.md): TreeAdaptive với α\*(T, B) | Đường phục vụ chỉ chọn **K vô hướng** 0–4 mỗi bước (scheduler → `AdaptiveBudgetPlanner`); code cây chỉ nạp khi gọi đích danh. Bộ điều khiển R6 trên `develop` có giải α\* hoà vốn theo **(K, B)**, không theo cây | `src/proposer/__init__.py:12`, `src/server/adaptive_scheduler.py:42`, `src/proposer/controller.py:433` |
+| Đ-4 | QĐ-09: T4; QĐ-16 *(đề xuất)*: L4 tham chiếu | Dữ liệu: T4 (M1, M2), L4 qua Colab (M3-05, 72/72 ô), A10G Modal (M3-06, M4-03, M5-01). Chế độ adaptive bắt buộc profile đo có bằng chứng: chạy `validate_measured_profile` trên 3 profile đóng gói → **T4, L4 bị từ chối; chỉ A10G đạt** (eagle3, K 0–4, B 1–32). Adaptive R6 hiện chỉ chạy được trên A10G | `src/flexsds/core/cost_model.py:420`, `src/server/budget_planner.py:263`, `src/flexsds/profiles/` |
+| Đ-5 | [06](06-ke-hoach-thuc-nghiem.md) §4: ≥ 50 prompt khớp từng ký tự, ghi sẵn "50/50" | Đã chạy giao thức B ở M2-03 (T4, 54 prompt, `temperature = 0`, đồng thời 1): mỗi làn tự lặp 54/54, **vanilla vs adaptive khớp 44/54** (W1 25/30, W2 12/12, W3 7/12), lệch ở cùng chỗ qua hai cặp; trạng thái `NOT_YET_APPROVED`. Làn đó dùng nháp 0,5B; **EAGLE + R6 chưa kiểm** | `experiments/lossless_verifier.py`, `experiments/runs/m2_03/protocol_b_20261018T085118Z_2aad4c00/summary.json` |
+| Đ-6 | α của làn EAGLE thấp bất thường | Không bất thường: mọi làn dùng chung α = Σ nhận / Σ nháp, τ = 1 + Σ nhận / Σ bước, từ bộ đếm gốc của vLLM. **Suy luận cần kiểm:** R6 tính E[τ] = 1 + Σ α^i (coi α là xác suất chấp nhận từng vị trí) nhưng nạp α = nhận/nháp, nhỏ hơn xác suất đó → đánh giá thấp τ (ví dụ EAGLE W1 M3-05: α 0,40, K 3 → mô hình 1,62, đo 2,09) | `experiments/aggregate_results.py:17`, `src/proposer/controller.py:95`, `src/proposer/controller.py:111` |
+| Đ-7 | Kết quả sản phẩm hiện tại | Chưa có số đo GPU cho EAGLE + R6. Công cụ 3 nhánh có (`vanilla`, `eagle_fixed` K 3, `eagle_adaptive`) nhưng `m4_02_06` chỉ có kiểm tra sẵn sàng CPU 13/11; R6 merge 22/11. M3-05 đo adaptive khác hẳn: nháp 0,5B, luật ngưỡng, lane không `--enforce-eager`; adaptive của CLI dùng EAGLE, R6, `--enforce-eager`, `--async-scheduling` | `experiments/m4_treatments.py:16`, `experiments/runs/m4_02_06/`, `experiments/modal_lanes.py:195`, `src/flexsds/server/local_runner.py:177` |
+| Đ-8 | [04](04-quy-trinh-va-ke-hoach.md): đóng băng code thuật toán 15/11 | PR #50 (22/11) đổi bộ điều khiển (R6) và thêm hợp đồng thực thi "matched" sau ngày đóng băng | `git log` của `src/proposer/controller.py`, `src/server/budget_planner.py` trên `develop` |
 
 ## Câu hỏi còn mở (phải đóng, kèm hạn)
 
@@ -120,6 +152,11 @@ Ghi lại các quyết định lớn và **lý do** — để bảo vệ trướ
 | **M-03** | vLLM `custom_class` proposer có cho đổi cấu hình cây **theo từng bước** không? | Đã giải quyết ở M2 bằng giải pháp ép phẳng cây tuần tự k in {0, 2, 3, 4} và điều phối qua `AdaptiveScheduler` / `AdaptiveProposerAdapter`. | **Đã đóng (11/10)** | Khôi, Dương | ✅ Đã chốt |
 | **M-04** | GVHD có chấp nhận **kết quả âm tính** (adaptive không thắng stock) không? | Quyết định có cần phương án xoay góc kể chuyện ở cổng 01/11 hay không. Hỏi sớm thì rẻ. | **Tuần 1** | Khôi | Đang theo dõi |
 | **M-05** | **Ngày bảo vệ và hạn nộp quyển chính thức** | Hạn nộp quyển chính thức: **06/12/2026**; lịch bảo vệ dự kiến: giữa tháng 12/2026 theo thông báo của Học viện. Lộ trình 3 sprint cuối và kỷ luật đóng băng 15/11 đã được đồng bộ. | **Đã đóng (04/11)** | Cả nhóm | ✅ Đã chốt theo thông báo Học viện |
+| **M-06** | Số chính thức của quyển là M3-05 (đóng băng) hay số đo R6 sau 22/11? | Đ-7, Đ-8: R6 là sản phẩm hiện tại nhưng chưa có số; M3-05 đo một cấu hình adaptive khác | **Trước 30/11** | Khôi | Mở — Dương đang đo lại (23/11) |
+| **M-07** | GPU tham chiếu cho số chính thức: A10G (profile hợp lệ duy nhất) hay đo profile L4 trước? | Đ-4: adaptive không chạy trên T4/L4 với profile hiện có | **Trước 30/11** | Khôi | Mở |
+| **M-08** | QĐ thay QĐ-10 (tự huấn luyện EAGLE-3.1) và đưa cấu hình + log huấn luyện vào repo | Đ-1: hội đồng có thể hỏi tái lập | **Trước 30/11** | Khôi | Mở |
+| **M-09** | R6 có cần hiệu chỉnh α trước khi đưa vào E[τ] không? | Đ-6: nếu đúng, R6 chọn K quá thận trọng | Sau khi có telemetry đo lại | Khôi, Dương | Mở |
+| **M-10** | Cách viết lossless trong quyển | Đ-5: "lossless về lý thuyết; thực nghiệm đo được 44/54 khớp từng token ở cấu hình cũ" thay cho "50/50" | **Trước 30/11** | Đại, Dương | Mở |
 
 ---
 
