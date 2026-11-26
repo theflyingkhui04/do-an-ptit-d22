@@ -35,7 +35,9 @@ hardware/profile inspection, serving configuration previews and CLI diagnosis.
    `--dry-run`, enters the interactive wizard. Never automate that wizard.
    Capture command, exit code, stdout/stderr with a bounded timeout and closed
    stdin. Inspect warning/error text even on exit 0; do not treat it as readiness.
-   Unsafe previews print "Launch blocked" and return 0; real unsafe serving
+   Previews blocked only by the VRAM estimate or missing local CUDA print
+   "Launch blocked", show the command and return 0; an unsupported or
+   incompatible model pair returns 2 even with --dry-run; real unsafe serving
    returns 2 before dispatch. Compatibility is heuristic, not proof of model fit.
    Modal uses an estimated remote GPU budget, not local free memory.
 5. Default to inspection/explanation/dry-run. A question such as "can this run?"

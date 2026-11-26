@@ -295,21 +295,43 @@ def test_oom_override_preserves_hard_failures(models):
     assert any('CUDA' in reason for reason in result.launch_reasons(True))
 
 
-@pytest.mark.parametrize('override,expected', [(False, 2), (True, 0)])
-def test_cli_oom_requires_explicit_override_and_forwards_limits(models, monkeypatch, override, expected):
+@pytest.mark.parametrize('dry_run,override,expected', [
+    (False, False, 2),  # a real launch over the VRAM estimate needs the explicit override
+    (False, True, 0),
+    (True, False, 0),   # CLI contract: an unsafe preview prints "Launch blocked", still shows the command
+    (True, True, 0),
+])
+def test_cli_oom_requires_explicit_override_and_forwards_limits(models, monkeypatch, dry_run, override, expected):
+    from unittest.mock import Mock
     from flexsds.cli import main as cli
     from flexsds.core.hardware import HardwareInfo
     monkeypatch.setattr(cli, 'detect_hardware', lambda: HardwareInfo('GPU', 'sm_89', 1, 1, '', True))
     calls = []
-    monkeypatch.setattr(cli.LocalServingRunner, 'launch', lambda self, config, **kwargs: calls.append(config))
+    finished = Mock()
+    finished.wait.return_value = 0
+    monkeypatch.setattr(cli.LocalServingRunner, 'launch',
+                        lambda self, config, **kwargs: calls.append((config, kwargs)) or finished)
     args = ['serve', '--target', str(models[0]), '--draft', str(models[1]),
-            '--backend', 'local', '--no-adaptive', '--dry-run', '--max-num-seqs', '4', '--max-model-len', '1024']
-    assert cli.main(args + (['--allow-oom-risk'] if override else [])) == expected
-    if override:
-        assert calls[0]['serving']['max_num_seqs'] == 4
-        assert calls[0]['serving']['max_model_len'] == 1024
-    else:
+            '--backend', 'local', '--no-adaptive', '--max-num-seqs', '4', '--max-model-len', '1024']
+    args += (['--dry-run'] if dry_run else []) + (['--allow-oom-risk'] if override else [])
+    assert cli.main(args) == expected
+    if expected == 2:
         assert not calls
+    else:
+        config, kwargs = calls[0]
+        assert kwargs.get('dry_run', False) is dry_run
+        assert config['serving']['max_num_seqs'] == 4
+        assert config['serving']['max_model_len'] == 1024
+
+
+def test_only_environment_reasons_allow_a_preview():
+    from flexsds.core.compatibility import (CUDA_UNAVAILABLE_REASON, OOM_ESTIMATE_REASON, ServingPreflight)
+    def preflight(*reasons):
+        return ServingPreflight(report=None, download=None, reasons=list(reasons))
+    assert preflight(OOM_ESTIMATE_REASON, CUDA_UNAVAILABLE_REASON).preview_allowed()
+    assert preflight().preview_allowed()
+    assert not preflight(OOM_ESTIMATE_REASON, "incompatible target/draft configuration").preview_allowed()
+    assert not preflight("Not supported yet: Independent draft model").preview_allowed()
 
 
 @pytest.mark.parametrize('action', ['adjust', 'continue', 'cancel'])

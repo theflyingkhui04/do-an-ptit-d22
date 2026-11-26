@@ -117,8 +117,9 @@ def test_end_to_end_wizard_generation_and_guidance(tmp_path, monkeypatch, capsys
         is_cuda_available=True,
     )
 
-    monkeypatch.setattr("flexsds.cli.wizard.prompt_choice", lambda q, c, **kw: c[0])
-    monkeypatch.setattr("flexsds.cli.wizard.prompt_string", lambda q, d: d)
+    # accept every default the wizard offers (its default Modal GPU is A10, not the first entry T4)
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_choice", lambda q, c, default_idx=0, **kw: c[default_idx])
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_string", lambda q, default_val="", **kw: default_val)
     monkeypatch.setattr("flexsds.cli.wizard.prompt_bool", lambda q, **kw: False)
 
     cfg = run_interactive_wizard(hw)

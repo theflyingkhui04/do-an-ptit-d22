@@ -448,6 +448,11 @@ class ServingPreflight:
         if reasons:
             raise ServingBlockedError("Launch blocked: " + "; ".join(reasons))
 
+    def preview_allowed(self, allow_oom_risk: bool = False) -> bool:
+        """A dry-run may still print its command when only this machine's limits block a launch
+        (VRAM estimate, no CUDA); an unsupported or incompatible model pair has no valid command."""
+        return all(reason in PREVIEWABLE_REASONS for reason in self.launch_reasons(allow_oom_risk))
+
     def launch_reasons(self, allow_oom_risk: bool = False) -> List[str]:
         # The memory estimate is the only overrideable preflight condition.
         return [reason for reason in self.reasons
@@ -455,6 +460,8 @@ class ServingPreflight:
 
 
 OOM_ESTIMATE_REASON = "estimated VRAM exceeds 95% of the available memory budget"
+CUDA_UNAVAILABLE_REASON = "CUDA GPU unavailable; system RAM is not serving VRAM"
+PREVIEWABLE_REASONS = frozenset({OOM_ESTIMATE_REASON, CUDA_UNAVAILABLE_REASON})
 
 
 def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
@@ -484,7 +491,7 @@ def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
         reasons.append(OOM_ESTIMATE_REASON)
 
     if backend == "local" and not hw_info.is_cuda_available:
-        reasons.append("CUDA GPU unavailable; system RAM is not serving VRAM")
+        reasons.append(CUDA_UNAVAILABLE_REASON)
     return ServingPreflight(report, download, reasons)
 
 

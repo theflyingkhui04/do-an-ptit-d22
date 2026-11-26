@@ -129,9 +129,18 @@ def test_unrelated_write_errors_propagate(monkeypatch, hardware):
 def test_wizard_detection_output_on_cp1252(monkeypatch, hardware):
     sink = EncodedStream()
     monkeypatch.setattr(wizard.sys, "stdout", sink)
-    monkeypatch.setattr(wizard, "prompt_choice", lambda *a, **kw: "Detect hardware")
+    answers = iter(["Detect hardware"])
+
+    def choose(*a, **kw):
+        try:
+            return next(answers)
+        except StopIteration:  # the menu comes back after detection; leave it
+            raise KeyboardInterrupt from None
+
+    monkeypatch.setattr(wizard, "prompt_choice", choose)
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: pytest.fail("Server launched"))
-    assert wizard.run_interactive_wizard(hardware) == {"action": "detect"}
+    with pytest.raises(KeyboardInterrupt):
+        wizard.run_interactive_wizard(hardware)
     assert "Hardware specs:" in sink.getvalue()
     assert sink.getvalue().isascii()
 
