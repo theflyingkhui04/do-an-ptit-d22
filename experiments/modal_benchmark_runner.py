@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -381,6 +382,9 @@ def submit_gpu(record: dict[str, Any], gpu: str, cell_keys: list[str], profile_t
     raise RuntimeError(f"{gpu}: Modal did not hand out the exact card in {tries} tries; last: {last}")
 
 
+ATTEMPT_DIR = re.compile(r"a\d{3}")
+
+
 def collect_gpu(campaign_id: str, gpu: str, evidence_root: Path) -> list[str]:
     """Copy finished cells of one GPU from the artifacts volume to <evidence_root>/<attempt_id>/."""
     evidence_root = Path(evidence_root)
@@ -389,20 +393,24 @@ def collect_gpu(campaign_id: str, gpu: str, evidence_root: Path) -> list[str]:
             "campaign_id": campaign_id, "gpu": gpu, "evidence_root": str(evidence_root)}))
     volume = modal.Volume.from_name("ptit-run-artifacts")
     base = volume_dir(campaign_id, gpu)
-    files: dict[str, dict[str, str]] = {}
+    # Layout: <cell>/<aNNN>/<file> (one directory per attempt); campaigns before 27/11 used <cell>/<file>.
+    files: dict[tuple[str, str], dict[str, str]] = {}
     for entry in volume.listdir(base, recursive=True):
         if getattr(getattr(entry, "type", None), "value", 1) != 1:  # FileEntryType.FILE; skip directories
             continue
         rel = entry.path[len(base) + 1:] if entry.path.startswith(base + "/") else entry.path
         top, _, name = rel.partition("/")
-        if name:
-            files.setdefault(top, {})[name] = entry.path
+        attempt, _, inner = name.partition("/")
+        if inner and not top.startswith("_") and ATTEMPT_DIR.fullmatch(attempt):
+            files.setdefault((top, attempt), {})[inner] = entry.path
+        elif name:
+            files.setdefault((top, ""), {})[name] = entry.path
 
     def read(path: str) -> bytes:
         return b"".join(volume.read_file(path))
 
     collected: list[str] = []
-    for top, names in sorted(files.items()):
+    for (top, attempt), names in sorted(files.items()):
         if top == "_servers":
             for name, path in names.items():
                 target = evidence_root.parent / "servers" / gpu / name
@@ -413,7 +421,7 @@ def collect_gpu(campaign_id: str, gpu: str, evidence_root: Path) -> list[str]:
             continue
         if "bench.json" not in names:
             if "failure.json" in names:  # the cell failed inside the container (server, profile, ...)
-                target = evidence_root.parent / "failures" / f"{top}.json"
+                target = evidence_root.parent / "failures" / (f"{top}.{attempt}.json" if attempt else f"{top}.json")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(read(names["failure.json"]))
             continue
