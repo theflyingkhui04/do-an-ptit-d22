@@ -90,3 +90,8 @@ experiments/runs/m2_02_v1/
 experiments/runs/flexsds_bench/**/telemetry/serving_steps.jsonl
 # 56 MB raw lineage of the A10 fast campaign; committed as serving_lineage.jsonl.gz + .sha256
 experiments/runs/flexsds_bench/flexsds-fast-a10-2611b/servers/A10/W1_V3__adaptive/telemetry/serving_lineage.jsonl
+experiments/runs/flexsds_bench/flexsds-fast-a100-2711b/servers/A100/W1_V3__adaptive/telemetry/serving_lineage.jsonl
+# Campaigns stopped before measuring any cell (27/11): plan and call id only
+experiments/runs/flexsds_bench/flexsds-fast-a100-2711/
+experiments/runs/flexsds_bench/flexsds-fast-t4-2711/
+experiments/runs/flexsds_bench/flexsds-fast-t4-2711b/

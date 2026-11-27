@@ -1,0 +1,1 @@
+{"status": "INVALID-PROTOCOL", "error": "Not a new measurement: the retry container stopped with FileExistsError on /artifacts/flexsds_bench/flexsds-fast-a100-2711b/A100/A100__static__W1_V3__c8/warmup.jsonl (cell-scoped volume path still held attempt a001), so this directory is a re-collected copy of a001 (failed request r003 at 2026-11-27T06:33:49Z)."}

@@ -1,0 +1,39 @@
+{
+  "gpu": "A100",
+  "lane": "static",
+  "server_run_id": "flexsds-fast-a100-2711b-A100-W1_V3-static-000d5a02",
+  "bench_run_id": "flexsds-fast-a100-2711b-A100-static-W1_V3-c8-a002",
+  "cell": {
+    "workload": "W1_V3",
+    "concurrency": 8,
+    "repeats": 5,
+    "num_requests": 32
+  },
+  "commit": "e53b737702c87bef98ba925c76ca9985c76c7dfc",
+  "call_id": "fc-01M8EFZ35P842HRJAFF9NDAQQW",
+  "submitted_at_utc": "2026-11-27T12:37:58.777456+00:00",
+  "source_digest": null,
+  "returncode": 1,
+  "join_error": "no server VRAM sample inside the window of run(s): run-1a6d880a-3b3f-45d4-a022-8af6d04fce01, run-c86934bb-ba78-4b32-9c02-2d0d97f76afb, run-fc3cea08-551d-4d2d-bd9a-491fa292eabe",
+  "timestamp_utc": "2026-11-27T12:38:24.133841+00:00",
+  "server_instance_unchanged": true,
+  "endpoint_model_ids": [
+    "flexsds-bench-static"
+  ],
+  "measured_wall_s": 25.35,
+  "concurrency_ok": false,
+  "concurrency_per_repeat": {
+    "r001": {
+      "peak_inflight": 0.0,
+      "peak_running": 0.0
+    },
+    "r002": {
+      "peak_inflight": 0.0,
+      "peak_running": 0.0
+    },
+    "r003": {
+      "peak_inflight": 0.0,
+      "peak_running": 0.0
+    }
+  }
+}
