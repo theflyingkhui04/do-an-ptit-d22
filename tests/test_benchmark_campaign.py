@@ -989,3 +989,16 @@ def test_aggregate_lists_exclusions_in_summary_and_report(tmp_path, monkeypatch)
     md = (tmp_path / "r.md").read_text(encoding="utf-8")
     assert "## Ghi chú bộ đếm speculative" in md
     assert "T4__adaptive__W2__c1" in md and "grammar_post_stop_overcount" in md
+
+
+def test_plan_overview_says_when_a_profile_stops_below_the_largest_batch():
+    from experiments import run_benchmark_campaign as camp
+
+    record = camp.plan("cpu-readiness", "a" * 40, mode="fast", gpus=("T4", "A10"), workloads=("W2",))
+    record["profile_readiness"] = {
+        "T4": {"status": "ready", "profile_name": "t4.json", "max_batch": 8},
+        "A10": {"status": "ready", "profile_name": "a10.json", "max_batch": 32},
+    }
+    text = camp.format_plan_overview(record)
+    assert "T4   [ready] t4.json (measured B<=8; larger batches use B=8 costs)" in text
+    assert "A10  [ready] a10.json\n" in text + "\n"

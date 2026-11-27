@@ -271,14 +271,12 @@ class LocalServingRunner:
                                       draft_model=serving_cfg.get("draft_model"))
             if data.get('draft_method') != serving_cfg.get('draft_method', 'eagle3'):
                 raise ValueError('Profile draft method mismatch')
+            from flexsds.core.calibration import profile_batch_coverage
             max_seqs = int(serving_cfg.get('max_num_seqs', 32))
-            if not 1 <= max_seqs <= 32:
-                raise ValueError('Adaptive profile supports at most 32 concurrent sequences')
-            canonical = [1, 2, 4, 8, 16, 32]
-            upper = next(b for b in canonical if b >= max_seqs)
-            required = {b for b in canonical if b <= upper}
-            if not required <= set(data['grid']['batches']):
-                raise ValueError(f'Profile batch grid does not cover max_num_seqs={max_seqs}; recalibrate')
+            top = profile_batch_coverage(data['grid']['batches'], max_seqs)
+            if top is not None:
+                print(f"Profile measured up to B={top}; batches above use the B={top} costs "
+                      f"(max_num_seqs={max_seqs}).")
             env["FLEXSDS_PROFILE_PATH"] = str(path.resolve())
             env["ADAPTIVE_STRICT"] = "1"
             env["VLLM_USE_V2_MODEL_RUNNER"] = "0"
