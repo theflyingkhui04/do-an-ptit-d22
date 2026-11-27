@@ -5,3 +5,7 @@
 *.sh text eol=lf
 *.py text eol=lf
 *.patch text eol=lf
+
+# Experiment evidence is compared byte for byte (benchmark collection, sha256 sidecars): never convert line endings
+experiments/runs/** -text
+experiments/results/** -text

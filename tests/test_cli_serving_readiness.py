@@ -134,6 +134,34 @@ def test_partial_profile_requires_matching_serving_capacity(measured_profile, tm
                    enable_adaptive=True,profile_path=str(path),max_num_seqs=1,
                    telemetry_path=str(tmp_path/'trace.jsonl'))
     assert LocalServingRunner().setup_environment(serving)['FLEXSDS_PROFILE_PATH'] == str(path)
-    serving['max_num_seqs'] = 32
-    with pytest.raises(ValueError,match='does not cover'):
-        LocalServingRunner().setup_environment(serving)
+
+
+def test_short_profile_grid_serves_larger_batches_with_a_warning(measured_profile, tmp_path, capsys):
+    # T4: B=16/32 do not fit the KV cache, so calibration measures 1,2,4,8 only. Larger batches use the
+    # nearest measured batch (what EmpiricalCostProfile already does) and the launch says so.
+    from flexsds.core import calibration as cal
+    config = measured_profile['evidence']['config']
+    groups = measured_profile['evidence']['groups']
+    for group in groups: group['records'] = [r for r in group['records'] if r['batch'] <= 8]
+    data = cal.build_profile(config, groups, [1, 2, 4, 8])
+    path = tmp_path/'t4.json'; path.write_text(json.dumps(data))
+    serving = dict(target_model='target',draft_model='draft',draft_method='draft_model',
+                   enable_adaptive=True,profile_path=str(path),max_num_seqs=32,
+                   telemetry_path=str(tmp_path/'trace.jsonl'))
+    assert LocalServingRunner().setup_environment(serving)['FLEXSDS_PROFILE_PATH'] == str(path)
+    assert 'measured up to B=8' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('batches', [[2, 4], [1, 4], [1, 2, 8]])
+def test_profile_grid_must_be_a_prefix_of_the_canonical_batches(batches):
+    from flexsds.core import calibration as cal
+    with pytest.raises(ValueError, match='prefix'):
+        cal.profile_batch_coverage(batches, 32)
+
+
+def test_profile_batch_coverage_reports_the_top_measured_batch_only_when_short():
+    from flexsds.core import calibration as cal
+    assert cal.profile_batch_coverage([1, 2, 4, 8, 16, 32], 32) is None
+    assert cal.profile_batch_coverage([1, 2, 4, 8], 8) is None
+    assert cal.profile_batch_coverage([1, 2, 4, 8], 32) == 8
+    assert cal.profile_batch_coverage([1], 2) == 1

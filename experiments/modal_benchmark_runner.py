@@ -452,8 +452,16 @@ def deploy_app() -> None:
                    cwd=REPO_ROOT, env=_modal_env(), check=True)
 
 
+def cancel_call(call_id: str) -> None:
+    """Cancel one GPU session (one campaign's call); other campaigns on the same app keep running."""
+    if modal is None:
+        _invoke_in_modal_interpreter("cancel_call", {"call_id": call_id})
+        return
+    modal.FunctionCall.from_id(call_id).cancel()
+
+
 def stop_app() -> None:
-    """Stop the deployed benchmark app (cancels every running GPU session)."""
+    """Stop the deployed benchmark app (cancels every running GPU session of every campaign)."""
     from flexsds.server import modal_auth
 
     env = _modal_env()
@@ -471,6 +479,7 @@ SDK_ACTIONS = {
     "gpu_call_state": lambda p: gpu_call_state(p["call_id"]),
     "collect_gpu": lambda p: collect_gpu(p["campaign_id"], p["gpu"], Path(p["evidence_root"])),
     "release_locks": lambda p: release_locks(p["campaign_id"]),
+    "cancel_call": lambda p: cancel_call(p["call_id"]),
 }
 
 

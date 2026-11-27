@@ -175,6 +175,7 @@ def resolve_adaptive_profiles(
                 "profile_path": str(found_path),
                 "profile_name": found_path.name,
                 "profile_sha256": found_data.get("metadata", {}).get("raw_sha256"),
+                "max_batch": max(found_data.get("grid", {}).get("batches") or [0]),
                 "calibrate_command": cal_cmd,
             }
         else:
@@ -1130,6 +1131,9 @@ def format_plan_overview(record: dict[str, Any]) -> str:
             info = readiness.get(gpu, {})
             status = info.get("status", "missing")
             detail = info.get("profile_name") if status == "ready" else info.get("calibrate_command", "calibration required")
+            top = info.get("max_batch")
+            if status == "ready" and isinstance(top, int) and 0 < top < max(record["concurrencies"]):
+                detail += f" (measured B<={top}; larger batches use B={top} costs)"
             lines.append(f"  - {gpu:<4} [{status}] {detail}")
     return "\n".join(lines)
 
@@ -1200,8 +1204,11 @@ def format_campaign_status(record: dict[str, Any], plan_root: Path = PLAN_ROOT, 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.action == "stop":
+        # --campaign-id is required here: cancel only this campaign's GPU calls, not the shared app.
         from experiments import modal_benchmark_runner as runner
-        runner.stop_app()
+        for call_id in _load_calls(load_plan(args.campaign_id), PLAN_ROOT).values():
+            runner.cancel_call(call_id)
+        runner.release_locks(args.campaign_id)
         return 0
     if args.action in ("status", "validate", "aggregate"):
         record = load_plan(args.campaign_id)

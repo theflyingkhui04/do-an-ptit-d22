@@ -24,6 +24,21 @@ WARMUP = 5
 REPEATS = 50
 
 
+def profile_batch_coverage(batches, max_num_seqs):
+    """Top measured batch when the grid stops below the serving batch, else None.
+
+    The grid must be a prefix of BATCHES (1, 2, 4, ...). A shorter grid is valid: on T4, B=16/32
+    do not fit the KV cache, so calibration measures 1..8 and larger batches use the nearest
+    measured batch (EmpiricalCostProfile.get_cost).
+    """
+    measured = sorted(set(int(b) for b in batches))
+    if not measured or measured != BATCHES[:len(measured)]:
+        raise ValueError(f'Profile batch grid {measured} must be a prefix of {BATCHES}; recalibrate')
+    if not 1 <= int(max_num_seqs) <= BATCHES[-1]:
+        raise ValueError(f'Adaptive profile supports at most {BATCHES[-1]} concurrent sequences')
+    return measured[-1] if measured[-1] < int(max_num_seqs) else None
+
+
 def measurement_settings(config):
     mode = config.get('measurement_mode', 'full')
     if mode not in ('fast', 'full'):
