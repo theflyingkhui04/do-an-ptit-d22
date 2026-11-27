@@ -1062,3 +1062,103 @@ def test_cancel_call_cancels_the_modal_function_call(monkeypatch):
     monkeypatch.setattr(runner, "modal", fake_modal)
     runner.cancel_call("fc-abc")
     assert cancelled == ["fc-abc", True]
+
+
+# --------------------------------------------------------------------------
+# Retrying failed cells (A100, 27/11): mark invalid attempts, resubmit, report
+# --------------------------------------------------------------------------
+def _break_attempt(path):
+    """Make the first measured request of an attempt fail, as a dropped connection does."""
+    for name in ("raw.jsonl", "raw.vram.jsonl"):
+        rows = [json.loads(l) for l in (path / name).read_text(encoding="utf-8").splitlines()]
+        rows[0].update(success=False, metrics_complete=False, error_type="ServerDisconnectedError",
+                       error_message="Server disconnected")
+        (path / name).write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+
+def test_mark_invalid_attempts_writes_the_m3_marker_once(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record, plan_root = _t4_campaign(tmp_path, monkeypatch, "cpu-mark")
+    bad_cell = next(c for c in record["cells"] if c["key"] == "T4__static__W2__c1")
+    bad = camp.attempts(record, bad_cell, plan_root)[0]
+    _break_attempt(bad)
+    assert camp.mark_invalid_attempts(record, plan_root) == [bad.name]
+    marker = json.loads((bad / "validation_failure.json").read_text(encoding="utf-8"))
+    assert marker["status"] == "INVALID-PROTOCOL" and marker["error"]
+    assert camp.mark_invalid_attempts(record, plan_root) == []  # idempotent
+    assert camp.selected_attempt(record, bad_cell, plan_root) is None
+    others = [c for c in record["cells"] if c["key"] != bad_cell["key"]]
+    assert all(camp.selected_attempt(record, c, plan_root) is not None for c in others)
+
+
+def test_drive_resubmits_a_cell_whose_only_attempt_failed(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record, plan_root = _t4_campaign(tmp_path, monkeypatch, "cpu-retry")
+    bad_cell = next(c for c in record["cells"] if c["key"] == "T4__static__W2__c1")
+    _break_attempt(camp.attempts(record, bad_cell, plan_root)[0])
+    camp._save_calls(record, plan_root, {"T4": "fc-old"})
+    submitted = []
+
+    class FakeRunner:
+        def committed_bench_source(self, allow_uncommitted=False):
+            return record["commit"], None
+
+        def gpu_call_state(self, call_id):
+            return "DONE"
+
+        def collect_gpu(self, campaign_id, gpu, evidence_root):
+            return []
+
+        def deploy_app(self):
+            pass
+
+        def submit_gpu(self, rec, gpu, keys, profile_text, **kwargs):
+            submitted.append((gpu, list(keys), kwargs.get("attempts")))
+            return "fc-new"
+
+    monkeypatch.setattr(camp, "_runner", lambda: FakeRunner())
+    monkeypatch.setattr(camp, "_ensure_modal_login", lambda: None)
+    monkeypatch.setattr(camp, "ensure_adaptive_profiles", lambda *a, **k: {"T4": {"profile_path": None}})
+    camp.drive(record, plan_root=plan_root, wait=False)
+    assert submitted == [("T4", ["T4__static__W2__c1"], {"T4__static__W2__c1": 2})]
+
+
+def test_status_hides_a_failed_attempt_once_the_cell_has_a_valid_one(tmp_path, monkeypatch):
+    import shutil
+    from experiments import run_benchmark_campaign as camp
+
+    record, plan_root = _t4_campaign(tmp_path, monkeypatch, "cpu-status")
+    cell = next(c for c in record["cells"] if c["key"] == "T4__static__W2__c1")
+    first = camp.attempts(record, cell, plan_root)[0]
+    second = first.with_name(first.name[:-3] + "002")
+    shutil.copytree(first, second)  # the valid retry
+    for name in ("bench.json", "submission.json"):
+        data = json.loads((second / name).read_text(encoding="utf-8"))
+        data["bench_run_id"] = second.name
+        (second / name).write_text(json.dumps(data), encoding="utf-8")
+    for name in ("raw.jsonl", "raw.vram.jsonl", "warmup.jsonl"):
+        rows = [json.loads(l) for l in (second / name).read_text(encoding="utf-8").splitlines()]
+        for r in rows:
+            r["experiment_id"] = second.name
+        (second / name).write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    _break_attempt(first)
+    failures = plan_root / "cpu-status" / "failures"
+    failures.mkdir(parents=True)
+    (failures / "T4__vanilla__W2__c8.a002.json").write_text(json.dumps(
+        {"status": "failed:server", "error": "vLLM exited early"}), encoding="utf-8")
+
+    class FakeRunner:
+        def gpu_call_state(self, call_id):
+            return "DONE"
+
+        def collect_gpu(self, campaign_id, gpu, evidence_root):
+            return []
+
+    monkeypatch.setattr(camp, "_runner", lambda: FakeRunner())
+    lines = camp.format_campaign_status(record, plan_root=plan_root)
+    assert (first / "validation_failure.json").exists()  # status marked the failed a001
+    assert camp.selected_attempt(record, cell, plan_root) == second
+    assert not any("T4__static__W2__c1" in l for l in lines[1:])
+    assert any(l.strip().startswith("T4__vanilla__W2__c8.a002") and "failed:server" in l for l in lines)
