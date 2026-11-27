@@ -77,6 +77,17 @@ class CompatibilityReport:
         )
 
 
+def _hub_headers() -> Dict[str, str]:
+    """Request headers for Hugging Face config fetches; adds the token for gated repos."""
+    from flexsds.core.model_inspection import hugging_face_token
+
+    headers = {"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"}
+    token = hugging_face_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def get_model_config(
     model_id_or_path: str,
     cache_dir: Optional[Path] = None,
@@ -130,10 +141,7 @@ def get_model_config(
 
     # 4. Tải từ Hugging Face qua HTTP
     url = f"https://huggingface.co/{clean_id}/raw/main/config.json"
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"},
-    )
+    req = urllib.request.Request(url, headers=_hub_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
             raw_bytes = resp.read()
@@ -174,10 +182,7 @@ def inspect_remote_model_metadata(model_id_or_path: str, timeout_sec: float = 5.
     # 2. Truy vấn từ Hugging Face qua HTTP API công khai
     clean_id = model_id_or_path.strip().replace("https://huggingface.co/", "")
     url = f"https://huggingface.co/{clean_id}/raw/main/config.json"
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"},
-    )
+    req = urllib.request.Request(url, headers=_hub_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
             content = resp.read().decode("utf-8")

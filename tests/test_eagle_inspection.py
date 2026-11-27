@@ -373,3 +373,89 @@ def test_wizard_oom_choices_and_recalculation(models, tmp_path, monkeypatch, act
         cmd = LocalServingRunner().build_command(result)
         assert cmd[cmd.index('--max-num-seqs') + 1] == str(result['max_num_seqs'])
         assert cmd[cmd.index('--max-model-len') + 1] == str(result['max_model_len'])
+
+
+# --- Hugging Face token for gated checkpoints (preflight) ---------------------------------------
+# `flexsds auth login --provider huggingface` stored a token that preflight never used, and the
+# huggingface-cli token file was ignored: a gated target always failed with HTTP 401.
+
+def _capture_headers(monkeypatch):
+    from unittest.mock import MagicMock
+    seen = {}
+
+    def fake_urlopen(req, **kwargs):
+        seen.update({k.lower(): v for k, v in req.header_items()})
+        response = MagicMock(status=200)
+        response.headers = {}
+        response.read.return_value = b"{}"
+        response.__enter__.return_value = response
+        return response
+
+    monkeypatch.setattr('urllib.request.urlopen', fake_urlopen)
+    return seen
+
+
+@pytest.fixture
+def no_token_sources(monkeypatch, tmp_path):
+    from flexsds.core.credentials import CredentialsManager
+    for key in ('HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN', 'HF_TOKEN_PATH'):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv('HF_HOME', str(tmp_path / 'hf-home'))
+    monkeypatch.setattr(CredentialsManager, 'DEFAULT_PATH', tmp_path / 'flexsds' / 'credentials')
+    return tmp_path
+
+
+@pytest.mark.parametrize('source', ['HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN', 'flexsds-auth', 'hf-home-file',
+                                    'hf-token-path'])
+def test_preflight_sends_the_hugging_face_token_from_each_source(source, no_token_sources, monkeypatch):
+    from flexsds.core.credentials import CredentialsManager
+    from flexsds.core.model_inspection import hugging_face_token
+    tmp = no_token_sources
+    if source in ('HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN'):
+        monkeypatch.setenv(source, 'hf_from_env')
+        expected = 'hf_from_env'
+    elif source == 'flexsds-auth':
+        CredentialsManager().set_credential('huggingface', 'HF_TOKEN', 'hf_from_flexsds')
+        expected = 'hf_from_flexsds'
+    elif source == 'hf-home-file':
+        (tmp / 'hf-home').mkdir()
+        (tmp / 'hf-home' / 'token').write_text('hf_from_cli\n', encoding='utf-8')
+        expected = 'hf_from_cli'
+    else:
+        (tmp / 'custom-token').write_text('hf_from_path', encoding='utf-8')
+        monkeypatch.setenv('HF_TOKEN_PATH', str(tmp / 'custom-token'))
+        expected = 'hf_from_path'
+    assert hugging_face_token() == expected
+    seen = _capture_headers(monkeypatch)
+    ModelFiles._http('https://huggingface.co/api/models/meta-llama/x', 64)
+    assert seen['authorization'] == f'Bearer {expected}'
+
+
+def test_environment_token_wins_over_stored_and_file_tokens(no_token_sources, monkeypatch):
+    from flexsds.core.credentials import CredentialsManager
+    from flexsds.core.model_inspection import hugging_face_token
+    (no_token_sources / 'hf-home').mkdir()
+    (no_token_sources / 'hf-home' / 'token').write_text('hf_file', encoding='utf-8')
+    CredentialsManager().set_credential('huggingface', 'HF_TOKEN', 'hf_stored')
+    assert hugging_face_token() == 'hf_stored'
+    monkeypatch.setenv('HF_TOKEN', 'hf_env')
+    assert hugging_face_token() == 'hf_env'
+
+
+def test_no_token_sends_no_authorization_header(no_token_sources, monkeypatch):
+    from flexsds.core.model_inspection import hugging_face_token
+    assert hugging_face_token() is None
+    seen = _capture_headers(monkeypatch)
+    ModelFiles._http('https://huggingface.co/api/models/Qwen/x', 64)
+    assert 'authorization' not in seen
+
+
+def test_preflight_config_fetch_also_sends_the_token(no_token_sources, monkeypatch, tmp_path):
+    from flexsds.core import compatibility
+    monkeypatch.setenv('HF_TOKEN', 'hf_cfg')
+    seen = _capture_headers(monkeypatch)
+    compatibility.get_model_config('meta-llama/Llama-3.1-8B-Instruct', cache_dir=tmp_path / 'cache')
+    assert seen['authorization'] == 'Bearer hf_cfg'
+    seen.clear()
+    compatibility.inspect_remote_model_metadata('meta-llama/Llama-3.1-8B-Instruct')
+    assert seen['authorization'] == 'Bearer hf_cfg'
