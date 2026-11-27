@@ -111,11 +111,25 @@ def test_calibration_awq_dtype_selection_handles_t4_fp16_and_bf16_gpus():
 # --------------------------------------------------------------------------
 # Task 2: Multi-GPU 3-node 3-lane campaign planner, validator & aggregator
 # --------------------------------------------------------------------------
+
+def _only_a10_packaged(tmp_path, monkeypatch):
+    """Packaged profiles as before 27/11 (A10 only), so a missing-profile path can still be tested."""
+    import shutil
+    from flexsds.core import cost_model as cm
+    packaged = tmp_path / "packaged"
+    packaged.mkdir()
+    for path in cm.PROFILES_DIR.glob("*.json"):
+        if "remote" not in path.name or "a10g" in path.name:
+            shutil.copy(path, packaged / path.name)
+    monkeypatch.setattr(cm, "PROFILES_DIR", packaged)
+
+
 def test_benchmark_campaign_full_and_fast_matrix_counts_and_protocol(tmp_path, monkeypatch):
     from experiments import run_benchmark_campaign as camp
     from flexsds.core import cost_model as cm
 
     monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path / "empty_user_profiles")
+    _only_a10_packaged(tmp_path, monkeypatch)
 
     full = camp.plan("bench-full-v1", "a" * 40, mode="full")
     assert full["mode"] == "full"
@@ -206,6 +220,7 @@ def test_ensure_adaptive_profiles_fail_closed_and_auto_calibrate(tmp_path, monke
     from flexsds.core import cost_model as cm
 
     monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path / "user")
+    _only_a10_packaged(tmp_path, monkeypatch)
     # Default fail-closed raises listing missing GPUs and calibration commands.
     with pytest.raises(RuntimeError) as exc_info:
         camp.ensure_adaptive_profiles(

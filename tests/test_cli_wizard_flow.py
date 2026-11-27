@@ -76,7 +76,7 @@ def test_wizard_remote_serving_hardware_resolution(tmp_path, monkeypatch):
     modal_t4_hw = build_remote_hardware_info("modal", "T4")
     assert modal_t4_hw.sm_architecture == "sm_75"
     _, t4_prof = load_profile_for_hardware(modal_t4_hw, strict=False)
-    assert t4_prof == "profile_sm75_t4.json"
+    assert t4_prof == "profile_sm_75_remote_t4_fcda5486b12d_full.json"  # measured T4 profile ships since 27/11
 
     # Test Colab L4
     colab_l4_hw = build_remote_hardware_info("colab", "L4")

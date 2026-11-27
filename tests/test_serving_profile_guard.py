@@ -17,7 +17,13 @@ def test_synthetic_a10_rejected_without_deleting(tmp_path, monkeypatch):
 
 
 def test_analytical_builtin_not_accepted_as_measured(tmp_path, monkeypatch):
+    import shutil
     monkeypatch.setattr(cm, 'USER_PROFILES_DIR', tmp_path)
+    analytical = tmp_path / 'analytical-only'
+    analytical.mkdir()
+    for name in ('profile_sm89_l4.json', 'profile_sm75_t4.json'):  # vendor estimates, no measured profile
+        shutil.copy(cm.PROFILES_DIR / name, analytical / name)
+    monkeypatch.setattr(cm, 'PROFILES_DIR', analytical)
     hw = HardwareInfo('Remote L40S','sm_89',46000,46000,'',True)
     assert cm.load_profile_for_hardware(hw, strict=True) == (None, '')
 

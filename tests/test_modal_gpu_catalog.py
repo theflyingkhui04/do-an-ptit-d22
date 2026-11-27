@@ -528,3 +528,32 @@ def test_micro_benchmark_records_the_memory_share_in_the_calibration_config(monk
     seen.clear()
     cm.run_hardware_micro_benchmark(hw, backend="local", batch_sizes=[1, 2])
     assert "gpu_memory_utilization" not in seen["config"]  # old profiles' evidence keeps its shape
+
+
+# --- Packaged measured profiles for every Modal GPU (T4, A10, L40S, A100) ---------------------
+PAIR = dict(target_model="Qwen/Qwen2.5-7B-Instruct-AWQ", draft_model="duckhoi/qwen2.5-7b-eagle3.1-speculator")
+
+
+@pytest.fixture
+def packaged_only(tmp_path, monkeypatch):
+    monkeypatch.setattr(cm, "USER_PROFILES_DIR", tmp_path / "no-user-profiles")
+
+
+@pytest.mark.parametrize("gpu, device", [("T4", "Tesla T4"), ("A10", "NVIDIA A10"),
+                                         ("L40S", "NVIDIA L40S"), ("A100", "NVIDIA A100-SXM4-80GB")])
+def test_every_modal_gpu_has_a_packaged_measured_profile(gpu, device, packaged_only):
+    # Only the A10 profile shipped; T4, L40S and A100 lived in one laptop's ~/.flexsds/profiles, so the
+    # A100 campaign evidence named a profile hash nobody else could check.
+    model, name = cm.load_profile_for_hardware(build_remote_hardware_info("modal", gpu), strict=True, **PAIR)
+    assert model is not None and name
+    data = json.loads((cm.PROFILES_DIR / name).read_text(encoding="utf-8"))
+    assert data["metadata"]["device"] == device
+
+
+@pytest.mark.parametrize("device", ["NVIDIA L4", "NVIDIA GeForce RTX 4090"])
+def test_a_packaged_profile_of_another_card_is_never_picked(device, packaged_only):
+    # sm_89 is shared by L4, RTX 40xx and L40S: the lookup must not hand an L40S profile to them.
+    hw = HardwareInfo(device, "sm_89", 20000, 24000, "12.0", True)
+    _, name = cm.load_profile_for_hardware(hw, strict=False, **PAIR)
+    assert "l40s" not in name.lower()
+    assert cm.load_profile_for_hardware(hw, strict=True, **PAIR) == (None, "")
