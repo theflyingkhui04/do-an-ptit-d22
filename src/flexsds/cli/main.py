@@ -89,6 +89,16 @@ def scaledown_seconds(value):
     return seconds
 
 
+def calibration_memory_share(value):
+    try:
+        share = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected a number within 0.50..0.98") from None
+    if not 0.5 <= share <= 0.98:
+        raise argparse.ArgumentTypeError("expected a number within 0.50..0.98")
+    return share
+
+
 def calibration_batches(value):
     """argparse type for --batches: a subset of the calibration grid 1,2,4,8,16,32."""
     try:
@@ -173,7 +183,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
     profile_parser.add_argument("--measure-mode", choices=["fast", "full"], default="full", help="Measurement repetitions: fast (5) or full (50)")
     profile_parser.add_argument("--batches", type=calibration_batches, default=None,
-                                help="Comma-separated batch sizes from 1,2,4,8,16,32 (default: all); e.g. 1,2,4,8 on T4 where B=16,32 do not fit the KV cache")
+                                help="Comma-separated batch sizes from 1,2,4,8,16,32 (default: all); a shorter prefix such as 1,2,4,8 when larger batches do not fit")
+    profile_parser.add_argument("--gpu-memory-utilization", type=calibration_memory_share, default=None,
+                                help="vLLM memory share while calibrating (0.50..0.98, default 0.85); more room for the one-step B x 1024 prefill (on T4, 0.95 still ran out of memory at B=16 on 27/11)")
     profile_parser.add_argument("--backend", choices=["local", "modal"], default="local", help="Where to run calibration")
     profile_parser.add_argument("--gpu", type=canonical_modal_gpu_name, choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="GPU to allocate for Modal calibration")
 
@@ -457,6 +469,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 cost_model, saved_path = run_hardware_micro_benchmark(
                     hw_info=hw_info, target_model=target_model, draft_model=draft_model, backend=args.backend,
                     measurement_mode=args.measure_mode, batch_sizes=args.batches,
+                    gpu_memory_utilization=args.gpu_memory_utilization,
                 )
             except KeyboardInterrupt:
                 print("Calibration cancelled.")

@@ -73,6 +73,33 @@ def check_calibration_device(config, device):
         raise RuntimeError(f'GPU mismatch: expected {expected}, got {device}')
 
 
+DEFAULT_GPU_MEMORY_UTILIZATION = 0.85
+
+
+def calibration_engine_kwargs(config, batches, *, revision, dtype, quantization):
+    """vLLM engine settings for one calibration group.
+
+    Every sequence must be prefilled in one step (no chunked prefill), so the next step has the exact
+    decode shape that is timed. At B=32 x 1024 that prefill's activations leave a 16 GB T4 too little
+    KV cache at the default memory share; `gpu_memory_utilization` in the config (recorded in the
+    profile evidence) raises it. On T4, 0.95 gave 34.8k KV tokens but still ran out of memory at B=16
+    (2.3 GiB request, 3.3 GiB reserved-but-unallocated) on 27/11, so the T4 profile stays at B<=8.
+    """
+    share = float(config.get('gpu_memory_utilization', DEFAULT_GPU_MEMORY_UTILIZATION))
+    if not 0.5 <= share <= 0.98:
+        raise ValueError(f'gpu_memory_utilization must be within 0.50..0.98, got {share}')
+    cfg = dict(model=config['target_model'], revision=revision, dtype=dtype, max_model_len=4096,
+               max_num_seqs=32, max_num_batched_tokens=max(4096, max(batches)*CONTEXT),
+               gpu_memory_utilization=share, enforce_eager=True, generation_config='vllm',
+               compilation_config={'mode': 0},
+               enable_prefix_caching=False, enable_chunked_prefill=False,
+               async_scheduling=False,
+               worker_extension_cls='flexsds.core.calibration_worker.CalibrationWorker')
+    if quantization:
+        cfg['quantization'] = quantization
+    return cfg
+
+
 def measure_cell_group(config, k, batches):
     """Runs only inside an isolated CUDA process (local or Modal)."""
     warmup, repeats = measurement_settings(config)
@@ -93,15 +120,8 @@ def measure_cell_group(config, k, batches):
     from vllm import LLM, SamplingParams
     from vllm.inputs import TokensPrompt
     dtype, quantization = resolve_calibration_dtype_quant(config['target_model'], sm)
-    cfg = dict(model=config['target_model'], revision=target_revision, dtype=dtype, max_model_len=4096,
-               max_num_seqs=32, max_num_batched_tokens=max(4096, max(batches)*CONTEXT),
-               gpu_memory_utilization=0.85, enforce_eager=True, generation_config='vllm',
-               compilation_config={'mode': 0},
-               enable_prefix_caching=False, enable_chunked_prefill=False,
-               async_scheduling=False,
-               worker_extension_cls='flexsds.core.calibration_worker.CalibrationWorker')
-    if quantization:
-        cfg['quantization'] = quantization
+    cfg = calibration_engine_kwargs(config, batches, revision=target_revision, dtype=dtype,
+                                    quantization=quantization)
     # Keep the drafter loaded at K=0: EAGLE still synchronizes its KV cache.
     cfg['speculative_config'] = dict(method=config['draft_method'], model=config['draft_model'],
                                      num_speculative_tokens=4, draft_sample_method='greedy',

@@ -137,8 +137,9 @@ def test_partial_profile_requires_matching_serving_capacity(measured_profile, tm
 
 
 def test_short_profile_grid_serves_larger_batches_with_a_warning(measured_profile, tmp_path, capsys):
-    # T4: B=16/32 do not fit the KV cache, so calibration measures 1,2,4,8 only. Larger batches use the
-    # nearest measured batch (what EmpiricalCostProfile already does) and the launch says so.
+    # A profile may stop below the serving batch (e.g. a T4 calibrated at the default memory share, where the
+    # one-step 16/32 x 1024 prefill leaves too little KV). Larger batches use the nearest measured batch (what
+    # EmpiricalCostProfile already does) and the launch says so.
     from flexsds.core import calibration as cal
     config = measured_profile['evidence']['config']
     groups = measured_profile['evidence']['groups']
