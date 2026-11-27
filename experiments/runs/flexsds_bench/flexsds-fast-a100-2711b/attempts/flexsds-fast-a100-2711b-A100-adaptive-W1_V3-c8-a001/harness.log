@@ -1,0 +1,172 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W1_V3
+workload_file        : experiments/configs/w1_v3/node1_chat_requests.jsonl
+sample_count         : 30
+sample_policy        : cycle-rotate
+package_workload_id  : w1_node1_invoice_extraction
+dataset_version      : w1.m5_01.v3
+prompt_version       : node1_extractor.v2
+manifest_path        : /root/project/experiments/configs/w1_v3/package_manifest.json
+artifact_key         : node1_chat_requests_jsonl
+workload_file_sha256 : 0b7474f99637a1291a53c17a2553514d55922a5d19434ff5523a8b36c1bdd611
+manifest_package_sha256: 5e22c3cbdfd1252181d913480caad79fea1e9dc4323c6f16d67f4066ba245005
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : modal-a100-v1
+environment_source   : server
+gpu                  : NVIDIA A100-SXM4-80GB
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [8]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+lane                 : adaptive
+workload             : W1_V3
+canonical_samples    : 30
+sample_policy        : cycle-rotate
+concurrencies        : [8]
+repeats_per_cell     : 5
+requests_per_repeat  : 32
+===================================
+
+========================================
+START CELL
+experiment_id : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+cell_id       : adaptive__W1_V3__c8
+concurrency   : 8
+repeats       : 5
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : m3-fixed3
+experiment_id        : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+cell_id              : adaptive__W1_V3__c8
+requested_minimum    : 3
+warmup_requests      : 3
+warmup_concurrency   : 8
+measured_concurrency : 8
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : adaptive__W1_V3__c8
+requests             : 3
+successes            : 3
+concurrency_limit    : 8
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+cell_id             : adaptive__W1_V3__c8
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-ecbae21f-6613-4261-b49f-75c0d16eede6
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 88.442
+request_throughput  : 0.362 req/s
+output_throughput   : 511.951 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a100-2711b/A100/A100__adaptive__W1_V3__c8/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+cell_id             : adaptive__W1_V3__c8
+repeat_id           : r002
+sample_offset       : 2
+run_id              : run-13e5f3a3-00a2-495a-af4b-2cb005aeebe7
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 90.007
+request_throughput  : 0.356 req/s
+output_throughput   : 509.758 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a100-2711b/A100/A100__adaptive__W1_V3__c8/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+cell_id             : adaptive__W1_V3__c8
+repeat_id           : r003
+sample_offset       : 4
+run_id              : run-f015879f-1b67-4b9a-9a7f-287ac631785c
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 87.220
+request_throughput  : 0.367 req/s
+output_throughput   : 519.113 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a100-2711b/A100/A100__adaptive__W1_V3__c8/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+cell_id             : adaptive__W1_V3__c8
+repeat_id           : r004
+sample_offset       : 6
+run_id              : run-da8e6196-f321-400e-9a44-ed11222f92cb
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 83.701
+request_throughput  : 0.382 req/s
+output_throughput   : 536.801 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a100-2711b/A100/A100__adaptive__W1_V3__c8/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+cell_id             : adaptive__W1_V3__c8
+repeat_id           : r005
+sample_offset       : 8
+run_id              : run-33470c7c-460f-4f91-879e-79c59fd28009
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 92.422
+request_throughput  : 0.346 req/s
+output_throughput   : 492.718 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a100-2711b/A100/A100__adaptive__W1_V3__c8/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : adaptive__W1_V3__c8
+measured_repeats     : 5
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : flexsds-fast-a100-2711b-A100-adaptive-W1_V3-c8-a001
+cells_completed      : 1
+concurrencies        : [8]
+repeats_per_cell     : 5
+======================
