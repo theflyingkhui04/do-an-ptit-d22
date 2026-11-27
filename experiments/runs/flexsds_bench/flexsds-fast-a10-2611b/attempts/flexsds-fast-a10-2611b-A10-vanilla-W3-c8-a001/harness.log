@@ -1,0 +1,172 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W3
+workload_file        : experiments/configs/w3_v2/chat_requests.jsonl
+sample_count         : 12
+sample_policy        : cycle-rotate
+package_workload_id  : w3_free_analysis
+dataset_version      : w3.m1_03.v2
+prompt_version       : w3_business_analysis.v2
+manifest_path        : /root/project/experiments/configs/w3_v2/package_manifest.json
+artifact_key         : chat_requests_jsonl
+workload_file_sha256 : 57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b
+manifest_package_sha256: 657ea19f30726372e08861f98b352ea7954db16cfcd165165a4db4a1be907689
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : modal-a10-v1
+environment_source   : server
+gpu                  : NVIDIA A10
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [8]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+lane                 : vanilla
+workload             : W3
+canonical_samples    : 12
+sample_policy        : cycle-rotate
+concurrencies        : [8]
+repeats_per_cell     : 5
+requests_per_repeat  : 32
+===================================
+
+========================================
+START CELL
+experiment_id : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+cell_id       : vanilla__W3__c8
+concurrency   : 8
+repeats       : 5
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : m3-fixed3
+experiment_id        : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+cell_id              : vanilla__W3__c8
+requested_minimum    : 3
+warmup_requests      : 3
+warmup_concurrency   : 8
+measured_concurrency : 8
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : vanilla__W3__c8
+requests             : 3
+successes            : 3
+concurrency_limit    : 8
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+cell_id             : vanilla__W3__c8
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-668f7609-8eab-4384-8a21-bba3e34f4dfc
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 37.995
+request_throughput  : 0.842 req/s
+output_throughput   : 417.765 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a10-2611b/A10/A10__vanilla__W3__c8/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+cell_id             : vanilla__W3__c8
+repeat_id           : r002
+sample_offset       : 8
+run_id              : run-8b85cdca-e553-42b8-8870-9e4d86cc4eee
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 35.746
+request_throughput  : 0.895 req/s
+output_throughput   : 446.461 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a10-2611b/A10/A10__vanilla__W3__c8/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+cell_id             : vanilla__W3__c8
+repeat_id           : r003
+sample_offset       : 4
+run_id              : run-aecb73d5-5f2a-4435-9067-bb16a0bafa93
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 37.919
+request_throughput  : 0.844 req/s
+output_throughput   : 427.702 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a10-2611b/A10/A10__vanilla__W3__c8/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+cell_id             : vanilla__W3__c8
+repeat_id           : r004
+sample_offset       : 0
+run_id              : run-1f53f4c9-2d10-4b11-a7d9-6dd690fcf946
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 38.758
+request_throughput  : 0.826 req/s
+output_throughput   : 409.537 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a10-2611b/A10/A10__vanilla__W3__c8/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+cell_id             : vanilla__W3__c8
+repeat_id           : r005
+sample_offset       : 8
+run_id              : run-b6463fab-01f0-4594-a855-1502dc734b6b
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 36.772
+request_throughput  : 0.870 req/s
+output_throughput   : 432.366 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-a10-2611b/A10/A10__vanilla__W3__c8/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : vanilla__W3__c8
+measured_repeats     : 5
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : flexsds-fast-a10-2611b-A10-vanilla-W3-c8-a001
+cells_completed      : 1
+concurrencies        : [8]
+repeats_per_cell     : 5
+======================

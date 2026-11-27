@@ -1,0 +1,47 @@
+{
+  "gpu": "A10",
+  "lane": "adaptive",
+  "server_run_id": "flexsds-fast-a10-2611b-A10-W3-adaptive-7980b676",
+  "bench_run_id": "flexsds-fast-a10-2611b-A10-adaptive-W3-c1-a001",
+  "cell": {
+    "workload": "W3",
+    "concurrency": 1,
+    "repeats": 5,
+    "num_requests": 32
+  },
+  "commit": "cc47739a96c91685392df520974857412657057f",
+  "call_id": "fc-01M8C23JSQ65Q0W70GHG66Q7WG",
+  "submitted_at_utc": "2026-11-26T18:23:55.330153+00:00",
+  "source_digest": "4c2d26b3741ae68104de43b6ff17b153142ea55f69c807b67c6fb55a5139c17c",
+  "returncode": 0,
+  "join_error": null,
+  "timestamp_utc": "2026-11-26T18:40:14.042038+00:00",
+  "server_instance_unchanged": true,
+  "endpoint_model_ids": [
+    "flexsds-bench-adaptive"
+  ],
+  "measured_wall_s": 978.71,
+  "concurrency_ok": true,
+  "concurrency_per_repeat": {
+    "r001": {
+      "peak_inflight": 1.0,
+      "peak_running": 1.0
+    },
+    "r002": {
+      "peak_inflight": 1.0,
+      "peak_running": 1.0
+    },
+    "r003": {
+      "peak_inflight": 1.0,
+      "peak_running": 1.0
+    },
+    "r004": {
+      "peak_inflight": 1.0,
+      "peak_running": 1.0
+    },
+    "r005": {
+      "peak_inflight": 1.0,
+      "peak_running": 1.0
+    }
+  }
+}
