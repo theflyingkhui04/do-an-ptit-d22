@@ -107,7 +107,7 @@ class _Fakes:
 
     def run_harness(self, args, env, log_path):
         raw_out = Path(args[args.index("--raw-out") + 1])
-        key = raw_out.parent.name
+        key = raw_out.parent.parent.name
         c = int(args[args.index("--concurrency") + 1])
         raw_out.write_text("".join(json.dumps(r) + "\n" for r in _raw(5)), encoding="utf-8")
         raw_out.with_name("warmup.jsonl").write_text('{"phase": "warmup"}\n' * 3, encoding="utf-8")
@@ -149,14 +149,14 @@ def test_run_session_writes_cell_evidence_and_one_server_per_workload_lane(tmp_p
     assert set(result["cells"].values()) == {"done"}
     assert fakes.started == ["W2/vanilla", "W2/static", "W2/adaptive"]
     assert fakes.stopped == 3 and fakes.persisted == 9
-    cell_dir = tmp_path / "A10__static__W2__c8"
+    cell_dir = tmp_path / "A10__static__W2__c8" / "a001"
     for name in ("server_env.json", "raw.jsonl", "warmup.jsonl", "concurrency.jsonl", "raw.vram.jsonl",
                  "bench.json", "submission.json"):
         assert (cell_dir / name).is_file(), name
     env = json.loads((cell_dir / "server_env.json").read_text(encoding="utf-8"))
     assert (env["gpu"], env["gpu_uuid"], env["driver_version"]) == ("NVIDIA A10", "GPU-1234", "610.57.04")
-    other = json.loads((tmp_path / "A10__static__W2__c32" / "server_env.json").read_text(encoding="utf-8"))
-    vanilla = json.loads((tmp_path / "A10__vanilla__W2__c8" / "server_env.json").read_text(encoding="utf-8"))
+    other = json.loads((tmp_path / "A10__static__W2__c32" / "a001" / "server_env.json").read_text(encoding="utf-8"))
+    vanilla = json.loads((tmp_path / "A10__vanilla__W2__c8" / "a001" / "server_env.json").read_text(encoding="utf-8"))
     assert env["instance_id"] == other["instance_id"] != vanilla["instance_id"]
     assert json.loads((cell_dir / "bench.json").read_text(encoding="utf-8"))["concurrency_ok"] is True
 
@@ -165,7 +165,7 @@ def test_run_session_records_serialized_concurrency_as_not_ok(tmp_path):
     record = camp.plan("sess", "a" * 40, mode="fast", gpus="A10", workloads="W2", lanes_list="vanilla")
     result = _run(tmp_path, record, _Fakes(running=1))
     assert result["cells"]["A10__vanilla__W2__c8"] == "done"
-    bench = json.loads((tmp_path / "A10__vanilla__W2__c8" / "bench.json").read_text(encoding="utf-8"))
+    bench = json.loads((tmp_path / "A10__vanilla__W2__c8" / "a001" / "bench.json").read_text(encoding="utf-8"))
     assert bench["concurrency_ok"] is False
 
 
@@ -183,7 +183,7 @@ def test_run_session_marks_lane_failed_when_server_does_not_start(tmp_path):
     result = _run(tmp_path, record, _Fakes(server_fail_lanes={"static"}), profile_text=_profile_text("NVIDIA A10"))
     statuses = {k.split("__")[1]: v for k, v in result["cells"].items()}
     assert statuses == {"vanilla": "done", "static": "failed:server", "adaptive": "done"}
-    failure = json.loads((tmp_path / "A10__static__W2__c1" / "failure.json").read_text(encoding="utf-8"))
+    failure = json.loads((tmp_path / "A10__static__W2__c1" / "a001" / "failure.json").read_text(encoding="utf-8"))
     assert "CUDA out of memory" in failure["error"]
 
 
@@ -201,3 +201,22 @@ def test_run_session_refuses_wrong_card_before_starting_anything(tmp_path):
     with pytest.raises(sess.WrongGpu):
         _run(tmp_path, record, fakes, device="NVIDIA A10G")
     assert fakes.started == []
+
+
+def test_run_session_writes_each_attempt_in_its_own_directory(tmp_path):
+    # A retry used to write into the same volume directory as the failed attempt and stopped with
+    # FileExistsError on warmup.jsonl (A100 retry, 27/11).
+    record = camp.plan("sess", "a" * 40, mode="fast", gpus="A10", workloads="W2", lanes_list="vanilla")
+    stale = tmp_path / "A10__vanilla__W2__c8" / "a001"
+    stale.mkdir(parents=True)
+    (stale / "warmup.jsonl").write_text('{"phase": "warmup"}\n', encoding="utf-8")
+    cells = [dict(c, attempt=2) for c in record["cells"] if c["key"] == "A10__vanilla__W2__c8"]
+    fakes = _Fakes()
+    result = sess.run_session(
+        record, "A10", cells, out_root=tmp_path, device_name="NVIDIA A10", gpu_uuid="GPU-1234", driver="610.57.04",
+        profile_text=None, call_id="fc-test", start_server=fakes.start_server, stop_server=fakes.stop_server,
+        run_harness=fakes.run_harness, sample=fakes.sample, persist=fakes.persist)
+    assert result["cells"] == {"A10__vanilla__W2__c8": "done"}
+    bench = json.loads((tmp_path / "A10__vanilla__W2__c8" / "a002" / "bench.json").read_text(encoding="utf-8"))
+    assert bench["bench_run_id"].endswith("-a002")
+    assert (stale / "warmup.jsonl").read_text(encoding="utf-8") == '{"phase": "warmup"}\n'

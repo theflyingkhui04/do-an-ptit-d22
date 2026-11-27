@@ -172,6 +172,11 @@ def _load_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def attempt_dir(out_root: Path, cell: dict) -> Path:
+    """<out_root>/<cell>/a<NNN>: a retry never meets the files of an earlier attempt of the same cell."""
+    return Path(out_root) / cell["key"] / f"a{int(cell.get('attempt', 1)):03d}"
+
+
 def _fail(cell_dir: Path, kind: str, error: str) -> str:
     cell_dir.mkdir(parents=True, exist_ok=True)
     _write_json(cell_dir / "failure.json", {"status": f"failed:{kind}", "error": error, "at_utc": _utc_now()})
@@ -207,7 +212,7 @@ def run_session(record: dict, gpu: str, cells: list[dict], *, out_root: Path, de
     for workload, lane, group in session_order(cells):
         if lane == "adaptive" and profile_error:
             for cell in group:
-                status[cell["key"]] = _fail(out_root / cell["key"], "profile", profile_error)
+                status[cell["key"]] = _fail(attempt_dir(out_root, cell), "profile", profile_error)
             persist()
             continue
         cfg = camp.build_cell_serving_config(record, group[0], profile_path=profile_path if lane == "adaptive" else None)
@@ -220,7 +225,7 @@ def run_session(record: dict, gpu: str, cells: list[dict], *, out_root: Path, de
             server = start_server(cfg, server_dir)
         except Exception as exc:  # vLLM could not start (e.g. OOM): the lane fails, the session goes on
             for cell in group:
-                status[cell["key"]] = _fail(out_root / cell["key"], "server", f"{type(exc).__name__}: {exc}")
+                status[cell["key"]] = _fail(attempt_dir(out_root, cell), "server", f"{type(exc).__name__}: {exc}")
             persist()
             continue
         try:
@@ -240,7 +245,7 @@ def _run_cell(record: dict, gpu: str, cell: dict, cfg: dict, server: dict, out_r
               run_harness: Callable, sample: Callable) -> str:
     from experiments.modal_vram_join import join_vram
 
-    cell_dir = out_root / cell["key"]
+    cell_dir = attempt_dir(out_root, cell)
     cell_dir.mkdir(parents=True, exist_ok=True)
     attempt = int(cell.get("attempt", 1))
     bench_run_id = f"{camp.attempt_prefix(record, cell)}{attempt:03d}"

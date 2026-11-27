@@ -227,3 +227,22 @@ def test_collect_gpu_keeps_failure_records_of_cells_without_results(tmp_path, mo
     assert module.collect_gpu("camp1", "T4", tmp_path / "attempts") == []
     saved = tmp_path / "failures" / "T4__static__W2__c8.json"
     assert json.loads(saved.read_text(encoding="utf-8"))["status"] == "failed:server"
+
+
+def test_collect_gpu_reads_attempt_scoped_directories(tmp_path, monkeypatch):
+    base = "flexsds_bench/camp1/A100"
+    volume = FakeVolume({
+        f"{base}/A100__static__W1_V3__c8/a001/bench.json": json.dumps({"bench_run_id": "camp1-A100-static-W1_V3-c8-a001"}).encode(),
+        f"{base}/A100__static__W1_V3__c8/a001/raw.jsonl": b"old\n",
+        f"{base}/A100__static__W1_V3__c8/a002/bench.json": json.dumps({"bench_run_id": "camp1-A100-static-W1_V3-c8-a002"}).encode(),
+        f"{base}/A100__static__W1_V3__c8/a002/raw.jsonl": b"new\n",
+        f"{base}/A100__adaptive__W3__c8/a002/failure.json": b'{"status": "failed:server", "error": "OOM"}',
+    })
+    module, _, _ = _load(monkeypatch, volume=volume)
+    got = module.collect_gpu("camp1", "A100", tmp_path / "attempts")
+    assert sorted(got) == ["A100__static__W1_V3__c8", "A100__static__W1_V3__c8"]
+    attempts = tmp_path / "attempts"
+    assert (attempts / "camp1-A100-static-W1_V3-c8-a001" / "raw.jsonl").read_bytes() == b"old\n"
+    assert (attempts / "camp1-A100-static-W1_V3-c8-a002" / "raw.jsonl").read_bytes() == b"new\n"
+    saved = tmp_path / "failures" / "A100__adaptive__W3__c8.a002.json"
+    assert json.loads(saved.read_text(encoding="utf-8"))["error"] == "OOM"

@@ -777,6 +777,29 @@ def selected_attempt(
     return valid[0] if valid else None
 
 
+def mark_invalid_attempts(record: dict[str, Any], plan_root: Path = PLAN_ROOT, *,
+                          gpu: str | None = None) -> list[str]:
+    """Mark every collected attempt that fails validation, as the M3 runner does, so a retry gets a new attempt.
+
+    Call it only once the GPU's call has finished: bench.json is the last file a cell writes, and a marked
+    attempt is never selected again.
+    """
+    marked: list[str] = []
+    for cell in record["cells"]:
+        if gpu is not None and cell["gpu"] != gpu:
+            continue
+        for out in attempts(record, cell, plan_root):
+            marker = out / "validation_failure.json"
+            if marker.exists() or not (out / "bench.json").exists():
+                continue
+            try:
+                validate_cell(out, record, cell)
+            except (ValueError, KeyError, OSError) as exc:
+                marker.write_bytes((json.dumps({"status": "INVALID-PROTOCOL", "error": str(exc)}) + "\n").encode())
+                marked.append(out.name)
+    return marked
+
+
 def validate_campaign(record: dict[str, Any], plan_root: Path = PLAN_ROOT) -> list[Path]:
     """Every cell valid; one card per GPU; a vLLM process never serves two (workload, lane) groups."""
     selected = [selected_attempt(record, cell, plan_root) for cell in record["cells"]]
@@ -1076,6 +1099,8 @@ def drive(
             if runner.gpu_call_state(previous) == "RUNNING":
                 print(f"{gpu}: call {previous} still running; collected finished cells", flush=True)
                 continue
+            for name in mark_invalid_attempts(record, plan_root, gpu=gpu):
+                print(f"{gpu}: {name} failed validation; its cell will be measured again", flush=True)
         cells = [c for c in record["cells"] if c["gpu"] == gpu]
         missing = [c for c in cells if not selected_attempt(record, c, plan_root)]
         if not missing:
@@ -1173,25 +1198,30 @@ def format_campaign_status(record: dict[str, Any], plan_root: Path = PLAN_ROOT, 
         if collect and call_id:
             runner.collect_gpu(record["campaign_id"], gpu, att_root)
         cells = [c for c in record["cells"] if c["gpu"] == gpu]
+        state = runner.gpu_call_state(call_id) if call_id else "not submitted"
+        if state != "RUNNING":
+            mark_invalid_attempts(record, plan_root, gpu=gpu)
         done, card = 0, "?"
         for cell in cells:
+            problems: list[str] = []
             for out in attempts(record, cell, plan_root):
                 try:
                     checked = validate_cell(out, record, cell)
                 except (ValueError, KeyError, OSError) as exc:
                     if (out / "bench.json").exists():
-                        invalid.append(f"  {cell['key']} ({out.name}): {exc}")
+                        problems.append(f"  {cell['key']} ({out.name}): {exc}")
                     continue
                 done += 1
                 valid_keys.add(cell["key"])
                 card = f"{checked['server_gpu']} ({checked['gpu_uuid'][:12]})"
+                problems = []  # a later valid attempt supersedes the failed ones
                 break
-        state = runner.gpu_call_state(call_id) if call_id else "not submitted"
+            invalid.extend(problems)
         lines.append(f"{gpu}: {done}/{len(cells)} cells valid, card {card}, call {state}")
     failures_dir = _campaign_dir(record, plan_root) / "failures"
     failed = sorted(failures_dir.glob("*.json")) if failures_dir.is_dir() else []
     for path in failed:
-        if path.stem in valid_keys:  # an earlier container failure, since measured successfully
+        if path.stem.split(".")[0] in valid_keys:  # <cell>[.aNNN]: an earlier failure, since measured
             continue
         data = json.loads(path.read_text(encoding="utf-8"))
         invalid.append(f"  {path.stem}: {data.get('status')}: {data.get('error')}")
