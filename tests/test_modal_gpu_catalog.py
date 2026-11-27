@@ -445,7 +445,7 @@ def test_calibration_measurement_rejects_a10g_when_a10_was_requested():
 
 
 def test_profile_batches_flag_limits_the_calibration_grid(monkeypatch):
-    """T4 (16 GB) holds only ~8.4k KV tokens after AWQ + EAGLE: B=16, 32 at context 1024 cannot be measured."""
+    """At the default 0.85 share a T4 calibration kept only ~8.4k KV tokens beside the one-step prefill (26/11)."""
     from flexsds.cli import main as cli
     from flexsds.cli.main import parse_args
 
@@ -467,3 +467,64 @@ def test_profile_batches_flag_limits_the_calibration_grid(monkeypatch):
     cli.main(["profile", "--benchmark", "--backend", "modal", "--gpu", "T4", "--batches", "1,2,4,8",
               "--target", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--draft", "duckhoi/qwen2.5-7b-eagle3.1-speculator"])
     assert seen["batch_sizes"] == [1, 2, 4, 8]
+
+
+def test_profile_memory_share_flag_is_validated_and_forwarded(monkeypatch):
+    """At 0.85 the one-step B=32 x 1024 prefill leaves the T4 too little KV for B=16/32; 0.95 is opt-in."""
+    from flexsds.cli import main as cli
+    from flexsds.cli.main import parse_args
+
+    assert parse_args(["profile"]).gpu_memory_utilization is None
+    assert parse_args(["profile", "--gpu-memory-utilization", "0.95"]).gpu_memory_utilization == 0.95
+    for bad in ("0.3", "0.99", "x"):
+        with pytest.raises(SystemExit):
+            parse_args(["profile", "--gpu-memory-utilization", bad])
+
+    seen = {}
+
+    def fake_benchmark(**kwargs):
+        seen.update(kwargs)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "run_hardware_micro_benchmark", fake_benchmark)
+    monkeypatch.setattr(cli, "print_banner", lambda hw: None)
+    monkeypatch.setattr(cli, "detect_hardware", lambda: HardwareInfo("CPU", "cpu", 0, 0, "N/A", False))
+    cli.main(["profile", "--benchmark", "--backend", "modal", "--gpu", "T4", "--gpu-memory-utilization", "0.95"])
+    assert seen["gpu_memory_utilization"] == 0.95
+
+
+def test_calibration_engine_kwargs_default_and_override():
+    base = {"target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ"}
+    kwargs = cal.calibration_engine_kwargs(base, [1, 2, 4, 8, 16, 32], revision="a" * 40, dtype="float16",
+                                           quantization="awq")
+    assert kwargs["gpu_memory_utilization"] == 0.85
+    assert kwargs["max_num_batched_tokens"] == 32 * cal.CONTEXT
+    assert kwargs["enable_chunked_prefill"] is False and kwargs["quantization"] == "awq"
+    high = cal.calibration_engine_kwargs({**base, "gpu_memory_utilization": 0.95}, [1, 2], revision="a" * 40,
+                                         dtype="float16", quantization=None)
+    assert high["gpu_memory_utilization"] == 0.95 and "quantization" not in high
+    with pytest.raises(ValueError, match="gpu_memory_utilization"):
+        cal.calibration_engine_kwargs({**base, "gpu_memory_utilization": 1.2}, [1], revision="a" * 40,
+                                      dtype="float16", quantization=None)
+
+
+def test_micro_benchmark_records_the_memory_share_in_the_calibration_config(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+    from flexsds.core import cost_model as cm
+    from flexsds.core import compatibility
+    from flexsds.core import calibration
+
+    seen = {}
+    report = Mock(draft_method="eagle3", is_compatible=True, blocking_reasons=[], target_revision=None,
+                  draft_revision=None)
+    monkeypatch.setattr(compatibility, "check_compatibility", lambda *a, **kw: report)
+    monkeypatch.setattr(calibration, "run_local_group", lambda config, k, batches: seen.setdefault("config", config))
+    monkeypatch.setattr(calibration, "build_profile", lambda config, groups, batches: {"models": {}})
+    monkeypatch.setattr(cm, "save_hardware_profile", lambda *a, **kw: tmp_path / "p.json")
+    monkeypatch.setattr(cm.FlexCostModel, "from_json", classmethod(lambda cls, path: None))
+    hw = HardwareInfo("Tesla T4", "sm_75", 15000, 15000, "12.0", True)
+    cm.run_hardware_micro_benchmark(hw, backend="local", batch_sizes=[1, 2], gpu_memory_utilization=0.95)
+    assert seen["config"]["gpu_memory_utilization"] == 0.95
+    seen.clear()
+    cm.run_hardware_micro_benchmark(hw, backend="local", batch_sizes=[1, 2])
+    assert "gpu_memory_utilization" not in seen["config"]  # old profiles' evidence keeps its shape

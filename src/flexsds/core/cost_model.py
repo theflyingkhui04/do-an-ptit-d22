@@ -624,6 +624,7 @@ def run_hardware_micro_benchmark(
     target_dir: Optional[Path] = None,
     backend: str = "local",
     measurement_mode: str = "full",
+    gpu_memory_utilization: Optional[float] = None,
 ) -> Tuple[FlexCostModel, Path]:
     """Measure actual vLLM worker components; never substitute analytical costs.
 
@@ -646,6 +647,8 @@ def run_hardware_micro_benchmark(
     config = dict(target_model=target_model, draft_model=draft_model,
                   draft_method=report.draft_method, sm_architecture=hw_info.sm_architecture,
                   measurement_mode=measurement_mode)
+    if gpu_memory_utilization is not None:  # only when overridden, so default evidence keeps its shape
+        config['gpu_memory_utilization'] = float(gpu_memory_utilization)
     for key in ('target_revision', 'draft_revision'):
         revision = getattr(report, key, None)
         if revision and revision != 'local':
