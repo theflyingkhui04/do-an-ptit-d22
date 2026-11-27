@@ -103,11 +103,3 @@ class CredentialsManager:
             for k, v in keys.items():
                 masked[prov][k] = mask_secret(v)
         return masked
-
-    def inject_into_environ(self) -> None:
-        """Injects stored credentials into os.environ in memory if not already set."""
-        data = self._load()
-        for _, keys in data.items():
-            for k, v in keys.items():
-                if k not in os.environ:
-                    os.environ[k] = v

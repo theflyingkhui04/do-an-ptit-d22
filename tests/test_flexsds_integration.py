@@ -256,3 +256,24 @@ def test_new_command_output_encodes_without_stream_reconfiguration(machine, monk
     assert "TPOT" not in sink.getvalue()
     if encoding == "cp1252":
         assert sink.getvalue().isascii()
+
+
+def test_modal_launch_widens_the_console_so_the_endpoint_url_is_not_wrapped(monkeypatch):
+    # Through a pipe, modal wraps output at ~80 columns; a long URL (e.g. with an environment
+    # suffix) was split across lines and the CLI timed out waiting for it although deploy succeeded.
+    import subprocess as sp
+    from flexsds.server import modal_auth
+    from flexsds.server.modal_runner import ModalServingRunner
+
+    seen = {}
+
+    def fake_popen(cmd, **kwargs):
+        seen.update(kwargs["env"])
+        raise FileNotFoundError
+
+    monkeypatch.setattr(modal_auth, "ensure_modal", lambda: None)
+    monkeypatch.setattr(ModalServingRunner, "check_credentials", lambda self: True)
+    monkeypatch.setattr(sp, "Popen", fake_popen)
+    monkeypatch.setenv("COLUMNS", "80")
+    assert ModalServingRunner().launch({"enable_adaptive": False}, deploy=True) is None
+    assert int(seen["COLUMNS"]) >= 1000

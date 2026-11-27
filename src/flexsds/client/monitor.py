@@ -74,7 +74,8 @@ class TelemetryMonitor:
                     f"mean_k={num('mean_k', 2)} | accept_len={num('mean_accept_len', 2)} | "
                     f"alpha={num('alpha_ema', 2)} | lane={lane}")
 
-        step = record.get("step", "-")
+        # serving_steps.jsonl verification rows carry the scheduler step of their drafts.
+        step = record.get("step", record.get("source_schedule_sequence"))
         executed = record.get("executed_draft_token_count", 0)
         accepted = record.get("accepted_draft_token_count", 0)
         alpha_ema = record.get("alpha_ema", 0.0)
@@ -85,8 +86,8 @@ class TelemetryMonitor:
         color = "\033[32m" if accepted >= 3 else ("\033[33m" if accepted >= 1 else "\033[31m")
 
         return (
-            f"[\033[36mStep {step}\033[0m] "
-            f"k={k} | "
+            (f"[\033[36mStep {step}\033[0m] " if step is not None else "")
+            + f"k={k} | "
             f"{color}accepted={accepted}/{executed}\033[0m | "
             f"ratio={ratio_str} | "
             f"lane={lane}"

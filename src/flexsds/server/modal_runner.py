@@ -142,7 +142,10 @@ class ModalServingRunner:
             output = ProcessProgress('serving')
             proc = None
             try:
-                proc = subprocess.Popen(cmd, env=self.setup_environment(config), stdin=subprocess.DEVNULL,
+                env = self.setup_environment(config)
+                # Through a pipe modal wraps output at ~80 columns, which split long endpoint URLs.
+                env['COLUMNS'] = '1000'
+                proc = subprocess.Popen(cmd, env=env, stdin=subprocess.DEVNULL,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         text=True, encoding='utf-8', errors='replace', bufsize=1)
                 output.start()
