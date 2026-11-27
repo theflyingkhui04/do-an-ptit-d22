@@ -47,11 +47,34 @@ class TelemetryMonitor:
                 continue
         return records
 
+    # Per-step planning records in serving_steps.jsonl (two per request per step): not displayed.
+    HIDDEN_RECORD_TYPES = frozenset({"planned_decision", "scheduled_budget"})
+
     @staticmethod
-    def format_record(record: Dict[str, Any]) -> str:
-        """Formats a single telemetry record into a colorful human-readable row."""
-        step = record.get("step", "-")
+    def format_record(record: Dict[str, Any]) -> Optional[str]:
+        """Formats one telemetry record as a row, or returns None for records not worth showing.
+
+        Understands both files: serving_trace.jsonl (one summary per finished request) and
+        serving_steps.jsonl (per-step verification feedback).
+        """
         lane = record.get("lane", "adaptive")
+        record_type = record.get("record_type")
+        if record_type in TelemetryMonitor.HIDDEN_RECORD_TYPES:
+            return None
+        if record_type == "verification_feedback_skipped":
+            return (f"[\033[36mStep -\033[0m] \033[33mfeedback skipped "
+                    f"({record.get('lineage_status', 'unknown')})\033[0m | lane={lane}")
+        # Per-request summaries (record_type "request_aggregate"; step fields are null).
+        if record_type == "request_aggregate" or (record_type is None and "step_count" in record):
+            def num(key: str, digits: int) -> str:
+                value = record.get(key)
+                return f"{value:.{digits}f}" if isinstance(value, (int, float)) else "-"
+            request = str(record.get("request_id", "-"))[:26]
+            return (f"[\033[36mRequest {request}\033[0m] steps={record.get('step_count', '-')} | "
+                    f"mean_k={num('mean_k', 2)} | accept_len={num('mean_accept_len', 2)} | "
+                    f"alpha={num('alpha_ema', 2)} | lane={lane}")
+
+        step = record.get("step", "-")
         executed = record.get("executed_draft_token_count", 0)
         accepted = record.get("accepted_draft_token_count", 0)
         alpha_ema = record.get("alpha_ema", 0.0)
@@ -88,7 +111,9 @@ def run_live_monitor(
         while True:
             records = monitor.read_new_records()
             for r in records:
-                print(f"  {monitor.format_record(r)}")
+                line = monitor.format_record(r)
+                if line is not None:
+                    print(f"  {line}")
             time.sleep(refresh_rate)
     except KeyboardInterrupt:
         print("\n\033[90mTelemetry monitor stopped.\033[0m")

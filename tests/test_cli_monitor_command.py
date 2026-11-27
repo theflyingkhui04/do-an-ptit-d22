@@ -94,3 +94,46 @@ def test_main_monitor_dispatch(monkeypatch):
     assert code == 0
     assert called["trace_file"] == "custom_trace.jsonl"
     assert called["refresh_rate"] == 0.5
+
+
+def test_monitor_formats_the_per_request_trace_record():
+    # telemetry/serving_trace.jsonl (the default file) holds one summary per finished request.
+    # Shape of src/server/budget_planner.py request telemetry (record_type="request_aggregate").
+    record = {"record_type": "request_aggregate", "decision_scope": "last_planned_decision",
+              "last_planned_decision": {"record_type": "planned_decision", "batch_k_selected": 2},
+              "request_id": "chatcmpl-9703297d6964b8f2-b77a0b98", "lane": "adaptive", "alpha_ema": 0.4579,
+              "mean_accept_len": 1.0345, "mean_k": 2.8065, "step_count": 29, "geometric_alpha_mle": 0.6485,
+              # real serving_trace.jsonl rows carry these step fields as null
+              "executed_draft_token_count": None, "tree_execution_verified": False}
+    line = TelemetryMonitor.format_record(record)
+    assert "Request chatcmpl-9703297d" in line
+    assert "steps=29" in line and "mean_k=2.81" in line and "accept_len=1.03" in line
+    assert "alpha=0.46" in line and "lane=adaptive" in line
+    assert "None" not in line
+
+
+def test_monitor_shows_skipped_feedback_and_hides_planning_records():
+    skipped = {"record_type": "verification_feedback_skipped", "request_id": "chatcmpl-8e38a0b97c790850-x",
+               "lane": "adaptive", "lineage_status": "stale-or-mismatched-lineage"}
+    assert "feedback skipped (stale-or-mismatched-lineage)" in TelemetryMonitor.format_record(skipped)
+    for record_type in ("planned_decision", "scheduled_budget"):
+        assert TelemetryMonitor.format_record({"record_type": record_type, "lane": "adaptive"}) is None
+
+
+def test_run_live_monitor_prints_only_displayable_records(tmp_path, monkeypatch, capsys):
+    from flexsds.client import monitor as mod
+
+    trace = tmp_path / "steps.jsonl"
+    trace.write_text("\n".join(json.dumps(r) for r in (
+        {"record_type": "planned_decision", "lane": "adaptive"},
+        {"record_type": "verification_feedback", "lane": "adaptive", "executed_draft_token_count": 1,
+         "accepted_draft_token_count": 1, "alpha_ema": 0.84, "source_batch_scalar_k": 2},
+    )) + "\n", encoding="utf-8")
+
+    def stop(_):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(mod.time, "sleep", stop)
+    assert mod.run_live_monitor(str(trace), refresh_rate=1) == 0
+    out = capsys.readouterr().out
+    assert "k=2" in out and "accepted=1/1" in out
+    assert out.count("Step") == 1
