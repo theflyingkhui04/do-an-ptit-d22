@@ -64,3 +64,21 @@ def test_cell_warms_once_before_five_measured_repeats():
             experiment_id="cpu-test", concurrency=32,
         )) == 0
     assert calls == ["warmup", 1, 2, 3, 4, 5]
+
+
+def test_client_keepalive_is_shorter_than_the_server_keepalive():
+    # vLLM (uvicorn) closes idle connections after 5 s (VLLM_HTTP_TIMEOUT_KEEP_ALIVE); aiohttp kept them
+    # for 15 s, so the first request of a repeat could reuse a closed connection and fail with
+    # ServerDisconnectedError (A100 static W1_V3 c8, 27/11). Connections are still reused within a repeat.
+    assert harness.CLIENT_KEEPALIVE_S < harness.SERVER_KEEPALIVE_S == 5.0
+
+    async def build():
+        connector = harness.make_connector()
+        try:
+            return connector._keepalive_timeout, connector.force_close
+        finally:
+            await connector.close()
+
+    keepalive, force_close = asyncio.run(build())
+    assert keepalive == harness.CLIENT_KEEPALIVE_S
+    assert force_close is False

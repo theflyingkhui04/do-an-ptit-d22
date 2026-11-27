@@ -23,6 +23,18 @@ except ImportError:
         __version__ = "stub"
     aiohttp = _AiohttpStub()  # type: ignore[assignment]
 
+# vLLM's HTTP server (uvicorn) closes idle keep-alive connections after VLLM_HTTP_TIMEOUT_KEEP_ALIVE = 5 s.
+# aiohttp keeps them for 15 s by default, so the first request of a repeat could reuse a connection the
+# server had just closed and fail with ServerDisconnectedError. Keep the client side shorter.
+SERVER_KEEPALIVE_S = 5.0
+CLIENT_KEEPALIVE_S = 2.0
+
+
+def make_connector() -> "aiohttp.TCPConnector":
+    """Connector for one harness run: reuses connections within a repeat, never a stale one."""
+    return aiohttp.TCPConnector(keepalive_timeout=CLIENT_KEEPALIVE_S)
+
+
 try:
     import torch
 except ImportError:
@@ -1157,6 +1169,7 @@ async def async_main(args: argparse.Namespace) -> int:
             headers["Authorization"] = f"Bearer {args.api_key}"
 
         async with aiohttp.ClientSession(
+            connector=make_connector(),
             timeout=timeout,
             headers=headers,
         ) as session:
