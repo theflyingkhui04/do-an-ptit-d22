@@ -216,7 +216,7 @@ def test_sdk_bridge_exposes_new_actions():
     from experiments import modal_benchmark_runner as runner
 
     actions = runner.SDK_ACTIONS
-    assert set(actions) == {"submit_gpu", "gpu_call_state", "collect_gpu", "release_locks"}
+    assert set(actions) == {"submit_gpu", "gpu_call_state", "collect_gpu", "release_locks", "cancel_call"}
     assert not hasattr(runner, "bench_submit")
 
 

@@ -23,6 +23,12 @@ def _default_campaign_id(mode: str, *, preview: bool) -> str:
     return f"flexsds-bench-{mode}-{ts}"
 
 
+def _campaign_calls(campaign_id: str) -> dict[str, str]:
+    """GPU -> Modal call id recorded for one campaign (empty when nothing was submitted)."""
+    record = camp.load_plan(campaign_id)
+    return camp._load_calls(record, camp.PLAN_ROOT)
+
+
 def run_benchmark_command(args: Any) -> int:
     """Execute `flexsds benchmark` subcommand actions safely."""
     action = getattr(args, "bench_action", None) or "plan"
@@ -30,7 +36,15 @@ def run_benchmark_command(args: Any) -> int:
 
     if dry_run:
         if action == "stop":
-            print("Dry-run: would stop Modal benchmark app (flexsds-benchmark); no Modal call was made.")
+            campaign_id = getattr(args, "campaign_id", None)
+            if campaign_id:
+                calls = _campaign_calls(campaign_id)
+                print(f"Dry-run: would cancel the Modal call(s) of campaign {campaign_id} "
+                      f"({', '.join(f'{gpu} {call}' for gpu, call in calls.items()) or 'none recorded'}); "
+                      "no Modal call was made.")
+            else:
+                print("Dry-run: would stop Modal benchmark app (flexsds-benchmark) and every campaign on it; "
+                      "no Modal call was made.")
             return 0
         if action in ("status", "validate", "aggregate"):
             print(f"--dry-run is not supported with 'flexsds benchmark {action}'.")
@@ -40,14 +54,23 @@ def run_benchmark_command(args: Any) -> int:
     if action == "stop":
         from experiments import modal_benchmark_runner as runner
 
+        campaign_id = getattr(args, "campaign_id", None)
         try:
-            runner.stop_app()
-            if getattr(args, "campaign_id", None):
-                runner.release_locks(args.campaign_id)
+            if campaign_id:
+                # One deployed app serves every campaign: cancel only this campaign's GPU calls.
+                calls = _campaign_calls(campaign_id)
+                for call_id in calls.values():
+                    runner.cancel_call(call_id)
+                runner.release_locks(campaign_id)
+            else:
+                runner.stop_app()
         except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
             print(f"Benchmark stop failed: {exc}")
             return 1
-        print("Stopped Modal benchmark app (flexsds-benchmark).")
+        if campaign_id:
+            print(f"Cancelled {len(calls)} Modal call(s) of campaign {campaign_id}; other campaigns keep running.")
+        else:
+            print("Stopped Modal benchmark app (flexsds-benchmark) and every campaign on it.")
         return 0
 
     if action in ("status", "validate", "aggregate"):

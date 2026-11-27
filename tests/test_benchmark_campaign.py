@@ -1002,3 +1002,63 @@ def test_plan_overview_says_when_a_profile_stops_below_the_largest_batch():
     text = camp.format_plan_overview(record)
     assert "T4   [ready] t4.json (measured B<=8; larger batches use B=8 costs)" in text
     assert "A10  [ready] a10.json\n" in text + "\n"
+
+
+def _stop_fixture(tmp_path, monkeypatch, calls):
+    from experiments import modal_benchmark_runner as runner
+    from experiments import run_benchmark_campaign as camp
+
+    monkeypatch.setattr(camp, "ROOT", tmp_path)
+    record = camp.plan("cpu-stop", "a" * 40, mode="fast", gpus=("T4",), workloads=("W2",))
+    camp.save_plan(record)
+    camp._save_calls(record, camp.PLAN_ROOT, calls)
+    seen: dict[str, list] = {"cancel": [], "stop_app": [], "release": []}
+    monkeypatch.setattr(runner, "cancel_call", lambda call_id: seen["cancel"].append(call_id))
+    monkeypatch.setattr(runner, "stop_app", lambda: seen["stop_app"].append(True))
+    monkeypatch.setattr(runner, "release_locks", lambda cid: seen["release"].append(cid))
+    return seen
+
+
+def test_benchmark_stop_with_campaign_cancels_only_that_campaign(tmp_path, monkeypatch, capsys):
+    # One deployed app serves every campaign: stopping it for one campaign killed a parallel A100 run (27/11).
+    from flexsds.cli import main as cli
+
+    seen = _stop_fixture(tmp_path, monkeypatch, {"T4": "fc-t4"})
+    assert cli.main(["benchmark", "stop", "--campaign-id", "cpu-stop"]) == 0
+    assert seen == {"cancel": ["fc-t4"], "stop_app": [], "release": ["cpu-stop"]}
+    out = capsys.readouterr().out
+    assert "cpu-stop" in out and "other campaigns keep running" in out
+
+
+def test_benchmark_stop_without_campaign_stops_the_whole_app(tmp_path, monkeypatch, capsys):
+    from flexsds.cli import main as cli
+
+    seen = _stop_fixture(tmp_path, monkeypatch, {"T4": "fc-t4"})
+    assert cli.main(["benchmark", "stop"]) == 0
+    assert seen["stop_app"] == [True] and seen["cancel"] == []
+    assert "every campaign" in capsys.readouterr().out
+
+
+def test_benchmark_stop_dry_run_with_campaign_names_the_calls(tmp_path, monkeypatch, capsys):
+    from flexsds.cli import main as cli
+
+    seen = _stop_fixture(tmp_path, monkeypatch, {"T4": "fc-t4"})
+    assert cli.main(["benchmark", "stop", "--campaign-id", "cpu-stop", "--dry-run"]) == 0
+    assert seen == {"cancel": [], "stop_app": [], "release": []}
+    assert "fc-t4" in capsys.readouterr().out
+
+
+def test_cancel_call_cancels_the_modal_function_call(monkeypatch):
+    from experiments import modal_benchmark_runner as runner
+
+    cancelled = []
+
+    class FakeCall:
+        def cancel(self):
+            cancelled.append(True)
+
+    fake_modal = Mock()
+    fake_modal.FunctionCall.from_id = lambda call_id: (cancelled.append(call_id), FakeCall())[1]
+    monkeypatch.setattr(runner, "modal", fake_modal)
+    runner.cancel_call("fc-abc")
+    assert cancelled == ["fc-abc", True]

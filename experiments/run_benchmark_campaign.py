@@ -1204,8 +1204,11 @@ def format_campaign_status(record: dict[str, Any], plan_root: Path = PLAN_ROOT, 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.action == "stop":
+        # --campaign-id is required here: cancel only this campaign's GPU calls, not the shared app.
         from experiments import modal_benchmark_runner as runner
-        runner.stop_app()
+        for call_id in _load_calls(load_plan(args.campaign_id), PLAN_ROOT).values():
+            runner.cancel_call(call_id)
+        runner.release_locks(args.campaign_id)
         return 0
     if args.action in ("status", "validate", "aggregate"):
         record = load_plan(args.campaign_id)
