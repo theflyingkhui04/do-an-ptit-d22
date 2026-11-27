@@ -82,7 +82,8 @@ def calibration_engine_kwargs(config, batches, *, revision, dtype, quantization)
     Every sequence must be prefilled in one step (no chunked prefill), so the next step has the exact
     decode shape that is timed. At B=32 x 1024 that prefill's activations leave a 16 GB T4 too little
     KV cache at the default memory share; `gpu_memory_utilization` in the config (recorded in the
-    profile evidence) raises it for such GPUs.
+    profile evidence) raises it. On T4, 0.95 gave 34.8k KV tokens but still ran out of memory at B=16
+    (2.3 GiB request, 3.3 GiB reserved-but-unallocated) on 27/11, so the T4 profile stays at B<=8.
     """
     share = float(config.get('gpu_memory_utilization', DEFAULT_GPU_MEMORY_UTILIZATION))
     if not 0.5 <= share <= 0.98:

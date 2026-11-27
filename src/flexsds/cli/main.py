@@ -185,7 +185,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     profile_parser.add_argument("--batches", type=calibration_batches, default=None,
                                 help="Comma-separated batch sizes from 1,2,4,8,16,32 (default: all); a shorter prefix such as 1,2,4,8 when larger batches do not fit")
     profile_parser.add_argument("--gpu-memory-utilization", type=calibration_memory_share, default=None,
-                                help="vLLM memory share while calibrating (0.50..0.98, default 0.85); e.g. 0.95 on T4 so B=16/32 fit next to the one-step B x 1024 prefill")
+                                help="vLLM memory share while calibrating (0.50..0.98, default 0.85); more room for the one-step B x 1024 prefill (on T4, 0.95 still ran out of memory at B=16 on 27/11)")
     profile_parser.add_argument("--backend", choices=["local", "modal"], default="local", help="Where to run calibration")
     profile_parser.add_argument("--gpu", type=canonical_modal_gpu_name, choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="GPU to allocate for Modal calibration")
 
