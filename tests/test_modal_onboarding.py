@@ -99,7 +99,63 @@ def test_login_prints_english_steps_before_prompts(tmp_path, monkeypatch, capsys
             assert '6. Paste the Token ID' in output
         return 'id' if 'ID' in question else 'secret'
     monkeypatch.setattr('getpass.getpass', prompt)
+    monkeypatch.setattr('sys.stdin.isatty', lambda: True)  # an interactive terminal: getpass prompts
     saved = Mock()
     monkeypatch.setattr(auth, 'save_verified_modal_token', saved)
     assert main(['auth','login','--provider','modal']) == 0
     assert saved.call_args.args[1:] == ('id', 'secret')
+
+
+def _no_prompt(question):
+    raise AssertionError(f"getpass must not run without a terminal: {question}")
+
+
+def test_login_without_a_terminal_reads_the_secret_from_stdin(tmp_path, monkeypatch):
+    # On Windows getpass reads the console, not stdin: a non-interactive `auth login` hung forever.
+    import io
+    from flexsds.cli.main import main
+    monkeypatch.setattr(CredentialsManager, 'DEFAULT_PATH', tmp_path/'credentials')
+    monkeypatch.setattr(auth, 'ensure_modal', lambda: None)
+    monkeypatch.setattr('getpass.getpass', _no_prompt)
+    monkeypatch.setattr('sys.stdin', io.StringIO('secret-from-pipe\n'))
+    saved = Mock()
+    monkeypatch.setattr(auth, 'save_verified_modal_token', saved)
+    assert main(['auth', 'login', '--provider', 'modal', '--token', 'ak-id']) == 0
+    assert saved.call_args.args[1:] == ('ak-id', 'secret-from-pipe')
+
+
+def test_login_without_a_terminal_or_input_fails_instead_of_hanging(tmp_path, monkeypatch, capsys):
+    import io
+    from flexsds.cli.main import main
+    monkeypatch.setattr(CredentialsManager, 'DEFAULT_PATH', tmp_path/'credentials')
+    monkeypatch.setattr(auth, 'ensure_modal', lambda: None)
+    monkeypatch.setattr('getpass.getpass', _no_prompt)
+    monkeypatch.setattr('sys.stdin', io.StringIO(''))
+    monkeypatch.setattr(auth, 'save_verified_modal_token', Mock(side_effect=AssertionError('must not save')))
+    assert main(['auth', 'login', '--provider', 'modal', '--token', 'ak-id']) == 1
+    assert 'MODAL_TOKEN_SECRET' in capsys.readouterr().out
+
+
+def test_huggingface_login_without_a_terminal_reads_the_token_from_stdin(tmp_path, monkeypatch):
+    import io
+    from flexsds.cli.main import main
+    monkeypatch.setattr(CredentialsManager, 'DEFAULT_PATH', tmp_path/'credentials')
+    monkeypatch.setattr('getpass.getpass', _no_prompt)
+    monkeypatch.setattr('sys.stdin', io.StringIO('hf_from_pipe\n'))
+    assert main(['auth', 'login', '--provider', 'huggingface']) == 0
+    assert CredentialsManager().get_stored_credential('huggingface', 'HF_TOKEN') == 'hf_from_pipe'
+
+
+def test_windows_nul_device_is_not_treated_as_a_terminal(tmp_path, monkeypatch, capsys):
+    # On Windows the NUL device (`< /dev/null`) reports isatty() True although it is no console.
+    import io
+    from flexsds.cli import main as cli
+    stdin = io.StringIO('')
+    stdin.isatty = lambda: True
+    monkeypatch.setattr(CredentialsManager, 'DEFAULT_PATH', tmp_path/'credentials')
+    monkeypatch.setattr(auth, 'ensure_modal', lambda: None)
+    monkeypatch.setattr('getpass.getpass', _no_prompt)
+    monkeypatch.setattr('sys.stdin', stdin)
+    monkeypatch.setattr(cli, '_is_console', lambda stream: False)
+    assert cli.main(['auth', 'login', '--provider', 'modal', '--token', 'ak-id']) == 1
+    assert 'No terminal to type MODAL_TOKEN_SECRET' in capsys.readouterr().out

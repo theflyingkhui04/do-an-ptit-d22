@@ -89,6 +89,39 @@ def scaledown_seconds(value):
     return seconds
 
 
+def _is_console(stream):
+    """True for an interactive console. On Windows the NUL device reports isatty() True as well."""
+    import os
+
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        import msvcrt
+
+        mode = ctypes.c_uint32()
+        return bool(ctypes.windll.kernel32.GetConsoleMode(msvcrt.get_osfhandle(stream.fileno()), ctypes.byref(mode)))
+    except (AttributeError, OSError, ValueError):
+        return True
+
+
+def read_secret(name, context=""):
+    """Prompt for a secret on a terminal, or read one line from stdin when there is none.
+
+    On Windows getpass reads the console, not stdin, so a non-interactive login used to hang.
+    """
+    import getpass
+
+    stdin = sys.stdin
+    if stdin is not None and stdin.isatty() and _is_console(stdin):
+        return getpass.getpass(f"Enter {name}{context}: ")
+    line = stdin.readline() if stdin is not None else ""
+    if not line.strip():
+        raise RuntimeError(f"No terminal to type {name}: pipe it on stdin "
+                           "(e.g. `printf '%s\\n' \"$VALUE\" | flexsds auth login ...`) or run in a terminal.")
+    return line.strip()
+
+
 def calibration_memory_share(value):
     try:
         share = float(value)
@@ -427,7 +460,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 print("\033[32m✔ Removed all stored credentials.\033[0m")
             return 0
         elif args.auth_action == "login":
-            import getpass
             prov = args.provider
             if prov == "modal":
                 from flexsds.server.modal_auth import ensure_modal, print_token_instructions, save_verified_modal_token
@@ -437,15 +469,19 @@ def main(argv: Optional[list[str]] = None) -> int:
                     if args.key not in (None, 'MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'):
                         print('Modal requires MODAL_TOKEN_ID and MODAL_TOKEN_SECRET.')
                         return 1
-                    token_id = (args.token if args.key != 'MODAL_TOKEN_SECRET' else None) or getpass.getpass("Enter MODAL_TOKEN_ID: ")
-                    secret = (args.token if args.key == 'MODAL_TOKEN_SECRET' else None) or getpass.getpass("Enter MODAL_TOKEN_SECRET: ")
+                    token_id = (args.token if args.key != 'MODAL_TOKEN_SECRET' else None) or read_secret("MODAL_TOKEN_ID")
+                    secret = (args.token if args.key == 'MODAL_TOKEN_SECRET' else None) or read_secret("MODAL_TOKEN_SECRET")
                     save_verified_modal_token(cred_mgr, token_id, secret)
                 except (OSError, RuntimeError) as exc:
                     print(str(exc))
                     return 1
                 return 0
             key_name = args.key or ("HF_TOKEN" if prov == "huggingface" else ("MODAL_TOKEN_ID" if prov == "modal" else "TOKEN"))
-            val = args.token or getpass.getpass(f"Enter {key_name} for {prov}: ")
+            try:
+                val = args.token or read_secret(key_name, f" for {prov}")
+            except RuntimeError as exc:
+                print(str(exc))
+                return 1
             if val:
                 cred_mgr.set_credential(prov, key_name, val.strip())
                 print(f"\033[32m✔ Securely saved {key_name} for {prov} (POSIX mode 0600; Windows uses filesystem ACLs).\033[0m")
