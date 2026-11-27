@@ -102,3 +102,18 @@ def test_local_runner_launch_aborts_on_port_conflict(monkeypatch):
     monkeypatch.setattr(runner, "check_port_available", lambda port: False)
     proc = runner.launch({"serving": {"port": 8000, "enable_adaptive": False}}, dry_run=False)
     assert proc is None
+
+
+@pytest.mark.parametrize("cfg, expected", [
+    ({}, "qwen2.5-7b-adaptive"),
+    ({"enable_adaptive": False}, "qwen2.5-7b-static"),
+    ({"enable_adaptive": False, "static_k": 3}, "qwen2.5-7b-static"),
+    ({"enable_adaptive": False, "disable_speculative": True, "draft_model": None, "draft_method": "none"},
+     "qwen2.5-7b-vanilla"),
+    ({"enable_adaptive": False, "target_model": "meta-llama/Llama-3.1-8B-Instruct"}, "llama-3.1-8b-instruct-static"),
+    ({"served_model_name": "my-endpoint"}, "my-endpoint"),
+])
+def test_served_model_name_follows_the_lane(cfg, expected):
+    # Static and vanilla were served as "qwen2.5-7b-adaptive", which mislabelled them in logs and the web console.
+    cmd = LocalServingRunner().build_command(cfg)
+    assert cmd[cmd.index("--served-model-name") + 1] == expected

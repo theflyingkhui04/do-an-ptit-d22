@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import signal
 import socket
@@ -62,6 +63,28 @@ def finish_launch(proc, background: bool = False) -> int:
 
 
 K_SELECTION_MODES = frozenset({"batch", "max_k"})
+
+
+DEFAULT_TARGET_MODEL = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+
+
+def default_served_model_name(serving_cfg: Dict[str, Any]) -> str:
+    """Name the endpoint after its target and lane: <target>-adaptive, -static or -vanilla.
+
+    The default Qwen2.5-7B target keeps the historical "qwen2.5-7b" prefix.
+    """
+    if serving_cfg.get("disable_speculative"):
+        lane = "vanilla"
+    elif serving_cfg.get("enable_adaptive", True):
+        lane = "adaptive"
+    else:
+        lane = "static"
+    target = str(serving_cfg.get("target_model") or DEFAULT_TARGET_MODEL)
+    if target.startswith(("Qwen/Qwen2.5-7B-Instruct", "qwen/qwen2.5-7b-instruct")):
+        base = "qwen2.5-7b"
+    else:
+        base = re.sub(r"[^a-z0-9.]+", "-", target.rstrip("/").split("/")[-1].lower()).strip("-") or "model"
+    return f"{base}-{lane}"
 
 
 class LocalServingRunner:
@@ -178,7 +201,7 @@ class LocalServingRunner:
             "--port",
             str(effective_port),
             "--served-model-name",
-            serving_cfg.get("served_model_name", "qwen2.5-7b-adaptive"),
+            serving_cfg.get("served_model_name") or default_served_model_name(serving_cfg),
             "--dtype",
             dtype,
             "--generation-config",
