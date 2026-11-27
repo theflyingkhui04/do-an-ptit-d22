@@ -29,7 +29,8 @@ execution Git SHA too. PyPI 0.3.4 is older code (tag v0.2.4): 9 commands, no
 Serve flags: --target, --draft, --backend {modal,local,colab} (default modal),
 --gpu {T4,A10,L40S,A100} (default A10; remote budget/Modal allocation; A100 maps to Modal A100-80GB; L4 is
 rejected), --port (1..65535, default 8000), --max-num-seqs (default 32), --max-model-len (default 4096; Node 1
-needs 8192), --allow-oom-risk (skip only the VRAM-estimate block), --background, --deploy, --no-adaptive
+needs 8192), --allow-oom-risk (skip only the VRAM-estimate block; required for the A10 Node 1 endpoint at --max-model-len 8192,
+whose estimate is 23.0 GiB > 21.5 GiB budget, a configuration that served on A10 on 26/11), --background, --deploy, --no-adaptive
 (static), --static-k N (1..8, requires --no-adaptive), --vanilla (target only, no --draft),
 --match-adaptive-runtime (static/vanilla run eager + async like adaptive), --no-prefix-caching,
 --no-step-telemetry, --eagle-version {1,2,3,3.1}, --allow-fallback (deprecated, no effect), --dry-run,
@@ -111,6 +112,11 @@ revocation: CREDENTIAL ROTATION STILL REQUIRED BY OWNER.
 Windows output preserves Unicode when supported with ASCII fallback for cp1252/
 unknown streams, including auth/chat/monitor/TaskRunner/Modal. No global stream
 reconfiguration required.
+
+Gated Hugging Face models: preflight sends a token from HF_TOKEN, HUGGING_FACE_HUB_TOKEN, the token saved by
+`flexsds auth login --provider huggingface`, or the huggingface-cli token file (HF_TOKEN_PATH, HF_HOME/token,
+~/.cache/huggingface/token), in that order. Without one, a gated target fails with HTTP 401 (exit 2). A token
+also needs the model's licence accepted on the Hub.
 
 Unsupported doc examples: test --endpoint, check-compat, detect --json,
 --adaptive, serve --gpu-memory-utilization.
