@@ -88,3 +88,5 @@ experiments/runs/**/*.sqlite
 experiments/runs/m2_02_v1/
 # Raw per-step adaptive telemetry (tens of MB); the run folder keeps serving_steps.jsonl.gz + .sha256
 experiments/runs/flexsds_bench/**/telemetry/serving_steps.jsonl
+# 56 MB raw lineage of the A10 fast campaign; committed as serving_lineage.jsonl.gz + .sha256
+experiments/runs/flexsds_bench/flexsds-fast-a10-2611b/servers/A10/W1_V3__adaptive/telemetry/serving_lineage.jsonl

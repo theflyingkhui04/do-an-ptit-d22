@@ -1,0 +1,17 @@
+{
+  "gpu": "A10",
+  "lane": "vanilla",
+  "server_run_id": "flexsds-fast-a10-2611b-A10-W2-vanilla-8508e690",
+  "bench_run_id": "flexsds-fast-a10-2611b-A10-vanilla-W2-c32-a001",
+  "expected_profile_sha256": null,
+  "cell": {
+    "workload": "W2",
+    "concurrency": 32,
+    "repeats": 5,
+    "num_requests": 32
+  },
+  "commit": "cc47739a96c91685392df520974857412657057f",
+  "source_digest": "4c2d26b3741ae68104de43b6ff17b153142ea55f69c807b67c6fb55a5139c17c",
+  "submitted_at_utc": "2026-11-26T17:26:04.268990+00:00",
+  "call_id": "fc-01M8C23JSQ65Q0W70GHG66Q7WG"
+}
