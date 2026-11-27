@@ -136,4 +136,14 @@ def test_run_live_monitor_prints_only_displayable_records(tmp_path, monkeypatch,
     assert mod.run_live_monitor(str(trace), refresh_rate=1) == 0
     out = capsys.readouterr().out
     assert "k=2" in out and "accepted=1/1" in out
-    assert out.count("Step") == 1
+    assert out.count("accepted=") == 1
+
+
+def test_monitor_step_column_uses_the_schedule_sequence():
+    record = {"record_type": "verification_feedback", "lane": "adaptive", "executed_draft_token_count": 1,
+              "accepted_draft_token_count": 1, "alpha_ema": 0.84, "source_batch_scalar_k": 2,
+              "source_schedule_sequence": 132564}
+    assert "Step 132564" in TelemetryMonitor.format_record(record)
+    bare = {"lane": "adaptive", "executed_draft_token_count": 2, "accepted_draft_token_count": 1, "alpha_ema": 0.5}
+    line = TelemetryMonitor.format_record(bare)
+    assert "Step -" not in line and "accepted=1/2" in line
