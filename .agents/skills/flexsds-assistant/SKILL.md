@@ -17,10 +17,15 @@ hardware/profile inspection, serving configuration previews and CLI diagnosis.
    checkout's `src` on PYTHONPATH is the same entrypoint. If neither works, report
    the exact missing executable/import and suggest installation into the user's
    chosen environment; do not install or change credentials automatically.
+   `pip show flexsds` must show the checkout as editable location; an old editable
+   install (e.g. 0.2.1) makes `flexsds benchmark` fail with "No module named 'src'"
+   until `pip install -e .` is rerun. PyPI 0.3.4 is older code (no `benchmark`,
+   `--gpu {L4,T4,A10G}`); check `--help` before assuming develop flags.
 3. For hardware use `flexsds detect`; for profile lookup use `flexsds profile`.
    CPU fallback means CUDA was not detected by this Python environment, not proof
-   that no physical GPU exists. CPU memory is RAM, never serving VRAM. Unknown SM
-   and CPU select the L4 profile; that is not measured support for this machine.
+   that no physical GPU exists. CPU memory is RAM, never serving VRAM. A GPU with
+   no measured profile gets `conservative_analytical_fallback`, which cannot serve
+   the adaptive lane; suggest `profile --benchmark` or `--no-adaptive`.
 4. For configuration obtain both nonempty target and draft IDs plus backend.
    Ask for missing inputs. Reject option-like IDs and control characters; pass
    IDs as individual argv values with shell-appropriate quoting, never shell
@@ -42,7 +47,10 @@ hardware/profile inspection, serving configuration previews and CLI diagnosis.
    Modal uses an estimated remote GPU budget, not local free memory.
 5. Default to inspection/explanation/dry-run. A question such as "can this run?"
    does not authorize a launch. Real `serve`, background start, `stop`, paid GPU
-   allocation, deployment and credential changes require explicit user intent.
+   allocation (including `benchmark run` and `profile --benchmark --backend modal`),
+   deployment and credential changes require explicit user intent. `benchmark stop
+   --campaign-id ID` cancels only that campaign's GPU calls; without an ID it stops
+   the shared Modal app and every campaign on it.
    Existing explicit intent suffices; do not ask again for routine steps. Before
    an authorized action, inspect backend prerequisites and dry-run the exact
    configuration. Stop at missing GPU/runtime, OOM warnings, unsupported hardware
@@ -62,7 +70,8 @@ hardware/profile inspection, serving configuration previews and CLI diagnosis.
    the failure and explain a specific repair. Do not retry as a real launch or
    silently drop flags. Use supplied command/error text for diagnosis; reproduce
    only safe inspection/preview commands. Actual parser/runtime wins over docs;
-   do not invent `test`, `check-compat`, `--json` or unsupported options.
+   do not invent `test`, `check-compat`, `detect --json` or other unsupported
+   options (`--json` exists only for `benchmark`).
 8. Return the result, issue/limitation and exact next action. Label evidence as
    FACT (code contract), OBSERVATION (captured output), INFERENCE, RECOMMENDATION
    or UNKNOWN where relevant. A printed command is not a running endpoint.
