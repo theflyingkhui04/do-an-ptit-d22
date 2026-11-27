@@ -417,6 +417,11 @@ def collect_gpu(campaign_id: str, gpu: str, evidence_root: Path) -> list[str]:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(read(path))
             continue
+        if top == "_profile" and "hardware_profile.json" in names:  # the profile the adaptive lane used
+            target = evidence_root.parent / "servers" / gpu / "hardware_profile.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(read(names["hardware_profile.json"]))
+            continue
         if top.startswith("_"):
             continue
         if "bench.json" not in names:

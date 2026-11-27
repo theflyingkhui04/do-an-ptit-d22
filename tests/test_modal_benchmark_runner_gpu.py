@@ -246,3 +246,13 @@ def test_collect_gpu_reads_attempt_scoped_directories(tmp_path, monkeypatch):
     assert (attempts / "camp1-A100-static-W1_V3-c8-a002" / "raw.jsonl").read_bytes() == b"new\n"
     saved = tmp_path / "failures" / "A100__adaptive__W3__c8.a002.json"
     assert json.loads(saved.read_text(encoding="utf-8"))["error"] == "OOM"
+
+
+def test_collect_gpu_keeps_the_hardware_profile_the_session_used(tmp_path, monkeypatch):
+    # The adaptive lane reads _profile/hardware_profile.json in the container; it was never collected, so
+    # campaign evidence only had the profile's hash (A100, 27/11).
+    profile = json.dumps({"metadata": {"device": "NVIDIA A100-SXM4-80GB", "raw_sha256": "2e1a"}}).encode()
+    volume = FakeVolume({"flexsds_bench/camp1/A100/_profile/hardware_profile.json": profile})
+    module, _, _ = _load(monkeypatch, volume=volume)
+    assert module.collect_gpu("camp1", "A100", tmp_path / "attempts") == []
+    assert (tmp_path / "servers" / "A100" / "hardware_profile.json").read_bytes() == profile
