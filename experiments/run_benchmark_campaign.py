@@ -459,14 +459,31 @@ def load_plan(campaign_id: str, plan_root: Path = PLAN_ROOT) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def summarize_speculative_acceptance(raw: Sequence[dict[str, Any]], lane: str) -> tuple[float | None, float | None]:
-    """Validate and aggregate speculative counters; allows genuine adaptive K=0 cells with 0 drafts."""
+def summarize_speculative_acceptance(
+    raw: Sequence[dict[str, Any]], lane: str,
+) -> tuple[float | None, float | None, list[dict[str, Any]]]:
+    """Validate and aggregate speculative counters; allows genuine adaptive K=0 cells with 0 drafts.
+
+    Records showing the known vLLM grammar post-stop over-count (``aggregate_results.
+    classify_spec_counter_record``) are left out of alpha/tau and returned as the third item;
+    any other counter anomaly still raises.
+    """
     from experiments import aggregate_results as agg
 
     if lane == "vanilla":
-        return None, None
+        return None, None, []
     if lane == "static":
-        return agg.aggregate_static_acceptance(raw)
+        kept, excluded = agg.partition_spec_counter_records(raw)
+        return (*agg.aggregate_static_acceptance(kept), excluded)
+
+    # Records without native counters keep their previous treatment (skipped below); only records
+    # that carry counters are classified.
+    def has_counters(record: dict[str, Any]) -> bool:
+        metrics = record.get("server_metrics")
+        return isinstance(metrics, dict) and isinstance(metrics.get("speculative_decoding"), dict)
+
+    kept, excluded = agg.partition_spec_counter_records([r for r in raw if has_counters(r)])
+    raw = kept + [r for r in raw if not has_counters(r)]
 
     # Adaptive lane may legitimately pick K=0 for every step on high-batch or short-output cells.
     drafted_total = 0
@@ -485,8 +502,8 @@ def summarize_speculative_acceptance(raw: Sequence[dict[str, Any]], lane: str) -
         drafted_total += drafted
 
     if drafted_total > 0:
-        return agg.aggregate_static_acceptance(raw)
-    return None, None
+        return (*agg.aggregate_static_acceptance(raw), excluded)
+    return None, None, excluded
 
 
 def _validate_server_vllm_args(server: dict[str, Any], expected_cfg: dict[str, Any], lane: str) -> None:
@@ -695,8 +712,8 @@ def validate_cell(
                          f"(lowest per-repeat peak running+waiting: {worst:g})")
 
     agg.validate_measured_records(raw)
-    alpha_tau = summarize_speculative_acceptance(raw, cell["lane"])
-    acceptance = None if alpha_tau == (None, None) else alpha_tau
+    alpha, tau, counter_exclusions = summarize_speculative_acceptance(raw, cell["lane"])
+    acceptance = None if (alpha, tau) == (None, None) else (alpha, tau)
 
     summary = None
     if (out / "raw.vram.jsonl").exists():
@@ -709,10 +726,10 @@ def validate_cell(
             raise ValueError("VRAM join changed raw evidence")
         if any(r.get("run_vram_peak_mb") is None for r in joined):
             raise ValueError("Missing VRAM samples")
-        summary = agg._aggregate_measured_records(joined)[0]
+        summary = agg._aggregate_measured_records(joined, tolerate_known_counter_artifacts=True)[0]
 
     duration = sum({r["repeat_id"]: r["run_duration_s"] for r in raw}.values())
-    return {
+    result = {
         "protocol_status": "VALID",
         "commit": sha,
         "gpu": cell["gpu"],
@@ -736,6 +753,9 @@ def validate_cell(
         "output_tokens_per_s": sum(r["output_tokens"] for r in raw) / duration,
         "summary": summary,
     }
+    if counter_exclusions:
+        result["counter_exclusions"] = counter_exclusions
+    return result
 
 
 def selected_attempt(
@@ -825,6 +845,25 @@ def render_markdown_report(summary: dict[str, Any]) -> str:
                 f"{_fmt(row.get('tau'), 3)} | {_fmt(row.get('vram_peak_mb'), 1)} |"
             )
         lines.append("")
+    exclusions = summary.get("speculative_counter_exclusions")
+    if exclusions:
+        lines.extend([
+            "## Ghi chú bộ đếm speculative",
+            "",
+            "Các request dưới đây bị loại khỏi α và τ; TPOT, throughput, độ trễ và nội dung trả lời không bị ảnh hưởng. "
+            "`grammar_post_stop_overcount` là lỗi đếm của vLLM 0.30 khi có ràng buộc JSON: nháp nằm sau EOS bị tính "
+            "là invalid nhưng vẫn được verify và tính là accepted, trước khi đầu ra bị cắt ở stop token "
+            "(`logs/bugs/vllmGrammarPostStopOvercount/`).",
+            "",
+            "| Ô | Request bị loại khỏi α/τ | Lý do |",
+            "|---|---|---|",
+        ])
+        for cell_key in sorted(exclusions):
+            for item in exclusions[cell_key]:
+                lines.append(f"| {cell_key} | `{item['request_id']}` ({item['repeat_id']}, "
+                             f"accepted {item['num_accepted_draft_tokens']} / drafted {item['num_draft_tokens']}) "
+                             f"| `{item['reason']}` |")
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -840,15 +879,18 @@ def aggregate(
 
     paths = validate_campaign(record, plan_root=plan_root)
     rows_by_gpu: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    counter_exclusions: dict[str, list[dict[str, Any]]] = {}
 
     for path, cell in zip(paths, record["cells"]):
         raw_path = path / "raw.vram.jsonl"
         if not raw_path.exists():
             raise ValueError(f"VRAM evidence required for final aggregation: {path}")
         raw = agg._load_jsonl(raw_path)
-        row = agg.aggregate_raw_jsonl(raw_path)[0]
+        row = agg.aggregate_raw_jsonl(raw_path, tolerate_known_counter_artifacts=True)[0]
         if row["lane"] != "vanilla":
-            alpha, tau = summarize_speculative_acceptance(raw, row["lane"])
+            alpha, tau, excluded = summarize_speculative_acceptance(raw, row["lane"])
+            if excluded:
+                counter_exclusions[cell["key"]] = excluded
             row["alpha"] = "N/A" if alpha is None else alpha
             row["tau"] = "N/A" if tau is None else tau
         row["gpu_tier"] = cell["gpu"]
@@ -876,6 +918,9 @@ def aggregate(
         },
         "cells": all_rows,
     }
+    # Present only when non-empty, so summaries of campaigns without exclusions stay unchanged.
+    if counter_exclusions:
+        result["speculative_counter_exclusions"] = counter_exclusions
 
     dest = destination or (ROOT / RESULTS_ROOT / f"flexsds_bench_{record['campaign_id']}_summary.json")
     report_dest = report_destination or (ROOT / RESULTS_ROOT / f"flexsds_bench_{record['campaign_id']}_report.md")

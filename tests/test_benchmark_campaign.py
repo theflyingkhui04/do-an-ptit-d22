@@ -891,3 +891,101 @@ def test_status_lists_cells_that_failed_inside_the_container(tmp_path, monkeypat
     lines = camp.format_campaign_status(record, plan_root=plan_root)
     assert lines[0].startswith("T4: 0/9 cells valid")
     assert any("T4__static__W2__c8" in l and "failed:server" in l and "vLLM exited early" in l for l in lines)
+
+
+# --------------------------------------------------------------------------
+# Known vLLM 0.30 counter artifact: grammar post-stop over-count (A10 W1_V3 c32)
+# --------------------------------------------------------------------------
+_ARTIFACT_ID = "req-05a67192-4f84-44a0-b9d7-ad4f062add0f"
+
+
+def _spec_row(request_id, *, accepted, drafted, steps, k, histogram, response_format=None, output_tokens=100):
+    return {"request_id": request_id, "repeat_id": "r004", "sample_id": "m0_04_006", "output_tokens": output_tokens,
+            "max_completion_tokens": 3072,
+            "response_format": {"type": "json_object"} if response_format is None else response_format,
+            "server_metrics": {"speculative_decoding": {
+                "num_accepted_draft_tokens": accepted, "num_draft_tokens": drafted, "num_spec_steps": steps,
+                "num_spec_tokens": k, "acceptance_histogram": histogram}}}
+
+
+def _artifact_row(**overrides):
+    return _spec_row(_ARTIFACT_ID, accepted=4, drafted=3, steps=4, k=4, histogram=[1, 2, 1, 0, 0],
+                     output_tokens=1073, **overrides)
+
+
+def _normal_rows(n=19):
+    return [_spec_row(f"req-n{i}", accepted=9, drafted=15, steps=5, k=3, histogram=[1, 1, 1, 2]) for i in range(n)]
+
+
+@pytest.mark.parametrize("lane", ["static", "adaptive"])
+def test_summarize_excludes_known_artifact_records(lane):
+    from experiments import run_benchmark_campaign as camp
+
+    alpha, tau, excluded = camp.summarize_speculative_acceptance(_normal_rows() + [_artifact_row()], lane)
+    assert alpha == pytest.approx(9 / 15)
+    assert tau == pytest.approx(1 + 9 / 5)
+    assert [e["request_id"] for e in excluded] == [_ARTIFACT_ID]
+    assert excluded[0]["reason"] == "grammar_post_stop_overcount"
+
+
+def test_summarize_artifact_only_adaptive_cell_is_na():
+    from experiments import run_benchmark_campaign as camp
+
+    zero = [_spec_row(f"req-z{i}", accepted=0, drafted=0, steps=0, k=4, histogram=[0] * 5) for i in range(19)]
+    alpha, tau, excluded = camp.summarize_speculative_acceptance(zero + [_artifact_row()], "adaptive")
+    assert (alpha, tau) == (None, None)
+    assert len(excluded) == 1
+
+
+def test_summarize_vanilla_has_no_acceptance():
+    from experiments import run_benchmark_campaign as camp
+
+    assert camp.summarize_speculative_acceptance([{"server_metrics": None}], "vanilla") == (None, None, [])
+
+
+def test_summarize_still_rejects_unknown_overcount():
+    from experiments import run_benchmark_campaign as camp
+
+    with pytest.raises(ValueError, match="C3"):
+        camp.summarize_speculative_acceptance(_normal_rows() + [_artifact_row(response_format={"type": "text"})],
+                                              "adaptive")
+
+
+def _t4_campaign(tmp_path, monkeypatch, campaign_id):
+    tpot_map = {("T4", "vanilla"): 40.0, ("T4", "static"): 25.0, ("T4", "adaptive"): 20.0}
+    return _make_valid_campaign(tmp_path, monkeypatch, campaign_id=campaign_id, gpus=("T4",), concurrency=1,
+                                tpot_map=tpot_map, gpu_device={"T4": "Tesla T4"})
+
+
+def test_aggregate_without_exclusions_has_no_new_key(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record, plan_root = _t4_campaign(tmp_path, monkeypatch, "cpu-no-exclusions")
+    result = camp.aggregate(record, plan_root=plan_root, destination=tmp_path / "s.json",
+                            report_destination=tmp_path / "r.md")
+    assert "speculative_counter_exclusions" not in result
+    assert "speculative_counter_exclusions" not in json.loads((tmp_path / "s.json").read_text(encoding="utf-8"))
+    assert "Ghi chú bộ đếm speculative" not in (tmp_path / "r.md").read_text(encoding="utf-8")
+
+
+def test_aggregate_lists_exclusions_in_summary_and_report(tmp_path, monkeypatch):
+    from experiments import run_benchmark_campaign as camp
+
+    record, plan_root = _t4_campaign(tmp_path, monkeypatch, "cpu-exclusions")
+    original = camp.summarize_speculative_acceptance
+    item = {"request_id": _ARTIFACT_ID, "repeat_id": "r004", "sample_id": "m0_04_006",
+            "reason": "grammar_post_stop_overcount", "num_accepted_draft_tokens": 4, "num_draft_tokens": 3,
+            "num_spec_tokens": 4}
+
+    def with_artifact(raw, lane):
+        alpha, tau, excluded = original(raw, lane)
+        return alpha, tau, excluded + ([item] if lane == "adaptive" else [])
+
+    monkeypatch.setattr(camp, "summarize_speculative_acceptance", with_artifact)
+    result = camp.aggregate(record, plan_root=plan_root, destination=tmp_path / "s.json",
+                            report_destination=tmp_path / "r.md")
+    assert result["speculative_counter_exclusions"] == {"T4__adaptive__W2__c1": [item]}
+    assert result["scientific_status"] == "VALID"
+    md = (tmp_path / "r.md").read_text(encoding="utf-8")
+    assert "## Ghi chú bộ đếm speculative" in md
+    assert "T4__adaptive__W2__c1" in md and "grammar_post_stop_overcount" in md

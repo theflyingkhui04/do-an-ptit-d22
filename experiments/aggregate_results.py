@@ -387,6 +387,80 @@ def aggregate_static_acceptance(
     return alpha, tau
 
 
+# Known vLLM 0.30 counter artifact (logs/bugs/vllmGrammarPostStopOvercount). Under a JSON grammar
+# the scheduler stops validating drafts once the grammar terminates (after EOS), so a draft past
+# EOS is counted "invalid" and left out of num_draft_tokens; the worker still verifies the real
+# draft with an unrestricted bitmask and the rejection sampler counts it accepted before the stop
+# check truncates the output. Only the final verify step is affected, so the excess is <= K - 1.
+GRAMMAR_POST_STOP_OVERCOUNT = "grammar_post_stop_overcount"
+GRAMMAR_RESPONSE_FORMATS = frozenset({"json_object", "json_schema"})
+# Proposal, to be confirmed: more excluded records than this share of a cell means another bug.
+MAX_COUNTER_EXCLUSION_SHARE = 0.05
+
+
+def classify_spec_counter_record(record: dict[str, Any]) -> str | None:
+    """None for normal counters, the artifact tag for the known over-count, ValueError otherwise."""
+    spec = _extract_spec_metrics(record)
+    request_id = record.get("request_id")
+    accepted = spec.get("num_accepted_draft_tokens")
+    drafted = spec.get("num_draft_tokens")
+    steps = spec.get("num_spec_steps")
+    if not all(type(v) is int for v in (accepted, drafted, steps)) or min(accepted, drafted, steps) < 0:
+        raise ValueError(f"C1: speculative counters must be nonnegative integers: request_id={request_id!r}")
+    if accepted <= drafted:
+        return None
+
+    k = spec.get("num_spec_tokens")
+    if type(k) is not int or k < 1:
+        raise ValueError(f"C1: num_accepted_draft_tokens exceeds num_draft_tokens and num_spec_tokens "
+                         f"is missing: request_id={request_id!r}")
+    response_format = record.get("response_format")
+    if not isinstance(response_format, dict) or response_format.get("type") not in GRAMMAR_RESPONSE_FORMATS:
+        raise ValueError(f"C3: num_accepted_draft_tokens exceeds num_draft_tokens without a grammar "
+                         f"response_format: request_id={request_id!r}")
+    if accepted - drafted > k - 1:
+        raise ValueError(f"C4: over-count {accepted - drafted} exceeds num_spec_tokens - 1 = {k - 1}: "
+                         f"request_id={request_id!r}")
+    output_tokens, limit = record.get("output_tokens"), record.get("max_completion_tokens")
+    if type(output_tokens) is not int or type(limit) is not int or output_tokens >= limit:
+        raise ValueError(f"C5: over-count on a request that did not end on a stop token: "
+                         f"request_id={request_id!r}")
+    histogram = spec.get("acceptance_histogram")
+    if (not isinstance(histogram, list) or len(histogram) != k + 1
+            or not all(type(h) is int and h >= 0 for h in histogram)
+            or steps < 1 or sum(histogram) != steps
+            or sum(j * h for j, h in enumerate(histogram)) != accepted):
+        raise ValueError(f"C6: acceptance_histogram inconsistent with the counters: request_id={request_id!r}")
+    return GRAMMAR_POST_STOP_OVERCOUNT
+
+
+def partition_spec_counter_records(
+    records: Sequence[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split records into those kept for alpha/tau and the excluded known-artifact records."""
+    kept: list[dict[str, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    for record in records:
+        reason = classify_spec_counter_record(record)
+        if reason is None:
+            kept.append(record)
+            continue
+        spec = _extract_spec_metrics(record)
+        excluded.append({
+            "request_id": record.get("request_id"),
+            "repeat_id": record.get("repeat_id"),
+            "sample_id": record.get("sample_id"),
+            "reason": reason,
+            "num_accepted_draft_tokens": spec["num_accepted_draft_tokens"],
+            "num_draft_tokens": spec["num_draft_tokens"],
+            "num_spec_tokens": spec["num_spec_tokens"],
+        })
+    if len(excluded) > MAX_COUNTER_EXCLUSION_SHARE * len(records):
+        raise ValueError(f"Speculative counter exclusion share {len(excluded)}/{len(records)} exceeds "
+                         f"{MAX_COUNTER_EXCLUSION_SHARE:.0%}; a different counter bug is likely")
+    return kept, excluded
+
+
 def _single_metadata_value(
     records: Sequence[dict[str, Any]],
     field: str,
@@ -438,6 +512,8 @@ def _cell_key(
 
 def _aggregate_measured_records(
     measured: Sequence[dict[str, Any]],
+    *,
+    tolerate_known_counter_artifacts: bool = False,
 ) -> list[dict[str, Any]]:
     if not measured:
         return []
@@ -544,7 +620,10 @@ def _aggregate_measured_records(
                     raise ValueError("Fixed EAGLE produced no native drafts; possible silent fallback")
                 alpha = tau = "N/A"
         elif lane == "static":
-            alpha, tau = aggregate_static_acceptance(records)
+            if tolerate_known_counter_artifacts:
+                alpha, tau = aggregate_static_acceptance(partition_spec_counter_records(records)[0])
+            else:
+                alpha, tau = aggregate_static_acceptance(records)
         else:
             alpha = "N/A"
             tau = "N/A"
@@ -626,12 +705,17 @@ def _aggregate_measured_records(
     return summaries
 
 
-def aggregate_raw_jsonl(raw_path: Path) -> list[dict[str, Any]]:
+def aggregate_raw_jsonl(
+    raw_path: Path,
+    *,
+    tolerate_known_counter_artifacts: bool = False,
+) -> list[dict[str, Any]]:
     """Aggregate one raw JSONL file into one or more cell summaries."""
     records = _load_jsonl(raw_path)
     validate_measured_records(records)
     measured = _measured_records(records)
-    return _aggregate_measured_records(measured)
+    return _aggregate_measured_records(
+        measured, tolerate_known_counter_artifacts=tolerate_known_counter_artifacts)
 
 
 def aggregate_raw_jsonls(
