@@ -449,6 +449,19 @@ def validate_measured_profile(data, hardware=None, target_model=None, draft_mode
     return data
 
 
+def _measured_for_card(path: Path, hw_info: HardwareInfo) -> bool:
+    """False for a measured (flexsds-component-v2) profile recorded on a different GPU model."""
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8")).get("metadata", {})
+    except (OSError, ValueError):
+        return False
+    if meta.get("schema") != "flexsds-component-v2" or not meta.get("device"):
+        return True
+    from flexsds.core.hardware import matches_gpu_label
+    label = getattr(hw_info, "gpu_match_label", None) or hw_info.device_name.removeprefix("Remote ")
+    return matches_gpu_label(label, meta["device"])
+
+
 def load_profile_for_hardware(
     hw_info: Optional[HardwareInfo] = None,
     custom_profile_path: Optional[Union[str, Path]] = None,
@@ -548,8 +561,11 @@ def load_profile_for_hardware(
             "no L4/analytical substitution"
         )
 
-    # Packaged measured artifacts use the same evidence checks as user profiles.
+    # Packaged measured artifacts use the same evidence checks as user profiles. An architecture is shared
+    # by several cards (sm_89: L4, RTX 40xx, L40S), so a measured profile of another card is skipped.
     for path in sorted(PROFILES_DIR.glob(f"profile_{sm_arch}*.json")):
+        if hw_info is not None and not _measured_for_card(path, hw_info):
+            continue
         try:
             return load_checked(path)
         except ValueError:
