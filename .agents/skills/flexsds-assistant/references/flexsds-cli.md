@@ -2,9 +2,9 @@
 
 Reconciled 2026-11-27 against develop e53b737 plus fix/m5-01-cli-final-fixes
 (every command run on Windows from outside the checkout). Actual parser/source wins
-over documentation. Version 0.3.4 from a `pip install -e .` checkout; record the
-execution Git SHA too. PyPI 0.3.4 is older code (tag v0.2.4): 9 commands, no
-`benchmark`, `--gpu {L4,T4,A10G}` defaulting to L4. Only `benchmark --json` emits JSON.
+over documentation. Version 0.2.5 (tag v0.2.5) or a `pip install -e .` checkout; record the
+execution Git SHA too. PyPI 0.3.4 is yanked: it is tag v0.2.4 under a mistyped
+number, with 9 commands, no `benchmark`, `--gpu {L4,T4,A10G}` defaulting to L4. Only `benchmark --json` emits JSON.
 
 | Command | Arguments / behavior | Effects and exits |
 |---|---|---|

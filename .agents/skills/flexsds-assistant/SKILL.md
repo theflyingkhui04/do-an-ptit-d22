@@ -19,8 +19,9 @@ hardware/profile inspection, serving configuration previews and CLI diagnosis.
    chosen environment; do not install or change credentials automatically.
    `pip show flexsds` must show the checkout as editable location; an old editable
    install (e.g. 0.2.1) makes `flexsds benchmark` fail with "No module named 'src'"
-   until `pip install -e .` is rerun. PyPI 0.3.4 is older code (no `benchmark`,
-   `--gpu {L4,T4,A10G}`); check `--help` before assuming develop flags.
+   until `pip install -e .` is rerun. PyPI 0.3.4 (yanked; it is tag v0.2.4 under a
+   mistyped number) is older code (no `benchmark`, `--gpu {L4,T4,A10G}`); check
+   `--help` before assuming develop flags.
 3. For hardware use `flexsds detect`; for profile lookup use `flexsds profile`.
    CPU fallback means CUDA was not detected by this Python environment, not proof
    that no physical GPU exists. CPU memory is RAM, never serving VRAM. A GPU with
