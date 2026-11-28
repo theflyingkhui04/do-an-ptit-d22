@@ -21,6 +21,9 @@ import httpx
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 TUNNEL_HINT = "cloudflared tunnel --url http://127.0.0.1:{port}"
 PROBE_TIMEOUT_S = 60.0
+# Notes people may type about how an endpoint is served (shown on the Endpoint page only, design D14).
+NOTE_KEYS = frozenset({"gpu", "draft_method", "draft_model", "adaptive", "target_model"})
+_KEEP: Any = object()  # update(): leave the stored key as it is
 
 
 class EndpointError(Exception):
@@ -96,12 +99,16 @@ def probe(url: str, api_key: str | None, client: httpx.Client) -> dict[str, Any]
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         response = client.get(f"{url}/models", headers=headers, timeout=PROBE_TIMEOUT_S)
+    except (httpx.ReadTimeout, httpx.RemoteProtocolError) as exc:
+        # The server took the call but did not answer: a GPU waking up on Modal does this before its 503s.
+        raise EndpointError("not_ready", f"Endpoint chưa trả lời ({type(exc).__name__}): GPU có thể đang khởi động. "
+                                         "Chờ vài phút rồi kiểm tra lại.") from exc
     except httpx.HTTPError as exc:
         raise EndpointError("unreachable", f"Không kết nối được ({type(exc).__name__}). Kiểm tra phiên "
                                            "flexsds serve còn chạy không.") from exc
     if response.status_code in (401, 403):
         raise EndpointError("auth_failed", f"Endpoint từ chối khoá API (HTTP {response.status_code}).")
-    if response.status_code in (502, 503, 504):
+    if response.status_code in (303, 502, 503, 504):  # 303: Modal held the call past 150 s (GPU cold start)
         raise EndpointError("not_ready", f"Endpoint chưa sẵn sàng (HTTP {response.status_code}): GPU đang khởi động "
                                          "hoặc đang ngủ, hoặc phiên flexsds serve đã dừng. Chờ vài phút rồi kiểm tra lại.")
     if response.status_code != 200:
@@ -118,20 +125,6 @@ def probe(url: str, api_key: str | None, client: httpx.Client) -> dict[str, Any]
     return {"model_id": models[0]["id"], "models": [m["id"] for m in models],
             "max_model_len": max_len if isinstance(max_len, int) else None,
             "root": root if isinstance(root, str) and root else None}
-
-
-def parse_serving_config(config: Any) -> dict[str, Any]:
-    """Fields of the CLI's ``serving_config.json`` that describe an endpoint; missing fields are left out."""
-    if not isinstance(config, dict):
-        raise EndpointError("bad_config", "serving_config.json phải là một đối tượng JSON.")
-    hardware = config.get("hardware") if isinstance(config.get("hardware"), dict) else {}
-    serving = config.get("serving") if isinstance(config.get("serving"), dict) else {}
-    fields = {"gpu": hardware.get("device_name", ...), "sm": hardware.get("sm_architecture", ...),
-              "backend": serving.get("backend", ...), "target_model": serving.get("target_model", ...),
-              "draft_model": serving.get("draft_model", ...), "draft_method": serving.get("draft_method", ...),
-              "adaptive": serving.get("adaptive_enabled", ...), "max_model_len": serving.get("max_model_len", ...),
-              "flexsds_version": config.get("flexsds_version", ...)}
-    return {k: v for k, v in fields.items() if v is not ...}
 
 
 PLATFORM_LABELS = {"modal": "Modal", "tunnel": "đường hầm", "other": "khác"}
@@ -169,6 +162,11 @@ class EndpointRegistry:
         try:
             url = normalize_url(raw)
             result.update(url=url, platform=platform_of(url))
+            saved = self.store.find_endpoint_by_url(url)
+            if saved is not None:  # not called again: a sleeping GPU is not woken for nothing
+                result.update(code="exists", endpoint_id=saved["endpoint_id"], name=saved["name"],
+                              message=f"Đã có trong danh sách với tên {saved['name']}, không cần thêm lại.")
+                return result
             check_address(url, resolve=self._resolve)
             found = probe(url, api_key, self._client)
         except EndpointError as exc:
@@ -191,36 +189,78 @@ class EndpointRegistry:
             index += 1
         return candidate
 
-    def add(self, urls: list[str], api_key: str | None = None, serving_config: Any = None) -> dict[str, Any]:
-        meta = parse_serving_config(serving_config) if serving_config is not None else {}
-        results = self.detect(urls, api_key)
-        saved = []
-        for result in results:
-            if not result["ok"]:
+    def add(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        """Save each reachable address ``{"url", "name"?, "api_key"?}``; the others come back with their reason."""
+        results, saved = [], []
+        for item in items:
+            if not (item.get("url") or "").strip():
                 continue
-            fields = {"model_id": result["model_id"], "max_model_len": result["max_model_len"] or meta.get("max_model_len"),
-                      "status": "ok", "status_message": None, "checked_at": self._now()}
-            row_meta = {**meta, **({"base_model": result["root"]} if result.get("root") else {})}
-            existing = self.store.find_endpoint_by_url(result["url"])
-            if existing is not None:
-                if row_meta:
-                    fields["meta"] = {**(existing.get("meta") or {}), **row_meta}
-                if api_key:
-                    fields["api_key"] = api_key
-                self.store.update_endpoint(existing["endpoint_id"], fields)
-                saved.append(self.store.get_endpoint(existing["endpoint_id"]))
+            api_key = item.get("api_key") or None
+            result = self._inspect(item["url"], api_key)
+            results.append(result)
+            if not result["ok"]:
                 continue
             if len(self.store.list_endpoints()) >= self.max_endpoints:
                 result.update(ok=False, code="too_many",
                               message=f"Đã có {self.max_endpoints} endpoint; xoá bớt endpoint không dùng rồi thêm lại.")
                 continue
             endpoint_id = self._new_id()
+            name = (item.get("name") or "").strip()[:80] or result["model_id"]
             self.store.insert_endpoint({
-                "endpoint_id": endpoint_id, "name": self._unique_name(result["model_id"], result["platform"]),
-                "base_url": result["url"], "platform": result["platform"], "meta": row_meta, "api_key": api_key or None,
-                "is_baseline": False, "created_at": self._now(), **fields})
+                "endpoint_id": endpoint_id, "name": self._unique_name(name, result["platform"]),
+                "base_url": result["url"], "platform": result["platform"], "model_id": result["model_id"],
+                "max_model_len": result["max_model_len"], "meta": {"base_model": result["root"]} if result.get("root") else {},
+                "api_key": api_key, "is_baseline": False, "status": "ok", "status_message": None,
+                "checked_at": self._now(), "created_at": self._now()})
             saved.append(self.store.get_endpoint(endpoint_id))
         return {"results": results, "saved": saved}
+
+    def update(self, endpoint_id: str, *, name: str | None = None, base_url: str | None = None,
+               api_key: Any = _KEEP, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Edit a saved endpoint. A new address is checked like a pasted one before anything is written.
+
+        ``api_key``: a string sets it, ``None`` removes it, left out keeps it. ``meta``: notes (``NOTE_KEYS``)
+        merged into the stored ones, ``None`` removes a note; what ``/v1/models`` told (``base_model``) stays.
+        """
+        row = self._require(endpoint_id, with_key=True)
+        fields: dict[str, Any] = {}
+        notes = dict(row.get("meta") or {})
+        if name is not None:
+            fields["name"] = name.strip()[:80]
+            if not fields["name"]:
+                raise EndpointError("bad_name", "Tên không được để trống.")
+        if meta is not None:
+            unknown = sorted(set(meta) - NOTE_KEYS)
+            if unknown:
+                raise EndpointError("bad_meta", f"Không ghi chú được {', '.join(unknown)}; chỉ ghi được GPU, "
+                                                "cách giải mã, model nháp và model đích.")
+            for key, value in meta.items():
+                if value is None:
+                    notes.pop(key, None)
+                else:
+                    notes[key] = value
+            fields["meta"] = notes
+        key = row.get("api_key") if api_key is _KEEP else (api_key or None)
+        if api_key is not _KEEP:
+            fields["api_key"] = key
+        if base_url is not None:
+            url = normalize_url(base_url)
+            if url != row["base_url"]:
+                other = self.store.find_endpoint_by_url(url)
+                if other is not None:
+                    raise EndpointError("exists", f"Địa chỉ này đã thuộc endpoint {other['name']}.")
+                check_address(url, resolve=self._resolve)
+                found = probe(url, key, self._client)
+                if found["root"]:
+                    notes["base_model"] = found["root"]
+                else:
+                    notes.pop("base_model", None)
+                fields.update(base_url=url, platform=platform_of(url), model_id=found["model_id"],
+                              max_model_len=found["max_model_len"], meta=notes, status="ok", status_message=None,
+                              checked_at=self._now())
+        if fields:
+            self.store.update_endpoint(endpoint_id, fields)
+        return self._require(endpoint_id)
 
     def list(self) -> list[dict[str, Any]]:
         return self.store.list_endpoints()
@@ -232,11 +272,13 @@ class EndpointRegistry:
         return row
 
     def check(self, endpoint_id: str) -> dict[str, Any]:
+        """One ``GET /v1/models``: ``ok``, ``starting`` (a sleeping GPU is waking up; the web asks again) or ``down``."""
         row = self._require(endpoint_id, with_key=True)
         try:
             found = probe(row["base_url"], row.get("api_key"), self._client)
         except EndpointError as exc:
-            fields = {"status": "down", "status_message": exc.message, "checked_at": self._now()}
+            status = "starting" if exc.code == "not_ready" else "down"
+            fields = {"status": status, "status_message": exc.message, "checked_at": self._now()}
         else:
             fields = {"status": "ok", "status_message": None, "checked_at": self._now(), "model_id": found["model_id"]}
             if found["root"]:

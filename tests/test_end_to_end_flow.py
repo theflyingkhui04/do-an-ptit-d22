@@ -117,8 +117,9 @@ def test_end_to_end_wizard_generation_and_guidance(tmp_path, monkeypatch, capsys
         is_cuda_available=True,
     )
 
-    monkeypatch.setattr("flexsds.cli.wizard.prompt_choice", lambda q, c, **kw: c[0])
-    monkeypatch.setattr("flexsds.cli.wizard.prompt_string", lambda q, d: d)
+    # accept every default the wizard offers (its default Modal GPU is A10, not the first entry T4)
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_choice", lambda q, c, default_idx=0, **kw: c[default_idx])
+    monkeypatch.setattr("flexsds.cli.wizard.prompt_string", lambda q, default_val="", **kw: default_val)
     monkeypatch.setattr("flexsds.cli.wizard.prompt_bool", lambda q, **kw: False)
 
     cfg = run_interactive_wizard(hw)
@@ -154,13 +155,13 @@ def test_end_to_end_auth_and_modal_runner(tmp_path, monkeypatch):
             "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
             "draft_method": "eagle3",
             "use_heterogeneous_vocab": True,
-            "target_gpu": "A10G",
+            "target_gpu": "A10",
         }
     }
     cmd = runner.build_modal_command(cfg, deploy=False)
     assert Path(cmd[0]).stem.lower() == "modal"
     assert "modal_app.py" in cmd[2]
-    assert json.loads(runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"])["target_gpu"] == "A10G"
+    assert json.loads(runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"])["target_gpu"] == "A10"
 
 
 def test_end_to_end_chat_session_with_client_stream(monkeypatch, capsys):

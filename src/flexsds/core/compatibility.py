@@ -77,6 +77,17 @@ class CompatibilityReport:
         )
 
 
+def _hub_headers() -> Dict[str, str]:
+    """Request headers for Hugging Face config fetches; adds the token for gated repos."""
+    from flexsds.core.model_inspection import hugging_face_token
+
+    headers = {"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"}
+    token = hugging_face_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def get_model_config(
     model_id_or_path: str,
     cache_dir: Optional[Path] = None,
@@ -130,10 +141,7 @@ def get_model_config(
 
     # 4. Tải từ Hugging Face qua HTTP
     url = f"https://huggingface.co/{clean_id}/raw/main/config.json"
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"},
-    )
+    req = urllib.request.Request(url, headers=_hub_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
             raw_bytes = resp.read()
@@ -174,10 +182,7 @@ def inspect_remote_model_metadata(model_id_or_path: str, timeout_sec: float = 5.
     # 2. Truy vấn từ Hugging Face qua HTTP API công khai
     clean_id = model_id_or_path.strip().replace("https://huggingface.co/", "")
     url = f"https://huggingface.co/{clean_id}/raw/main/config.json"
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "FlexSDS-PreFlightGuard/0.1.0"},
-    )
+    req = urllib.request.Request(url, headers=_hub_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
             content = resp.read().decode("utf-8")
@@ -448,6 +453,11 @@ class ServingPreflight:
         if reasons:
             raise ServingBlockedError("Launch blocked: " + "; ".join(reasons))
 
+    def preview_allowed(self, allow_oom_risk: bool = False) -> bool:
+        """A dry-run may still print its command when only this machine's limits block a launch
+        (VRAM estimate, no CUDA); an unsupported or incompatible model pair has no valid command."""
+        return all(reason in PREVIEWABLE_REASONS for reason in self.launch_reasons(allow_oom_risk))
+
     def launch_reasons(self, allow_oom_risk: bool = False) -> List[str]:
         # The memory estimate is the only overrideable preflight condition.
         return [reason for reason in self.reasons
@@ -455,10 +465,12 @@ class ServingPreflight:
 
 
 OOM_ESTIMATE_REASON = "estimated VRAM exceeds 95% of the available memory budget"
+CUDA_UNAVAILABLE_REASON = "CUDA GPU unavailable; system RAM is not serving VRAM"
+PREVIEWABLE_REASONS = frozenset({OOM_ESTIMATE_REASON, CUDA_UNAVAILABLE_REASON})
 
 
 def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
-                               backend: str = "local", target_gpu: str = "L4",
+                               backend: str = "local", target_gpu: str = "A10",
                                max_num_seqs: int = 32, max_model_len: int = 4096) -> ServingPreflight:
     """One metadata preflight policy shared by flag mode and wizard; no full weights.
 
@@ -467,8 +479,8 @@ def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
     """
     if any(type(value) is not int or value <= 0 for value in (max_num_seqs, max_model_len)):
         raise ValueError("Serving batch/context limits must be positive integers")
-    budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0}
-    available = hw_info.free_vram_mb if backend == "local" else budgets.get(target_gpu, 0.0)
+    from flexsds.core.hardware import remote_gpu_budget_mb
+    available = hw_info.free_vram_mb if backend == "local" else remote_gpu_budget_mb(backend, target_gpu)
     report = check_compatibility(target_model, draft_model, free_vram_mb=available,
                                  max_num_seqs=max_num_seqs, max_model_len=max_model_len)
     # One estimate and one policy; do not run a second name-based VRAM guard.
@@ -484,7 +496,7 @@ def evaluate_serving_preflight(target_model: str, draft_model: str, hw_info,
         reasons.append(OOM_ESTIMATE_REASON)
 
     if backend == "local" and not hw_info.is_cuda_available:
-        reasons.append("CUDA GPU unavailable; system RAM is not serving VRAM")
+        reasons.append(CUDA_UNAVAILABLE_REASON)
     return ServingPreflight(report, download, reasons)
 
 

@@ -376,6 +376,47 @@ def resolve_profile_path(name: str) -> Path:
     raise FileNotFoundError(f"Profile artifact missing: {name}")
 
 
+def inspect_cost_matrix_monotonicity(cost_matrix_ms: Dict[str, float]) -> List[Dict[str, Any]]:
+    """Inspect scalar k{k}_b{b} cost matrix for non-monotonic cells without mutating data."""
+    by_batch: Dict[int, Dict[int, float]] = {}
+    for key_str, raw_val in cost_matrix_ms.items():
+        parts = key_str.split("_")
+        if len(parts) == 2 and parts[0].startswith("k") and parts[1].startswith("b"):
+            try:
+                k_val = int(parts[0][1:])
+                b_val = int(parts[1][1:])
+            except ValueError:
+                continue
+            by_batch.setdefault(b_val, {})[k_val] = float(raw_val)
+
+    anomalies: List[Dict[str, Any]] = []
+    for batch in sorted(by_batch):
+        entries = by_batch[batch]
+        baseline_k0 = entries.get(0)
+        prev_k: Optional[int] = None
+        prev_cost: Optional[float] = None
+        for k_val in sorted(entries):
+            cost = entries[k_val]
+            below_k0 = bool(k_val > 0 and baseline_k0 is not None and cost < baseline_k0)
+            below_prev_k = bool(prev_cost is not None and cost < prev_cost)
+            if below_k0 or below_prev_k:
+                anomalies.append(
+                    {
+                        "batch": batch,
+                        "k": k_val,
+                        "cost_ms": cost,
+                        "baseline_k0_ms": baseline_k0,
+                        "prev_k": prev_k,
+                        "prev_cost_ms": prev_cost,
+                        "below_k0": below_k0,
+                        "below_prev_k": below_prev_k,
+                    }
+                )
+            prev_k = k_val
+            prev_cost = cost
+    return anomalies
+
+
 def validate_measured_profile(data, hardware=None, target_model=None, draft_model=None):
     """Reproduce scalar matrix from preserved worker samples, not a measured label."""
     from flexsds.core.calibration import build_profile, SCHEMA
@@ -398,13 +439,27 @@ def validate_measured_profile(data, hardware=None, target_model=None, draft_mode
         raise ValueError('Profile GPU architecture mismatch')
     if hardware and hardware.is_cuda_available:
         from flexsds.core.hardware import matches_gpu_label
-        if not matches_gpu_label(hardware.device_name.removeprefix('Remote '), meta['device']):
+        expected_label = getattr(hardware, "gpu_match_label", None) or hardware.device_name.removeprefix("Remote ")
+        if not matches_gpu_label(expected_label, meta['device']):
             raise ValueError('Profile GPU model mismatch')
     if target_model and data['models']['target'] != target_model:
         raise ValueError('Profile target model mismatch')
     if draft_model and data['models']['draft'] != draft_model:
         raise ValueError('Profile draft model mismatch')
     return data
+
+
+def _measured_for_card(path: Path, hw_info: HardwareInfo) -> bool:
+    """False for a measured (flexsds-component-v2) profile recorded on a different GPU model."""
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8")).get("metadata", {})
+    except (OSError, ValueError):
+        return False
+    if meta.get("schema") != "flexsds-component-v2" or not meta.get("device"):
+        return True
+    from flexsds.core.hardware import matches_gpu_label
+    label = getattr(hw_info, "gpu_match_label", None) or hw_info.device_name.removeprefix("Remote ")
+    return matches_gpu_label(label, meta["device"])
 
 
 def load_profile_for_hardware(
@@ -433,7 +488,7 @@ def load_profile_for_hardware(
         data = json.loads(path.read_text(encoding="utf-8"))
         if strict and data.get("metadata", {}).get("schema") == "flexsds-component-v2":
             validate_measured_profile(data, hw_info, target_model, draft_model)
-        elif strict and sm_arch != "sm_80":
+        elif strict:
             raise ValueError("Profile has no verified worker measurements; recalibrate or use static mode")
         if sm_arch == "sm_80" and data.get("metadata", {}).get("schema") != "flexsds-component-v2":
             meta = data.get("metadata", {})
@@ -486,8 +541,16 @@ def load_profile_for_hardware(
                 if not strict:
                     raise
 
-    # M4 invariant: A100 must use the measured scalar profile.
+    # M4 invariant: A100 must use a measured sm_80 profile, never L4/analytical fallback.
     if sm_arch == "sm_80":
+        if strict:
+            for path in sorted(PROFILES_DIR.glob("profile_sm*80*.json")):
+                try:
+                    return load_checked(path)
+                except ValueError:
+                    continue
+            return None, ""
+
         profile_path = PROFILES_DIR / "profile_sm80.json"
 
         if profile_path.exists():
@@ -498,8 +561,11 @@ def load_profile_for_hardware(
             "no L4/analytical substitution"
         )
 
-    # Packaged measured artifacts use the same evidence checks as user profiles.
+    # Packaged measured artifacts use the same evidence checks as user profiles. An architecture is shared
+    # by several cards (sm_89: L4, RTX 40xx, L40S), so a measured profile of another card is skipped.
     for path in sorted(PROFILES_DIR.glob(f"profile_{sm_arch}*.json")):
+        if hw_info is not None and not _measured_for_card(path, hw_info):
+            continue
         try:
             return load_checked(path)
         except ValueError:
@@ -574,6 +640,7 @@ def run_hardware_micro_benchmark(
     target_dir: Optional[Path] = None,
     backend: str = "local",
     measurement_mode: str = "full",
+    gpu_memory_utilization: Optional[float] = None,
 ) -> Tuple[FlexCostModel, Path]:
     """Measure actual vLLM worker components; never substitute analytical costs.
 
@@ -589,13 +656,15 @@ def run_hardware_micro_benchmark(
     if backend == "local" and hw_info.device_name.startswith("Remote "):
         raise ValueError("Remote GPU calibration requires backend='modal'")
     if backend == "local" and not hw_info.is_cuda_available:
-        raise RuntimeError("Calibration requires a real CUDA GPU; use --backend modal --gpu A10G")
+        raise RuntimeError("Calibration requires a real CUDA GPU; use --backend modal --gpu A10")
     report = check_compatibility(target_model, draft_model, hw_info.free_vram_mb)
     if report.draft_method == "unsupported" or not report.is_compatible:
         raise ValueError("Calibration blocked: " + "; ".join(report.blocking_reasons))
     config = dict(target_model=target_model, draft_model=draft_model,
                   draft_method=report.draft_method, sm_architecture=hw_info.sm_architecture,
                   measurement_mode=measurement_mode)
+    if gpu_memory_utilization is not None:  # only when overridden, so default evidence keeps its shape
+        config['gpu_memory_utilization'] = float(gpu_memory_utilization)
     for key in ('target_revision', 'draft_revision'):
         revision = getattr(report, key, None)
         if revision and revision != 'local':

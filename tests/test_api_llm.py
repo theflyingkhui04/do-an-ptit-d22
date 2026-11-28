@@ -150,3 +150,77 @@ def test_endpoint_without_a_key_sends_no_authorization_and_errors_stay_readable(
     with pytest.raises(LLMError) as info:
         no_key.chat_completions({"messages": []})
     assert seen == [None] and "***" not in str(info.value) and "HTTP 500" in str(info.value)
+
+
+class Steps:
+    """Clock that moves one second per reading."""
+
+    def __init__(self) -> None:
+        self.now = -1.0
+
+    def __call__(self) -> float:
+        self.now += 1.0
+        return self.now
+
+
+def test_progress_reports_waits_then_the_first_token_and_the_characters_received():
+    answers = iter([httpx.Response(503), httpx.Response(503), httpx.Response(200, content=sse(
+        {"choices": [{"delta": {"content": "ab"}}]},
+        {"choices": [{"delta": {"content": "cde"}}]},
+        {"choices": [{"delta": {"content": "fg"}, "finish_reason": "stop"}]},
+        {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 3}}))])
+    events: list[dict] = []
+    lane = caller(lambda request: next(answers), clock=Steps())
+    lane.progress = events.append
+    lane.chat_completions({"messages": [], "max_tokens": 8})
+
+    kinds = [e["kind"] for e in events]
+    assert kinds[:3] == ["waiting", "waiting", "first_token"] and kinds[-1] == "receiving"
+    assert [e["tries"] for e in events[:2]] == [1, 2]
+    assert events[0]["reason"] == "HTTP 503" and events[1]["waited_s"] > events[0]["waited_s"]
+    assert events[2]["ttft_s"] > 0
+    assert events[-1]["chars"] == 7  # the final count is always reported, whatever the throttle
+
+
+def test_a_failing_progress_hook_never_breaks_the_call():
+    def boom(event: dict) -> None:
+        raise RuntimeError("ui gone")
+
+    lane = caller(lambda r: httpx.Response(200, content=sse(
+        {"choices": [{"delta": {"content": "x"}, "finish_reason": "stop"}]},
+        {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1}})))
+    lane.progress = boom
+    assert lane.chat_completions({"messages": []})["choices"][0]["message"]["content"] == "x"
+
+
+def test_modal_303_waits_on_models_then_posts_once_more():
+    """Modal answers 303 when a cold start holds a request past 150 s. Wait on the cheap /models route
+    instead of re-posting, so at most one abandoned generation runs next to the measured one."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(f"{request.method} {request.url.path}")
+        if request.method == "POST":
+            if calls.count("POST /v1/chat/completions") == 1:
+                return httpx.Response(303, headers={"location": "https://x.test/v1/chat/completions?__modal_function_call_id=fc-1"})
+            return httpx.Response(200, content=sse({"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}]}))
+        if calls.count("GET /v1/models") < 3:
+            return httpx.Response(303 if len(calls) == 2 else 503)
+        return httpx.Response(200, json={"data": [{"id": "qwen2.5-7b-adaptive"}]})
+
+    events: list[dict] = []
+    lane = caller(handler)
+    lane.progress = events.append
+    assert lane.chat_completions({"messages": []})["choices"][0]["message"]["content"] == "ok"
+    assert calls == ["POST /v1/chat/completions", "GET /v1/models", "GET /v1/models", "GET /v1/models",
+                     "POST /v1/chat/completions"]
+    assert [e["reason"] for e in events if e["kind"] == "waiting"][0] == "HTTP 303"
+
+
+def test_modal_303_stops_after_the_ready_timeout():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(303)
+
+    lane = caller(handler, clock=Clock(0.0, 0.0, 2000.0))
+    with pytest.raises(LLMError, match="not ready after"):
+        lane.chat_completions({"messages": []})

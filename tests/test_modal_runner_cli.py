@@ -9,7 +9,7 @@ from flexsds.server.modal_runner import ModalServingRunner
 
 def test_modal_runner_build_command_ephemeral_and_deploy():
     runner = ModalServingRunner()
-    config = {"serving": {"target_gpu": "L4", "port": 8000}}
+    config = {"serving": {"target_gpu": "A10", "port": 8000}}
     cmd_run = runner.build_modal_command(config, deploy=False)
     assert Path(cmd_run[0]).stem.lower() == "modal"  # bare name or the resolved binary (modal.EXE on Windows)
     assert "serve" in cmd_run
@@ -44,12 +44,12 @@ def test_modal_runner_stop_command():
 
 def test_modal_runner_build_command_uses_standalone_app():
     runner = ModalServingRunner()
-    cfg = {"serving": {"target_gpu": "A10G"}}
+    cfg = {"serving": {"target_gpu": "A10"}}
     cmd = runner.build_modal_command(cfg, deploy=False)
     assert Path(cmd[0]).stem.lower() == "modal"  # bare name or the resolved binary
     assert "serve" in cmd
     assert any("modal_app.py" in arg for arg in cmd)
-    assert '"target_gpu": "A10G"' in runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"]
+    assert '"target_gpu": "A10"' in runner.setup_environment(cfg)["FLEXSDS_SERVING_CONFIG"]
 
 
 def test_modal_runner_loads_credentials_from_manager(tmp_path, monkeypatch):
@@ -87,7 +87,7 @@ def test_modal_runner_check_process_status():
 
 def test_modal_runner_resolves_modal_binary(monkeypatch):
     runner = ModalServingRunner()
-    config = {"serving": {"target_gpu": "A10G"}}
+    config = {"serving": {"target_gpu": "A10"}}
 
     # Giả lập trên Windows tìm thấy modal.cmd
     monkeypatch.setattr("shutil.which", lambda name: "C:\\Python\\Scripts\\modal.cmd" if name == "modal" else None)
@@ -98,7 +98,7 @@ def test_modal_runner_resolves_modal_binary(monkeypatch):
 
 def test_modal_runner_setup_environment_uses_os_pathsep(monkeypatch):
     runner = ModalServingRunner()
-    config = {"serving": {"target_gpu": "A10G"}}
+    config = {"serving": {"target_gpu": "A10"}}
     monkeypatch.setenv("PYTHONPATH", "custom_path")
     env = runner.setup_environment(config)
     pp = env.get("PYTHONPATH", "")

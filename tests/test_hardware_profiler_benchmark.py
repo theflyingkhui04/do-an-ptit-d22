@@ -14,7 +14,7 @@ def observed_groups(config, batches):
                         samples=dict(target=10.+k+b, draft=2.*max(1,k)),
                         shapes=[dict(batch=b, query=[k+1]*b, context=[cal.CONTEXT]*b)])
                    for b in batches for r in range(cal.WARMUP+cal.REPEATS)]
-        groups.append(dict(device='NVIDIA A10G', sm_architecture='sm_86', records=records,
+        groups.append(dict(device='NVIDIA A10', sm_architecture='sm_86', records=records,
                            vllm_version='0.30.0', target_revision='a'*40, draft_revision='b'*40))
     return groups
 
@@ -22,7 +22,7 @@ def observed_groups(config, batches):
 @pytest.fixture
 def measured_profile():
     config = dict(target_model='target', draft_model='draft', draft_method='draft_model',
-                  sm_architecture='sm_86', target_gpu='A10G')
+                  sm_architecture='sm_86', target_gpu='A10')
     return cal.build_profile(config, observed_groups(config, cal.BATCHES), cal.BATCHES)
 
 
@@ -35,7 +35,7 @@ def test_cpu_cannot_create_empirical_profile(tmp_path, monkeypatch):
 
 
 def test_remote_gpu_cannot_be_calibrated_on_laptop(tmp_path):
-    hw = HardwareInfo('Remote A10G', 'sm_86', 0, 0, 'N/A', True)
+    hw = HardwareInfo('Remote A10', 'sm_86', 0, 0, 'N/A', True)
     with pytest.raises(ValueError, match='backend'):
         cm.run_hardware_micro_benchmark(hw, target_dir=tmp_path)
     assert not list(tmp_path.iterdir())
@@ -50,9 +50,9 @@ def test_modal_dispatch_and_roundtrip(tmp_path, monkeypatch):
         calls.append((config, batches))
         return observed_groups(config, batches)
     monkeypatch.setattr(modal_calibration, 'calibrate', remote)
-    hw = HardwareInfo('Remote A10G', 'sm_86', 0, 0, 'N/A', True)
+    hw = HardwareInfo('Remote A10', 'sm_86', 0, 0, 'N/A', True)
     model, path = cm.run_hardware_micro_benchmark(hw, 'target', 'draft', target_dir=tmp_path, backend='modal')
-    assert calls[0][0]['target_gpu'] == 'A10G'
+    assert calls[0][0]['target_gpu'] == 'A10'
     assert model.matrix[(2, 1)] == 17.0
     cm.validate_measured_profile(json.loads(path.read_text()), hw, 'target', 'draft')
 
@@ -77,7 +77,7 @@ def test_failed_modal_calibration_does_not_write_profile(tmp_path, monkeypatch):
     def fail(*args): raise RuntimeError('GPU OOM')
     monkeypatch.setattr('flexsds.server.modal_calibration.calibrate', fail)
     with pytest.raises(RuntimeError, match='OOM'):
-        cm.run_hardware_micro_benchmark(HardwareInfo('Remote A10G','sm_86',0,0,'',True), target_dir=tmp_path, backend='modal')
+        cm.run_hardware_micro_benchmark(HardwareInfo('Remote A10','sm_86',0,0,'',True), target_dir=tmp_path, backend='modal')
     assert not list(tmp_path.iterdir())
 
 
@@ -87,11 +87,11 @@ def test_modal_dispatch_uses_cli_when_sdk_is_in_another_pipx(monkeypatch):
     def run(command, *, env, **kwargs):
         seen.append(command)
         request = json.loads(env['FLEXSDS_CALIBRATION_REQUEST'])
-        assert request['config']['target_gpu'] == 'A10G'
+        assert request['config']['target_gpu'] == 'A10'
         from pathlib import Path
         Path(env['FLEXSDS_CALIBRATION_OUTPUT']).write_text('[{"measured":true}]')
     monkeypatch.setattr('flexsds.server.modal_calibration.run_logged_process', run)
-    assert calibrate({'target_gpu':'A10G'}, [1]) == [{'measured':True}]
+    assert calibrate({'target_gpu':'A10'}, [1]) == [{'measured':True}]
     assert seen[0][1] == 'run'
     assert seen[0][2].endswith('modal_calibration_app.py')
 
@@ -116,20 +116,20 @@ def test_profile_roundtrip_accepts_actual_modal_a10_name(measured_profile):
     groups = measured_profile['evidence']['groups']
     for group in groups: group['device'] = 'NVIDIA A10'
     data = cal.build_profile(config,groups,cal.BATCHES)
-    cm.validate_measured_profile(data, HardwareInfo('Remote A10G','sm_86',0,0,'',True))
+    cm.validate_measured_profile(data, HardwareInfo('Remote A10','sm_86',0,0,'',True))
 
 
 def test_raw_cuda_names_share_only_the_a10_resource_alias():
     from flexsds.core.hardware import matches_gpu_label
     assert matches_gpu_label('NVIDIA A10G','NVIDIA A10')
     assert matches_gpu_label('NVIDIA A10','NVIDIA A10G')
-    assert not matches_gpu_label('NVIDIA A10G','NVIDIA RTX 3090')
+    assert not matches_gpu_label('NVIDIA A10','NVIDIA RTX 3090')
 
 
 @pytest.mark.parametrize('mode,warmup,repeats', [('fast', 2, 5), ('full', 5, 50)])
 def test_measurement_modes_preserve_exact_evidence(mode, warmup, repeats):
     config = dict(target_model='target', draft_model='draft', draft_method='draft_model',
-                  sm_architecture='sm_86', target_gpu='A10G', measurement_mode=mode)
+                  sm_architecture='sm_86', target_gpu='A10', measurement_mode=mode)
     groups = observed_groups(config, cal.BATCHES)
     for group in groups:
         group['records'] = [dict(record, warmup=record['repeat'] < warmup)
@@ -143,9 +143,9 @@ def test_measurement_modes_preserve_exact_evidence(mode, warmup, repeats):
         cal.build_profile(config, groups, cal.BATCHES)
 
 
-def test_packaged_a10g_profile_is_verified_and_matches_models(tmp_path, monkeypatch):
+def test_packaged_a10_profile_is_verified_and_matches_models(tmp_path, monkeypatch):
     monkeypatch.setattr(cm, 'USER_PROFILES_DIR', tmp_path)
-    hw = HardwareInfo('Remote A10G', 'sm_86', 0, 0, '', True)
+    hw = HardwareInfo('Remote A10', 'sm_86', 0, 0, '', True)
     model, name = cm.load_profile_for_hardware(hw, strict=True,
         target_model='Qwen/Qwen2.5-7B-Instruct-AWQ',
         draft_model='duckhoi/qwen2.5-7b-eagle3.1-speculator')

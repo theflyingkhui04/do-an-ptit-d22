@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flexsds"
-version = "0.2.3"
+version = "0.2.5"
 description = "FlexSDS: Hardware-Adaptive EAGLE Speculative Decoding Serving Engine for LLMs"
 authors = [
     {name = "Can Duc Khoi"},
@@ -26,9 +26,10 @@ dev = [
 flexsds = "flexsds.cli.main:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["flexsds*", "server*", "proposer*", "pipeline*"]
+where = ["src", "."]
+include = ["flexsds*", "server*", "proposer*", "pipeline*", "experiments"]
 
 [tool.setuptools.package-data]
 flexsds = ["profiles/*.json", "assets/*"]
 pipeline = ["prompts/*.md", "schemas/*.json", "examples/*", "sqlite/*.sql"]
+experiments = ["scalar_vllm_source_manifest.json", "m4_eagle_source_manifest.json", "eagle_legacy_source_manifest.json"]

@@ -1,0 +1,5 @@
+{
+  "status": "failed:profile",
+  "error": "profile measured on 'NVIDIA A100-SXM4-80GB', container card is 'NVIDIA A100 80GB PCIe'",
+  "at_utc": "2026-11-27T12:38:30.552004+00:00"
+}

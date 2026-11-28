@@ -169,11 +169,11 @@ def test_kv_estimate_scales_with_configured_capacity(models):
 def test_one_preflight_estimate_and_specific_block_reason(models, monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr('flexsds.core.compatibility.pre_download_guard', lambda *a, **k: pytest.fail('Duplicate heuristic guard'))
-    result = evaluate_serving_preflight(str(models[0]), str(models[1]), SimpleNamespace(), 'modal', 'A10G')
+    result = evaluate_serving_preflight(str(models[0]), str(models[1]), SimpleNamespace(), 'modal', 'A10')
     assert result.is_safe
     assert result.download.vram_needed_mb == result.report.total_vram_needed_mb
     write_config(models[1], target_model_name_or_path='wrong/model')
-    result = evaluate_serving_preflight(str(models[0]), str(models[1]), SimpleNamespace(), 'modal', 'A10G')
+    result = evaluate_serving_preflight(str(models[0]), str(models[1]), SimpleNamespace(), 'modal', 'A10')
     assert not result.is_safe
     assert 'trained target/draft pairing' in result.reasons[0]
 
@@ -295,21 +295,43 @@ def test_oom_override_preserves_hard_failures(models):
     assert any('CUDA' in reason for reason in result.launch_reasons(True))
 
 
-@pytest.mark.parametrize('override,expected', [(False, 2), (True, 0)])
-def test_cli_oom_requires_explicit_override_and_forwards_limits(models, monkeypatch, override, expected):
+@pytest.mark.parametrize('dry_run,override,expected', [
+    (False, False, 2),  # a real launch over the VRAM estimate needs the explicit override
+    (False, True, 0),
+    (True, False, 0),   # CLI contract: an unsafe preview prints "Launch blocked", still shows the command
+    (True, True, 0),
+])
+def test_cli_oom_requires_explicit_override_and_forwards_limits(models, monkeypatch, dry_run, override, expected):
+    from unittest.mock import Mock
     from flexsds.cli import main as cli
     from flexsds.core.hardware import HardwareInfo
     monkeypatch.setattr(cli, 'detect_hardware', lambda: HardwareInfo('GPU', 'sm_89', 1, 1, '', True))
     calls = []
-    monkeypatch.setattr(cli.LocalServingRunner, 'launch', lambda self, config, **kwargs: calls.append(config))
+    finished = Mock()
+    finished.wait.return_value = 0
+    monkeypatch.setattr(cli.LocalServingRunner, 'launch',
+                        lambda self, config, **kwargs: calls.append((config, kwargs)) or finished)
     args = ['serve', '--target', str(models[0]), '--draft', str(models[1]),
-            '--backend', 'local', '--no-adaptive', '--dry-run', '--max-num-seqs', '4', '--max-model-len', '1024']
-    assert cli.main(args + (['--allow-oom-risk'] if override else [])) == expected
-    if override:
-        assert calls[0]['serving']['max_num_seqs'] == 4
-        assert calls[0]['serving']['max_model_len'] == 1024
-    else:
+            '--backend', 'local', '--no-adaptive', '--max-num-seqs', '4', '--max-model-len', '1024']
+    args += (['--dry-run'] if dry_run else []) + (['--allow-oom-risk'] if override else [])
+    assert cli.main(args) == expected
+    if expected == 2:
         assert not calls
+    else:
+        config, kwargs = calls[0]
+        assert kwargs.get('dry_run', False) is dry_run
+        assert config['serving']['max_num_seqs'] == 4
+        assert config['serving']['max_model_len'] == 1024
+
+
+def test_only_environment_reasons_allow_a_preview():
+    from flexsds.core.compatibility import (CUDA_UNAVAILABLE_REASON, OOM_ESTIMATE_REASON, ServingPreflight)
+    def preflight(*reasons):
+        return ServingPreflight(report=None, download=None, reasons=list(reasons))
+    assert preflight(OOM_ESTIMATE_REASON, CUDA_UNAVAILABLE_REASON).preview_allowed()
+    assert preflight().preview_allowed()
+    assert not preflight(OOM_ESTIMATE_REASON, "incompatible target/draft configuration").preview_allowed()
+    assert not preflight("Not supported yet: Independent draft model").preview_allowed()
 
 
 @pytest.mark.parametrize('action', ['adjust', 'continue', 'cancel'])
@@ -351,3 +373,89 @@ def test_wizard_oom_choices_and_recalculation(models, tmp_path, monkeypatch, act
         cmd = LocalServingRunner().build_command(result)
         assert cmd[cmd.index('--max-num-seqs') + 1] == str(result['max_num_seqs'])
         assert cmd[cmd.index('--max-model-len') + 1] == str(result['max_model_len'])
+
+
+# --- Hugging Face token for gated checkpoints (preflight) ---------------------------------------
+# `flexsds auth login --provider huggingface` stored a token that preflight never used, and the
+# huggingface-cli token file was ignored: a gated target always failed with HTTP 401.
+
+def _capture_headers(monkeypatch):
+    from unittest.mock import MagicMock
+    seen = {}
+
+    def fake_urlopen(req, **kwargs):
+        seen.update({k.lower(): v for k, v in req.header_items()})
+        response = MagicMock(status=200)
+        response.headers = {}
+        response.read.return_value = b"{}"
+        response.__enter__.return_value = response
+        return response
+
+    monkeypatch.setattr('urllib.request.urlopen', fake_urlopen)
+    return seen
+
+
+@pytest.fixture
+def no_token_sources(monkeypatch, tmp_path):
+    from flexsds.core.credentials import CredentialsManager
+    for key in ('HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN', 'HF_TOKEN_PATH'):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv('HF_HOME', str(tmp_path / 'hf-home'))
+    monkeypatch.setattr(CredentialsManager, 'DEFAULT_PATH', tmp_path / 'flexsds' / 'credentials')
+    return tmp_path
+
+
+@pytest.mark.parametrize('source', ['HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN', 'flexsds-auth', 'hf-home-file',
+                                    'hf-token-path'])
+def test_preflight_sends_the_hugging_face_token_from_each_source(source, no_token_sources, monkeypatch):
+    from flexsds.core.credentials import CredentialsManager
+    from flexsds.core.model_inspection import hugging_face_token
+    tmp = no_token_sources
+    if source in ('HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN'):
+        monkeypatch.setenv(source, 'hf_from_env')
+        expected = 'hf_from_env'
+    elif source == 'flexsds-auth':
+        CredentialsManager().set_credential('huggingface', 'HF_TOKEN', 'hf_from_flexsds')
+        expected = 'hf_from_flexsds'
+    elif source == 'hf-home-file':
+        (tmp / 'hf-home').mkdir()
+        (tmp / 'hf-home' / 'token').write_text('hf_from_cli\n', encoding='utf-8')
+        expected = 'hf_from_cli'
+    else:
+        (tmp / 'custom-token').write_text('hf_from_path', encoding='utf-8')
+        monkeypatch.setenv('HF_TOKEN_PATH', str(tmp / 'custom-token'))
+        expected = 'hf_from_path'
+    assert hugging_face_token() == expected
+    seen = _capture_headers(monkeypatch)
+    ModelFiles._http('https://huggingface.co/api/models/meta-llama/x', 64)
+    assert seen['authorization'] == f'Bearer {expected}'
+
+
+def test_environment_token_wins_over_stored_and_file_tokens(no_token_sources, monkeypatch):
+    from flexsds.core.credentials import CredentialsManager
+    from flexsds.core.model_inspection import hugging_face_token
+    (no_token_sources / 'hf-home').mkdir()
+    (no_token_sources / 'hf-home' / 'token').write_text('hf_file', encoding='utf-8')
+    CredentialsManager().set_credential('huggingface', 'HF_TOKEN', 'hf_stored')
+    assert hugging_face_token() == 'hf_stored'
+    monkeypatch.setenv('HF_TOKEN', 'hf_env')
+    assert hugging_face_token() == 'hf_env'
+
+
+def test_no_token_sends_no_authorization_header(no_token_sources, monkeypatch):
+    from flexsds.core.model_inspection import hugging_face_token
+    assert hugging_face_token() is None
+    seen = _capture_headers(monkeypatch)
+    ModelFiles._http('https://huggingface.co/api/models/Qwen/x', 64)
+    assert 'authorization' not in seen
+
+
+def test_preflight_config_fetch_also_sends_the_token(no_token_sources, monkeypatch, tmp_path):
+    from flexsds.core import compatibility
+    monkeypatch.setenv('HF_TOKEN', 'hf_cfg')
+    seen = _capture_headers(monkeypatch)
+    compatibility.get_model_config('meta-llama/Llama-3.1-8B-Instruct', cache_dir=tmp_path / 'cache')
+    assert seen['authorization'] == 'Bearer hf_cfg'
+    seen.clear()
+    compatibility.inspect_remote_model_metadata('meta-llama/Llama-3.1-8B-Instruct')
+    assert seen['authorization'] == 'Bearer hf_cfg'

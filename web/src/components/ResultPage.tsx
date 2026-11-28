@@ -1,198 +1,308 @@
 "use client";
 
-import { Clock, Gauge, History, Play, Workflow } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronRight, Play } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { SpeedChart, type Series } from "@/components/charts";
+import { LineChart, type Series } from "@/components/charts";
 import type { PageId } from "@/components/Console";
 import {
   Button,
   CodeBlock,
   Dot,
+  Drawer,
   EndpointChips,
   NeedEndpoint,
   Notice,
   PageHead,
-  Panel,
   Pill,
+  ReferencePicker,
+  Spinner,
   SqlBlock,
-  Stat,
-  Tabs,
   baseModel,
   cx,
+  defaultTarget,
   endpointColors,
+  secondsSince,
+  useNow,
 } from "@/components/ui";
-import type { Api, BenchConfig, BenchRun, ChainResult, ChainRow, Endpoint, SpeedResult } from "@/lib/api";
+import type { Api, BenchCell, BenchConfig, BenchRun, ChainResult, ChainRow, Endpoint, SpeedResult } from "@/lib/api";
+import { leafFields, sameValue } from "@/lib/fields";
 import { formatMs, formatNumber, formatSpeedup } from "@/lib/format";
-import { M3_05_LABEL, M3_05_SPEEDUP, M3_06_CHAIN, M3_06_LABEL, OFFICIAL_LOADS, SAMPLES, WORKLOAD_LABELS } from "@/lib/official";
+import { useI18n, type Dict, type Lang } from "@/lib/i18n";
+import { M3_05_SPEEDUP, M3_06_CHAIN, OFFICIAL_LOADS, SAMPLES } from "@/lib/official";
 
 type Workload = "W1" | "W2" | "W3";
-const PRESETS = {
-  quick: { label: "Nhanh", requests: 8, loads: [1, 8], repeats: 1, about: "8 request đầu của gói, 1 và 8 người dùng, 1 lần" },
-  full: { label: "Đầy đủ", requests: 32, loads: [1, 2, 4, 8, 16, 32], repeats: 3, about: "32 request, 1 đến 32 người dùng, 3 lần" },
-};
-// Rough seconds per request at low load on one GPU. W1 from the live run of 13/11 on A10G (latency p50 11.8-16.5 s,
-// the "Nhanh" run took 2 min 46 s); W2 (short SQL) and W3 (prose) from the Node 2 / Node 3 pages (about 2 s and 6-8 s).
-const SECONDS_PER_REQUEST: Record<Workload, number> = { W1: 18, W2: 3, W3: 8 };
-const FINAL = ["done", "failed", "interrupted"];
+type Mode = "speed" | "chain";
+type PresetKey = "quick" | "full";
+type MetricKey = "tpot" | "ttft" | "latency" | "throughput";
 
-function estimateMinutes(workload: Workload, preset: keyof typeof PRESETS): number {
-  const p = PRESETS[preset];
-  const waves = p.loads.reduce((sum, load) => sum + Math.ceil(p.requests / load), 0);
-  return Math.max(1, Math.round((p.repeats * waves * SECONDS_PER_REQUEST[workload]) / 60));
-}
+const PRESETS: Record<PresetKey, { requests: number; loads: number[]; repeats: number }> = {
+  quick: { requests: 8, loads: [1, 8], repeats: 1 },
+  full: { requests: 32, loads: [1, 2, 4, 8, 16, 32], repeats: 3 },
+};
+const FINAL = ["done", "failed", "interrupted"];
+const OFFICIAL_COLORS = ["var(--lane-1)", "var(--lane-2)", "var(--lane-3)"];
+
+const METRIC_META: Record<MetricKey, { lower: boolean; read: (c: BenchCell) => number | null; format: (v: number, lang: Lang) => string }> = {
+  tpot: { lower: true, read: (c) => c.tpot_ms_p50, format: (v, lang) => `${formatNumber(Math.round(v * 10) / 10, lang)} ms` },
+  ttft: { lower: true, read: (c) => c.ttft_ms_p50, format: (v, lang) => formatMs(v, lang) },
+  latency: { lower: true, read: (c) => c.latency_ms_p50, format: (v, lang) => formatMs(v, lang) },
+  throughput: { lower: false, read: (c) => c.throughput_tps, format: (v, lang) => `${formatNumber(Math.round(v), lang)} tok/s` },
+};
 
 function when(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
-  } catch {
-    return iso;
-  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${two(d.getDate())}/${two(d.getMonth() + 1)} ${two(d.getHours())}:${two(d.getMinutes())}`;
 }
 
-// ---------------------------------------------------------------- mode A: speed
-function SpeedView({ result, colors }: { result: SpeedResult; colors: Record<string, string> }) {
-  const ids = [...new Set(result.cells.map((c) => c.endpoint_id))];
+function compared(metric: MetricKey, ratio: number, lang: Lang, t: Dict): string {
+  if (Math.abs(ratio - 1) < 0.005) return t.equalShort;
+  const sp = formatSpeedup(ratio > 1 ? ratio : 1 / ratio, lang);
+  if (METRIC_META[metric].lower) return ratio > 1 ? t.fasterShort(sp) : t.slowerShort(sp);
+  return ratio > 1 ? t.higherShort(sp) : t.lowerShort(sp);
+}
+
+const ratioOf = (metric: MetricKey, base: number, mine: number) => (METRIC_META[metric].lower ? base / mine : mine / base);
+
+function Segmented<T extends string>({ label, value, options, onChange }: {
+  label: string;
+  value: T;
+  options: [T, ReactNode][];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full flex-wrap rounded-full border border-line bg-sunken p-0.5">
+      {options.map(([key, text]) => (
+        <button
+          key={key}
+          type="button"
+          role="radio"
+          aria-checked={value === key}
+          onClick={() => onChange(key)}
+          className={cx("rounded-full px-3 py-0.5 text-[13px]", value === key ? "bg-surface font-semibold text-ink shadow-sm" : "text-ink-2")}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SpeedLive({ result, colors }: { result: SpeedResult; colors: Record<string, string> }) {
+  const { lang, t } = useI18n();
+  const [metric, setMetric] = useState<MetricKey>("tpot");
+  const rawIds = [...new Set(result.cells.map((c) => c.endpoint_id))];
   const names = Object.fromEntries(result.cells.map((c) => [c.endpoint_id, c.name]));
-  const others = ids.filter((id) => id !== result.baseline);
+  const [refChoice, setRefChoice] = useState<string | null>(null);
+  const referenceId = rawIds.length >= 2
+    ? (refChoice && rawIds.includes(refChoice) ? refChoice : (result.baseline && rawIds.includes(result.baseline) ? result.baseline : rawIds[0]))
+    : null;
+  const ids = [...rawIds].sort((a, b) => Number(b === referenceId) - Number(a === referenceId));
+  const m = METRIC_META[metric];
   const cell = (id: string, load: number) => result.cells.find((c) => c.endpoint_id === id && c.load === load);
-  const series: Series[] = others.map((id) => ({
-    name: names[id],
-    color: colors[id] ?? "var(--ink-2)",
-    values: result.loads.map((load) => cell(id, load)?.speedup_vs_baseline ?? null),
-  }));
-  const low = result.loads[0];
-  const high = result.loads[result.loads.length - 1];
-  const best = (load: number) =>
-    others
-      .map((id) => ({ id, v: cell(id, load)?.speedup_vs_baseline ?? null }))
-      .filter((x): x is { id: string; v: number } => x.v !== null)
-      .sort((a, b) => b.v - a.v)[0];
-  const errors = result.cells.reduce((sum, c) => sum + (c.n - c.n_ok), 0);
-  const total = result.cells.reduce((sum, c) => sum + c.n, 0);
-  const bestLow = best(low);
-  const bestHigh = best(high);
+  const value = (id: string, load: number) => {
+    const c = cell(id, load);
+    return c ? m.read(c) : null;
+  };
+  const fmt = (v: number) => m.format(v, lang);
 
   return (
-    <div className="grid gap-5">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat
-          label={`Tốt nhất ở ${low} người dùng`}
-          value={bestLow ? formatSpeedup(bestLow.v) : "—"}
-          sub={bestLow ? `${names[bestLow.id]}${bestLow.v < 1 ? ", chậm hơn mốc" : ""}` : "cần endpoint mốc"}
-          tone={bestLow ? (bestLow.v >= 1 ? "good" : "bad") : undefined}
-        />
-        <Stat
-          label={`Tốt nhất ở ${high} người dùng`}
-          value={bestHigh ? formatSpeedup(bestHigh.v) : "—"}
-          sub={bestHigh ? `${names[bestHigh.id]}${bestHigh.v < 1 ? ", chậm hơn mốc" : ""}` : "cần endpoint mốc"}
-          tone={bestHigh ? (bestHigh.v >= 1 ? "good" : "bad") : undefined}
-        />
-        <Stat label="Request lỗi" value={`${errors}/${total}`} sub={errors ? "không tính vào trung vị" : "không có request lỗi"} tone={errors ? "bad" : undefined} />
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line">
+        <div role="tablist" aria-label={t.metricTabsAria} className="flex flex-wrap gap-1">
+          {(Object.keys(METRIC_META) as MetricKey[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={k === metric}
+              onClick={() => setMetric(k)}
+              className={cx("-mb-px border-b-2 px-3 py-2 text-[13.5px]", k === metric ? "border-ink font-semibold text-ink" : "border-transparent text-ink-2 hover:text-ink")}
+            >
+              {t.metricLabels[k]}
+            </button>
+          ))}
+        </div>
+        {referenceId && (
+          <div className="pb-1.5">
+            <ReferencePicker
+              options={rawIds.map((id) => ({ id, name: names[id] }))}
+              value={referenceId}
+              onChange={setRefChoice}
+              colors={colors}
+            />
+          </div>
+        )}
       </div>
 
-      {result.baseline && series.length > 0 && result.loads.length > 1 && (
-        series.length <= 3 ? (
-          <SpeedChart loads={result.loads} series={series} baselineLabel={names[result.baseline]} />
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {series.map((s) => <SpeedChart key={s.name} loads={result.loads} series={[s]} baselineLabel={names[result.baseline!]} />)}
-          </div>
-        )
+      {result.loads.length <= 3 ? (
+        <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))]">
+          {result.loads.map((load) => {
+            const max = Math.max(1, ...ids.map((id) => value(id, load) ?? 0));
+            const base = referenceId ? value(referenceId, load) : null;
+            return (
+              <div key={load} role="group" aria-label={t.concurrencyGroup(load)} className="grid content-start gap-2.5 rounded-xl border border-line px-3.5 py-3">
+                <h4 className="text-[13px] font-semibold text-ink-2">{t.concurrencyGroup(load)}</h4>
+                {ids.map((id) => {
+                  const v = value(id, load);
+                  const ratio = v !== null && base ? ratioOf(metric, base, v) : null;
+                  return (
+                    <div key={id} className="grid grid-cols-[minmax(0,8.5em)_minmax(0,1fr)_auto] items-center gap-2.5 text-[13px]">
+                      <span className="flex min-w-0 items-center gap-1.5 font-semibold" title={names[id]}>
+                        <Dot color={colors[id] ?? "var(--ink-2)"} />
+                        <span className="truncate">{names[id]}</span>
+                      </span>
+                      <span className="h-3.5 overflow-hidden rounded bg-sunken">
+                        <span className="block h-full rounded" style={{ width: `${v === null ? 0 : Math.max(2, (v / max) * 100)}%`, background: colors[id] ?? "var(--ink-2)" }} />
+                      </span>
+                      <span className="grid min-w-[7.5em] justify-items-end leading-tight">
+                        <b className="num">{v === null ? "—" : fmt(v)}</b>
+                        {id !== referenceId && ratio !== null && (
+                          <small className={cx("whitespace-nowrap text-[11.5px] font-semibold", ratio >= 1 ? "text-good" : "text-bad")}>{compared(metric, ratio, lang, t)}</small>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-line px-3.5 py-3">
+          <LineChart
+            label={t.metricLabels[metric]}
+            loads={result.loads}
+            format={fmt}
+            series={ids.map((id) => ({
+              name: names[id],
+              color: colors[id] ?? "var(--ink-2)",
+              dashed: id === referenceId,
+              values: result.loads.map((load) => value(id, load)),
+            }))}
+          />
+        </div>
       )}
-      {!result.baseline && <Notice tone="info">Lần đo này không có endpoint mốc nên chỉ có số tuyệt đối, không có hệ số tăng tốc.</Notice>}
 
-      <div className="overflow-x-auto rounded-lg border border-line">
-        <table className="w-full min-w-[760px] text-left text-[13.5px]" aria-label="Bảng kết quả đo">
-          <thead className="bg-sunken text-ink-3">
+      <details className="group rounded-lg border border-line">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[13px] font-semibold text-ink-2 [&::-webkit-details-marker]:hidden">
+          <ChevronRight aria-hidden className="size-3.5 transition-transform group-open:rotate-90" />{t.fullTableToggle}
+        </summary>
+        <div className="overflow-x-auto border-t border-line">
+          <table className="w-full min-w-[720px] text-left text-[13.5px]" aria-label={t.fullTableAria}>
+            <thead className="bg-sunken text-ink-3">
+              <tr>
+                {[t.colEndpoint, t.colConcurrency, "TTFT p50", "TPOT p50", t.colLatencyP50, t.colThroughput, t.colSuccess].map((h, i) => (
+                  <th key={h} className={cx("px-3 py-2 font-semibold", i > 0 && "text-right")}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="num">
+              {result.cells.map((c) => (
+                <tr key={`${c.endpoint_id}-${c.load}`} className="border-t border-line">
+                  <td className="px-3 py-1.5"><span className="inline-flex items-center gap-2"><Dot color={colors[c.endpoint_id] ?? "var(--ink-2)"} />{c.name}</span></td>
+                  <td className="px-3 py-1.5 text-right">{c.load}</td>
+                  <td className="px-3 py-1.5 text-right">{formatMs(c.ttft_ms_p50, lang)}</td>
+                  <td className="px-3 py-1.5 text-right">{formatMs(c.tpot_ms_p50, lang)}</td>
+                  <td className="px-3 py-1.5 text-right">{formatMs(c.latency_ms_p50, lang)}</td>
+                  <td className="px-3 py-1.5 text-right">{c.throughput_tps ? `${formatNumber(Math.round(c.throughput_tps), lang)} tok/s` : "—"}</td>
+                  <td className={cx("px-3 py-1.5 text-right", c.n_ok < c.n && "text-bad")}>{c.n_ok}/{c.n}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function SpeedOfficial({ workload }: { workload: Workload }) {
+  const { lang, t } = useI18n();
+  const data = M3_05_SPEEDUP[workload];
+  const series: Series[] = Object.entries(data).map(([name, values], i) => ({ name, color: OFFICIAL_COLORS[i], values }));
+  return (
+    <div className="grid gap-4">
+      <div className="overflow-x-auto rounded-xl border border-line px-3.5 py-3">
+        <LineChart
+          label={t.officialSpeedupTitle}
+          loads={OFFICIAL_LOADS}
+          series={series}
+          format={(v) => formatSpeedup(v, lang)}
+          reference={1}
+          referenceLabel={t.officialSpeedupRef}
+        />
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[560px] text-[13.5px]" aria-label={t.officialSpeedupTitle}>
+          <thead className="bg-sunken text-[12px] text-ink-3">
             <tr>
-              <th className="px-3 py-2 font-semibold">Endpoint</th>
-              <th className="px-3 py-2 text-right font-semibold">Người dùng</th>
-              <th className="px-3 py-2 text-right font-semibold">TTFT p50</th>
-              <th className="px-3 py-2 text-right font-semibold">TPOT p50</th>
-              <th className="px-3 py-2 text-right font-semibold">Thời gian p50</th>
-              <th className="px-3 py-2 text-right font-semibold">Token/giây</th>
-              <th className="px-3 py-2 text-right font-semibold">Thành công</th>
-              <th className="px-3 py-2 text-right font-semibold">So với mốc</th>
+              <th className="px-3.5 py-2 text-left font-medium">{t.colDecodingMethod}</th>
+              {OFFICIAL_LOADS.map((l) => <th key={l} className="px-3.5 py-2 text-right font-medium">C={l}</th>)}
             </tr>
           </thead>
           <tbody className="num">
-            {result.cells.map((c) => (
-              <tr key={`${c.endpoint_id}-${c.load}`} className="border-t border-line">
-                <td className="px-3 py-1.5">
-                  <span className="inline-flex items-center gap-2"><Dot color={colors[c.endpoint_id] ?? "var(--ink-2)"} />{c.name}{c.endpoint_id === result.baseline && <span className="text-[12px] text-ink-3">mốc</span>}</span>
-                </td>
-                <td className="px-3 py-1.5 text-right">{c.load}</td>
-                <td className="px-3 py-1.5 text-right">{formatMs(c.ttft_ms_p50)}</td>
-                <td className="px-3 py-1.5 text-right">{formatMs(c.tpot_ms_p50)}</td>
-                <td className="px-3 py-1.5 text-right">{formatMs(c.latency_ms_p50)}</td>
-                <td className="px-3 py-1.5 text-right">{formatNumber(c.throughput_tps ? Math.round(c.throughput_tps) : null)}</td>
-                <td className={cx("px-3 py-1.5 text-right", c.n_ok < c.n && "text-bad")}>{c.n_ok}/{c.n}</td>
-                <td className={cx("px-3 py-1.5 text-right font-semibold", c.speedup_vs_baseline !== null && (c.speedup_vs_baseline >= 1 ? "text-good" : "text-bad"))}>
-                  {c.endpoint_id === result.baseline ? "1×" : formatSpeedup(c.speedup_vs_baseline)}
-                </td>
+            <tr className="border-t border-line">
+              <td className="px-3.5 py-2"><span className="inline-flex items-center gap-2 font-bold"><Dot color="var(--lane-ref)" />vanilla</span></td>
+              {OFFICIAL_LOADS.map((l) => <td key={l} className="px-3.5 py-2 text-right font-semibold text-ink-3">1×</td>)}
+            </tr>
+            {series.map((s) => (
+              <tr key={s.name} className="border-t border-line">
+                <td className="px-3.5 py-2"><span className="inline-flex items-center gap-2 font-bold"><Dot color={s.color} />{s.name}</span></td>
+                {s.values.map((v, i) => (
+                  <td key={i} className={cx("px-3.5 py-2 text-right text-[15px] font-bold", v !== null && (v >= 1 ? "text-good" : "text-bad"))}>{v === null ? "—" : formatSpeedup(v, lang)}</td>
+                ))}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="text-[12.5px] text-ink-3">
-        Nhanh gấp mấy lần = TPOT p50 của mốc / TPOT p50 của endpoint ở cùng số người dùng. Máy chủ web ở Singapore, endpoint có thể ở nơi khác:
-        độ trễ mạng cộng vào TTFT và thời gian, TPOT ít bị ảnh hưởng.
-      </p>
     </div>
   );
 }
 
-function OfficialSpeed({ workload }: { workload: Workload }) {
-  const data = M3_05_SPEEDUP[workload];
-  const colors = ["var(--lane-1)", "var(--lane-2)", "var(--lane-3)"];
-  const series: Series[] = Object.entries(data).map(([name, values], i) => ({ name, color: colors[i], values }));
-  return (
-    <div className="grid gap-3">
-      <SpeedChart loads={OFFICIAL_LOADS} series={series} baselineLabel="vanilla" />
-      <p className="text-[12.5px] text-ink-3">{M3_05_LABEL} Ở 32 người dùng cả ba cách giải mã suy đoán đều chậm hơn mốc.</p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- mode B: chain
-const SEGMENTS = [
-  { key: "node1", label: "Node 1", color: "var(--step-1)" },
-  { key: "node2", label: "Node 2", color: "var(--step-2)" },
-  { key: "node3", label: "Node 3", color: "var(--step-3)" },
-] as const;
-
-function ChainBars({ rows }: { rows: { name: string; color: string; node1: number; node2: number; node3: number; badge?: React.ReactNode }[] }) {
+function ChainBars({ rows }: { rows: { id: string; name: string; color: string; node1: number; node2: number; node3: number; isReference?: boolean; onDetail?: () => void }[] }) {
+  const { lang, t } = useI18n();
+  const nodes = [
+    { key: "node1" as const, label: t.chainNode1, bg: "var(--node-1)", ink: "var(--node-1-ink)" },
+    { key: "node2" as const, label: t.chainNode2, bg: "var(--node-2)", ink: "var(--node-2-ink)" },
+    { key: "node3" as const, label: t.chainNode3, bg: "var(--node-3)", ink: "var(--node-3-ink)" },
+  ];
   const max = Math.max(1, ...rows.map((r) => r.node1 + r.node2 + r.node3));
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-2">
-        {SEGMENTS.map((s) => <span key={s.key} className="inline-flex items-center gap-1.5"><i aria-hidden className="inline-block size-2.5 rounded-sm" style={{ background: s.color }} />{s.label}</span>)}
+        {nodes.map((n) => <span key={n.key} className="inline-flex items-center gap-1.5"><i aria-hidden className="inline-block size-3 rounded-sm" style={{ background: n.bg }} />{n.label}</span>)}
       </div>
       {rows.map((r) => {
         const total = r.node1 + r.node2 + r.node3;
         return (
-          <div key={r.name} className="grid gap-1.5 md:grid-cols-[200px_minmax(0,1fr)_90px] md:items-center md:gap-3">
+          <div key={r.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-1.5 md:grid-cols-[minmax(150px,220px)_minmax(0,1fr)_auto]">
             <div className="grid min-w-0 justify-items-start gap-1">
               <span className="inline-flex max-w-full items-center gap-2 font-semibold"><Dot color={r.color} /><span className="truncate">{r.name}</span></span>
-              {r.badge}
             </div>
-            <div className="flex h-7 overflow-hidden rounded-md bg-sunken" role="img" aria-label={`${r.name}: Node 1 ${formatMs(r.node1)}, Node 2 ${formatMs(r.node2)}, Node 3 ${formatMs(r.node3)}`}>
+            <div className="col-span-2 row-start-2 flex h-7 overflow-hidden rounded-md bg-sunken md:col-span-1 md:row-start-auto" role="img" aria-label={`${r.name}: ${t.chainNode1} ${formatMs(r.node1, lang)}, ${t.chainNode2} ${formatMs(r.node2, lang)}, ${t.chainNode3} ${formatMs(r.node3, lang)}`}>
               <div className="flex" style={{ width: `${(100 * total) / max}%` }}>
-                {SEGMENTS.map((s, i) => (
+                {nodes.map((n, i) => (
                   <div
-                    key={s.key}
-                    title={`${s.label}: ${formatMs(r[s.key])}`}
-                    className={cx("flex items-center overflow-hidden whitespace-nowrap px-2 text-[12px] font-semibold text-white", i > 0 && "border-l-2 border-surface")}
-                    style={{ flex: Math.max(r[s.key], 1), background: s.color }}
+                    key={n.key}
+                    title={`${n.label}: ${formatMs(r[n.key], lang)}`}
+                    className={cx("flex items-center overflow-hidden whitespace-nowrap px-2 text-[12px] font-semibold", i > 0 && "border-l-2 border-surface")}
+                    style={{ flex: Math.max(r[n.key], 1), background: n.bg, color: n.ink }}
                   >
-                    {r[s.key] / max > 0.12 ? formatMs(r[s.key]) : ""}
+                    {r[n.key] / max > 0.1 ? formatMs(r[n.key], lang) : ""}
                   </div>
                 ))}
               </div>
             </div>
-            <b className="num md:text-right">{formatMs(total)}</b>
+            <div className="grid justify-items-end gap-0.5 text-right">
+              <b className="num">{formatMs(total, lang)}</b>
+              {r.onDetail && (
+                <button type="button" onClick={r.onDetail} aria-label={t.viewDetailAria(r.name)} className="text-[12.5px] font-semibold text-lane-1">{t.viewDetail}</button>
+              )}
+            </div>
           </div>
         );
       })}
@@ -200,76 +310,158 @@ function ChainBars({ rows }: { rows: { name: string; color: string; node1: numbe
   );
 }
 
-function ChainDetail({ row }: { row: ChainRow }) {
-  const [tab, setTab] = useState<"json" | "sql" | "report">("json");
-  return (
-    <div className="grid gap-3">
-      <Tabs label={`Chi tiết ${row.name}`} value={tab} onChange={setTab} tabs={[["json", "Node 1, JSON"], ["sql", "Node 2, SQL Q1–Q6"], ["report", "Node 3, báo cáo"]]} />
-      {tab === "json" && (row.invoice ? <CodeBlock label="JSON hoá đơn">{JSON.stringify(row.invoice, null, 2)}</CodeBlock> : <Notice tone="bad">{row.node1.error ?? "Node 1 lỗi"}</Notice>)}
-      {tab === "sql" && (
-        <div className="grid gap-3">
-          {row.questions.map((q) => (
-            <div key={q.question_id} className="grid gap-1.5">
-              <div className="flex flex-wrap items-center gap-2 text-[13.5px]">
-                <b>{q.question_id}</b><span className="text-ink-2">{q.question}</span>
-                <Pill tone={q.status === "ok" ? "good" : q.status === "no_data" ? "idle" : "bad"}>{q.status === "ok" ? `${q.row_count} dòng` : q.status === "no_data" ? "không có dữ liệu" : "bị chặn"}</Pill>
-              </div>
-              {q.sql && <SqlBlock sql={q.sql} />}
-            </div>
-          ))}
-        </div>
-      )}
-      {tab === "report" && <div className="max-w-[75ch] whitespace-pre-wrap leading-relaxed">{row.report.text || row.report.error || "Không có báo cáo"}</div>}
-    </div>
-  );
+function chainQuality(row: ChainRow, base: ChainRow | undefined) {
+  let fields: [number, number] | null = null;
+  if (base && row !== base && row.invoice && base.invoice) {
+    const mine = leafFields(row.invoice);
+    const theirs = new Map(leafFields(base.invoice));
+    const paths = new Set([...mine.map(([p]) => p), ...theirs.keys()]);
+    const own = new Map(mine);
+    fields = [[...paths].filter((p) => sameValue(own.get(p), theirs.get(p))).length, paths.size];
+  }
+  let questions: { same: number; total: number; differ: string[] } | null = null;
+  if (base && row !== base) {
+    const byId = new Map(base.questions.map((q) => [q.question_id, JSON.stringify(q.rows)]));
+    const differ = row.questions.filter((q) => byId.get(q.question_id) !== JSON.stringify(q.rows)).map((q) => q.question_id);
+    questions = { same: row.questions.length - differ.length, total: row.questions.length, differ };
+  }
+  return { fields, questions, numbers: row.number_check };
 }
 
-function ChainView({ result, colors }: { result: ChainResult; colors: Record<string, string> }) {
-  const [open, setOpen] = useState<string | null>(null);
-  const same = (row: ChainRow) => {
-    if (!row.same_as_baseline) return row.endpoint_id === result.baseline ? <span className="text-[12px] font-normal text-ink-3">mốc</span> : null;
-    const s = row.same_as_baseline;
-    const differ = (["node1", "node2", "node3"] as const).filter((k) => !s[k]).map((k) => `Node ${k.slice(-1)}`);
-    return (
-      <Pill tone={differ.length === 0 ? "good" : "warn"}>
-        {`giống mốc ${3 - differ.length}/3 node${differ.length ? `, khác ở ${differ.join(", ")}` : ""}`}
-      </Pill>
-    );
-  };
+function ChainLive({ result, colors, onDetail }: { result: ChainResult; colors: Record<string, string>; onDetail: (row: ChainRow) => void }) {
+  const { lang, t } = useI18n();
+  const [refChoice, setRefChoice] = useState<string | null>(null);
+  const referenceId = result.endpoints.length >= 2
+    ? (refChoice && result.endpoints.some((e) => e.endpoint_id === refChoice)
+      ? refChoice
+      : (result.baseline && result.endpoints.some((e) => e.endpoint_id === result.baseline) ? result.baseline : result.endpoints[0].endpoint_id))
+    : null;
+  const rows = [...result.endpoints].sort((a, b) => Number(b.endpoint_id === referenceId) - Number(a.endpoint_id === referenceId));
+  const base = rows.find((r) => r.endpoint_id === referenceId);
+  const totalOf = (r: ChainRow) => r.timings_ms.node1 + r.timings_ms.node2 + r.timings_ms.node3;
+  const good = (ok: boolean) => (ok ? "text-good" : "text-bad");
   return (
     <div className="grid gap-4">
-      <p className="text-[13.5px] text-ink-2">
-        Ảnh mẫu <b className="text-ink">{result.sample_id}</b>, OCR một lần {formatMs(result.ocr_ms)} rồi mỗi endpoint chạy Node 1, sáu câu Q1–Q6 và một báo cáo.
-      </p>
-      <ChainBars rows={result.endpoints.map((r) => ({ name: r.name, color: colors[r.endpoint_id] ?? "var(--ink-2)", ...r.timings_ms, badge: same(r) }))} />
-      <div className="flex flex-wrap gap-2">
-        {result.endpoints.map((r) => (
-          <Button key={r.endpoint_id} variant={open === r.endpoint_id ? "primary" : "ghost"} onClick={() => setOpen(open === r.endpoint_id ? null : r.endpoint_id)}>
-            Xem {r.name}
-          </Button>
-        ))}
+      {referenceId && (
+        <div className="flex justify-end">
+          <ReferencePicker
+            options={result.endpoints.map((r) => ({ id: r.endpoint_id, name: r.name }))}
+            value={referenceId}
+            onChange={setRefChoice}
+            colors={colors}
+          />
+        </div>
+      )}
+      <ChainBars rows={rows.map((r) => ({
+        id: r.endpoint_id,
+        name: r.name,
+        color: colors[r.endpoint_id] ?? "var(--ink-2)",
+        ...r.timings_ms,
+        isReference: r.endpoint_id === referenceId,
+        onDetail: () => onDetail(r),
+      }))} />
+      <div className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[640px] text-left text-[13.5px]" aria-label={t.chainQualityAria}>
+          <thead className="bg-sunken text-[12px] text-ink-3">
+            <tr>
+              {[t.colEndpoint, t.colChainN1, t.colChainN2, t.colChainN3, t.colChainTotal].map((h) => (
+                <th key={h} className="px-3.5 py-2 font-medium">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="num">
+            {rows.map((r) => {
+              const q = chainQuality(r, base);
+              const isRef = r.endpoint_id === referenceId;
+              const elapsed = totalOf(r);
+              const baseElapsed = base ? totalOf(base) : null;
+              const grounded = q.numbers.numbers - q.numbers.ungrounded.length;
+              return (
+                <tr key={r.endpoint_id} className="border-t border-line align-top">
+                  <td className="px-3.5 py-2.5">
+                    <span className="inline-flex items-center gap-2 font-bold"><Dot color={colors[r.endpoint_id] ?? "var(--ink-2)"} /><span>{r.name}</span></span>
+                  </td>
+                  <td className="px-3.5 py-2.5">
+                    {q.fields ? <b className={cx("text-[15px]", good(q.fields[0] === q.fields[1]))}>{q.fields[0]}/{q.fields[1]}</b>
+                      : <span className="text-ink-3">{isRef ? "—" : r.invoice ? "—" : t.node1Failed}</span>}
+                  </td>
+                  <td className="px-3.5 py-2.5">
+                    {q.questions ? (
+                      <>
+                        <b className={cx("text-[15px]", good(q.questions.differ.length === 0))}>{q.questions.same}/{q.questions.total}</b>
+                        <small className="block text-[12px] text-ink-3">{q.questions.differ.length ? t.diffAtQuestions(q.questions.differ) : t.matchesRef}</small>
+                      </>
+                    ) : <span className="text-ink-3">—</span>}
+                  </td>
+                  <td className="px-3.5 py-2.5"><b className={cx("text-[15px]", good(q.numbers.ungrounded.length === 0))}>{grounded}/{q.numbers.numbers}</b></td>
+                  <td className="px-3.5 py-2.5">
+                    <b className={cx("text-[15px]", !isRef && baseElapsed !== null && good(elapsed <= baseElapsed))}>{formatMs(elapsed, lang)}</b>
+                    {!isRef && baseElapsed !== null && (
+                      <small className="block text-[12px] text-ink-3">
+                        {elapsed <= baseElapsed ? t.fasterBy(formatMs(baseElapsed - elapsed, lang)) : t.slowerBy(formatMs(elapsed - baseElapsed, lang))}
+                      </small>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      {open && result.endpoints.find((r) => r.endpoint_id === open) && <ChainDetail row={result.endpoints.find((r) => r.endpoint_id === open)!} />}
     </div>
   );
 }
 
-// ---------------------------------------------------------------- page
-export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; endpoints: Endpoint[]; pollMs: number; go: (page: PageId) => void }) {
-  const [mode, setMode] = useState<"speed" | "chain">("speed");
-  const live = endpoints.filter((e) => e.status === "ok");
-  const [selected, setSelected] = useState<string[]>(() =>
-    [...live].sort((a, b) => Number(b.is_baseline) - Number(a.is_baseline)).slice(0, 4).map((e) => e.endpoint_id),
+function ChainOfficial() {
+  return (
+    <div className="grid gap-4">
+      <ChainBars rows={M3_06_CHAIN.map((r, i) => ({ ...r, id: r.name, color: i === 0 ? "var(--lane-ref)" : "var(--lane-2)" }))} />
+    </div>
   );
+}
+
+function ChainDetail({ row, onClose }: { row: ChainRow; onClose: () => void }) {
+  const { lang, t } = useI18n();
+  const [tab, setTab] = useState<"json" | "sql" | "report">("json");
+  return (
+    <Drawer title={t.detailTitle(row.name)} onClose={onClose}>
+      <div className="grid gap-3.5">
+        <Segmented label={t.detailTabAria} value={tab} onChange={setTab} options={[["json", t.detailJson], ["sql", t.detailSql], ["report", t.detailReport]]} />
+        {tab === "json" && (row.invoice ? <CodeBlock label={t.invoiceJsonLabel}>{JSON.stringify(row.invoice, null, 2)}</CodeBlock> : <Notice tone="bad">{row.node1.error ?? t.node1Failed}</Notice>)}
+        {tab === "sql" && row.questions.map((q) => (
+          <div key={q.question_id} className="grid gap-1.5">
+            <div className="flex flex-wrap items-center gap-2 text-[13.5px]">
+              <b>{q.question_id}</b><span className="text-ink-2">{q.question}</span>
+              <Pill tone={q.status === "ok" ? "good" : q.status === "no_data" ? "idle" : "bad"}>
+                {q.status === "ok" ? t.sqlRowsCount(formatNumber(q.row_count, lang)) : q.status === "no_data" ? t.statusNoData : t.statusBlocked}
+              </Pill>
+            </div>
+            {q.sql && <SqlBlock sql={q.sql} />}
+          </div>
+        ))}
+        {tab === "report" && <div className="max-w-[68ch] whitespace-pre-wrap leading-relaxed">{row.report.text || row.report.error || t.noReportText}</div>}
+      </div>
+    </Drawer>
+  );
+}
+
+export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; endpoints: Endpoint[]; pollMs: number; go: (page: PageId) => void }) {
+  const { t } = useI18n();
+  const [mode, setMode] = useState<Mode>("speed");
+  const [selected, setSelected] = useState<string[]>(() => defaultTarget(endpoints, 6));
   const [workload, setWorkload] = useState<Workload>("W1");
-  const [preset, setPreset] = useState<keyof typeof PRESETS>("quick");
+  const [preset, setPreset] = useState<PresetKey>("quick");
   const [sample, setSample] = useState(SAMPLES[0].id);
   const [runs, setRuns] = useState<BenchRun[]>([]);
   const [current, setCurrent] = useState<BenchRun | null>(null);
-  const [view, setView] = useState<string | null>(null); // run id, or "official"
+  const [shownId, setShownId] = useState<string | null>(null);
+  const [official, setOfficial] = useState(false);
+  const [detail, setDetail] = useState<ChainRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
   const colors = endpointColors(endpoints);
+  const running = current !== null && !FINAL.includes(current.status);
+  const now = useNow(running);
 
   const poll = useCallback(
     async (runId: string) => {
@@ -278,7 +470,8 @@ export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; e
         if (!alive.current) return;
         setCurrent(run);
         if (FINAL.includes(run.status)) {
-          setView(run.run_id);
+          setShownId(run.run_id);
+          setOfficial(false);
           const { runs: list } = await api.benches();
           if (alive.current) setRuns(list);
           return;
@@ -305,22 +498,20 @@ export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; e
     };
   }, [api, poll]);
 
-  if (endpoints.length === 0) return <><PageHead title="Đo và so sánh" /><NeedEndpoint what="Phép đo" onGo={() => go("endpoints")} /></>;
+  if (endpoints.length === 0) return <><PageHead title={t.pageResult} /><NeedEndpoint what={t.pageResult} onGo={() => go("endpoints")} /></>;
 
-  const running = current !== null && !FINAL.includes(current.status);
-  const baseline = endpoints.find((e) => e.is_baseline);
-  const chosen = endpoints.filter((e) => selected.includes(e.endpoint_id));
-  const models = new Set(chosen.map(baseModel));
+  const byId = new Map(endpoints.map((e) => [e.endpoint_id, e]));
+  const ids = selected.filter((id) => byId.get(id)?.status !== "down").slice(0, 6);
+  const models = new Set(endpoints.filter((e) => ids.includes(e.endpoint_id)).map(baseModel));
+  const p = PRESETS[preset];
 
   async function start() {
     setError(null);
-    const config: BenchConfig =
-      mode === "speed"
-        ? { kind: "speed", endpoint_ids: selected, workload, loads: PRESETS[preset].loads, requests: PRESETS[preset].requests, repeats: PRESETS[preset].repeats }
-        : { kind: "chain", endpoint_ids: selected, sample_id: sample };
+    const config: BenchConfig = mode === "speed"
+      ? { kind: "speed", endpoint_ids: ids, workload, loads: p.loads, requests: p.requests, repeats: p.repeats }
+      : { kind: "chain", endpoint_ids: ids, sample_id: sample };
     try {
       const { run_id } = await api.startBench(config);
-      setView(null);
       setCurrent({ run_id, kind: config.kind, status: "queued", config, progress: {}, result: {}, error: null, created_at: new Date().toISOString() });
       await poll(run_id);
     } catch (exc) {
@@ -328,127 +519,161 @@ export default function ResultPage({ api, endpoints, pollMs, go }: { api: Api; e
     }
   }
 
-  const shown = view === "official" ? null : runs.find((r) => r.run_id === view) ?? (current?.run_id === view ? current : null);
+  const modeRuns = runs.filter((r) => r.kind === mode);
+  const shown = modeRuns.find((r) => r.run_id === shownId) ?? (current?.kind === mode && current.run_id === shownId ? current : null) ?? modeRuns[0] ?? null;
+  const showOfficial = mode === "speed" ? (official || !shown) : !shown;
+
+  let body: ReactNode = null;
+  if (running && current?.kind === mode) {
+    const c = current.config;
+    const done = current.progress.done ?? 0;
+    const total = current.progress.total ?? 0;
+    const pct = total ? Math.round((100 * done) / total) : 0;
+    body = (
+      <div className="grid gap-2.5">
+        <p className="flex items-center gap-2 text-[14px] text-ink-2">
+          <Spinner />
+          {c.kind === "speed" ? t.workloadNames[(c.workload ?? "W1") as Workload] : t.modeChain}
+        </p>
+        <div role="progressbar" aria-label={t.progressAria} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-2.5 overflow-hidden rounded-full bg-sunken">
+          <div className="h-full rounded-full bg-ink transition-[width]" style={{ width: `${Math.max(pct, 3)}%` }} />
+        </div>
+        <p className="num flex flex-wrap gap-x-4 text-[13.5px] text-ink-2">
+          <span>{total ? <><b className="text-ink">{done}/{total}</b> {c.kind === "speed" ? t.requestsUnit : t.endpointsUnit}</> : t.preparing}</span>
+          <span>{t.elapsedLabel}: <b className="text-ink">{secondsSince(Date.parse(current.created_at), now)} s</b></span>
+        </p>
+      </div>
+    );
+  } else if (showOfficial) {
+    body = mode === "speed" ? <SpeedOfficial workload={workload} /> : <ChainOfficial />;
+  } else if (shown) {
+    if (shown.status === "failed") body = <Notice tone="bad">{shown.error}</Notice>;
+    else if (shown.status === "interrupted") body = <Notice tone="warn">{t.benchInterrupted}</Notice>;
+    else if ("kind" in shown.result && shown.result.kind === "speed") {
+      body = <SpeedLive key={shown.run_id} result={shown.result} colors={colors} />;
+    } else if ("kind" in shown.result && shown.result.kind === "chain") {
+      const chain = shown.result;
+      body = <ChainLive key={shown.run_id} result={chain} colors={colors} onDetail={setDetail} />;
+    }
+  }
+
+  const speedViews: [string, string][] = [
+    ...(shown ? [["live", t.liveRunTab] as [string, string]] : []),
+    ["official", t.officialM305],
+  ];
 
   return (
     <>
-      <PageHead title="Đo và so sánh">
-        Đo cùng một bài trên nhiều endpoint cùng lúc, hoặc chạy cả chuỗi Node 1 → 2 → 3 trên từng endpoint để thấy kết quả giống nhau và thời gian khác nhau.
-      </PageHead>
+      <PageHead
+        title={t.pageResult}
+        actions={<Segmented label={t.modeAria} value={mode} onChange={(v) => { setMode(v); setOfficial(false); setShownId(null); }} options={[["speed", t.modeSpeed], ["chain", t.modeChain]]} />}
+      />
 
-      <Tabs label="Chế độ" value={mode} onChange={setMode} tabs={[["speed", "Đo tốc độ nhiều endpoint"], ["chain", "Chạy cả chuỗi 1 → 2 → 3"]]} />
-
-      <Panel title={mode === "speed" ? "Cấu hình lần đo" : "Cấu hình lần chạy"} icon={mode === "speed" ? Gauge : Workflow}>
-        <div className="grid gap-2">
-          <span className="text-[13.5px] font-semibold">Endpoint tham gia</span>
-          <EndpointChips
-            endpoints={endpoints}
-            selected={selected}
-            onToggle={(id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id].slice(-6)))}
-          />
-          <small className="text-[12.5px] text-ink-3">
-            {baseline ? (selected.includes(baseline.endpoint_id) ? `Mốc là ${baseline.name}.` : `Thêm mốc ${baseline.name} để có hệ số tăng tốc.`) : "Chưa có endpoint mốc; chọn mốc ở trang Endpoint để có hệ số tăng tốc."} Tối đa 6 endpoint.
-          </small>
-        </div>
-
-        {mode === "speed" ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <fieldset className="grid gap-2">
-              <legend className="mb-2 text-[13.5px] font-semibold">Bài đo (request của gói đã đóng băng)</legend>
-              {(["W1", "W2", "W3"] as Workload[]).map((w) => (
-                <label key={w} className={cx("flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2", workload === w ? "border-ink" : "border-line")}>
-                  <input type="radio" name="workload" checked={workload === w} onChange={() => setWorkload(w)} />
-                  {WORKLOAD_LABELS[w]}
-                </label>
-              ))}
-            </fieldset>
-            <fieldset className="grid gap-2">
-              <legend className="mb-2 text-[13.5px] font-semibold">Mức đo</legend>
-              {(Object.keys(PRESETS) as (keyof typeof PRESETS)[]).map((p) => (
-                <label key={p} className={cx("flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2", preset === p ? "border-ink" : "border-line")}>
-                  <input type="radio" name="preset" className="mt-1" checked={preset === p} onChange={() => setPreset(p)} />
-                  <span className="grid">
-                    <b className="font-semibold">{PRESETS[p].label}</b>
-                    <span className="text-[13px] text-ink-3">{PRESETS[p].about}, ước tính thô khoảng {estimateMinutes(workload, p)} phút</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-          </div>
-        ) : (
-          <fieldset className="grid gap-2">
-            <legend className="mb-2 text-[13.5px] font-semibold">Ảnh hoá đơn cho Node 1</legend>
-            <div className="flex flex-wrap gap-2">
-              {SAMPLES.map((s) => (
-                <label key={s.id} className={cx("flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2", sample === s.id ? "border-ink" : "border-line")}>
-                  <input type="radio" name="sample" checked={sample === s.id} onChange={() => setSample(s.id)} />
-                  {s.label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        )}
-
-        {models.size > 1 && <Notice tone="warn">Các endpoint đã chọn chạy {models.size} model khác nhau; so sánh tốc độ không công bằng.</Notice>}
-        <Notice tone="info" icon={Clock}>Giữ trang này mở trong lúc đo: máy chủ miễn phí tự ngủ khi không có ai hỏi tiến độ. Số đo trên web là đo trực tiếp, có nhiễu, khác số chính thức của campaign.</Notice>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button icon={Play} disabled={running || selected.length === 0} onClick={start}>
-            {running ? "Đang đo…" : mode === "speed" ? "Bắt đầu đo" : "Chạy cả chuỗi"}
-          </Button>
-          {current && running && (
-            <div className="flex min-w-[240px] flex-1 items-center gap-3" aria-label="Tiến độ">
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-sunken">
-                <div className="h-full bg-ink" style={{ width: `${current.progress.total ? (100 * (current.progress.done ?? 0)) / current.progress.total : 3}%` }} />
-              </div>
-              <span className="num text-[13px] text-ink-2">{current.progress.total ? `${current.progress.done ?? 0}/${current.progress.total} request` : "Đang chuẩn bị…"}</span>
-            </div>
-          )}
-        </div>
-        {error && <Notice tone="bad">{error}</Notice>}
-      </Panel>
-
-      {(shown || view === "official") && (
-        <Panel
-          title={view === "official" ? (mode === "speed" ? `Số chính thức M3-05, ${WORKLOAD_LABELS[workload]}` : "Số chính thức M3-06") : `Kết quả lần ${shown?.run_id}`}
-          meta={view === "official" ? <Pill tone="idle">số chính thức</Pill> : <Pill tone="warn">đo trực tiếp, có nhiễu</Pill>}
+      <section aria-label={t.configAria} className="grid gap-2.5 rounded-xl border border-line bg-surface p-[18px]">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void start();
+          }}
+          className="grid gap-3 rounded-xl border border-line bg-surface px-4 py-3"
         >
-          {view === "official" && mode === "speed" && <OfficialSpeed workload={workload} />}
-          {view === "official" && mode === "chain" && (
-            <div className="grid gap-3">
-              <ChainBars rows={M3_06_CHAIN.map((r, i) => ({ ...r, color: i === 0 ? "var(--lane-ref)" : "var(--lane-1)" }))} />
-              <p className="text-[12.5px] text-ink-3">{M3_06_LABEL}</p>
+          {mode === "speed" ? (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="text-[13px] text-ink-3">{t.workloadLabel}</span>
+                <Segmented label={t.workloadLabel} value={workload} onChange={setWorkload} options={(Object.keys(t.workloadNames) as Workload[]).map((w) => [w, t.workloadNames[w]])} />
+              </span>
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="text-[13px] text-ink-3">{t.presetLabel}</span>
+                <Segmented label={t.presetAria} value={preset} onChange={setPreset} options={[["quick", t.presetQuick], ["full", t.presetFull]]} />
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[13px] text-ink-3">{t.sampleImageLabel}</span>
+              <div role="radiogroup" aria-label={t.sampleImageLabel} className="flex flex-wrap gap-1.5">
+                {SAMPLES.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={sample === s.id}
+                    onClick={() => setSample(s.id)}
+                    className={cx("inline-flex items-center gap-2 rounded-lg border bg-surface py-0.5 pl-0.5 pr-2.5 text-[13px]", sample === s.id ? "border-ink font-semibold text-ink" : "border-line text-ink-2")}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={s.file} alt="" className="size-8 rounded-md object-cover object-top" />
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-          {shown?.status === "failed" && <Notice tone="bad">{shown.error}</Notice>}
-          {shown?.status === "interrupted" && <Notice tone="warn">Máy chủ khởi động lại giữa lần đo; kết quả dở không được ghép. Chạy lại lần nữa.</Notice>}
-          {shown?.status === "done" && shown.result && "kind" in shown.result && shown.result.kind === "speed" && <SpeedView result={shown.result} colors={colors} />}
-          {shown?.status === "done" && shown.result && "kind" in shown.result && shown.result.kind === "chain" && <ChainView result={shown.result} colors={colors} />}
-        </Panel>
-      )}
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+            <span className="text-[13px] text-ink-3">{t.selectLlm}</span>
+            <EndpointChips
+              endpoints={endpoints}
+              selected={selected}
+              onToggle={(id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id].slice(-6)))}
+            />
+            <Button type="submit" icon={Play} loading={running} disabled={running || ids.length === 0} className="ml-auto">
+              {running ? t.measuringBtn : mode === "speed" ? t.startBench : t.startChain}
+            </Button>
+          </div>
+        </form>
+        {models.size > 1 && <Notice tone="warn">{t.diffModelsWarn(models.size)}</Notice>}
+        {error && <Notice tone="bad">{error}</Notice>}
+      </section>
 
-      <Panel title="Lịch sử" icon={History} bodyClassName="p-0 gap-0">
-        <ul className="divide-y divide-line">
-          <li>
-            <button type="button" onClick={() => setView("official")} className={cx("flex w-full flex-wrap items-center gap-3 px-[18px] py-2.5 text-left hover:bg-sunken", view === "official" && "bg-sunken")}>
-              <Pill tone="idle">số chính thức</Pill>
-              <span className="font-semibold">{mode === "speed" ? "M3-05, GPU L4, vanilla làm mốc" : "M3-06, GPU A10G, vanilla và static"}</span>
-              <span className="text-[13px] text-ink-3">{mode === "speed" ? "5 lần × 32 request mỗi ô" : "trung vị 30 hoá đơn"}</span>
-            </button>
-          </li>
-          {runs.filter((r) => r.kind === mode).map((r) => (
-            <li key={r.run_id}>
-              <button type="button" onClick={() => setView(r.run_id)} className={cx("flex w-full flex-wrap items-center gap-3 px-[18px] py-2.5 text-left hover:bg-sunken", view === r.run_id && "bg-sunken")}>
-                <Pill tone={r.status === "done" ? "good" : r.status === "failed" ? "bad" : r.status === "interrupted" ? "warn" : "idle"}>
-                  {{ done: "xong", failed: "lỗi", interrupted: "bị gián đoạn", running: "đang chạy", queued: "đang chờ" }[r.status]}
-                </Pill>
-                <span className="font-semibold">{r.kind === "speed" ? `${r.config.workload}, ${r.config.loads?.join("/")} người dùng` : `chuỗi, ảnh ${r.config.sample_id ?? "m0_04_001"}`}</span>
-                <span className="text-[13px] text-ink-3">{r.config.endpoint_ids.length} endpoint, {when(r.created_at)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Panel>
+      <section aria-label={t.resultsHeading} className="grid gap-4 rounded-xl border border-line bg-surface p-[18px]">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 className="text-[15px] font-bold">{running && current?.kind === mode ? t.runningHeading : t.resultsHeading}</h2>
+          {mode === "speed" && !(running && current?.kind === mode) && (
+            <span className="ml-auto">
+              <Segmented label={t.viewAria} value={showOfficial ? "official" : "live"} onChange={(v) => setOfficial(v === "official")} options={speedViews} />
+            </span>
+          )}
+        </div>
+        {body}
+      </section>
+
+      <section aria-label={t.historyTitle} className="overflow-hidden rounded-xl border border-line bg-surface">
+        <h2 className="border-b border-line px-[18px] py-3.5 text-[15px] font-bold">{t.historyTitle}</h2>
+        {modeRuns.length === 0 ? (
+          <p className="px-[18px] py-3.5 text-[13px] text-ink-3">{t.historyEmpty}</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {modeRuns.map((r) => (
+              <li key={r.run_id}>
+                <button
+                  type="button"
+                  onClick={() => { setShownId(r.run_id); setOfficial(false); }}
+                  aria-current={!showOfficial && shown?.run_id === r.run_id}
+                  className={cx("grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 px-[18px] py-2.5 text-left hover:bg-sunken sm:grid-cols-[auto_minmax(0,1fr)_auto]", !showOfficial && shown?.run_id === r.run_id && "bg-sunken")}
+                >
+                  <Pill tone={r.status === "done" ? "good" : r.status === "failed" ? "bad" : r.status === "interrupted" ? "warn" : "idle"}>
+                    {t.runStatusLabels[r.status] ?? r.status}
+                  </Pill>
+                  <span className="min-w-0">
+                    <b className="block font-semibold">
+                      {r.kind === "speed"
+                        ? `${t.workloadNames[(r.config.workload ?? "W1") as Workload]} · C=${(r.config.loads ?? []).join(", ")}`
+                        : `${t.modeChain} · ${SAMPLES.find((s) => s.id === r.config.sample_id)?.label ?? r.config.sample_id ?? "m0_04_001"}`}
+                    </b>
+                    <small className="text-[12.5px] text-ink-3">
+                      {r.config.endpoint_ids.length} {t.endpointsUnit}
+                      {r.kind === "speed" ? ` · ${r.config.requests ?? 8} ${t.requestsUnit}` : ""}
+                    </small>
+                  </span>
+                  <span className="col-start-2 text-[12.5px] text-ink-3 sm:col-start-auto">{when(r.created_at)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {detail && <ChainDetail row={detail} onClose={() => setDetail(null)} />}
     </>
   );
 }

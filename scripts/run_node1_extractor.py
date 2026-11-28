@@ -7,7 +7,7 @@ being duplicated here.
 
 Typical runs (endpoint, model and output folder follow the lane):
 
-    python scripts/run_node1_extractor.py --lane eagle --hardware modal-A10G
+    python scripts/run_node1_extractor.py --lane eagle --hardware modal-A10
     python scripts/run_node1_extractor.py --lane static --backend local
     python scripts/run_node1_extractor.py --lane vanilla \
       --base-url http://localhost:11434/v1 --model qwen2.5:7b-instruct
@@ -452,7 +452,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--hardware",
-        help="GPU/host label recorded in the summary (e.g. modal-A10G).",
+        help="GPU/host label recorded in the summary (e.g. modal-A10).",
     )
     parser.add_argument(
         "--limit",

@@ -33,6 +33,7 @@ Phần lớn nội dung **đã nằm trong `docs/`**. Viết quyển chủ yếu
 | | 3.4 Đảm bảo lossless | [QĐ-11](03-quyet-dinh-thiet-ke.md) | | |
 | | 3.5 Tích hợp vLLM & endpoint | [05 §3–4](05-thiet-ke-he-thong.md) | | |
 | | 3.6 **Các quyết định thiết kế và lý do** | [03](03-quyet-dinh-thiet-ke.md) — chuyển thể QĐ-01→11 | | |
+| | 3.7 Sản phẩm minh hoạ: web console FlexSDS Benchmark (M5-01) | [chuong-3-7](chuong-3-7-web-console.md), QĐ-18–19 | Dương | bản nháp 23/11 |
 | **4** | **Thực nghiệm** | | Đại (Lead) + Khôi | **sau M1 (04/10)** |
 | | 4.1 Thiết lập: phần cứng, mô hình, phần mềm | [05](05-thiet-ke-he-thong.md), [QĐ-09](03-quyet-dinh-thiet-ke.md) | | |
 | | 4.2 Workload & tập dữ liệu | [01 §1.6](01-gioi-thieu.md) | | |

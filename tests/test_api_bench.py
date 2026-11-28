@@ -57,6 +57,8 @@ def test_summary_and_speedup_follow_the_campaign_definition():
 
 def service(store, registry, **kwargs):
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":  # the wake-up check before measuring
+            return httpx.Response(200, json={"data": [{"id": "model"}]})
         body = json.loads(request.content)
         assert body["stream"] is True and body["model"].startswith("model-")
         return httpx.Response(200, content=sse(5), headers={"content-type": "text/event-stream"})
@@ -126,3 +128,49 @@ def test_chain_runs_node1_then_q1_q6_then_the_report_on_each_endpoint():
     assert by_id["ep_base"]["timings_ms"]["node2"] == 6000.0 and by_id["ep_base"]["total_ms"] > 0
     assert by_id["ep_bad"]["same_as_baseline"] == {"node1": False, "node2": True, "node3": False}
     assert by_id["ep_base"]["same_as_baseline"] is None and run["result"]["ocr_ms"] == 900.0
+
+
+def _waking_bench(store, rows, models_answers, **kwargs):
+    """Bench whose endpoints answer /models with the given statuses (one per call) before they are ready."""
+    seen: list[str] = []
+    answers = list(models_answers)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(f"{request.method} {request.url.path}")
+        if request.method == "GET":
+            return httpx.Response(answers.pop(0) if answers else 200, json={"data": [{"id": "m"}]})
+        return httpx.Response(200, content=sse(5), headers={"content-type": "text/event-stream"})
+
+    bench = BenchService(store, Registry(rows), async_client=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+                         new_id=lambda: "bn_000000000002", spawn=lambda target, args: target(*args),
+                         asleep=lambda s: _noop(), **kwargs)
+    return bench, seen
+
+
+async def _noop():
+    return None
+
+
+def test_speed_run_wakes_sleeping_endpoints_before_measuring():
+    """A Modal GPU asleep answers 303/503 for minutes; requests sent then would all fail or time the cold start."""
+    store = FakeStore()
+    rows = [endpoint("ep_a", "a")]
+    rows[0]["model_id"] = "model-a"
+    bench, seen = _waking_bench(store, rows, [303, 503])
+    run = bench.get(bench.start({"kind": "speed", "endpoint_ids": ["ep_a"], "workload": "W2", "loads": [1],
+                                 "requests": 2, "repeats": 1}))
+    assert run["status"] == "done"
+    assert seen[:3] == ["GET /v1/models"] * 3 and seen[3:] == ["POST /v1/chat/completions"] * 2
+    assert run["result"]["cells"][0]["n_ok"] == 2
+
+
+def test_speed_run_fails_when_an_endpoint_never_wakes():
+    store = FakeStore()
+    rows = [endpoint("ep_a", "a")]
+    rows[0]["model_id"] = "model-a"
+    ticks = iter(range(0, 100000, 400))
+    bench, seen = _waking_bench(store, rows, [503] * 50, clock=lambda: float(next(ticks)))
+    run = bench.get(bench.start({"kind": "speed", "endpoint_ids": ["ep_a"], "workload": "W2", "loads": [1],
+                                 "requests": 2, "repeats": 1}))
+    assert run["status"] == "failed" and "chưa thức dậy" in run["error"]
+    assert "POST /v1/chat/completions" not in seen

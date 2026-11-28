@@ -1,0 +1,17 @@
+{
+  "gpu": "A10",
+  "lane": "vanilla",
+  "server_run_id": "smoke-a10-w2-A10-W2-vanilla-72d25bc5",
+  "bench_run_id": "smoke-a10-w2-A10-vanilla-W2-c1-a001",
+  "expected_profile_sha256": null,
+  "cell": {
+    "workload": "W2",
+    "concurrency": 1,
+    "repeats": 5,
+    "num_requests": 32
+  },
+  "commit": "cc47739a96c91685392df520974857412657057f",
+  "source_digest": "06c102b6fec7ccc788420455470308285cc59e0011d5d7c2aae18c12958f137c",
+  "submitted_at_utc": "2026-11-26T02:37:58.856571+00:00",
+  "call_id": "fc-01M8AV8G3A772QBQDAWXERV24B"
+}

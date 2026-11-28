@@ -61,7 +61,7 @@ def test_colab_notebook_is_prepared_after_adaptive_and_profile_decisions(tmp_pat
     def tunnel(question, default_val=''):
         assert 'Paste Cloudflare' in question
         assert events.index('adaptive') < events.index('notebook') < events.index('open')
-        code = '\n'.join(''.join(c.get('source', [])) for c in json.loads(notebook.read_text())['cells'])
+        code = '\n'.join(''.join(c.get('source', [])) for c in json.loads(notebook.read_text(encoding='utf-8'))['cells'])
         assert f'ENABLE_ADAPTIVE = {mode == "enabled"}' in code
         assert 'MAX_NUM_SEQS = 8' in code and 'MAX_MODEL_LEN = 2048' in code
         return 'https://example.trycloudflare.com'

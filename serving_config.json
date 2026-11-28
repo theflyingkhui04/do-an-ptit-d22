@@ -1,5 +1,5 @@
 {
-  "flexsds_version": "0.2.3",
+  "flexsds_version": "0.3.4",
   "action": "serve",
   "backend": "modal",
   "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
@@ -15,11 +15,11 @@
   "allow_oom_risk": false,
   "profile_applied": "profile_sm_86_remote_a10g_fcda5486b12d.json",
   "profile_path": "/home/duckhoi04/.flexsds/profiles/profile_sm_86_remote_a10g_fcda5486b12d.json",
-  "target_gpu": "A10G",
+  "target_gpu": "A10",
   "colab_tunnel_url": "",
   "modal_deploy": true,
   "hardware": {
-    "device_name": "Remote A10G",
+    "device_name": "NVIDIA A10",
     "sm_architecture": "sm_86",
     "free_vram_mb": 22000.0
   }

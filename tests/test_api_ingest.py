@@ -265,3 +265,83 @@ def test_invoice_detail_has_a_signed_image_url():
         detail = client.get(f"/api/invoices/{job['invoice_id']}", headers=HEADERS).json()
         assert client.get("/api/invoices/nope", headers=HEADERS).status_code == 404
     assert detail["image_url"].startswith("https://storage.test/uploads/")
+
+
+# ---------------------------------------------------------------- live log of the job (D13)
+def test_job_log_follows_the_run_from_upload_to_save():
+    app, _, _ = build()
+    with TestClient(app) as client:
+        job = finished_job(client, upload(client).json()["job_id"])
+    events = job["result"]["events"]
+    assert all(isinstance(e["t"], (int, float)) and e["level"] in {"info", "ok", "warn", "error"} for e in events)
+    assert events[0]["src"] == "system" and "Nhận ảnh" in events[0]["msg"]
+    assert events[-1]["src"] == "system" and events[-1]["level"] == "ok" and "Hoàn tất" in events[-1]["msg"]
+    ocr = [e for e in events if e["src"] == "ocr"]
+    assert "Gửi ảnh" in ocr[0]["msg"] and ocr[-1]["level"] == "ok" and "dòng chữ" in ocr[-1]["msg"]
+    for lane in ("adaptive", "vanilla"):
+        mine = [e for e in events if e["src"] == LANE_IDS[lane]]
+        assert "Gửi yêu cầu Node 1" in mine[0]["msg"]
+        assert mine[-1]["level"] == "ok" and "JSON hợp lệ" in mine[-1]["msg"]
+    assert any("so với mốc" in e["msg"] for e in events if e["src"] == "system")
+    assert any("Đã lưu" in e["msg"] for e in events if e["src"] == "system")
+    assert [e["t"] for e in events] == sorted(e["t"] for e in events)
+    assert job["server_time"] >= events[-1]["t"]
+
+
+def test_each_endpoint_report_carries_its_own_extraction():
+    app, _, _ = build()
+    with TestClient(app) as client:
+        result = finished_job(client, upload(client).json()["job_id"])["result"]
+    for lane in ("adaptive", "vanilla"):
+        assert result["runs"][LANE_IDS[lane]]["payload"]["seller"] == result["invoice"]["seller"]
+
+
+def test_a_failing_endpoint_is_logged_on_its_own_part():
+    app, _, _ = build(lanes=lane_callers(adaptive=FakeCaller("adaptive", content="", error="HTTP 500 from x")))
+    with TestClient(app) as client:
+        job = finished_job(client, upload(client).json()["job_id"])
+    mine = [e for e in job["result"]["events"] if e["src"] == LANE_IDS["adaptive"]]
+    assert mine[-1]["level"] == "error" and "HTTP 500" in mine[-1]["msg"]
+    assert job["result"]["runs"][LANE_IDS["adaptive"]]["payload"] is None
+
+
+def test_a_failed_ocr_ends_the_log_with_the_reason():
+    app, _, _ = build(ocr=FakeOcrReader(error=OcrError("no text detected")))
+    with TestClient(app) as client:
+        job = finished_job(client, upload(client).json()["job_id"])
+    assert job["status"] == "failed"
+    last = job["result"]["events"][-1]
+    assert last["src"] == "system" and last["level"] == "error" and "no text detected" in last["msg"]
+
+
+class ProgressCaller(FakeCaller):
+    """A caller that reports a cold start and streaming progress through ``progress`` like LaneCaller."""
+
+    def chat_completions(self, payload: dict) -> dict:
+        self.progress({"kind": "waiting", "tries": 1, "waited_s": 10.0, "reason": "HTTP 503"})
+        self.progress({"kind": "waiting", "tries": 2, "waited_s": 20.0, "reason": "HTTP 503"})
+        self.progress({"kind": "first_token", "ttft_s": 1.25})
+        self.progress({"kind": "receiving", "chars": 1234, "elapsed_s": 3.0})
+        return super().chat_completions(payload)
+
+
+def test_waits_and_streaming_progress_reach_the_job_log():
+    app, _, _ = build(lanes=lane_callers(adaptive=ProgressCaller("adaptive", content=node1_answer, tpot_ms=14.0)))
+    with TestClient(app) as client:
+        events = finished_job(client, upload(client).json()["job_id"])["result"]["events"]
+    mine = [e["msg"] for e in events if e["src"] == LANE_IDS["adaptive"]]
+    waits = [m for m in mine if "chưa sẵn sàng" in m]
+    assert len(waits) == 1 and "đã thử 2 lần" in waits[0]  # one line, updated in place
+    assert any("Token đầu tiên sau 1,2 s" in m or "Token đầu tiên sau 1,3 s" in m for m in mine)
+    assert any("1.234 ký tự" in m for m in mine)
+
+
+def test_progress_lines_carry_their_numbers():
+    app, _, _ = build(lanes=lane_callers(adaptive=ProgressCaller("adaptive", content=node1_answer, tpot_ms=14.0)))
+    with TestClient(app) as client:
+        events = finished_job(client, upload(client).json()["job_id"])["result"]["events"]
+    mine = {e.get("key", e["msg"][:12]): e for e in events if e["src"] == LANE_IDS["adaptive"]}
+    assert mine[f"{LANE_IDS['adaptive']}-wait"]["data"] == {"tries": 2, "waited_s": 20.0}
+    assert mine[f"{LANE_IDS['adaptive']}-recv"]["data"] == {"chars": 1234}
+    done = [e for e in events if e["src"] == LANE_IDS["adaptive"] and e["level"] == "ok" and "JSON" in e["msg"]][0]
+    assert done["data"]["tokens"] == 50 and done["data"]["tpot_ms"] == 14.0

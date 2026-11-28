@@ -207,6 +207,10 @@ class AdaptiveAsyncScheduler(AsyncScheduler):
         try:
             return super().shutdown()
         finally:
+            try:
+                self._planner.close()
+            except Exception:
+                logger.exception("AdaptiveAsyncScheduler: planner telemetry close failed")
             release_ledger(self._lineage_registration)
 
     def _free_vram_mb(self) -> Optional[float]:

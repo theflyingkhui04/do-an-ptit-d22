@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Dict, Tuple, List, Optional
 from collections import deque
 
@@ -13,6 +14,15 @@ class BudgetDecision:
     alpha_ema: float
     expected_tokens: float
     reason: str
+    speedup: Optional[float] = None
+    alpha_star: Optional[float] = None
+    status: str = "ok"
+    decision_policy: Optional[str] = None
+    cost_k_ms: Optional[float] = None
+    cost_baseline_ms: Optional[float] = None
+    cost_ref_ms: Optional[float] = None
+    non_monotonic_cost: bool = False
+    alpha_estimator: Optional[str] = None
 
 
 @dataclass
@@ -229,6 +239,10 @@ class AdaptiveDraftController(BudgetController):
         kv_cache_recover_pct: float = 80.0,
         memory_cooldown_steps: int = 3,
         enable_vram_guard: bool = True,
+        min_speedup_ratio: float = 1.05,
+        mle_beta: float = 0.90,
+        mle_prior_weight: float = 2.0,
+        alpha_estimator: str = "auto",
         history_limit: Optional[int] = None,
     ):
         super().__init__(
@@ -249,6 +263,29 @@ class AdaptiveDraftController(BudgetController):
             )
         if memory_cooldown_steps < 1:
             raise ValueError("memory_cooldown_steps must be >= 1")
+        if not (
+            not isinstance(min_speedup_ratio, bool)
+            and isinstance(min_speedup_ratio, (int, float))
+            and math.isfinite(min_speedup_ratio)
+            and min_speedup_ratio >= 1.0
+        ):
+            raise ValueError("min_speedup_ratio must be finite and >= 1.0")
+        if not (
+            not isinstance(mle_beta, bool)
+            and isinstance(mle_beta, (int, float))
+            and math.isfinite(mle_beta)
+            and 0.0 < mle_beta < 1.0
+        ):
+            raise ValueError("mle_beta must be finite and in (0, 1)")
+        if not (
+            not isinstance(mle_prior_weight, bool)
+            and isinstance(mle_prior_weight, (int, float))
+            and math.isfinite(mle_prior_weight)
+            and mle_prior_weight >= 0.0
+        ):
+            raise ValueError("mle_prior_weight must be finite and >= 0.0")
+        if alpha_estimator not in {"auto", "geometric_mle", "legacy_ratio"}:
+            raise ValueError("alpha_estimator must be one of {'auto', 'geometric_mle', 'legacy_ratio'}")
 
         self.step_count = 0
         self.probe_interval = probe_interval
@@ -258,14 +295,46 @@ class AdaptiveDraftController(BudgetController):
         self.kv_cache_recover_pct = kv_cache_recover_pct
         self.memory_cooldown_steps = memory_cooldown_steps
         self.enable_vram_guard = enable_vram_guard
+        self.min_speedup_ratio = float(min_speedup_ratio)
+        self.mle_beta = float(mle_beta)
+        self.mle_prior_weight = float(mle_prior_weight)
+        self.alpha_estimator = alpha_estimator
+
+        # Discounted-count geometric MLE accumulators with weak Beta prior
+        self._mle_accepted: float = self.mle_prior_weight * self.initial_alpha
+        self._mle_tested: float = self.mle_prior_weight
+        self._total_accepted_tokens: int = 0
+        self._total_tested_positions: int = 0
 
         # Hysteresis state: steps spent at k=0 since the last memory trigger
         self._memory_pressure_active = False
         self._memory_pressure_steps = 0
 
+    def _resolved_alpha_estimator(self) -> str:
+        """Resolves 'auto' to 'geometric_mle' when a cost matrix is loaded, else 'legacy_ratio'."""
+        if self.alpha_estimator == "auto":
+            return "geometric_mle" if bool(getattr(self.cost_profile, "matrix", None)) else "legacy_ratio"
+        return self.alpha_estimator
+
+    def get_geometric_alpha(self) -> float:
+        """Returns discounted-count geometric MLE estimate A_t / N_t clamped to [0, 1]."""
+        if self._mle_tested <= 1e-12:
+            return self.initial_alpha
+        ratio = self._mle_accepted / self._mle_tested
+        if not math.isfinite(ratio):
+            return self.initial_alpha
+        return min(max(ratio, 0.0), 1.0)
+
     def update(self, num_accepted: int, num_drafted: int) -> float:
-        """Updates rolling window and EMA telemetry from the latest step verification."""
+        """Updates rolling window, legacy EMA, and discounted-count geometric MLE."""
         self.step_count += 1
+        if num_drafted > 0:
+            accepted = min(max(int(num_accepted), 0), int(num_drafted))
+            tested = accepted + (1 if accepted < num_drafted else 0)
+            self._mle_accepted = self.mle_beta * self._mle_accepted + accepted
+            self._mle_tested = self.mle_beta * self._mle_tested + tested
+            self._total_accepted_tokens += accepted
+            self._total_tested_positions += tested
         return super().update(num_accepted=num_accepted, num_drafted=num_drafted)
 
     def get_window_samples(self) -> List[float]:
@@ -412,16 +481,183 @@ class AdaptiveDraftController(BudgetController):
             f"Mid acceptance: alpha {alpha:.3f} in [{self.fallback_threshold:.2f}, {self.high_threshold:.2f}), throttled to k=2",
         )
 
+    def solve_break_even_alpha(
+        self,
+        k: int,
+        cost_ratio: float,
+        min_speedup_ratio: Optional[float] = None,
+    ) -> Optional[float]:
+        """Solves E[tau(k, alpha)] = min_speedup_ratio * cost_ratio on [0, 1]."""
+        if k <= 0:
+            return None
+        threshold = self.min_speedup_ratio if min_speedup_ratio is None else min_speedup_ratio
+        target = threshold * cost_ratio
+        if not math.isfinite(target):
+            return None
+        if target <= 1.0:
+            return 0.0
+        if self.estimate_expected_tokens(k, 1.0) < target:
+            return None
+        lo, hi = 0.0, 1.0
+        for _ in range(40):
+            mid = 0.5 * (lo + hi)
+            if self.estimate_expected_tokens(k, mid) < target:
+                lo = mid
+            else:
+                hi = mid
+        return hi
+
+    def _select_probe_k(self, positive_candidates: List[int]) -> int:
+        """Selects a valid positive probe budget contained in candidate_budgets."""
+        if not positive_candidates:
+            return 0
+        if self.probe_k in positive_candidates:
+            return self.probe_k
+        le_candidates = [k for k in positive_candidates if k <= self.probe_k]
+        if le_candidates:
+            return max(le_candidates)
+        return min(positive_candidates)
+
+    def apply_cost_driven_budget_rule(
+        self,
+        alpha: float,
+        batch_size: int = 1,
+    ) -> BudgetDecision:
+        """Selects k* using measured C(k, B) with lower-bound C_ref(B) normalization."""
+        if not (not isinstance(alpha, bool) and isinstance(alpha, (int, float)) and math.isfinite(alpha)):
+            alpha = 0.0
+        else:
+            alpha = min(max(float(alpha), 0.0), 1.0)
+
+        positive_candidates = sorted(k for k in set(self.candidate_budgets) if k > 0)
+        all_candidates = [0] + positive_candidates
+
+        costs: Dict[int, float] = {}
+        for cand_k in all_candidates:
+            cost_val = self.cost_profile.get_cost(k=cand_k, batch_size=batch_size)
+            if not (
+                not isinstance(cost_val, bool)
+                and isinstance(cost_val, (int, float))
+                and math.isfinite(cost_val)
+                and cost_val > 0.0
+            ):
+                raise ValueError(
+                    f"Cost profile entry for k={cand_k}, batch_size={batch_size} must be finite and positive; got {cost_val!r}"
+                )
+            costs[cand_k] = float(cost_val)
+
+        c_baseline = costs[0]
+        c_ref = min(costs.values())
+        non_monotonic = c_ref < c_baseline
+
+        best_k = 0
+        best_speedup = 1.0
+        best_expected_tokens = 1.0
+
+        for cand_k in positive_candidates:
+            e_tau = self.estimate_expected_tokens(cand_k, alpha)
+            speedup = e_tau * (c_ref / costs[cand_k])
+            if speedup >= self.min_speedup_ratio and speedup > best_speedup + 1e-6:
+                best_k = cand_k
+                best_speedup = speedup
+                best_expected_tokens = e_tau
+
+        if best_k > 0:
+            self.consecutive_fallback_steps = 0
+            alpha_star = self.solve_break_even_alpha(best_k, costs[best_k] / c_ref)
+            reason = (
+                f"Cost-driven budget k={best_k} (B={batch_size}, alpha={alpha:.3f}, "
+                f"C_k={costs[best_k]:.2f}ms, C_ref={c_ref:.2f}ms, speedup={best_speedup:.3f}x)"
+            )
+            return BudgetDecision(
+                k=best_k,
+                alpha_ema=alpha,
+                expected_tokens=best_expected_tokens,
+                reason=reason,
+                speedup=best_speedup,
+                alpha_star=alpha_star,
+                status="ok",
+                decision_policy="cost_model",
+                cost_k_ms=costs[best_k],
+                cost_baseline_ms=c_baseline,
+                cost_ref_ms=c_ref,
+                non_monotonic_cost=non_monotonic,
+            )
+
+        feasible_stars = [
+            star
+            for cand_k in positive_candidates
+            if (star := self.solve_break_even_alpha(cand_k, costs[cand_k] / c_ref)) is not None
+        ]
+        fallback_alpha_star = min(feasible_stars) if feasible_stars else None
+
+        self.consecutive_fallback_steps += 1
+        if self.probe_interval > 0 and self.consecutive_fallback_steps >= self.probe_interval:
+            self.consecutive_fallback_steps = 0
+            probe_k = self._select_probe_k(positive_candidates)
+            if probe_k > 0:
+                probe_e_tau = self.estimate_expected_tokens(probe_k, alpha)
+                probe_speedup = probe_e_tau * (c_ref / costs[probe_k])
+                reason = (
+                    f"Periodic probe (cost-driven): reached {self.probe_interval} fallback steps "
+                    f"(B={batch_size}, alpha={alpha:.3f}), probing with k={probe_k}"
+                )
+                return BudgetDecision(
+                    k=probe_k,
+                    alpha_ema=alpha,
+                    expected_tokens=probe_e_tau,
+                    reason=reason,
+                    speedup=probe_speedup,
+                    alpha_star=self.solve_break_even_alpha(probe_k, costs[probe_k] / c_ref),
+                    status="probing",
+                    decision_policy="cost_model",
+                    cost_k_ms=costs[probe_k],
+                    cost_baseline_ms=c_baseline,
+                    cost_ref_ms=c_ref,
+                    non_monotonic_cost=non_monotonic,
+                )
+
+        hold_str = (
+            f" (hold {self.consecutive_fallback_steps}/{self.probe_interval})"
+            if self.probe_interval > 0
+            else ""
+        )
+        reason = (
+            f"Cost-model fallback: no k>0 achieves speedup >= {self.min_speedup_ratio:.2f}x "
+            f"(B={batch_size}, alpha={alpha:.3f}, C_0={c_baseline:.2f}ms, C_ref={c_ref:.2f}ms){hold_str}"
+        )
+        return BudgetDecision(
+            k=0,
+            alpha_ema=alpha,
+            expected_tokens=1.0,
+            reason=reason,
+            speedup=1.0,
+            alpha_star=fallback_alpha_star,
+            status="fallback_gate",
+            decision_policy="cost_model",
+            cost_k_ms=c_baseline,
+            cost_baseline_ms=c_baseline,
+            cost_ref_ms=c_ref,
+            non_monotonic_cost=non_monotonic,
+        )
+
+    def decision_alpha(self) -> Tuple[float, str]:
+        """Alpha that decides the budget and the estimator it came from (shared by select_budget and the planner)."""
+        estimator = self._resolved_alpha_estimator()
+        if estimator == "geometric_mle":
+            return self.get_geometric_alpha(), estimator
+        return self.get_effective_alpha(), estimator
+
     def select_budget(
         self,
         batch_size: int = 1,
         free_vram_mb: float = 16000.0,
         kv_cache_usage_pct: float = 0.0,
     ) -> BudgetDecision:
-        """Selects optimal budget k* using unbiased alpha and modular rules."""
-        effective_alpha = self.get_effective_alpha()
+        """Selects optimal budget k* using geometric MLE / unbiased alpha, memory guard, and hardware cost profile."""
+        decision_alpha, estimator = self.decision_alpha()
 
-        # 1. Memory Pressure Rule (Chống OOM)
+        # 1. Memory Pressure Rule (Chống OOM — ưu tiên cao nhất)
         mem_decision = self.apply_memory_pressure_rule(
             free_vram_mb=free_vram_mb,
             kv_cache_usage_pct=kv_cache_usage_pct,
@@ -430,24 +666,69 @@ class AdaptiveDraftController(BudgetController):
             k, reason = mem_decision
             decision = BudgetDecision(
                 k=k,
-                alpha_ema=effective_alpha,
+                alpha_ema=decision_alpha,
                 expected_tokens=1.0,
                 reason=reason,
+                speedup=1.0,
+                status="memory_guard",
+                decision_policy="memory_guard",
+                alpha_estimator=estimator,
             )
-            self._history.append({"k": k, "alpha": effective_alpha, "reason": reason})
+            self._history.append(
+                {
+                    "k": k,
+                    "alpha": decision_alpha,
+                    "reason": reason,
+                    "decision_policy": decision.decision_policy,
+                    "speedup": decision.speedup,
+                    "cost_k_ms": decision.cost_k_ms,
+                }
+            )
             return decision
 
-        # 2. Budget Rule (Co giãn k theo alpha kết hợp Periodic Probing)
-        k, reason = self.apply_budget_rule(alpha=effective_alpha)
-        e_tau = self.estimate_expected_tokens(k, effective_alpha)
+        # 2. Hardware Cost-Driven Rule (khi có ma trận chi phí thực nghiệm)
+        if bool(getattr(self.cost_profile, "matrix", None)):
+            decision = self.apply_cost_driven_budget_rule(
+                alpha=decision_alpha,
+                batch_size=batch_size,
+            )
+            decision.alpha_estimator = estimator
+            self._history.append(
+                {
+                    "k": decision.k,
+                    "alpha": decision_alpha,
+                    "reason": decision.reason,
+                    "decision_policy": decision.decision_policy,
+                    "speedup": decision.speedup,
+                    "cost_k_ms": decision.cost_k_ms,
+                }
+            )
+            return decision
+
+        # 3. Legacy Threshold Rule (chỉ khi không có ma trận chi phí trong cost_profile)
+        k, reason = self.apply_budget_rule(alpha=decision_alpha)
+        e_tau = self.estimate_expected_tokens(k, decision_alpha)
+        status = "probing" if "periodic probe" in reason.lower() else ("fallback_gate" if k == 0 else "ok")
 
         decision = BudgetDecision(
             k=k,
-            alpha_ema=effective_alpha,
+            alpha_ema=decision_alpha,
             expected_tokens=e_tau,
             reason=reason,
+            status=status,
+            decision_policy="threshold",
+            alpha_estimator=estimator,
         )
-        self._history.append({"k": k, "alpha": effective_alpha, "reason": reason})
+        self._history.append(
+            {
+                "k": k,
+                "alpha": decision_alpha,
+                "reason": reason,
+                "decision_policy": decision.decision_policy,
+                "speedup": decision.speedup,
+                "cost_k_ms": decision.cost_k_ms,
+            }
+        )
         return decision
 
     def reset(self, initial_alpha: Optional[float] = None) -> None:
@@ -459,11 +740,18 @@ class AdaptiveDraftController(BudgetController):
         self.consecutive_fallback_steps = 0
         self._memory_pressure_active = False
         self._memory_pressure_steps = 0
+        self._mle_accepted = self.mle_prior_weight * self.initial_alpha
+        self._mle_tested = self.mle_prior_weight
+        self._total_accepted_tokens = 0
+        self._total_tested_positions = 0
 
     def get_stats(self) -> dict:
         """Exports runtime telemetry matching Interface A contract plus adaptive diagnostics."""
         base_stats = super().get_stats()
         base_stats["effective_alpha"] = self.get_effective_alpha()
+        base_stats["geometric_alpha_mle"] = self.get_geometric_alpha()
+        base_stats["alpha_estimator"] = self._resolved_alpha_estimator()
+        base_stats["total_tested_positions"] = self._total_tested_positions
         base_stats["is_warmed_up"] = self.step_count >= self.window_size
         base_stats["step_count"] = self.step_count
         base_stats["consecutive_fallback_steps"] = self.consecutive_fallback_steps

@@ -12,6 +12,7 @@ from typing import Any
 
 from src.api.compare import compare_fields, speedup
 from src.api.grounding import grounding_report
+from src.api.job_log import JobLog
 from src.api.store import Store
 from src.pipeline.extractor import Node1Extractor, Node1Success
 from src.pipeline.item_consistency import invoice_sum_consistent, line_consistent
@@ -28,6 +29,33 @@ NODE1_MAX_TOKENS = 3072
 CONTENT_TYPES = {"jpg": "image/jpeg", "png": "image/png"}
 
 log = logging.getLogger("src.api.jobs")
+STEP_LABELS = {"ocr": "OCR", "node1": "Node 1", "saving": "lưu"}
+
+
+# Numbers in the job log are written the Vietnamese way (1.234 ký tự, 1,2 s).
+def _num(value: float | int) -> str:
+    return f"{round(value):,}".replace(",", ".")
+
+
+def _sec(value: float, digits: int = 1) -> str:
+    return f"{value:.{digits}f}".replace(".", ",")
+
+
+def _dur(seconds: float) -> str:
+    minutes, rest = divmod(int(seconds), 60)
+    if not minutes:
+        return f"{rest} s"
+    return f"{minutes} phút" if not rest else f"{minutes} phút {rest} s"
+
+
+def _waiting(who: str, event: dict[str, Any]) -> str:
+    text = (f"{who} chưa sẵn sàng ({event.get('reason', 'HTTP 503')}), đã thử {event.get('tries', 1)} lần "
+            f"trong {_dur(event.get('waited_s', 0))}")
+    if event.get("retry_in_s"):
+        text += f"; thử lại sau {_dur(event['retry_in_s'])}"
+    if event.get("ready_timeout_s"):
+        text += f", chờ tối đa {_dur(event['ready_timeout_s'])}"
+    return text
 
 
 @lru_cache(maxsize=1)
@@ -48,6 +76,7 @@ class JobFailed(Exception):
     def __init__(self, step: str, message: str) -> None:
         super().__init__(f"{step}: {message}")
         self.step = step
+        self.message = message
 
 
 class InvoicePipeline:
@@ -55,8 +84,10 @@ class InvoicePipeline:
     first one fails); every endpoint is compared with the baseline for speed and fields."""
 
     def __init__(self, store: Store, *, ocr_reader: Callable[[], Any], caller_for: Callable[[str], Any],
-                 storage: Any = None, redact: Callable[[str], str] = lambda s: s) -> None:
+                 storage: Any = None, redact: Callable[[str], str] = lambda s: s,
+                 clock: Callable[[], float] = time.time) -> None:
         self.store = store
+        self._clock = clock
         self.storage = storage
         self.ocr_reader = ocr_reader
         self.caller_for = caller_for
@@ -66,23 +97,38 @@ class InvoicePipeline:
         result: dict[str, Any] = {
             "endpoints": [{k: e.get(k) for k in ("endpoint_id", "name", "model_id")} for e in endpoints],
             "primary": endpoints[0]["endpoint_id"], "baseline": baseline_id, "timings_ms": {}}
+        started = time.perf_counter()
+        events = JobLog(self.store, job_id, result, clock=self._clock)
+        events.add("system", "info", f"Nhận ảnh {ext.upper()} ({_num(len(data) / 1024)} KB); "
+                                     f"chạy Node 1 trên {len(endpoints)} endpoint")
         try:
-            invoice_id = self._run(job_id, data, ext, endpoints, baseline_id, result)
+            invoice_id = self._run(job_id, data, ext, endpoints, baseline_id, result, events)
         except JobFailed as exc:
             log.info("job failed", extra={"job_id": job_id, "step": exc.step})
+            events.add("system", "error", f"Dừng ở bước {STEP_LABELS.get(exc.step, exc.step)}: "
+                                          f"{self._redact(exc.message)[:400]}")
             self.store.update_job(job_id, "failed", result=result, error=self._redact(str(exc))[:500])
         except Exception as exc:  # never leave a job running
             log.exception("job crashed", extra={"job_id": job_id})
-            self.store.update_job(job_id, "failed", result=result,
-                                  error=self._redact(f"internal: {type(exc).__name__}: {exc}")[:500])
+            error = self._redact(f"internal: {type(exc).__name__}: {exc}")[:500]
+            events.add("system", "error", f"Lỗi nội bộ của backend: {error}")
+            self.store.update_job(job_id, "failed", result=result, error=error)
         else:
+            events.add("system", "ok", f"Hoàn tất sau {_sec(time.perf_counter() - started)} s")
             self.store.update_job(job_id, "done", result=result, invoice_id=invoice_id)
 
-    def read_text(self, data: bytes, result: dict) -> str:
+    def read_text(self, data: bytes, result: dict, events: JobLog | None = None) -> str:
         """OCR + mark stripping: the same text path as the W1_v3 package."""
         started = time.perf_counter()
+        if events is not None:
+            events.add("ocr", "info", "Gửi ảnh tới máy OCR (PaddleOCR tách dòng, VietOCR đọc chữ)")
         try:
-            ocr_result = self.ocr_reader().read(data)
+            reader = self.ocr_reader()
+            if events is not None:
+                reader.progress = lambda event: events.add(
+                    "ocr", "warn", _waiting("Máy OCR", event), key="ocr-wait",
+                    data={"tries": event.get("tries"), "waited_s": event.get("waited_s")})
+            ocr_result = reader.read(data)
         except Exception as exc:
             raise JobFailed("ocr", self._redact(str(exc))) from exc
         result["timings_ms"]["ocr"] = (time.perf_counter() - started) * 1000
@@ -92,26 +138,31 @@ class InvoicePipeline:
                          "versions": ocr_result.versions}
         if not text:
             raise JobFailed("ocr", "no text detected")
+        if events is not None:
+            events.add("ocr", "ok", f"Đọc xong {len(text.splitlines())} dòng chữ trong "
+                                    f"{_sec(time.perf_counter() - started)} s; đã bỏ dấu tiếng Việt")
         return text
 
     def _run(self, job_id: str, data: bytes, ext: str, endpoints: list[dict], baseline_id: str | None,
-             result: dict) -> str:
+             result: dict, events: JobLog) -> str:
         storage_path = f"uploads/{job_id}.{ext}"
         if self.storage is not None:
             self.storage.upload(storage_path, data, CONTENT_TYPES[ext])
         result["storage_path"] = storage_path
 
-        self.store.update_job(job_id, "ocr", result=result)
-        text = self.read_text(data, result)
+        events.set_status("ocr")
+        text = self.read_text(data, result, events)
 
-        self.store.update_job(job_id, "node1", result=result)
+        events.set_status("node1")
         started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=len(endpoints)) as pool:
             outcomes = dict(zip((e["endpoint_id"] for e in endpoints),
-                                pool.map(lambda e: self.run_endpoint(job_id, storage_path, text, e), endpoints)))
+                                pool.map(lambda e: self.run_endpoint(job_id, storage_path, text, e, events),
+                                         endpoints)))
         result["timings_ms"]["node1"] = (time.perf_counter() - started) * 1000
         result["runs"] = {eid: outcome["report"] for eid, outcome in outcomes.items()}
         self.compare(outcomes, result["runs"], baseline_id)
+        self._log_comparison(events, result["runs"], baseline_id)
 
         primary = endpoints[0]["endpoint_id"]
         stored = primary if outcomes[primary]["success"] else None
@@ -129,16 +180,25 @@ class InvoicePipeline:
         result["item_check"] = {"lines": [line_consistent(item) for item in payload.get("items") or []],
                                 "invoice_sum": invoice_sum_consistent(payload)}
 
-        self.store.update_job(job_id, "saving", result=result)
         report = outcomes[stored]["report"]
+        fallback = " (endpoint chọn đầu bị lỗi, lấy kết quả của mốc)" if stored != primary else ""
+        events.add("system", "info", f"Lưu hoá đơn vào cơ sở dữ liệu từ {report['name']}{fallback}")
+        events.set_status("saving")
         run = RunInfo(run_id=job_id, lane=None, model_name=report["model"], prompt_version=W1_V2_PROMPT_VERSION,
                       notes=f"web upload, endpoint {report['name']}")
         invoice_id = self.store.save_invoice(payload, run, storage_path=storage_path, latency_ms=success.latency_ms)
         result["invoice_id"] = invoice_id
+        events.add("system", "ok", f"Đã lưu hoá đơn, mã {invoice_id}")
         return invoice_id
 
-    def run_endpoint(self, job_id: str, storage_path: str, ocr_text: str, endpoint: dict) -> dict[str, Any]:
-        caller = self.caller_for(endpoint["endpoint_id"])
+    def run_endpoint(self, job_id: str, storage_path: str, ocr_text: str, endpoint: dict,
+                     events: JobLog | None = None) -> dict[str, Any]:
+        src = endpoint["endpoint_id"]
+        caller = self.caller_for(src)
+        if events is not None:
+            events.add(src, "info", f"Gửi yêu cầu Node 1 (prompt {W1_V2_PROMPT_VERSION}, "
+                                    f"trả về tối đa {_num(NODE1_MAX_TOKENS)} token)")
+            caller.progress = lambda event: self._caller_event(events, src, event)
         row = node1_request_row(job_id, storage_path, ocr_text, caller.model)
         outcome = Node1Extractor(caller, caller.model).run_request(row)
         metrics = caller.last_metrics.as_dict() if caller.last_metrics else {}
@@ -148,8 +208,47 @@ class InvoicePipeline:
         report = {**metrics, "endpoint_id": endpoint["endpoint_id"], "name": caller.lane, "model": caller.model,
                   "valid": ok, "source_restored": restored,
                   "error": None if ok else self._redact(f"{outcome.error_code.value} at {outcome.stage.value}: "
-                                                         f"{outcome.message}")[:400]}
+                                                         f"{outcome.message}")[:400],
+                  # Each endpoint's own extraction, shown column by column in the console (design D13).
+                  "payload": outcome.canonical_payload if ok else None}
+        if events is not None:
+            if ok:
+                tokens, tpot = metrics.get("completion_tokens"), metrics.get("tpot_ms")
+                events.add(src, "ok", f"Xong: {_num(tokens) if tokens else '?'} token, "
+                                      f"TPOT {_num(tpot) if tpot else '?'} ms, JSON hợp lệ",
+                           data={"tokens": tokens, "tpot_ms": tpot, "ttft_ms": metrics.get("ttft_ms")})
+                if restored:
+                    events.add(src, "warn", f"Model chép sai nguồn ({', '.join(restored)}); "
+                                            "hệ thống đã điền lại giá trị đúng")
+            else:
+                events.add(src, "error", f"Lỗi: {report['error']}")
         return {"success": outcome if ok else None, "report": report}
+
+    @staticmethod
+    def _caller_event(events: JobLog, src: str, event: dict[str, Any]) -> None:
+        kind = event.get("kind")
+        if kind == "waiting":
+            events.add(src, "warn", _waiting("Endpoint", event), key=f"{src}-wait",
+                       data={"tries": event.get("tries"), "waited_s": event.get("waited_s")})
+        elif kind == "first_token":
+            events.add(src, "ok", f"Token đầu tiên sau {_sec(event['ttft_s'])} s, endpoint đang trả lời",
+                       data={"ttft_s": event["ttft_s"]})
+        elif kind == "receiving":
+            events.add(src, "info", f"Đang nhận {_num(event['chars'])} ký tự", key=f"{src}-recv",
+                       data={"chars": event["chars"]})
+
+    @staticmethod
+    def _log_comparison(events: JobLog, runs: dict[str, dict], baseline_id: str | None) -> None:
+        base = runs.get(baseline_id) if baseline_id else None
+        if base is None:
+            return
+        for eid, report in runs.items():
+            if eid == baseline_id or report.get("total_fields") is None:
+                continue
+            speed = report.get("speedup_tpot_vs_baseline")
+            events.add("system", "warn" if report["differing_fields"] else "ok",
+                       f"{report['name']} so với mốc {base['name']}: {report['equal_fields']}/{report['total_fields']} "
+                       f"trường giống" + (f", nhanh hơn {_sec(speed, 2)}× theo TPOT" if speed else ""))
 
     @staticmethod
     def compare(outcomes: dict[str, dict], reports: dict[str, dict], baseline_id: str | None) -> None:

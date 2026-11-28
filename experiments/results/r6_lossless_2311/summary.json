@@ -1,0 +1,433 @@
+{
+  "schema": "r6-lossless-2311.v1",
+  "measured_at": "2026-11-23",
+  "status": "post-freeze measurement; use in the thesis pending PM acceptance (M-06, M-10)",
+  "source_commit": "229b3e4",
+  "controller": "R6 as merged at 229b3e4 (before the MLE alpha fix of PR #53 and batch-K of PR #55)",
+  "runtime": {
+    "vllm": "0.30.0",
+    "target_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "draft_model": "duckhoi/qwen2.5-7b-eagle3.1-speculator",
+    "draft_method": "eagle3",
+    "execution": "matched (eager, async scheduling) for every lane",
+    "prefix_caching": false,
+    "concurrency": 1,
+    "temperature": 0.0,
+    "seed": 42,
+    "max_tokens": 1024
+  },
+  "hardware": {
+    "gpu": "NVIDIA A10",
+    "driver_version": "610.57.04",
+    "per_lane": {
+      "vanilla_matched": {
+        "gpu": "NVIDIA A10",
+        "driver_version": "610.57.04",
+        "gpu_memory_total_mb": 23028.0
+      },
+      "static_matched_k3": {
+        "gpu": "NVIDIA A10",
+        "driver_version": "610.57.04",
+        "gpu_memory_total_mb": 23028.0
+      },
+      "adaptive_r6": {
+        "gpu": "NVIDIA A10",
+        "driver_version": "610.57.04",
+        "gpu_memory_total_mb": 23028.0
+      }
+    },
+    "note": "each lane ran in its own Modal container (GPU UUID not recorded); GPU name and driver come from the speed-phase records written in the same container after the lossless phase"
+  },
+  "requests": {
+    "W1": 30,
+    "W2": 12,
+    "W3": 12,
+    "packages": {
+      "experiments/configs/w1/node1_chat_requests.jsonl": "0de2387c4e6a8c39523bf869788a55ee7487c6a32318a949ce22e1f8f7b17360",
+      "experiments/configs/w2_v2/chat_requests.jsonl": "bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c",
+      "experiments/configs/w3_v2/chat_requests.jsonl": "57341b0fc8c2ebbdfcfc579a6343aea66b08ca11fe2bfed5bc53a2bd49f5d83b"
+    }
+  },
+  "comparisons": {
+    "vanilla_r1_vs_vanilla_r2": {
+      "matched": 54,
+      "total": 54,
+      "per_workload": {
+        "W1": {
+          "matched": 30,
+          "total": 30
+        },
+        "W2": {
+          "matched": 12,
+          "total": 12
+        },
+        "W3": {
+          "matched": 12,
+          "total": 12
+        }
+      },
+      "non_stop_finishes": 7,
+      "mismatches": []
+    },
+    "vanilla_r1_vs_static_k3": {
+      "matched": 30,
+      "total": 54,
+      "per_workload": {
+        "W1": {
+          "matched": 21,
+          "total": 30
+        },
+        "W2": {
+          "matched": 9,
+          "total": 12
+        },
+        "W3": {
+          "matched": 0,
+          "total": 12
+        }
+      },
+      "non_stop_finishes": 7,
+      "mismatches": [
+        {
+          "sample_id": "m0_04_001",
+          "workload": "W1",
+          "first_divergent_token": 549,
+          "vanilla_tokens": 614,
+          "lane_tokens": 635
+        },
+        {
+          "sample_id": "m0_04_010",
+          "workload": "W1",
+          "first_divergent_token": 262,
+          "vanilla_tokens": 604,
+          "lane_tokens": 640
+        },
+        {
+          "sample_id": "m0_04_016",
+          "workload": "W1",
+          "first_divergent_token": 483,
+          "vanilla_tokens": 632,
+          "lane_tokens": 655
+        },
+        {
+          "sample_id": "m0_04_018",
+          "workload": "W1",
+          "first_divergent_token": 184,
+          "vanilla_tokens": 703,
+          "lane_tokens": 692
+        },
+        {
+          "sample_id": "m0_04_019",
+          "workload": "W1",
+          "first_divergent_token": 503,
+          "vanilla_tokens": 694,
+          "lane_tokens": 644
+        },
+        {
+          "sample_id": "m0_04_021",
+          "workload": "W1",
+          "first_divergent_token": 209,
+          "vanilla_tokens": 708,
+          "lane_tokens": 711
+        },
+        {
+          "sample_id": "m0_04_024",
+          "workload": "W1",
+          "first_divergent_token": 533,
+          "vanilla_tokens": 636,
+          "lane_tokens": 621
+        },
+        {
+          "sample_id": "m0_04_028",
+          "workload": "W1",
+          "first_divergent_token": 481,
+          "vanilla_tokens": 669,
+          "lane_tokens": 666
+        },
+        {
+          "sample_id": "m0_04_030",
+          "workload": "W1",
+          "first_divergent_token": 481,
+          "vanilla_tokens": 675,
+          "lane_tokens": 684
+        },
+        {
+          "sample_id": "w2_sql_v2_002",
+          "workload": "W2",
+          "first_divergent_token": 23,
+          "vanilla_tokens": 49,
+          "lane_tokens": 57
+        },
+        {
+          "sample_id": "w2_sql_v2_003",
+          "workload": "W2",
+          "first_divergent_token": 46,
+          "vanilla_tokens": 96,
+          "lane_tokens": 96
+        },
+        {
+          "sample_id": "w2_sql_v2_007",
+          "workload": "W2",
+          "first_divergent_token": 88,
+          "vanilla_tokens": 96,
+          "lane_tokens": 96
+        },
+        {
+          "sample_id": "w3_business_v2_001",
+          "workload": "W3",
+          "first_divergent_token": 92,
+          "vanilla_tokens": 501,
+          "lane_tokens": 501
+        },
+        {
+          "sample_id": "w3_business_v2_002",
+          "workload": "W3",
+          "first_divergent_token": 187,
+          "vanilla_tokens": 482,
+          "lane_tokens": 490
+        },
+        {
+          "sample_id": "w3_business_v2_003",
+          "workload": "W3",
+          "first_divergent_token": 149,
+          "vanilla_tokens": 373,
+          "lane_tokens": 352
+        },
+        {
+          "sample_id": "w3_business_v2_004",
+          "workload": "W3",
+          "first_divergent_token": 249,
+          "vanilla_tokens": 269,
+          "lane_tokens": 276
+        },
+        {
+          "sample_id": "w3_business_v2_005",
+          "workload": "W3",
+          "first_divergent_token": 89,
+          "vanilla_tokens": 535,
+          "lane_tokens": 685
+        },
+        {
+          "sample_id": "w3_business_v2_006",
+          "workload": "W3",
+          "first_divergent_token": 145,
+          "vanilla_tokens": 421,
+          "lane_tokens": 474
+        },
+        {
+          "sample_id": "w3_business_v2_007",
+          "workload": "W3",
+          "first_divergent_token": 47,
+          "vanilla_tokens": 596,
+          "lane_tokens": 577
+        },
+        {
+          "sample_id": "w3_business_v2_008",
+          "workload": "W3",
+          "first_divergent_token": 46,
+          "vanilla_tokens": 489,
+          "lane_tokens": 521
+        },
+        {
+          "sample_id": "w3_business_v2_009",
+          "workload": "W3",
+          "first_divergent_token": 38,
+          "vanilla_tokens": 618,
+          "lane_tokens": 477
+        },
+        {
+          "sample_id": "w3_business_v2_010",
+          "workload": "W3",
+          "first_divergent_token": 117,
+          "vanilla_tokens": 525,
+          "lane_tokens": 721
+        },
+        {
+          "sample_id": "w3_business_v2_011",
+          "workload": "W3",
+          "first_divergent_token": 220,
+          "vanilla_tokens": 451,
+          "lane_tokens": 436
+        },
+        {
+          "sample_id": "w3_business_v2_012",
+          "workload": "W3",
+          "first_divergent_token": 229,
+          "vanilla_tokens": 477,
+          "lane_tokens": 509
+        }
+      ]
+    },
+    "vanilla_r1_vs_adaptive_r6": {
+      "matched": 34,
+      "total": 54,
+      "per_workload": {
+        "W1": {
+          "matched": 21,
+          "total": 30
+        },
+        "W2": {
+          "matched": 12,
+          "total": 12
+        },
+        "W3": {
+          "matched": 1,
+          "total": 12
+        }
+      },
+      "non_stop_finishes": 7,
+      "mismatches": [
+        {
+          "sample_id": "m0_04_001",
+          "workload": "W1",
+          "first_divergent_token": 533,
+          "vanilla_tokens": 614,
+          "lane_tokens": 621
+        },
+        {
+          "sample_id": "m0_04_004",
+          "workload": "W1",
+          "first_divergent_token": 542,
+          "vanilla_tokens": 631,
+          "lane_tokens": 663
+        },
+        {
+          "sample_id": "m0_04_010",
+          "workload": "W1",
+          "first_divergent_token": 262,
+          "vanilla_tokens": 604,
+          "lane_tokens": 654
+        },
+        {
+          "sample_id": "m0_04_019",
+          "workload": "W1",
+          "first_divergent_token": 503,
+          "vanilla_tokens": 694,
+          "lane_tokens": 653
+        },
+        {
+          "sample_id": "m0_04_020",
+          "workload": "W1",
+          "first_divergent_token": 552,
+          "vanilla_tokens": 686,
+          "lane_tokens": 656
+        },
+        {
+          "sample_id": "m0_04_021",
+          "workload": "W1",
+          "first_divergent_token": 219,
+          "vanilla_tokens": 708,
+          "lane_tokens": 683
+        },
+        {
+          "sample_id": "m0_04_025",
+          "workload": "W1",
+          "first_divergent_token": 566,
+          "vanilla_tokens": 639,
+          "lane_tokens": 573
+        },
+        {
+          "sample_id": "m0_04_028",
+          "workload": "W1",
+          "first_divergent_token": 481,
+          "vanilla_tokens": 669,
+          "lane_tokens": 666
+        },
+        {
+          "sample_id": "m0_04_030",
+          "workload": "W1",
+          "first_divergent_token": 588,
+          "vanilla_tokens": 675,
+          "lane_tokens": 654
+        },
+        {
+          "sample_id": "w3_business_v2_001",
+          "workload": "W3",
+          "first_divergent_token": 160,
+          "vanilla_tokens": 501,
+          "lane_tokens": 490
+        },
+        {
+          "sample_id": "w3_business_v2_002",
+          "workload": "W3",
+          "first_divergent_token": 187,
+          "vanilla_tokens": 482,
+          "lane_tokens": 493
+        },
+        {
+          "sample_id": "w3_business_v2_003",
+          "workload": "W3",
+          "first_divergent_token": 149,
+          "vanilla_tokens": 373,
+          "lane_tokens": 317
+        },
+        {
+          "sample_id": "w3_business_v2_005",
+          "workload": "W3",
+          "first_divergent_token": 89,
+          "vanilla_tokens": 535,
+          "lane_tokens": 653
+        },
+        {
+          "sample_id": "w3_business_v2_006",
+          "workload": "W3",
+          "first_divergent_token": 145,
+          "vanilla_tokens": 421,
+          "lane_tokens": 487
+        },
+        {
+          "sample_id": "w3_business_v2_007",
+          "workload": "W3",
+          "first_divergent_token": 47,
+          "vanilla_tokens": 596,
+          "lane_tokens": 578
+        },
+        {
+          "sample_id": "w3_business_v2_008",
+          "workload": "W3",
+          "first_divergent_token": 46,
+          "vanilla_tokens": 489,
+          "lane_tokens": 457
+        },
+        {
+          "sample_id": "w3_business_v2_009",
+          "workload": "W3",
+          "first_divergent_token": 38,
+          "vanilla_tokens": 618,
+          "lane_tokens": 585
+        },
+        {
+          "sample_id": "w3_business_v2_010",
+          "workload": "W3",
+          "first_divergent_token": 46,
+          "vanilla_tokens": 525,
+          "lane_tokens": 484
+        },
+        {
+          "sample_id": "w3_business_v2_011",
+          "workload": "W3",
+          "first_divergent_token": 69,
+          "vanilla_tokens": 451,
+          "lane_tokens": 431
+        },
+        {
+          "sample_id": "w3_business_v2_012",
+          "workload": "W3",
+          "first_divergent_token": 230,
+          "vanilla_tokens": 477,
+          "lane_tokens": 491
+        }
+      ]
+    }
+  },
+  "files": {
+    "adaptive_r6/captures_r1.jsonl": "4464433ac80604d804d9d20e66b57ab45cb93768a493318b6e318c30a8df4ae2",
+    "adaptive_r6/server_lossless.log": "7190e7cf18d1ba389498c54f62a888873190b6322a665f56dfdb307da3a0655c",
+    "static_matched_k3/captures_r1.jsonl": "15336f00778dc3e8b095ff301d1af0a1154fe3cefa5cbf647a23ea538f5515c9",
+    "static_matched_k3/server_lossless.log": "eca8a96319200b461bf673c3db7052aebf7652d411fc3b94dfbd1084d6adec87",
+    "vanilla_matched/captures_r1.jsonl": "d98ae305385edb51f75c98943b9c341d4405c562a43af941f3f9f8e19ef2b5dc",
+    "vanilla_matched/captures_r2.jsonl": "5f404775d956b58bfbe8870352a67a0016fe90a64b674e61818c3456c11cf372",
+    "vanilla_matched/server_lossless.log": "248c2cdf772343bd52bb7c543a7d95fc636f75634f102bf4ea5e1887de915cf3"
+  },
+  "verifier": "experiments.lossless_verifier.verify_token_sequence on token_ids"
+}

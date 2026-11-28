@@ -60,7 +60,7 @@ def test_profile_reaches_environment_and_controller(measured_profile, tmp_path, 
     from src.server.budget_planner import AdaptiveBudgetPlanner
     path = tmp_path / 'profile.json'; path.write_text(json.dumps(measured_profile))
     config = dict(target_model='target', draft_model='draft', draft_method='draft_model',
-                  enable_adaptive=True, target_gpu='A10G', profile_path=str(path))
+                  enable_adaptive=True, target_gpu='A10', profile_path=str(path))
     forwarded = json.loads(ModalServingRunner().setup_environment(config)['FLEXSDS_SERVING_CONFIG'])
     assert forwarded['profile_path'] == str(path)
     env = LocalServingRunner().setup_environment(config)
@@ -109,10 +109,10 @@ def test_cli_eagle_adaptive_with_measured_profile_reaches_modal_preview(measured
                   draft_model='duckhoi/qwen2.5-7b-eagle3.1-speculator', draft_method='eagle3')
     data = cal.build_profile(config, profile['evidence']['groups'], cal.BATCHES)
     monkeypatch.setattr(cm, 'USER_PROFILES_DIR', tmp_path)
-    path = cm.save_hardware_profile(data, 'sm_86', 'a10g')
+    path = cm.save_hardware_profile(data, 'sm_86', 'a10')
     seen = []
     monkeypatch.setattr(ModalServingRunner, 'launch', lambda self, cfg, **kw: seen.append((cfg, kw)))
-    assert main(['serve','--backend','modal','--gpu','A10G','--target',config['target_model'],
+    assert main(['serve','--backend','modal','--gpu','A10','--target',config['target_model'],
                  '--draft',config['draft_model'],'--dry-run']) == 0
     cfg = seen[0][0]['serving']
     assert cfg['enable_adaptive'] is True and cfg['draft_method'] == 'eagle3'
@@ -134,6 +134,35 @@ def test_partial_profile_requires_matching_serving_capacity(measured_profile, tm
                    enable_adaptive=True,profile_path=str(path),max_num_seqs=1,
                    telemetry_path=str(tmp_path/'trace.jsonl'))
     assert LocalServingRunner().setup_environment(serving)['FLEXSDS_PROFILE_PATH'] == str(path)
-    serving['max_num_seqs'] = 32
-    with pytest.raises(ValueError,match='does not cover'):
-        LocalServingRunner().setup_environment(serving)
+
+
+def test_short_profile_grid_serves_larger_batches_with_a_warning(measured_profile, tmp_path, capsys):
+    # A profile may stop below the serving batch (e.g. a T4 calibrated at the default memory share, where the
+    # one-step 16/32 x 1024 prefill leaves too little KV). Larger batches use the nearest measured batch (what
+    # EmpiricalCostProfile already does) and the launch says so.
+    from flexsds.core import calibration as cal
+    config = measured_profile['evidence']['config']
+    groups = measured_profile['evidence']['groups']
+    for group in groups: group['records'] = [r for r in group['records'] if r['batch'] <= 8]
+    data = cal.build_profile(config, groups, [1, 2, 4, 8])
+    path = tmp_path/'t4.json'; path.write_text(json.dumps(data))
+    serving = dict(target_model='target',draft_model='draft',draft_method='draft_model',
+                   enable_adaptive=True,profile_path=str(path),max_num_seqs=32,
+                   telemetry_path=str(tmp_path/'trace.jsonl'))
+    assert LocalServingRunner().setup_environment(serving)['FLEXSDS_PROFILE_PATH'] == str(path)
+    assert 'measured up to B=8' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('batches', [[2, 4], [1, 4], [1, 2, 8]])
+def test_profile_grid_must_be_a_prefix_of_the_canonical_batches(batches):
+    from flexsds.core import calibration as cal
+    with pytest.raises(ValueError, match='prefix'):
+        cal.profile_batch_coverage(batches, 32)
+
+
+def test_profile_batch_coverage_reports_the_top_measured_batch_only_when_short():
+    from flexsds.core import calibration as cal
+    assert cal.profile_batch_coverage([1, 2, 4, 8, 16, 32], 32) is None
+    assert cal.profile_batch_coverage([1, 2, 4, 8], 8) is None
+    assert cal.profile_batch_coverage([1, 2, 4, 8], 32) == 8
+    assert cal.profile_batch_coverage([1], 2) == 1

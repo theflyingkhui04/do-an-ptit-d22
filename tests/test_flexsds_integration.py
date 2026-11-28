@@ -156,8 +156,8 @@ def test_colab_is_explicit_guidance_without_runner(machine, monkeypatch, capsys)
 def test_remote_budget_does_not_use_laptop_ram_or_vram(machine):
     machine.free_vram_mb = 1
     machine.is_cuda_available = False
-    preflight = compat.evaluate_serving_preflight(PAIR[2], PAIR[4], machine, "modal", "L4")
-    assert preflight.report.free_vram_mb == 23000
+    preflight = compat.evaluate_serving_preflight(PAIR[2], PAIR[4], machine, "modal", "A10")
+    assert preflight.report.free_vram_mb == 22000
     assert preflight.is_safe
 
 
@@ -183,16 +183,18 @@ def test_modal_app_allocates_gpu_exposes_port_and_preserves_exact_config(monkeyp
     app = Mock()
     app.function.side_effect = lambda **kw: lambda f: f
     web = Mock(side_effect=lambda *a, **kw: lambda f: f)
+    concurrent = Mock(side_effect=lambda *a, **kw: lambda f: f)
     fake_modal = SimpleNamespace(App=Mock(return_value=app),
         Image=SimpleNamespace(from_registry=Mock(return_value=image)),
         Volume=SimpleNamespace(from_name=Mock(return_value="volume")), web_server=web,
-        is_local=lambda: True)
+        concurrent=concurrent, is_local=lambda: True)
     monkeypatch.setitem(sys.modules, "modal", fake_modal)
     spec = importlib.util.spec_from_file_location("audit_modal_app", ROOT / "src/flexsds/server/modal_app.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert app.function.call_args.kwargs["gpu"] == "T4"
     web.assert_called_once_with(8765, startup_timeout=600)
+    concurrent.assert_called_once_with(max_inputs=64)  # one container serves many requests at once
     popen = Mock()
     monkeypatch.setattr("subprocess.Popen", popen)
     module.serve()
@@ -254,3 +256,24 @@ def test_new_command_output_encodes_without_stream_reconfiguration(machine, monk
     assert "TPOT" not in sink.getvalue()
     if encoding == "cp1252":
         assert sink.getvalue().isascii()
+
+
+def test_modal_launch_widens_the_console_so_the_endpoint_url_is_not_wrapped(monkeypatch):
+    # Through a pipe, modal wraps output at ~80 columns; a long URL (e.g. with an environment
+    # suffix) was split across lines and the CLI timed out waiting for it although deploy succeeded.
+    import subprocess as sp
+    from flexsds.server import modal_auth
+    from flexsds.server.modal_runner import ModalServingRunner
+
+    seen = {}
+
+    def fake_popen(cmd, **kwargs):
+        seen.update(kwargs["env"])
+        raise FileNotFoundError
+
+    monkeypatch.setattr(modal_auth, "ensure_modal", lambda: None)
+    monkeypatch.setattr(ModalServingRunner, "check_credentials", lambda self: True)
+    monkeypatch.setattr(sp, "Popen", fake_popen)
+    monkeypatch.setenv("COLUMNS", "80")
+    assert ModalServingRunner().launch({"enable_adaptive": False}, deploy=True) is None
+    assert int(seen["COLUMNS"]) >= 1000

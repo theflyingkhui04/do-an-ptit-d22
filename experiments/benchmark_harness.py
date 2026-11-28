@@ -23,6 +23,18 @@ except ImportError:
         __version__ = "stub"
     aiohttp = _AiohttpStub()  # type: ignore[assignment]
 
+# vLLM's HTTP server (uvicorn) closes idle keep-alive connections after VLLM_HTTP_TIMEOUT_KEEP_ALIVE = 5 s.
+# aiohttp keeps them for 15 s by default, so the first request of a repeat could reuse a connection the
+# server had just closed and fail with ServerDisconnectedError. Keep the client side shorter.
+SERVER_KEEPALIVE_S = 5.0
+CLIENT_KEEPALIVE_S = 2.0
+
+
+def make_connector() -> "aiohttp.TCPConnector":
+    """Connector for one harness run: reuses connections within a repeat, never a stale one."""
+    return aiohttp.TCPConnector(keepalive_timeout=CLIENT_KEEPALIVE_S)
+
+
 try:
     import torch
 except ImportError:
@@ -102,6 +114,34 @@ ENVIRONMENT_PROFILES = {
     },
     L4_MODAL_PROFILE: {
         "gpu": "NVIDIA L4",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
+    "modal-t4-v1": {
+        "gpu": "T4",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
+    "modal-a10-v1": {
+        "gpu": "A10",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
+    "modal-l40s-v1": {
+        "gpu": "L40S",
+        "vllm_version": "0.30.0",
+        "torch_version": "2.13.0+cu130",
+        "torch_cuda_version": "13.0",
+        "mode": "server",
+    },
+    "modal-a100-v1": {
+        "gpu": "A100-80GB",
         "vllm_version": "0.30.0",
         "torch_version": "2.13.0+cu130",
         "torch_cuda_version": "13.0",
@@ -272,6 +312,27 @@ def environment_info(
     return info, handle
 
 
+def _matches_modal_gpu_sku(expected: str, actual: object) -> bool:
+    """Strict GPU SKU match for Modal server profiles (reuses flexsds rules when available)."""
+    try:
+        from flexsds.core.hardware import matches_gpu_label
+        return matches_gpu_label(expected, str(actual or ""))
+    except ImportError:
+        import re
+        text = str(actual or "").upper()
+        tokens = set(re.findall(r"[A-Z0-9]+", text))
+        key = expected.upper()
+        if key == "T4":
+            return "T4" in tokens
+        if key == "A10":
+            return bool(tokens & {"A10", "A10G"})
+        if key == "L40S":
+            return "L40S" in tokens
+        if key == "A100-80GB":
+            return "A100" in tokens and "80GB" in tokens and "40GB" not in tokens
+        return key in tokens
+
+
 def validate_environment(env: dict, profile: str = ENVIRONMENT_PROFILE) -> list[str]:
     expected = {
         field: value
@@ -285,6 +346,10 @@ def validate_environment(env: dict, profile: str = ENVIRONMENT_PROFILE) -> list[
         if profile == "m4-a100-colab-v1" and field == "gpu":
             if "NVIDIA" not in str(actual_value) or "A100" not in str(actual_value):
                 mismatches.append(f"gpu: expected NVIDIA A100, got {actual_value}")
+            continue
+        if profile.startswith("modal-") and field == "gpu":
+            if not _matches_modal_gpu_sku(str(expected_value), actual_value):
+                mismatches.append(f"gpu: expected {expected_value}, got {actual_value}")
             continue
         if isinstance(expected_value, (tuple, list, set)):
             if actual_value not in expected_value:
@@ -1104,6 +1169,7 @@ async def async_main(args: argparse.Namespace) -> int:
             headers["Authorization"] = f"Bearer {args.api_key}"
 
         async with aiohttp.ClientSession(
+            connector=make_connector(),
             timeout=timeout,
             headers=headers,
         ) as session:

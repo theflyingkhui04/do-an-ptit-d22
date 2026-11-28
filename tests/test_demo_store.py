@@ -342,6 +342,27 @@ def psycopg_error():
 
 
 @needs_db
+@pytest.mark.parametrize("made_before_starting", [False, True], ids=["new-database", "upgraded-database"])
+def test_postgres_store_endpoint_can_be_starting(pg, made_before_starting):
+    from src.api.store import PostgresStore
+
+    if made_before_starting:  # the Supabase table created on 2026-11-12 only allowed ok/down
+        pg.execute("ALTER TABLE endpoints DROP CONSTRAINT endpoints_status_check")
+        pg.execute("ALTER TABLE endpoints ADD CONSTRAINT endpoints_status_check CHECK (status IN ('ok', 'down'))")
+        writer.apply_schema(pg)  # what scripts/seed_demo_db.py --apply-schema runs on an existing database
+    store = PostgresStore(DB_URL)
+    store.insert_endpoint({"endpoint_id": "ep_00000001", "name": "vanilla",
+                           "base_url": "https://u--ptit-vllm-demo-vanilla.us-east.modal.direct/v1", "platform": "modal",
+                           "model_id": "qwen2.5-7b-vanilla", "max_model_len": 8192, "meta": {}, "api_key": None,
+                           "is_baseline": False, "status": "ok", "status_message": None,
+                           "checked_at": "2026-11-18T15:00:00+00:00", "created_at": "2026-11-18T15:00:00+00:00"})
+    store.update_endpoint("ep_00000001", {"status": "starting", "status_message": "HTTP 503"})
+    assert store.get_endpoint("ep_00000001")["status"] == "starting"
+    with pytest.raises(psycopg_error()):
+        store.update_endpoint("ep_00000001", {"status": "asleep"})
+
+
+@needs_db
 def test_postgres_store_bench_runs(pg):
     from src.api.store import PostgresStore
 

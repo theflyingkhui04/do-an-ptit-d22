@@ -7,7 +7,7 @@ Thiết kế: `openspec/changes/m5-01-web-console/design.md` (bản local). Fron
 |---|---|
 | `main.py` | Nối dịch vụ thật (Postgres, Storage, Modal), `uvicorn src.api.main:build_app --factory` |
 | `app.py` | Route, mật khẩu demo `X-Demo-Key`, giới hạn 10 ảnh / 30 câu hỏi / 10 phút / IP, CORS |
-| `endpoints.py` | Sổ endpoint: chuẩn hoá địa chỉ, nhận nền tảng, chặn địa chỉ nội bộ (kiểm tra sau DNS), hỏi `/v1/models` lấy id model, đọc `serving_config.json`; khoá API chỉ lưu ở DB |
+| `endpoints.py` | Sổ endpoint: chuẩn hoá địa chỉ, nhận nền tảng, chặn địa chỉ nội bộ (kiểm tra sau DNS), hỏi `/v1/models` lấy id model, báo địa chỉ đã có; sửa địa chỉ (kiểm tra lại trước khi lưu), khoá và ghi chú cấu hình; khoá API chỉ lưu ở DB |
 | `jobs.py` | Job tải ảnh: OCR thư viện (`library_ocr_client.py`) → bỏ dấu → Node 1 (prompt `node1_extractor.v2`, `max_tokens` 3072) song song trên các endpoint đã chọn → so với endpoint mốc → lưu DB |
 | `questions.py` | Prompt Node 2 có giá trị thật của DB, kiểm tra SQL bằng `sqlglot`, sửa 1 lần, kiểm tra số trong câu trả lời |
 | `report_data.py` | Số liệu đầu vào của Node 3: truy vấn cố định (không qua Node 2) theo phạm vi N hoá đơn có ngày lập gần nhất hoặc tất cả |

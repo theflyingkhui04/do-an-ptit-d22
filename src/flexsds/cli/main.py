@@ -10,7 +10,14 @@ try:
     from flexsds import __version__
     from flexsds.cli.banner import print_banner
     from flexsds.cli.wizard import run_interactive_wizard
-    from flexsds.core.hardware import detect_hardware, HardwareInfo
+    from flexsds.core.hardware import (
+        DEFAULT_MODAL_GPU,
+        canonical_modal_gpu_name,
+        MODAL_GPU_NAMES,
+        HardwareInfo,
+        build_remote_hardware_info,
+        detect_hardware,
+    )
     from flexsds.core.compatibility import (
         check_compatibility,
         evaluate_serving_preflight,
@@ -33,7 +40,14 @@ except ModuleNotFoundError:
     from src.flexsds import __version__
     from src.flexsds.cli.banner import print_banner
     from src.flexsds.cli.wizard import run_interactive_wizard
-    from src.flexsds.core.hardware import detect_hardware, HardwareInfo
+    from src.flexsds.core.hardware import (
+        DEFAULT_MODAL_GPU,
+        canonical_modal_gpu_name,
+        MODAL_GPU_NAMES,
+        HardwareInfo,
+        build_remote_hardware_info,
+        detect_hardware,
+    )
     from src.flexsds.core.compatibility import (
         check_compatibility,
         evaluate_serving_preflight,
@@ -64,6 +78,71 @@ def positive_int(value):
     return number
 
 
+def scaledown_seconds(value):
+    """argparse type for --scaledown-window: seconds a Modal GPU stays up after the last request (2..3600)."""
+    try:
+        seconds = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--scaledown-window must be an integer number of seconds") from exc
+    if not 2 <= seconds <= 3600:
+        raise argparse.ArgumentTypeError("--scaledown-window must be between 2 and 3600 seconds")
+    return seconds
+
+
+def _is_console(stream):
+    """True for an interactive console. On Windows the NUL device reports isatty() True as well."""
+    import os
+
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        import msvcrt
+
+        mode = ctypes.c_uint32()
+        return bool(ctypes.windll.kernel32.GetConsoleMode(msvcrt.get_osfhandle(stream.fileno()), ctypes.byref(mode)))
+    except (AttributeError, OSError, ValueError):
+        return True
+
+
+def read_secret(name, context=""):
+    """Prompt for a secret on a terminal, or read one line from stdin when there is none.
+
+    On Windows getpass reads the console, not stdin, so a non-interactive login used to hang.
+    """
+    import getpass
+
+    stdin = sys.stdin
+    if stdin is not None and stdin.isatty() and _is_console(stdin):
+        return getpass.getpass(f"Enter {name}{context}: ")
+    line = stdin.readline() if stdin is not None else ""
+    if not line.strip():
+        raise RuntimeError(f"No terminal to type {name}: pipe it on stdin "
+                           "(e.g. `printf '%s\\n' \"$VALUE\" | flexsds auth login ...`) or run in a terminal.")
+    return line.strip()
+
+
+def calibration_memory_share(value):
+    try:
+        share = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected a number within 0.50..0.98") from None
+    if not 0.5 <= share <= 0.98:
+        raise argparse.ArgumentTypeError("expected a number within 0.50..0.98")
+    return share
+
+
+def calibration_batches(value):
+    """argparse type for --batches: a subset of the calibration grid 1,2,4,8,16,32."""
+    try:
+        batches = sorted({int(part) for part in str(value).split(",") if part.strip()})
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--batches must be integers such as 1,2,4,8") from exc
+    if not batches or any(b not in (1, 2, 4, 8, 16, 32) for b in batches):
+        raise argparse.ArgumentTypeError("--batches must be chosen from 1,2,4,8,16,32")
+    return batches
+
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="flexsds",
@@ -80,13 +159,14 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "clear": "flexsds clear modal",
         "detect": "flexsds detect",
         "inspect": "flexsds inspect duckhoi/qwen2.5-7b-eagle3.1-speculator",
-        "profile": "flexsds profile --benchmark --backend modal --gpu A10G",
+        "profile": "flexsds profile --benchmark --backend modal --gpu A10",
+        "benchmark": "flexsds benchmark --mode fast --dry-run",
         "stop": "flexsds stop",
         "auth": "flexsds auth status",
         "login": "flexsds auth login --provider modal",
         "status": "flexsds auth status",
         "logout": "flexsds auth logout --provider modal",
-        "serve": "flexsds serve --backend modal --gpu A10G --dry-run",
+        "serve": "flexsds serve --backend modal --gpu A10 --dry-run",
         "chat": "flexsds chat --endpoint http://localhost:8000/v1",
         "monitor": "flexsds monitor --trace-file telemetry/serving_trace.jsonl",
     }
@@ -135,8 +215,51 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
 
     profile_parser.add_argument("--measure-mode", choices=["fast", "full"], default="full", help="Measurement repetitions: fast (5) or full (50)")
+    profile_parser.add_argument("--batches", type=calibration_batches, default=None,
+                                help="Comma-separated batch sizes from 1,2,4,8,16,32 (default: all); a shorter prefix such as 1,2,4,8 when larger batches do not fit")
+    profile_parser.add_argument("--gpu-memory-utilization", type=calibration_memory_share, default=None,
+                                help="vLLM memory share while calibrating (0.50..0.98, default 0.85); more room for the one-step B x 1024 prefill (on T4, 0.95 still ran out of memory at B=16 on 27/11)")
     profile_parser.add_argument("--backend", choices=["local", "modal"], default="local", help="Where to run calibration")
-    profile_parser.add_argument("--gpu", choices=["A10G", "L4", "T4"], default="A10G", help="GPU to allocate for Modal calibration")
+    profile_parser.add_argument("--gpu", type=canonical_modal_gpu_name, choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="GPU to allocate for Modal calibration")
+
+    # Command: benchmark
+    bench_parser = add_command(
+        subparsers,
+        "benchmark",
+        help="Plan, run, validate, or aggregate the multi-GPU 3-node 3-lane Modal benchmark",
+    )
+    bench_parser.add_argument(
+        "bench_action",
+        nargs="?",
+        choices=["plan", "run", "status", "validate", "aggregate", "stop"],
+        default="plan",
+        help="Campaign lifecycle action",
+    )
+    bench_parser.add_argument(
+        "--mode",
+        choices=["full", "fast"],
+        default="full",
+        help="Concurrency grid: full (1,2,4,8,16,32 -> 216 cells) or fast (1,8,32 -> 108 cells)",
+    )
+    bench_parser.add_argument("--campaign-id", type=str, default=None, help="Explicit benchmark campaign identifier")
+    bench_parser.add_argument("--execution-sha", type=str, default=None, help="Committed 40-char Git SHA (defaults to HEAD)")
+    bench_parser.add_argument("--gpus", type=str, default="all", help="Comma-separated GPUs (T4,A10,L40S,A100) or 'all'")
+    bench_parser.add_argument("--workloads", type=str, default="all", help="Comma-separated workloads (W1_V3,W2,W3) or 'all'")
+    bench_parser.add_argument("--lanes", type=str, default="all", help="Comma-separated lanes (vanilla,static,adaptive) or 'all'")
+    bench_parser.add_argument("--target", type=str, default="Qwen/Qwen2.5-7B-Instruct-AWQ", help="Target model identifier")
+    bench_parser.add_argument("--draft", type=str, default="duckhoi/qwen2.5-7b-eagle3.1-speculator", help="Draft model or speculator identifier")
+    bench_parser.add_argument("--draft-method", choices=["eagle", "eagle3", "draft_model"], default="eagle3", help="Speculative decoding method")
+    bench_parser.add_argument("--static-k", type=int, default=3, help="Fixed speculative draft budget K for static lane (1..8)")
+    bench_parser.add_argument("--adaptive-max-k", type=int, default=4, help="Maximum K ceiling for adaptive lane (1..8)")
+    bench_parser.add_argument("--profile-dir", type=str, default=None, help="Optional extra directory for verified GPU cost profiles")
+    bench_parser.add_argument("--auto-calibrate", action="store_true", help="Calibrate missing Modal GPUs automatically before running adaptive lane")
+    bench_parser.add_argument("--calibrate-mode", choices=["fast", "full"], default="fast", help="Calibration mode when --auto-calibrate is enabled")
+    bench_parser.add_argument("--retry-failed", action="store_true", help="Submit a new attempt for a failed cell")
+    bench_parser.add_argument("--yes", action="store_true", help="Do not ask before spending GPU time on Modal")
+    bench_parser.add_argument("--allow-uncommitted", action="store_true",
+                              help="Measure the working tree; record a source digest instead of a clean commit")
+    bench_parser.add_argument("--dry-run", action="store_true", help="Preview benchmark matrix and GPU profile readiness without Modal calls")
+    bench_parser.add_argument("--json", dest="json_output", action="store_true", help="Output raw plan JSON instead of summary text")
 
     # Command: stop
     add_command(subparsers, "stop", help="Stop running local FlexSDS server")
@@ -168,9 +291,13 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     serve_parser.add_argument("--allow-oom-risk", action="store_true", help="Continue despite estimated VRAM risk; other compatibility failures still block")
     serve_parser.add_argument("--max-num-seqs", type=positive_int, default=32, help="Maximum concurrent sequences")
     serve_parser.add_argument("--max-model-len", type=positive_int, default=4096, help="Maximum context length per sequence")
-    serve_parser.add_argument("--gpu", choices=["L4", "T4", "A10G"], default="L4", help="Remote GPU memory budget and Modal allocation")
+    serve_parser.add_argument("--gpu", type=canonical_modal_gpu_name, choices=list(MODAL_GPU_NAMES), default=DEFAULT_MODAL_GPU, help="Remote GPU memory budget and Modal allocation")
     serve_parser.add_argument(
         "--port", type=int, default=8000, help="API server port"
+    )
+    serve_parser.add_argument(
+        "--scaledown-window", type=scaledown_seconds, default=300,
+        help="Modal: seconds the GPU stays up after the last request (default 300; a cold start can exceed Modal's 150 s web limit)",
     )
     serve_parser.add_argument(
         "--background", action="store_true", help="Run local server as background daemon"
@@ -180,6 +307,32 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     serve_parser.add_argument(
         "--no-adaptive", action="store_true", help="Disable HardwareAdaptive optimization engine"
+    )
+    serve_parser.add_argument(
+        "--match-adaptive-runtime",
+        action="store_true",
+        help="Match Adaptive ON's V1 eager execution contract when serving static or vanilla baselines",
+    )
+    serve_parser.add_argument(
+        "--vanilla",
+        action="store_true",
+        help="Serve target model only without speculative decoding (implies --no-adaptive)",
+    )
+    serve_parser.add_argument(
+        "--no-prefix-caching",
+        action="store_true",
+        help="Disable vLLM automatic prefix caching (recommended for lossless repeatability checks)",
+    )
+    serve_parser.add_argument(
+        "--static-k",
+        type=positive_int,
+        default=None,
+        help="Explicit static draft token budget K in 1..8 (requires --no-adaptive without --vanilla)",
+    )
+    serve_parser.add_argument(
+        "--no-step-telemetry",
+        action="store_true",
+        help="Disable per-step adaptive telemetry file I/O (ADAPTIVE_STEP_TELEMETRY_PATH) for peak throughput",
     )
     serve_parser.add_argument(
         "--allow-fallback", action="store_true", help="Deprecated: analytical fallback cannot satisfy empirical serving requirements"
@@ -264,6 +417,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
         print("Modal disconnected locally. Log in again when selecting Modal, or run flexsds auth login --provider modal.")
         return 0
+    if args.command == "benchmark":
+        try:
+            from flexsds.cli.benchmark import run_benchmark_command
+        except ModuleNotFoundError:
+            from src.flexsds.cli.benchmark import run_benchmark_command
+        return run_benchmark_command(args)
     hw_info = detect_hardware()
 
     if args.command == "stop":
@@ -301,7 +460,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 print("\033[32m✔ Removed all stored credentials.\033[0m")
             return 0
         elif args.auth_action == "login":
-            import getpass
             prov = args.provider
             if prov == "modal":
                 from flexsds.server.modal_auth import ensure_modal, print_token_instructions, save_verified_modal_token
@@ -311,15 +469,19 @@ def main(argv: Optional[list[str]] = None) -> int:
                     if args.key not in (None, 'MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'):
                         print('Modal requires MODAL_TOKEN_ID and MODAL_TOKEN_SECRET.')
                         return 1
-                    token_id = (args.token if args.key != 'MODAL_TOKEN_SECRET' else None) or getpass.getpass("Enter MODAL_TOKEN_ID: ")
-                    secret = (args.token if args.key == 'MODAL_TOKEN_SECRET' else None) or getpass.getpass("Enter MODAL_TOKEN_SECRET: ")
+                    token_id = (args.token if args.key != 'MODAL_TOKEN_SECRET' else None) or read_secret("MODAL_TOKEN_ID")
+                    secret = (args.token if args.key == 'MODAL_TOKEN_SECRET' else None) or read_secret("MODAL_TOKEN_SECRET")
                     save_verified_modal_token(cred_mgr, token_id, secret)
                 except (OSError, RuntimeError) as exc:
                     print(str(exc))
                     return 1
                 return 0
             key_name = args.key or ("HF_TOKEN" if prov == "huggingface" else ("MODAL_TOKEN_ID" if prov == "modal" else "TOKEN"))
-            val = args.token or getpass.getpass(f"Enter {key_name} for {prov}: ")
+            try:
+                val = args.token or read_secret(key_name, f" for {prov}")
+            except RuntimeError as exc:
+                print(str(exc))
+                return 1
             if val:
                 cred_mgr.set_credential(prov, key_name, val.strip())
                 print(f"\033[32m✔ Securely saved {key_name} for {prov} (POSIX mode 0600; Windows uses filesystem ACLs).\033[0m")
@@ -338,14 +500,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             target_model = args.model or args.target
             draft_model = args.draft
             if args.backend == "modal":
-                sm = {"A10G": "sm_86", "L4": "sm_89", "T4": "sm_75"}[args.gpu]
-                hw_info = HardwareInfo(device_name=f"Remote {args.gpu}", sm_architecture=sm,
-                                       total_vram_mb=0, free_vram_mb=0, cuda_version="unknown",
-                                       is_cuda_available=True)
+                hw_info = build_remote_hardware_info("modal", args.gpu)
             try:
                 cost_model, saved_path = run_hardware_micro_benchmark(
                     hw_info=hw_info, target_model=target_model, draft_model=draft_model, backend=args.backend,
-                    measurement_mode=args.measure_mode,
+                    measurement_mode=args.measure_mode, batch_sizes=args.batches,
+                    gpu_memory_utilization=args.gpu_memory_utilization,
                 )
             except KeyboardInterrupt:
                 print("Calibration cancelled.")
@@ -374,102 +534,152 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
 
     if args.command == "serve":
+        if args.match_adaptive_runtime and not (args.no_adaptive or args.vanilla):
+            print("Invalid flag combination: --match-adaptive-runtime requires --no-adaptive or --vanilla.")
+            return 2
+        if args.vanilla and args.draft:
+            print("Invalid flag combination: --vanilla cannot be combined with --draft.")
+            return 2
+        if args.static_k is not None:
+            if args.vanilla or not args.no_adaptive:
+                print("Invalid flag combination: --static-k requires --no-adaptive and cannot be combined with --vanilla.")
+                return 2
+            if not 1 <= args.static_k <= 8:
+                print("Invalid --static-k: expected integer in 1..8.")
+                return 2
+
         raw_args = argv if argv is not None else sys.argv[1:]
         has_explicit_platform = any(a.startswith("--backend") or a.startswith("--gpu") for a in raw_args)
-        if (args.target and args.draft) or (
-            args.dry_run
-            and has_explicit_platform
-            and not (args.target and not args.draft)
-            and not (args.draft and not args.target)
+        if (
+            (args.target and args.draft)
+            or args.vanilla
+            or (
+                args.dry_run
+                and has_explicit_platform
+                and not (args.target and not args.draft)
+                and not (args.draft and not args.target)
+            )
         ):
-            target_gpu = getattr(args, "gpu", "L4")
+            target_gpu = getattr(args, "gpu", DEFAULT_MODAL_GPU)
             if args.backend in ("modal", "colab"):
-                remote_sm_map = {
-                    "A10G": "sm_86",
-                    "L4": "sm_89",
-                    "T4": "sm_75",
-                    "A100": "sm_80",
-                }
-                target_sm = remote_sm_map.get(target_gpu, "sm_89")
-                budgets = {"T4": 15000.0, "L4": 23000.0, "A10G": 22000.0, "A100": 40000.0}
-                target_vram = budgets.get(target_gpu, 22000.0)
-                serving_hw = HardwareInfo(
-                    device_name=f"Remote {target_gpu}",
-                    sm_architecture=target_sm,
-                    total_vram_mb=target_vram,
-                    free_vram_mb=target_vram,
-                    cuda_version="12.4",
-                    is_cuda_available=True,
-                    device_count=1,
-                )
+                serving_hw = build_remote_hardware_info(args.backend, target_gpu)
             else:
                 serving_hw = hw_info
 
             target_model = args.target or "Qwen/Qwen2.5-7B-Instruct-AWQ"
-            draft_model = args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator"
+            draft_model = None if args.vanilla else (args.draft or "duckhoi/qwen2.5-7b-eagle3.1-speculator")
 
-            from flexsds.cli.spinner import status_spinner
-            with status_spinner("Checking models compatibility"):
-                preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
-                                                   args.backend, getattr(args, "gpu", "L4"),
-                                                   max_num_seqs=args.max_num_seqs, max_model_len=args.max_model_len)
-            if args.eagle_version:
-                from flexsds.core.compatibility import select_report_eagle_version
-                try:
-                    preflight.report = select_report_eagle_version(preflight.report, args.eagle_version)
-                except ValueError as exc:
-                    print(str(exc))
+            if args.vanilla:
+                if args.backend == "local" and not args.dry_run and not hw_info.is_cuda_available:
+                    print("Launch blocked: CUDA GPU unavailable; system RAM is not serving VRAM")
                     return 2
-            elif preflight.report.identified_method == "eagle":
-                print("EAGLE version selection required: use --eagle-version 1 or --eagle-version 2")
-                return 2
-            print(preflight.report.summary())
-            for detail in preflight.report.warnings + preflight.report.recommendations:
-                print(detail)
-            reasons = preflight.launch_reasons(args.allow_oom_risk)
-            if preflight.report.oom_risk:
-                print(f"VRAM warning at batch={args.max_num_seqs}, context={args.max_model_len}: "
-                      "smaller workloads may fit; runtime memory fit is unverified.")
-                if not args.allow_oom_risk:
-                    print("Reduce --max-num-seqs/--max-model-len or pass --allow-oom-risk to continue.")
-            if reasons:
-                print("Launch blocked: " + "; ".join(reasons))
-            if args.backend != "local":
-                print(f"Remote {getattr(args, 'gpu', 'L4')} memory budget is estimated, not measured free VRAM.")
-            if reasons:
-                return 2
+                cfg = {"serving": {
+                    "backend": args.backend,
+                    "target_model": target_model,
+                    "draft_model": None,
+                    "draft_method": "none",
+                    "eagle_version": None,
+                    "target_revision": None,
+                    "draft_revision": None,
+                    "use_heterogeneous_vocab": False,
+                    "port": args.port,
+                    "target_gpu": target_gpu,
+                    "modal_deploy": bool(args.deploy),
+                    "enable_adaptive": False,
+                    "match_adaptive_runtime": args.match_adaptive_runtime,
+                    "disable_speculative": True,
+                    "disable_prefix_caching": args.no_prefix_caching,
+                    "static_k": None,
+                    "max_num_seqs": args.max_num_seqs,
+                    "max_model_len": args.max_model_len,
+                    "scaledown_window": args.scaledown_window,
+                    "allow_oom_risk": args.allow_oom_risk,
+                    "profile_path": None,
+                    "hardware": {
+                        "device_name": serving_hw.device_name,
+                        "sm_architecture": serving_hw.sm_architecture,
+                        "free_vram_mb": serving_hw.free_vram_mb,
+                    },
+                }}
+            else:
+                from flexsds.cli.spinner import status_spinner
+                with status_spinner("Checking models compatibility"):
+                    preflight = evaluate_serving_preflight(target_model, draft_model, hw_info,
+                                                       args.backend, target_gpu,
+                                                       max_num_seqs=args.max_num_seqs, max_model_len=args.max_model_len)
+                if args.eagle_version:
+                    from flexsds.core.compatibility import select_report_eagle_version
+                    try:
+                        preflight.report = select_report_eagle_version(preflight.report, args.eagle_version)
+                    except ValueError as exc:
+                        print(str(exc))
+                        return 2
+                elif preflight.report.identified_method == "eagle":
+                    print("EAGLE version selection required: use --eagle-version 1 or --eagle-version 2")
+                    return 2
+                print(preflight.report.summary())
+                for detail in preflight.report.warnings + preflight.report.recommendations:
+                    print(detail)
+                reasons = preflight.launch_reasons(args.allow_oom_risk)
+                if preflight.report.oom_risk:
+                    print(f"VRAM warning at batch={args.max_num_seqs}, context={args.max_model_len}: "
+                          "smaller workloads may fit; runtime memory fit is unverified.")
+                    if not args.allow_oom_risk:
+                        print("Reduce --max-num-seqs/--max-model-len or pass --allow-oom-risk to continue.")
+                if reasons:
+                    print("Launch blocked: " + "; ".join(reasons))
+                if args.backend != "local":
+                    print(f"Remote {target_gpu} memory budget is estimated, not measured free VRAM.")
+                # CLI contract: a preview blocked only by this machine's limits (VRAM estimate, no CUDA)
+                # prints "Launch blocked", still shows the command and returns 0. A real launch, or a
+                # model pair that is unsupported/incompatible, is refused with 2 before any runner call.
+                if reasons and not (args.dry_run and preflight.preview_allowed(args.allow_oom_risk)):
+                    return 2
 
-            if not args.no_adaptive:
-                cost_model, profile_name = load_profile_for_hardware(
-                    serving_hw, strict=True, target_model=target_model, draft_model=draft_model,
-                )
-                if cost_model is None or not profile_name:
-                    print(
-                        f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile for GPU '{serving_hw.device_name} ({serving_hw.sm_architecture})'. "
-                        f"Please calibrate using: flexsds profile --benchmark (or run with --no-adaptive for static speculation).\033[0m"
+                if not args.no_adaptive:
+                    cost_model, profile_name = load_profile_for_hardware(
+                        serving_hw, strict=True, target_model=target_model, draft_model=draft_model,
                     )
-                    return 1
+                    if cost_model is None or not profile_name:
+                        print(
+                            f"\n\033[1;31m✖ [Hardware Profile Error] No measured latency profile for GPU '{serving_hw.device_name} ({serving_hw.sm_architecture})'. "
+                            f"Please calibrate using: flexsds profile --benchmark (or run with --no-adaptive for static speculation).\033[0m"
+                        )
+                        return 1
 
-                if profile_name == "conservative_analytical_fallback":
-                    print(
-                        f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
-                    )
-                else:
-                    print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
+                    if profile_name == "conservative_analytical_fallback":
+                        print(
+                            f"  \033[1;33m⚠ [Hardware Warning] Using conservative fallback profile ({profile_name} / Conservative Fallback).\033[0m"
+                        )
+                    else:
+                        print(f"\033[32m✔ Linked hardware profile: {profile_name}\033[0m")
 
-            cfg = {"serving": {
-                "target_model": target_model, "draft_model": draft_model,
-                "draft_method": preflight.report.draft_method,
-                "eagle_version": preflight.report.eagle_version.removeprefix("EAGLE-"),
-                "target_revision": preflight.report.target_revision,
-                "draft_revision": preflight.report.draft_revision,
-                "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
-                "port": args.port, "target_gpu": getattr(args, "gpu", "L4"),
-                "enable_adaptive": not args.no_adaptive,
-                "max_num_seqs": args.max_num_seqs, "max_model_len": args.max_model_len,
-                "allow_oom_risk": args.allow_oom_risk,
-                "profile_path": str(resolve_profile_path(profile_name)) if not args.no_adaptive else None,
-            }}
+                cfg = {"serving": {
+                    "backend": args.backend,
+                    "target_model": target_model, "draft_model": draft_model,
+                    "draft_method": preflight.report.draft_method,
+                    "eagle_version": preflight.report.eagle_version.removeprefix("EAGLE-"),
+                    "target_revision": preflight.report.target_revision,
+                    "draft_revision": preflight.report.draft_revision,
+                    "use_heterogeneous_vocab": preflight.report.use_heterogeneous_vocab,
+                    "port": args.port, "target_gpu": target_gpu,
+                    "modal_deploy": bool(args.deploy),
+                    "enable_adaptive": not args.no_adaptive,
+                    "enable_step_telemetry": not args.no_step_telemetry,
+                    "match_adaptive_runtime": args.match_adaptive_runtime,
+                    "disable_speculative": False,
+                    "disable_prefix_caching": args.no_prefix_caching,
+                    "static_k": args.static_k,
+                    "max_num_seqs": args.max_num_seqs, "max_model_len": args.max_model_len,
+                    "scaledown_window": args.scaledown_window,
+                    "allow_oom_risk": args.allow_oom_risk,
+                    "profile_path": str(resolve_profile_path(profile_name)) if not args.no_adaptive else None,
+                    "hardware": {
+                        "device_name": serving_hw.device_name,
+                        "sm_architecture": serving_hw.sm_architecture,
+                        "free_vram_mb": serving_hw.free_vram_mb,
+                    },
+                }}
             if args.backend == "colab":
                 print("Colab guidance only: no server or endpoint was created; supplied models are not forwarded to the notebook.")
                 print("Open notebooks/flexsds_colab_server.ipynb and configure the exact models on that runtime.")

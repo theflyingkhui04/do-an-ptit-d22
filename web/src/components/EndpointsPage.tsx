@@ -1,42 +1,53 @@
 "use client";
 
-import { Check, Pencil, Plus, RefreshCw, Server, Terminal, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Pencil, Plus, RefreshCw, Server, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { PLATFORM_LABELS } from "@/components/AddEndpointDialog";
-import { Button, Dot, EmptyState, Notice, PageHead, Panel, Pill, baseModel, endpointColors } from "@/components/ui";
+import EndpointEditDrawer from "@/components/EndpointEditDrawer";
+import { Button, ConfirmDialog, CopyButton, Dot, EmptyState, Notice, PageHead, Pill, baseModel, cx, endpointColors, secondsSince, useNow } from "@/components/ui";
 import type { Api, Endpoint } from "@/lib/api";
+import { agoText, isHardwareAdaptive, shortModelName, shortReason, shortUrl } from "@/lib/endpoints";
+import { useI18n } from "@/lib/i18n";
+import { durationText } from "@/lib/liveness";
 
-function metaLine(e: Endpoint): string {
-  const m = e.meta ?? {};
-  const parts: string[] = [];
-  if (m.gpu) parts.push(m.gpu);
-  if (m.draft_method) parts.push(`nháp ${m.draft_method}${m.draft_model ? ` (${m.draft_model})` : ""}`);
-  else if (m.draft_method === null) parts.push("không dùng model nháp");
-  if (m.adaptive !== undefined) parts.push(m.adaptive ? "Adaptive bật" : "Adaptive tắt");
-  return parts.length ? parts.join(", ") : "Chưa rõ GPU và cách giải mã";
+export const WAKE_RETRY_MS = 20_000;
+// A scaled-to-zero GPU endpoint (flexsds serve on Modal) was measured at 7.5 to 15 minutes from cold.
+export const WAKE_LIMIT_MS = 15 * 60_000;
+
+interface CheckOutcome {
+  at: number;
+  ms: number;
+  status: Endpoint["status"] | "error";
+  message: string | null;
+  gaveUp?: boolean;
 }
 
-// Kept in step with the real CLI by tests/test_web_cli_sample.py (argparse of `flexsds serve`,
-// the header printed by serving_session.py and the Modal app name in modal_app.py).
+function without<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
+
+// Kept in step with the real CLI by tests/test_web_cli_sample.py.
 export const SERVE_SAMPLE =
-  "flexsds serve --backend modal --gpu A10G --target Qwen/Qwen2.5-7B-Instruct-AWQ --draft duckhoi/qwen2.5-7b-eagle3.1-speculator";
+  "flexsds serve --backend modal --gpu A10 --target Qwen/Qwen2.5-7B-Instruct-AWQ --draft duckhoi/qwen2.5-7b-eagle3.1-speculator";
 export const SERVE_SAMPLE_HEADER = "Endpoint LLM created:";
 export const SERVE_SAMPLE_API = "https://…--flexsds-serving-serve.modal.run/v1";
 
 function Onboarding({ onAdd }: { onAdd: () => void }) {
+  const { t } = useI18n();
   const steps = [
-    { title: "Chạy flexsds serve", body: "Trên Modal, Colab hoặc GPU của máy. CLI dựng vLLM và chọn cách giải mã hợp với GPU." },
-    { title: "Copy dòng API", body: `Khi CLI báo “${SERVE_SAMPLE_HEADER.replace(/:$/, "")}”, copy địa chỉ ở dòng API. Trên máy cá nhân, mở đường hầm cloudflared trước.` },
-    { title: "Dán vào web", body: "Web tự nhận model và độ dài ngữ cảnh. Dán nhiều endpoint để so sánh với nhau." },
+    { title: t.step1Title, body: t.step1Body },
+    { title: t.step2Title, body: t.step2Body },
+    { title: t.step3Title, body: t.step3Body },
   ];
   return (
     <EmptyState
       icon={Server}
-      title="Chưa có endpoint nào"
-      action={<Button icon={Plus} onClick={onAdd}>Thêm endpoint</Button>}
+      title={t.emptyEndpointsTitle}
+      action={<Button icon={Plus} onClick={onAdd}>{t.addFirstEndpoint}</Button>}
     >
-      <p>Mọi node của pipeline chạy trên endpoint do CLI FlexSDS tạo ra. Thêm ít nhất một endpoint để bắt đầu.</p>
+      <p>{t.emptyEndpointsBody}</p>
       <ol className="mt-4 grid gap-3 sm:grid-cols-3">
         {steps.map((s, i) => (
           <li key={s.title} className="grid content-start gap-1 rounded-xl bg-sunken p-3.5">
@@ -54,180 +65,276 @@ function Onboarding({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-function NameCell({ endpoint, color, onRename }: { endpoint: Endpoint; color: string; onRename: (name: string) => Promise<void> }) {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(endpoint.name);
-  if (editing) {
+function StatusCell({ endpoint: e, checkingFor, waking, outcome, now }: {
+  endpoint: Endpoint;
+  checkingFor: number | null;
+  waking: boolean;
+  outcome?: CheckOutcome;
+  now: number;
+}) {
+  const { lang, t } = useI18n();
+  if (checkingFor !== null && waking) {
     return (
-      <form
-        className="flex items-center gap-1.5"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          if (name.trim() && name.trim() !== endpoint.name) await onRename(name.trim());
-          setEditing(false);
-        }}
-      >
-        <input
-          aria-label="Tên endpoint"
-          value={name}
-          autoFocus
-          onChange={(e) => setName(e.target.value)}
-          className="w-44 rounded-md border border-line bg-surface px-2 py-1"
-        />
-        <button type="submit" aria-label="Lưu tên" className="rounded-md p-1 hover:bg-sunken"><Check aria-hidden className="size-4" /></button>
-      </form>
+      <Pill tone="warn">
+        <span aria-hidden className="size-2 animate-pulse rounded-full bg-warn" />
+        {t.wakingElapsed(durationText(checkingFor, lang))}
+      </Pill>
     );
   }
+  if (checkingFor !== null) {
+    return (
+      <Pill tone="idle">
+        <span aria-hidden className="size-2 animate-pulse rounded-full bg-ink-3" />
+        {t.checkingElapsed(checkingFor)}
+      </Pill>
+    );
+  }
+  const fresh = outcome && outcome.status !== "error" ? outcome : null;
+  const status = fresh ? fresh.status : e.status;
+  const reason = fresh ? fresh.message : e.status_message;
+  const checkedAt = outcome ? new Date(outcome.at).toISOString() : e.checked_at;
+  const failedCall = outcome?.status === "error" ? outcome.message : null;
   return (
-    <div className="flex items-center gap-2">
-      <Dot color={color} />
-      <b className="whitespace-nowrap font-semibold">{endpoint.name}</b>
-      <button type="button" aria-label={`Đổi tên ${endpoint.name}`} onClick={() => setEditing(true)} className="rounded-md p-1 text-ink-3 hover:bg-sunken">
-        <Pencil aria-hidden className="size-3.5" />
-      </button>
-    </div>
+    <>
+      <span className="inline-flex" title={status !== "ok" && reason ? shortReason(reason, lang) : undefined}>
+        {status === "ok" && <Pill tone="good">{t.statusOnline}</Pill>}
+        {status === "starting" && !fresh?.gaveUp && <Pill tone="warn">{t.statusStarting}</Pill>}
+        {(status === "down" || fresh?.gaveUp) && <Pill tone="bad">{t.statusOffline}</Pill>}
+      </span>
+      {fresh?.gaveUp && (
+        <span className="text-[12.5px] text-bad">{t.wakingTimeout(WAKE_LIMIT_MS / 60_000)}</span>
+      )}
+      <span className="num text-[12px] text-ink-3">{agoText(checkedAt, now, lang)}</span>
+      {failedCall && <span className="animate-fade-in text-[12.5px] text-bad">{failedCall}</span>}
+    </>
   );
 }
 
-export default function EndpointsPage({ api, endpoints, onChange, onAdd }: {
+export default function EndpointsPage({ api, endpoints, onChange, onAdd, onCheckingChange }: {
   api: Api;
   endpoints: Endpoint[];
   onChange: () => Promise<unknown>;
   onAdd: () => void;
+  onCheckingChange?: (count: number) => void;
 }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const { t } = useI18n();
+  const [checking, setChecking] = useState<Record<string, number>>({});
+  const [waking, setWaking] = useState<Record<string, true>>({});
+  const [outcome, setOutcome] = useState<Record<string, CheckOutcome>>({});
+  const open = useRef(true);
+  useEffect(() => {
+    open.current = true;
+    return () => {
+      open.current = false;
+    };
+  }, []);
+  const [flash, setFlash] = useState<Record<string, "good" | "bad" | "info">>({});
+  const [editing, setEditing] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const running = Object.keys(checking).length;
+  const now = useNow(true, running > 0 ? 1000 : 30_000);
+
+  useEffect(() => {
+    onCheckingChange?.(running);
+  }, [running, onCheckingChange]);
+  useEffect(() => () => onCheckingChange?.(0), [onCheckingChange]);
+
   const colors = endpointColors(endpoints);
   const models = new Set(endpoints.map(baseModel));
+  const editingEndpoint = endpoints.find((e) => e.endpoint_id === editing);
+  const confirming = endpoints.find((e) => e.endpoint_id === confirm);
+  const closeEditor = useCallback(() => setEditing(null), []);
 
-  async function act(id: string, action: () => Promise<unknown>) {
-    setBusy(id);
+  async function checkOne(id: string) {
+    const started = Date.now();
+    setChecking((current) => ({ ...current, [id]: started }));
+    let found: CheckOutcome;
+    for (;;) {
+      let checked: Endpoint;
+      try {
+        checked = await api.checkEndpoint(id);
+      } catch (exc) {
+        found = { at: Date.now(), ms: Date.now() - started, status: "error", message: (exc as Error).message };
+        break;
+      }
+      const at = Date.now();
+      if (checked.status === "starting" && at - started < WAKE_LIMIT_MS && open.current) {
+        setWaking((current) => ({ ...current, [id]: true }));
+        await new Promise((resolve) => setTimeout(resolve, WAKE_RETRY_MS));
+        if (!open.current) return;
+        continue;
+      }
+      found = {
+        at,
+        ms: at - started,
+        status: checked.status,
+        message: checked.status === "ok" ? null : checked.status_message,
+        gaveUp: checked.status === "starting",
+      };
+      break;
+    }
+    if (!open.current) return;
+    setOutcome((current) => ({ ...current, [id]: found }));
+    setFlash((current) => ({ ...current, [id]: found.status === "ok" ? "good" : "bad" }));
+    setWaking((current) => without(current, id));
+    setChecking((current) => without(current, id));
+  }
+
+  async function check(ids: string[]) {
+    await Promise.all(ids.map(checkOne));
+    if (open.current) await onChange();
+  }
+
+  async function remove(id: string) {
+    setDeleting(true);
     setError(null);
     try {
-      await action();
+      await api.deleteEndpoint(id);
+      setConfirm(null);
+      setEditing(null);
       await onChange();
     } catch (exc) {
+      setConfirm(null);
       setError((exc as Error).message);
     } finally {
-      setBusy(null);
+      setDeleting(false);
     }
   }
 
   return (
     <>
       <PageHead
-        title="Endpoint"
-        actions={endpoints.length > 0 && <Button icon={Plus} variant="ghost" onClick={onAdd}>Thêm endpoint</Button>}
-      >
-        Các endpoint chuẩn OpenAI do CLI FlexSDS tạo ra. Endpoint mốc là chuẩn để tính “nhanh gấp mấy lần” ở mọi trang.
-      </PageHead>
+        title={t.pageEndpoints}
+        actions={endpoints.length > 0 && (
+          <Button
+            variant="ghost"
+            icon={RefreshCw}
+            loading={running > 0}
+            disabled={running > 0}
+            onClick={() => void check(endpoints.map((e) => e.endpoint_id))}
+          >
+            {running > 0 ? t.checkingCount(running) : t.checkAll}
+          </Button>
+        )}
+      />
 
       {endpoints.length === 0 ? (
         <Onboarding onAdd={onAdd} />
       ) : (
-        <Panel
-          title="Danh sách endpoint"
-          icon={Server}
-          meta={<span>Trạng thái chỉ kiểm tra khi bạn bấm, để không đánh thức GPU ngoài ý muốn</span>}
-          bodyClassName="p-0 gap-0"
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] border-collapse text-left text-[13.5px]">
-              <thead className="text-ink-3">
-                <tr className="border-b border-line">
-                  <th className="px-[18px] py-2.5 font-semibold">Tên</th>
-                  <th className="px-3 py-2.5 font-semibold">Model và địa chỉ</th>
-                  <th className="px-3 py-2.5 font-semibold">Nền tảng và cấu hình</th>
-                  <th className="px-3 py-2.5 font-semibold">Trạng thái</th>
-                  <th className="px-3 py-2.5 font-semibold">Mốc</th>
-                  <th className="px-[18px] py-2.5 text-right font-semibold">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {endpoints.map((e) => (
-                  <tr key={e.endpoint_id} className="border-b border-line last:border-0 align-top">
-                    <td className="px-[18px] py-3">
-                      <NameCell
-                        endpoint={e}
-                        color={colors[e.endpoint_id]}
-                        onRename={(name) => act(e.endpoint_id, () => api.updateEndpoint(e.endpoint_id, { name }))}
-                      />
-                      {e.has_key && <span className="ml-[18px] text-[12px] text-ink-3">đã đặt khoá API</span>}
-                    </td>
-                    <td className="max-w-[320px] px-3 py-3">
-                      <div className="font-semibold">{e.model_id}</div>
-                      <div className="truncate font-mono text-[12.5px] text-ink-3" title={e.base_url}>{e.base_url}</div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div>{PLATFORM_LABELS[e.platform] ?? e.platform}{e.max_model_len ? `, ngữ cảnh ${e.max_model_len.toLocaleString("vi-VN")}` : ""}</div>
-                      <div className="text-[12.5px] text-ink-3">{metaLine(e)}</div>
-                    </td>
-                    <td className="px-3 py-3">
-                      {e.status === "ok" ? <Pill tone="good">Đang chạy</Pill> : <Pill tone="bad">Đã dừng</Pill>}
-                      {e.status === "down" && e.status_message && <div className="mt-1 max-w-[220px] text-[12px] text-ink-3">{e.status_message}</div>}
-                    </td>
-                    <td className="px-3 py-3">
-                      <label className="inline-flex cursor-pointer items-center gap-2">
-                        <input
-                          type="radio"
-                          name="baseline"
-                          checked={e.is_baseline}
-                          disabled={busy !== null}
-                          onChange={() => act(e.endpoint_id, () => api.updateEndpoint(e.endpoint_id, { is_baseline: true }))}
-                          aria-label={`Chọn ${e.name} làm mốc`}
-                        />
-                        {e.is_baseline ? "Mốc" : ""}
-                      </label>
-                    </td>
-                    <td className="px-[18px] py-3">
-                      <div className="flex justify-end gap-2">
-                        {confirmDelete === e.endpoint_id ? (
-                          <>
-                            <span className="self-center text-[13px] text-ink-2">Xoá endpoint này?</span>
-                            <Button variant="danger" disabled={busy !== null} onClick={() => act(e.endpoint_id, () => api.deleteEndpoint(e.endpoint_id)).then(() => setConfirmDelete(null))}>
-                              Xoá
-                            </Button>
-                            <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Giữ lại</Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              variant="ghost"
-                              icon={RefreshCw}
-                              disabled={busy !== null}
-                              onClick={() => act(e.endpoint_id, () => api.checkEndpoint(e.endpoint_id))}
-                            >
-                              {busy === e.endpoint_id ? "Đang kiểm tra…" : "Kiểm tra lại"}
-                            </Button>
-                            <Button variant="danger" icon={Trash2} aria-label={`Xoá ${e.name}`} onClick={() => setConfirmDelete(e.endpoint_id)} />
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
+        <section aria-label={t.endpointsList} className="overflow-hidden rounded-xl border border-line bg-surface">
+          {endpoints.map((e) => {
+            const busy = checking[e.endpoint_id] !== undefined;
+            const targetName = baseModel(e);
+            const draftName = e.meta?.draft_model ?? null;
+            const adaptiveOn = isHardwareAdaptive(e.meta);
+            return (
+              <article
+                key={e.endpoint_id}
+                aria-label={e.name}
+                className={cx(
+                  "grid gap-x-5 gap-y-3 border-line px-[18px] py-4 [&+&]:border-t",
+                  "md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]",
+                  "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(140px,0.7fr)_auto]",
+                  flash[e.endpoint_id] === "good" && "animate-row-good",
+                  flash[e.endpoint_id] === "bad" && "animate-row-bad",
+                  flash[e.endpoint_id] === "info" && "animate-row-info",
+                )}
+                onAnimationEnd={() => setFlash((current) => without(current, e.endpoint_id))}
+              >
+                <div className="grid min-w-0 content-start gap-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Dot color={colors[e.endpoint_id]} />
+                    <button
+                      type="button"
+                      onClick={() => setEditing(e.endpoint_id)}
+                      className="truncate text-left text-[15px] font-bold hover:underline"
+                    >
+                      {e.name}
+                    </button>
+                  </div>
+                  <div className="flex min-w-0 items-center gap-1 font-mono text-[12.5px] text-ink-3">
+                    <span className="truncate" title={e.base_url}>{shortUrl(e.base_url)}</span>
+                    <CopyButton text={e.base_url} label={t.copyAddress(e.name)} />
+                  </div>
+                </div>
+
+                <dl className="m-0 grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] content-start gap-x-3 gap-y-1 text-[13px]">
+                  <dt className="text-ink-3">{t.epFieldChip}</dt>
+                  <dd className="m-0 truncate font-medium text-ink">{e.meta?.gpu || "—"}</dd>
+                  <dt className="text-ink-3">{t.epFieldDraft}</dt>
+                  <dd className="m-0 truncate text-ink-2" title={draftName ?? undefined}>{draftName ? shortModelName(draftName) : "—"}</dd>
+                  <dt className="text-ink-3">{t.epFieldTarget}</dt>
+                  <dd className="m-0 truncate text-ink-2" title={targetName}>{shortModelName(targetName)}</dd>
+                  <dt className="text-ink-3">{t.epFieldAdaptive}</dt>
+                  <dd className="m-0">
+                    <span className={cx(
+                      "inline-flex items-center rounded-md px-1.5 py-px text-[11.5px] font-bold",
+                      adaptiveOn ? "bg-good-tint text-good" : "bg-sunken text-ink-3",
+                    )}>
+                      {adaptiveOn ? t.onLabel : t.offLabel}
+                    </span>
+                  </dd>
+                </dl>
+
+                <div className="grid content-start justify-items-start gap-1" aria-live="polite">
+                  <StatusCell
+                    endpoint={e}
+                    checkingFor={busy ? secondsSince(checking[e.endpoint_id], now) : null}
+                    waking={waking[e.endpoint_id] === true}
+                    outcome={outcome[e.endpoint_id]}
+                    now={now}
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-start gap-1.5 lg:justify-end">
+                  <Button variant="ghost" icon={RefreshCw} loading={busy} disabled={busy} aria-label={t.checkEndpointAria(e.name)}
+                    className="px-2.5 py-1.5 text-[13px]" onClick={() => void check([e.endpoint_id])}>
+                    {t.actionCheck}
+                  </Button>
+                  <Button variant="ghost" icon={Pencil} aria-label={t.editEndpointAria(e.name)} className="px-2.5 py-1.5 text-[13px]"
+                    onClick={() => setEditing(e.endpoint_id)}>
+                    {t.actionEdit}
+                  </Button>
+                  <Button variant="danger" icon={Trash2} aria-label={t.deleteEndpointAria(e.name)} disabled={busy} className="px-2.5 py-1.5 text-[13px]"
+                    onClick={() => setConfirm(e.endpoint_id)}>
+                    {t.actionDelete}
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
       )}
 
       {error && <Notice tone="bad">{error}</Notice>}
-      {endpoints.length > 0 && !endpoints.some((e) => e.is_baseline) && (
-        <Notice tone="info">Chưa chọn endpoint mốc: các trang chỉ hiện số tuyệt đối (thời gian, TTFT, TPOT), không hiện hệ số tăng tốc.</Notice>
-      )}
       {models.size > 1 && (
-        <Notice tone="warn">Các endpoint đang chạy {models.size} model khác nhau. So sánh tốc độ giữa hai model khác nhau không công bằng.</Notice>
+        <Notice tone="warn">{t.diffModelsWarn(models.size)}</Notice>
       )}
-      {endpoints.length > 0 && (
-        <Panel title="Endpoint trên máy cá nhân" icon={Terminal}>
-          <p className="text-ink-2">
-            Web chạy trên mạng nên không gọi được <code className="font-mono">http://127.0.0.1</code>. Mở đường hầm trên máy đang chạy flexsds rồi dán địa chỉ
-            {" "}<code className="font-mono">https://….trycloudflare.com/v1</code> mà lệnh in ra. Colab dùng cùng cách này.
-          </p>
-          <pre className="overflow-x-auto rounded-lg bg-sunken px-4 py-3 font-mono text-[13px]">cloudflared tunnel --url http://127.0.0.1:8000</pre>
-        </Panel>
+
+      {editingEndpoint && (
+        <EndpointEditDrawer
+          key={editingEndpoint.endpoint_id}
+          api={api}
+          endpoint={editingEndpoint}
+          paused={confirm !== null}
+          onClose={closeEditor}
+          onSaved={onChange}
+          onDelete={() => setConfirm(editingEndpoint.endpoint_id)}
+        />
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title={t.deleteTitle(confirming.name)}
+          confirmLabel={t.deleteConfirm}
+          confirmIcon={Trash2}
+          busy={deleting}
+          onConfirm={() => void remove(confirming.endpoint_id)}
+          onCancel={() => setConfirm(null)}
+        >
+          <p className="text-ink-2">{t.deleteBody}</p>
+        </ConfirmDialog>
       )}
     </>
   );

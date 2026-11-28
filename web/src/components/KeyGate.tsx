@@ -3,16 +3,17 @@
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
 
-import { BrandMark } from "@/components/ui";
+import { BrandMark, LanguageSwitcher } from "@/components/ui";
 import { ApiError } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
-  // Checks the key against the backend (an authenticated request); resolves when it is accepted.
   verify: (key: string) => Promise<void>;
   onAccepted: (key: string) => void;
 }
 
 export default function KeyGate({ verify, onAccepted }: Props) {
+  const { t } = useI18n();
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -25,7 +26,7 @@ export default function KeyGate({ verify, onAccepted }: Props) {
       await verify(key.trim());
       onAccepted(key.trim());
     } catch (exc) {
-      setError(exc instanceof ApiError && exc.status === 401 ? "Sai mật khẩu demo" : (exc as Error).message);
+      setError(exc instanceof ApiError && exc.status === 401 ? t.keyWrong : (exc as Error).message);
     } finally {
       setBusy(false);
     }
@@ -34,16 +35,19 @@ export default function KeyGate({ verify, onAccepted }: Props) {
   return (
     <main className="grid min-h-screen place-items-center bg-rail px-4 text-[14.5px]">
       <form onSubmit={submit} className="grid w-full max-w-sm gap-4 rounded-2xl bg-surface p-7">
-        <div className="flex items-center gap-2.5">
-          <BrandMark size={36} className="ring-1 ring-line" />
-          <div className="leading-tight">
-            <h1 className="text-lg font-bold">FlexSDS Console</h1>
-            <p className="text-[13px] text-ink-3">Đồ án tốt nghiệp D22, PTIT</p>
+        <div className="flex items-start justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <BrandMark size={36} className="ring-1 ring-line" />
+            <div className="leading-tight">
+              <h1 className="text-lg font-bold">FlexSDS Benchmark</h1>
+              <p className="text-[13px] text-ink-3">{t.subtitlePtit}</p>
+            </div>
           </div>
+          <LanguageSwitcher />
         </div>
-        <p className="text-ink-2">Nhập mật khẩu demo để dùng hệ thống.</p>
+        <p className="text-ink-2">{t.keyPrompt}</p>
         <div className="grid gap-1.5">
-          <label htmlFor="demo-key" className="text-[13.5px] font-semibold">Mật khẩu demo</label>
+          <label htmlFor="demo-key" className="text-[13.5px] font-semibold">{t.keyLabel}</label>
           <input
             id="demo-key"
             type="password"
@@ -60,7 +64,7 @@ export default function KeyGate({ verify, onAccepted }: Props) {
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-3.5 py-2.5 font-semibold text-surface disabled:opacity-50"
         >
           <KeyRound aria-hidden className="size-4" />
-          {busy ? "Đang kiểm tra…" : "Vào console"}
+          {busy ? t.keyChecking : t.keyEnter}
         </button>
       </form>
     </main>

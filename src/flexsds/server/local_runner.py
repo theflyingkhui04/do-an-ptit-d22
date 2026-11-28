@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import signal
 import socket
@@ -61,49 +62,135 @@ def finish_launch(proc, background: bool = False) -> int:
             output.close()
 
 
+K_SELECTION_MODES = frozenset({"batch", "max_k"})
+
+
+DEFAULT_TARGET_MODEL = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+
+
+def default_served_model_name(serving_cfg: Dict[str, Any]) -> str:
+    """Name the endpoint after its target and lane: <target>-adaptive, -static or -vanilla.
+
+    The default Qwen2.5-7B target keeps the historical "qwen2.5-7b" prefix.
+    """
+    if serving_cfg.get("disable_speculative"):
+        lane = "vanilla"
+    elif serving_cfg.get("enable_adaptive", True):
+        lane = "adaptive"
+    else:
+        lane = "static"
+    target = str(serving_cfg.get("target_model") or DEFAULT_TARGET_MODEL)
+    if target.startswith(("Qwen/Qwen2.5-7B-Instruct", "qwen/qwen2.5-7b-instruct")):
+        base = "qwen2.5-7b"
+    else:
+        base = re.sub(r"[^a-z0-9.]+", "-", target.rstrip("/").split("/")[-1].lower()).strip("-") or "model"
+    return f"{base}-{lane}"
+
+
 class LocalServingRunner:
     """Khởi chạy và quản lý vòng đời máy chủ vLLM cục bộ với FlexSDS."""
+
+    @staticmethod
+    def _validate_execution_options(serving_cfg: Dict[str, Any]) -> None:
+        enable_adaptive = bool(serving_cfg.get("enable_adaptive", True))
+        disable_speculative = bool(serving_cfg.get("disable_speculative", False))
+        static_k = serving_cfg.get("static_k")
+        flush_every = serving_cfg.get("step_telemetry_flush_every")
+
+        if disable_speculative and enable_adaptive:
+            raise ValueError("Cannot enable adaptive scheduling when speculative decoding is disabled")
+        if static_k is not None:
+            if enable_adaptive or disable_speculative:
+                raise ValueError(
+                    "static_k is only valid for static speculative mode "
+                    "(enable_adaptive=False, disable_speculative=False)"
+                )
+            if isinstance(static_k, bool) or not isinstance(static_k, int) or not 1 <= static_k <= 8:
+                raise ValueError("static_k must be an integer between 1 and 8")
+        if flush_every is not None:
+            if isinstance(flush_every, bool) or not isinstance(flush_every, int) or flush_every < 1:
+                raise ValueError("step_telemetry_flush_every must be a positive integer")
+        k_selection = serving_cfg.get("k_selection")
+        if k_selection is not None and k_selection not in K_SELECTION_MODES:
+            raise ValueError(f"k_selection must be one of {sorted(K_SELECTION_MODES)}: {k_selection!r}")
+
+    def describe_execution_contract(self, config: Dict[str, Any]) -> str:
+        """Trả về nhãn hợp đồng thực thi chuẩn cho log đối chứng và dry-run."""
+        serving_cfg = config.get("serving", config)
+        self._validate_execution_options(serving_cfg)
+        enable_adaptive = bool(serving_cfg.get("enable_adaptive", True))
+        match_adaptive_runtime = bool(serving_cfg.get("match_adaptive_runtime", False))
+        disable_speculative = bool(serving_cfg.get("disable_speculative", False))
+        disable_prefix_caching = bool(serving_cfg.get("disable_prefix_caching", False))
+
+        if enable_adaptive:
+            label = "adaptive-eager-v1"
+        elif disable_speculative:
+            label = "vanilla-matched-eager-v1" if match_adaptive_runtime else "vanilla-default"
+        else:
+            label = "static-matched-eager-v1" if match_adaptive_runtime else "static-default"
+
+        if disable_prefix_caching:
+            label += "+no-prefix-cache"
+        return label
 
     def build_command(self, config: Dict[str, Any], port: Optional[int] = None) -> List[str]:
         """Tạo danh sách đối số dòng lệnh chạy vLLM phục vụ mô hình."""
         serving_cfg = config.get("serving", config)
+        self._validate_execution_options(serving_cfg)
+
         target_model = serving_cfg.get("target_model", "Qwen/Qwen2.5-7B-Instruct-AWQ")
         draft_model = serving_cfg.get("draft_model", "duckhoi/qwen2.5-7b-eagle3.1-speculator")
         draft_method = serving_cfg.get("draft_method", "eagle3")
         use_hetero = serving_cfg.get("use_heterogeneous_vocab", False)
+        enable_adaptive = bool(serving_cfg.get("enable_adaptive", True))
+        match_adaptive_runtime = bool(serving_cfg.get("match_adaptive_runtime", False))
+        disable_speculative = bool(serving_cfg.get("disable_speculative", False))
+        disable_prefix_caching = bool(serving_cfg.get("disable_prefix_caching", False))
+        static_k = serving_cfg.get("static_k")
 
         effective_port = port if port is not None else serving_cfg.get("port", 8000)
         target_lower = target_model.lower()
 
-        # Xác định quantization và dtype
+        # Xác định quantization và dtype (T4 / sm_75 không hỗ trợ BF16 và awq_marlin)
+        target_gpu = str(serving_cfg.get("target_gpu") or "").strip().upper()
+        hw_cfg = serving_cfg.get("hardware") if isinstance(serving_cfg.get("hardware"), dict) else {}
+        sm_arch = str(hw_cfg.get("sm_architecture") or "").strip().lower()
+        is_turing_t4 = target_gpu == "T4" or sm_arch == "sm_75"
+        explicit_dtype = serving_cfg.get("dtype")
+        explicit_quant = serving_cfg.get("quantization")
+
         if "awq" in target_lower:
-            quantization = "awq_marlin"
-            dtype = "bfloat16"
+            quantization = explicit_quant or ("awq" if is_turing_t4 else "awq_marlin")
+            dtype = explicit_dtype or ("half" if is_turing_t4 else "bfloat16")
         elif "gptq" in target_lower:
-            quantization = "gptq"
-            dtype = "float16"
+            quantization = explicit_quant or "gptq"
+            dtype = explicit_dtype or "float16"
         else:
-            quantization = serving_cfg.get("quantization", "none")
-            dtype = serving_cfg.get("dtype", "bfloat16")
+            quantization = explicit_quant or "none"
+            dtype = explicit_dtype or ("half" if is_turing_t4 else "bfloat16")
 
         profile_data = None
         if serving_cfg.get('profile_path'):
             profile_data = json.loads(Path(serving_cfg['profile_path']).read_text())
-        if draft_method not in {'eagle', 'eagle3', 'draft_model'}:
-            raise ValueError('Unsupported draft method')
-        is_eagle = draft_method in {"eagle", "eagle3"}
 
-        speculative_config: Dict[str, Any] = {
-            "method": draft_method,
-            "model": draft_model,
-            "num_speculative_tokens": 4,
-            "draft_sample_method": "greedy",
-        }
-        if serving_cfg.get("enable_adaptive", True) or not is_eagle:
-            speculative_config["num_speculative_tokens_per_batch_size"] = [[1, 32, 4]]
+        speculative_config: Optional[Dict[str, Any]] = None
+        if not disable_speculative:
+            if draft_method not in {'eagle', 'eagle3', 'draft_model'}:
+                raise ValueError('Unsupported draft method')
+            is_eagle = draft_method in {"eagle", "eagle3"}
+            num_spec_tokens = static_k if (not enable_adaptive and static_k is not None) else 4
+            speculative_config = {
+                "method": draft_method,
+                "model": draft_model,
+                "num_speculative_tokens": num_spec_tokens,
+                "draft_sample_method": "greedy",
+            }
+            if enable_adaptive or not is_eagle:
+                speculative_config["num_speculative_tokens_per_batch_size"] = [[1, 32, num_spec_tokens]]
 
-        if use_hetero:
-            speculative_config["use_heterogeneous_vocab"] = True
+            if use_hetero:
+                speculative_config["use_heterogeneous_vocab"] = True
 
         cmd: List[str] = [
             "vllm",
@@ -114,7 +201,7 @@ class LocalServingRunner:
             "--port",
             str(effective_port),
             "--served-model-name",
-            serving_cfg.get("served_model_name", "qwen2.5-7b-adaptive"),
+            serving_cfg.get("served_model_name") or default_served_model_name(serving_cfg),
             "--dtype",
             dtype,
             "--generation-config",
@@ -127,8 +214,17 @@ class LocalServingRunner:
             str(serving_cfg.get("max_num_seqs", 32)),
         ]
 
-        if serving_cfg.get("enable_adaptive", True):
-            cmd.extend(["--enforce-eager", "--compilation-config", json.dumps({"mode": 0})])
+        use_matched_eager = bool(enable_adaptive or match_adaptive_runtime)
+        if use_matched_eager:
+            cmd.extend([
+                "--enforce-eager",
+                "--compilation-config",
+                json.dumps({"mode": 0}),
+                "--async-scheduling",
+            ])
+
+        if disable_prefix_caching:
+            cmd.append("--no-enable-prefix-caching")
 
         if quantization != "none":
             cmd.extend(["--quantization", quantization])
@@ -137,9 +233,9 @@ class LocalServingRunner:
         draft_revision = serving_cfg.get('draft_revision')
         if target_revision and target_revision != 'local':
             cmd.extend(['--revision', target_revision])
-        if draft_revision and draft_revision != 'local':
+        if speculative_config is not None and draft_revision and draft_revision != 'local':
             speculative_config['revision'] = draft_revision
-        if profile_data and serving_cfg.get('enable_adaptive', True):
+        if profile_data and enable_adaptive:
             if target_revision and target_revision != 'local':
                 if target_revision != profile_data['models']['target_revision']:
                     raise ValueError('Inspected target revision does not match the measured profile; recalibrate')
@@ -147,17 +243,18 @@ class LocalServingRunner:
                 cmd.extend(['--revision', profile_data['models']['target_revision']])
             if draft_revision and draft_revision != 'local' and draft_revision != profile_data['models']['draft_revision']:
                 raise ValueError('Inspected draft revision does not match the measured profile; recalibrate')
-            speculative_config['revision'] = profile_data['models']['draft_revision']
+            if speculative_config is not None:
+                speculative_config['revision'] = profile_data['models']['draft_revision']
+
         # EAGLE uses the same pinned sequential dynamic-K path as the M4 treatment.
-        if serving_cfg.get("enable_adaptive", True):
+        if enable_adaptive and speculative_config is not None:
             cmd.extend([
                 "--speculative-config", json.dumps(speculative_config),
-                "--async-scheduling",
                 "--scheduler-cls", "src.server.adaptive_scheduler.AdaptiveAsyncScheduler",
                 "--distributed-executor-backend", "src.server.lineage_executor.LineageUniProcExecutor",
                 "--per-request-spec-decode-metrics", "summary",
             ])
-        else:
+        elif speculative_config is not None:
             cmd.extend([
                 "--speculative-config", json.dumps(speculative_config),
                 "--per-request-spec-decode-metrics", "summary",
@@ -177,6 +274,9 @@ class LocalServingRunner:
     def setup_environment(self, config: Dict[str, Any]) -> Dict[str, str]:
         """Thiết lập các biến môi trường cho FlexSDS Adaptive Scheduler."""
         serving_cfg = config.get("serving", config)
+        self._validate_execution_options(serving_cfg)
+        enable_adaptive = bool(serving_cfg.get("enable_adaptive", True))
+        match_adaptive_runtime = bool(serving_cfg.get("match_adaptive_runtime", False))
         env = dict(os.environ)
         resolved = Path(__file__).resolve()
         project_root = str(resolved.parents[3]) if len(resolved.parents) > 3 else "/root/project"
@@ -184,7 +284,7 @@ class LocalServingRunner:
         if project_root not in existing_pythonpath:
             env["PYTHONPATH"] = f"{project_root}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else project_root
         # Never inherit a different profile/controller from the launcher's shell.
-        if serving_cfg.get("enable_adaptive", True):
+        if enable_adaptive:
             from flexsds.core.cost_model import validate_measured_profile
             path = Path(serving_cfg.get("profile_path") or "")
             if not path.is_file():
@@ -194,31 +294,52 @@ class LocalServingRunner:
                                       draft_model=serving_cfg.get("draft_model"))
             if data.get('draft_method') != serving_cfg.get('draft_method', 'eagle3'):
                 raise ValueError('Profile draft method mismatch')
+            from flexsds.core.calibration import profile_batch_coverage
             max_seqs = int(serving_cfg.get('max_num_seqs', 32))
-            if not 1 <= max_seqs <= 32:
-                raise ValueError('Adaptive profile supports at most 32 concurrent sequences')
-            canonical = [1, 2, 4, 8, 16, 32]
-            upper = next(b for b in canonical if b >= max_seqs)
-            required = {b for b in canonical if b <= upper}
-            if not required <= set(data['grid']['batches']):
-                raise ValueError(f'Profile batch grid does not cover max_num_seqs={max_seqs}; recalibrate')
+            top = profile_batch_coverage(data['grid']['batches'], max_seqs)
+            if top is not None:
+                print(f"Profile measured up to B={top}; batches above use the B={top} costs "
+                      f"(max_num_seqs={max_seqs}).")
             env["FLEXSDS_PROFILE_PATH"] = str(path.resolve())
             env["ADAPTIVE_STRICT"] = "1"
             env["VLLM_USE_V2_MODEL_RUNNER"] = "0"
         else:
-            env.pop("FLEXSDS_PROFILE_PATH", None)
+            for leaked in (
+                "FLEXSDS_PROFILE_PATH",
+                "ADAPTIVE_STRICT",
+                "ADAPTIVE_STEP_TELEMETRY_PATH",
+                "ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY",
+                "ADAPTIVE_K_SELECTION",
+                "ADAPTIVE_STARTUP_TELEMETRY_PATH",
+                "ADAPTIVE_CONTROLLER_KWARGS",
+            ):
+                env.pop(leaked, None)
+            if match_adaptive_runtime:
+                env["VLLM_USE_V2_MODEL_RUNNER"] = "0"
+            else:
+                env.pop("VLLM_USE_V2_MODEL_RUNNER", None)
         env["ADAPTIVE_ENABLE_VRAM_GUARD"] = "1"
         env["ADAPTIVE_TELEMETRY_PATH"] = os.path.abspath(
             serving_cfg.get("telemetry_path", "telemetry/serving_trace.jsonl")
         )
-        if serving_cfg.get('enable_adaptive', True):
+        if enable_adaptive:
             trace_dir = Path(env['ADAPTIVE_TELEMETRY_PATH']).parent
             trace_dir.mkdir(parents=True, exist_ok=True)
-            env['ADAPTIVE_STEP_TELEMETRY_PATH'] = str(trace_dir / 'serving_steps.jsonl')
+            if bool(serving_cfg.get("enable_step_telemetry", True)):
+                flush_every = serving_cfg.get("step_telemetry_flush_every")
+                if flush_every is None:
+                    flush_every = 64
+                env['ADAPTIVE_STEP_TELEMETRY_PATH'] = str(trace_dir / 'serving_steps.jsonl')
+                env['ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY'] = str(flush_every)
+            else:
+                env.pop('ADAPTIVE_STEP_TELEMETRY_PATH', None)
+                env.pop('ADAPTIVE_STEP_TELEMETRY_FLUSH_EVERY', None)
             env['ADAPTIVE_STARTUP_TELEMETRY_PATH'] = str(trace_dir / 'serving_lineage.jsonl')
         env["ADAPTIVE_MAX_K"] = str(serving_cfg.get("max_k", 4))
         env["ADAPTIVE_MIN_BATCH_K"] = "0"
         env["ADAPTIVE_PER_REQUEST"] = "1"
+        if enable_adaptive:
+            env["ADAPTIVE_K_SELECTION"] = serving_cfg.get("k_selection") or "batch"
         return env
 
     def launch(
@@ -240,6 +361,7 @@ class LocalServingRunner:
         if dry_run:
             print("\n[FlexSDS] Dry-run execution command:")
             print(" ".join(cmd))
+            print(f"Execution contract: {self.describe_execution_contract(config)}")
             print(f"Environment: ADAPTIVE_ENABLE_VRAM_GUARD={env.get('ADAPTIVE_ENABLE_VRAM_GUARD')}")
             return None
 

@@ -29,15 +29,9 @@ def test_credentials_manager_file_permissions_and_masking(tmp_path):
     assert masked["modal"]["MODAL_TOKEN_ID"].endswith("cdef")
 
 
-def test_credentials_inject_into_environ(tmp_path, monkeypatch):
-    cred_file = tmp_path / ".flexsds" / "credentials"
-    mgr = CredentialsManager(credentials_path=str(cred_file))
-    mgr.set_credential("modal", "MODAL_TOKEN_ID", "ak-test-token")
-    monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
-
-    mgr.inject_into_environ()
-    assert os.environ.get("MODAL_TOKEN_ID") == "ak-test-token"
-    monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
+def test_credentials_manager_has_no_environment_injection():
+    # Dead code removed: preflight reads the saved Hugging Face token directly (hugging_face_token).
+    assert not hasattr(CredentialsManager, "inject_into_environ")
 
 
 def test_credentials_delete_and_logout(tmp_path):

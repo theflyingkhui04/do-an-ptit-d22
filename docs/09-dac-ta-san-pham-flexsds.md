@@ -13,7 +13,7 @@
 Đề tài tập trung vào EAGLE kết hợp điều khiển thích ứng theo phần cứng. Các yêu cầu bên dưới là đặc tả mục tiêu, không phải danh sách tính năng đã nghiệm thu. Phạm vi hiện tại:
 
 - CLI đã nối **Hardware-Adaptive EAGLE scalar K** theo đường M4, với profile v2, async scheduler và paired lineage executor. CPU/source contract và functional GPU smoke ở batch 1 đã kiểm tra; full-grid và so sánh lossless/speedup còn chờ nghiệm thu. Static `k=4` là chế độ đối chứng có thể chọn.
-- Calibration mới đã đo component trên Modal A10G ở batch 1 và K=0..4, giữ 275 raw records; full grid tới batch 32 còn chờ kiểm chứng.
+- Calibration mới đã đo component trên Modal A10 ở batch 1 và K=0..4, giữ 275 raw records; full grid tới batch 32 còn chờ kiểm chứng.
 - Các lane baseline `draft_model` giữ nguyên ý nghĩa đối chứng. Đường adaptive EAGLE dùng cơ chế scalar chung đã được nhánh M4 mở rộng, có kiểm tra source EAGLE riêng.
 - Tree-adaptive được hoãn theo [quyết định phạm vi M4](../logs/problems/2026-11-12-m4-02-04-tree-adaptive-vllm-flattening-and-lineage-v02.md). Không diễn giải scalar K thành cấu trúc cây đã thực thi.
 - Lossless nói về tính đúng đắn của đầu ra; không đồng nghĩa bảo đảm speedup ≥1 trong mọi workload.
@@ -136,13 +136,13 @@ flexsds [HÀNH_ĐỘNG] [TÙY_CHỌN]
 
 ---
 
-## 5. Kế hoạch phát triển hệ sinh thái: AI Agent Skill (Mở rộng)
+## 5. FlexSDS Assistant
 
-Nhằm mở rộng tính ứng dụng của FlexSDS vào các công cụ lập trình AI thế hệ mới (Antigravity CLI, Claude Code), nhóm quy hoạch một Agent Skill mang tên `flexsds-advisor`:
-* **Kênh phân phối:** Phát hành qua nền tảng `skills.sh`.
+Nhằm mở rộng tính ứng dụng của FlexSDS vào các công cụ lập trình AI thế hệ mới (Antigravity CLI, Claude Code), nhóm quy hoạch skill **FlexSDS Assistant** (`flexsds-assistant`):
+* **Kênh phân phối:** Chia sẻ bundle qua repository GitHub. Codex và Antigravity dùng thư mục skill trong repo. Claude có thể dùng bản ZIP hoặc thư mục project của Claude Code.
 * **Năng lực của Skill:**
   1. *Tư vấn tương thích trước triển khai:* Đánh giá cấu hình phần cứng của người dùng và đề xuất cặp mô hình Target-Draft tối ưu nhất.
-  2. *Bản đồ quyết định tác vụ (Use-case Advisor):* Hướng dẫn người dùng khi nào NÊN bật suy luận phỏng đoán (các tác vụ có độ trễ quan trọng như agent loop, OCR, coding, trích xuất hóa đơn) và khi nào KHÔNG NÊN bật (tác vụ batch throughput quá lớn hoặc input dài mà output ngắn).
+  2. *Tư vấn theo tác vụ:* Hướng dẫn người dùng khi nào NÊN bật suy luận phỏng đoán (các tác vụ có độ trễ quan trọng như agent loop, OCR, coding, trích xuất hóa đơn) và khi nào KHÔNG NÊN bật (tác vụ batch throughput quá lớn hoặc input dài mà output ngắn).
   3. *Tự động tích hợp mã nguồn:* Quét mã nguồn Python của dự án người dùng, tự động refactor các lời gọi `openai.OpenAI()` để trỏ về endpoint của FlexSDS.
   4. *Chẩn đoán log hiệu năng:* Đọc dữ liệu telemetry của request để giải thích nguyên nhân tăng tốc hoặc sụt giảm tốc độ.
 

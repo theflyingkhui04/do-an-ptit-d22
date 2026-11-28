@@ -11,6 +11,32 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
+
+def hugging_face_token():
+    """Token for gated Hugging Face repos, or None. Never printed or logged.
+
+    Order: HF_TOKEN, HUGGING_FACE_HUB_TOKEN, the token saved by `flexsds auth login --provider
+    huggingface`, then the huggingface-cli token file (HF_TOKEN_PATH, else HF_HOME/token, else
+    ~/.cache/huggingface/token).
+    """
+    for key in ('HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN'):
+        value = os.environ.get(key, '').strip()
+        if value:
+            return value
+    try:
+        from flexsds.core.credentials import CredentialsManager
+        value = (CredentialsManager().get_stored_credential('huggingface', 'HF_TOKEN') or '').strip()
+        if value:
+            return value
+    except (OSError, ValueError):
+        pass
+    home = os.environ.get('HF_HOME') or os.path.join(os.path.expanduser('~'), '.cache', 'huggingface')
+    try:
+        value = Path(os.environ.get('HF_TOKEN_PATH') or os.path.join(home, 'token')).read_text(encoding='utf-8').strip()
+    except (OSError, UnicodeDecodeError):
+        value = ''
+    return value or None
+
 CACHE = Path.home() / '.flexsds' / 'cache' / 'inspection'
 MAX_JSON = 32 * 1024 * 1024
 MAX_HEADER = 8 * 1024 * 1024
@@ -68,7 +94,7 @@ class ModelFiles:
     @staticmethod
     def _http(url, limit, byte_range=None):
         headers = {'User-Agent': 'FlexSDS-Inspection/0.2', 'Accept-Encoding': 'identity'}
-        token = os.environ.get('HF_TOKEN') or os.environ.get('HUGGING_FACE_HUB_TOKEN')
+        token = hugging_face_token()
         if token:
             headers['Authorization'] = f'Bearer {token}'
         if byte_range:

@@ -24,11 +24,80 @@ WARMUP = 5
 REPEATS = 50
 
 
+def profile_batch_coverage(batches, max_num_seqs):
+    """Top measured batch when the grid stops below the serving batch, else None.
+
+    The grid must be a prefix of BATCHES (1, 2, 4, ...). A shorter grid is valid: on T4, B=16/32
+    do not fit the KV cache, so calibration measures 1..8 and larger batches use the nearest
+    measured batch (EmpiricalCostProfile.get_cost).
+    """
+    measured = sorted(set(int(b) for b in batches))
+    if not measured or measured != BATCHES[:len(measured)]:
+        raise ValueError(f'Profile batch grid {measured} must be a prefix of {BATCHES}; recalibrate')
+    if not 1 <= int(max_num_seqs) <= BATCHES[-1]:
+        raise ValueError(f'Adaptive profile supports at most {BATCHES[-1]} concurrent sequences')
+    return measured[-1] if measured[-1] < int(max_num_seqs) else None
+
+
 def measurement_settings(config):
     mode = config.get('measurement_mode', 'full')
     if mode not in ('fast', 'full'):
         raise ValueError('Measurement mode must be fast or full')
     return (2, 5) if mode == 'fast' else (WARMUP, REPEATS)
+
+
+def resolve_calibration_dtype_quant(target_model: str, sm_architecture: str):
+    """Select vLLM dtype/quantization compatible with the target GPU architecture."""
+    target_lower = target_model.lower()
+    is_turing = str(sm_architecture or '').strip().lower() == 'sm_75'
+    if 'awq' in target_lower:
+        return ('float16', 'awq') if is_turing else ('bfloat16', 'awq_marlin')
+    if 'gptq' in target_lower:
+        return ('float16', 'gptq')
+    return ('float16', None) if is_turing else ('bfloat16', None)
+
+
+def check_calibration_device(config, device):
+    """Modal GPUs must be exactly the requested card (A10 never A10G); other targets keep the lenient label match."""
+    from flexsds.core.hardware import (MODAL_GPU_NAMES, canonical_modal_gpu_name, device_matches_exactly,
+                                       matches_gpu_label)
+    expected = config.get('target_gpu')
+    if not expected:
+        return
+    token = canonical_modal_gpu_name(expected)
+    if token in MODAL_GPU_NAMES:
+        if not device_matches_exactly(token, device):
+            wanted = {'T4': 'Tesla T4', 'A100': 'NVIDIA A100 80GB'}.get(token, f'NVIDIA {token}')
+            raise RuntimeError(f'GPU mismatch: expected {wanted}, got {device}')
+    elif not matches_gpu_label(expected, device):
+        raise RuntimeError(f'GPU mismatch: expected {expected}, got {device}')
+
+
+DEFAULT_GPU_MEMORY_UTILIZATION = 0.85
+
+
+def calibration_engine_kwargs(config, batches, *, revision, dtype, quantization):
+    """vLLM engine settings for one calibration group.
+
+    Every sequence must be prefilled in one step (no chunked prefill), so the next step has the exact
+    decode shape that is timed. At B=32 x 1024 that prefill's activations leave a 16 GB T4 too little
+    KV cache at the default memory share; `gpu_memory_utilization` in the config (recorded in the
+    profile evidence) raises it. On T4, 0.95 gave 34.8k KV tokens but still ran out of memory at B=16
+    (2.3 GiB request, 3.3 GiB reserved-but-unallocated) on 27/11, so the T4 profile stays at B<=8.
+    """
+    share = float(config.get('gpu_memory_utilization', DEFAULT_GPU_MEMORY_UTILIZATION))
+    if not 0.5 <= share <= 0.98:
+        raise ValueError(f'gpu_memory_utilization must be within 0.50..0.98, got {share}')
+    cfg = dict(model=config['target_model'], revision=revision, dtype=dtype, max_model_len=4096,
+               max_num_seqs=32, max_num_batched_tokens=max(4096, max(batches)*CONTEXT),
+               gpu_memory_utilization=share, enforce_eager=True, generation_config='vllm',
+               compilation_config={'mode': 0},
+               enable_prefix_caching=False, enable_chunked_prefill=False,
+               async_scheduling=False,
+               worker_extension_cls='flexsds.core.calibration_worker.CalibrationWorker')
+    if quantization:
+        cfg['quantization'] = quantization
+    return cfg
 
 
 def measure_cell_group(config, k, batches):
@@ -42,10 +111,7 @@ def measure_cell_group(config, k, batches):
     if sm != config['sm_architecture']:
         raise RuntimeError(f"GPU mismatch: expected {config['sm_architecture']}, got {sm}")
     device = torch.cuda.get_device_name(0)
-    from flexsds.core.hardware import matches_gpu_label
-    expected = config.get('target_gpu')
-    if expected and not matches_gpu_label(expected, device):
-        raise RuntimeError(f'GPU mismatch: expected {expected}, got {device}')
+    check_calibration_device(config, device)
     if vllm.__version__ != '0.30.0':
         raise RuntimeError('Calibration requires vLLM 0.30.0')
     from huggingface_hub import HfApi
@@ -53,17 +119,9 @@ def measure_cell_group(config, k, batches):
     draft_revision = config.get('draft_revision') or HfApi().model_info(config['draft_model']).sha
     from vllm import LLM, SamplingParams
     from vllm.inputs import TokensPrompt
-    cfg = dict(model=config['target_model'], revision=target_revision, dtype='bfloat16', max_model_len=4096,
-               max_num_seqs=32, max_num_batched_tokens=max(4096, max(batches)*CONTEXT),
-               gpu_memory_utilization=0.85, enforce_eager=True, generation_config='vllm',
-               compilation_config={'mode': 0},
-               enable_prefix_caching=False, enable_chunked_prefill=False,
-               async_scheduling=False,
-               worker_extension_cls='flexsds.core.calibration_worker.CalibrationWorker')
-    if 'awq' in config['target_model'].lower():
-        cfg['quantization'] = 'awq_marlin'
-    elif 'gptq' in config['target_model'].lower():
-        cfg.update(quantization='gptq', dtype='float16')
+    dtype, quantization = resolve_calibration_dtype_quant(config['target_model'], sm)
+    cfg = calibration_engine_kwargs(config, batches, revision=target_revision, dtype=dtype,
+                                    quantization=quantization)
     # Keep the drafter loaded at K=0: EAGLE still synchronizes its KV cache.
     cfg['speculative_config'] = dict(method=config['draft_method'], model=config['draft_model'],
                                      num_speculative_tokens=4, draft_sample_method='greedy',
@@ -110,9 +168,10 @@ def build_profile(config, groups, batches):
     for k, group in zip(KS, groups):
         if group['sm_architecture'] != config['sm_architecture']:
             raise ValueError('Calibration hardware mismatch')
-        from flexsds.core.hardware import matches_gpu_label
-        if config.get('target_gpu') and not matches_gpu_label(config['target_gpu'], group['device']):
-            raise ValueError('Calibration GPU model mismatch')
+        try:
+            check_calibration_device(config, group['device'])
+        except RuntimeError as exc:
+            raise ValueError('Calibration GPU model mismatch') from exc
         devices.add(group['device'])
         revisions.add((group.get('target_revision'), group.get('draft_revision')))
         if group.get('vllm_version') != '0.30.0':

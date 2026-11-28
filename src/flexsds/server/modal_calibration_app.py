@@ -10,12 +10,14 @@ package_root = str(parents[2]) if len(parents) > 2 else '/root/project/src'
 if package_root not in sys.path:
     sys.path.insert(0, package_root)
 import modal
+from flexsds.core.hardware import MODAL_GPU_NAMES, modal_gpu_resource
 from flexsds.server.modal_image import serving_image
 
 request = json.loads(os.environ['FLEXSDS_CALIBRATION_REQUEST'])
 config = request['config']
-if config.get('target_gpu') not in {'A10G', 'L4', 'T4'}:
+if config.get('target_gpu') not in MODAL_GPU_NAMES:
     raise ValueError('Unsupported calibration GPU')
+MODAL_GPU = modal_gpu_resource(config['target_gpu'])
 app = modal.App('flexsds-calibration')
 image = (serving_image()
          .env({'PYTHONPATH': '/root/project/src', 'VLLM_USE_V2_MODEL_RUNNER': '0',
@@ -26,7 +28,7 @@ if modal.is_local():
 volume = modal.Volume.from_name('ptit-model-cache', create_if_missing=True)
 
 
-@app.function(image=image, gpu=config['target_gpu'], timeout=21600,
+@app.function(image=image, gpu=MODAL_GPU, timeout=21600,
               volumes={'/root/.cache/huggingface': volume})
 def measure(settings, batches):
     from flexsds.core.calibration import KS, run_local_group

@@ -1,6 +1,6 @@
 # Kịch bản sử dụng chuẩn cho kỹ năng tác tử thông minh FlexSDS (Happy path runbook)
 
-> **Tài liệu:** Kịch bản người dùng chuẩn (Happy path) cho kỹ năng tác tử (Agent skill) FlexSDS  
+> **Tài liệu:** Kịch bản sử dụng FlexSDS Assistant
 > **Dự án:** Đồ án tốt nghiệp đại học — Ngành Công nghệ Thông tin, PTIT  
 > **Thành viên phụ trách:** Cấn Đức Khôi (Lead), Bùi Đức Đại (Reviewer)  
 > **Vị trí lưu trữ:** `logs/Khoi/spec&plan/flexsds-skill/happy-path.md`  
@@ -12,7 +12,7 @@
 
 ## 1. Mục đích tài liệu
 
-Tài liệu này đặc tả chi tiết kịch bản sử dụng chuẩn (**Happy path**) khi một người dùng tương tác bằng ngôn ngữ tự nhiên với một tác tử lập trình AI (AI Coding Agent như Claude Code, Antigravity, Codex...) được tích hợp kỹ năng **FlexSDS Agent Skill** (`flexsds-serving`).
+Tài liệu này đặc tả chi tiết kịch bản sử dụng chuẩn (**Happy path**) khi một người dùng tương tác bằng ngôn ngữ tự nhiên với một tác tử lập trình AI (AI Coding Agent như Claude Code, Antigravity, Codex...) được tích hợp kỹ năng **FlexSDS Assistant** (`flexsds-assistant`).
 
 Khác với CLI truyền thống nơi con người phải tự gõ từng lệnh và chọn từng menu, kỹ năng tác tử cho phép:
 1. **Tự động nhận diện phần cứng (Zero-config audit):** Tác tử tự chạy công cụ quét GPU, đo VRAM và kiến trúc SM.
@@ -50,7 +50,7 @@ Người dùng mở cửa sổ chat với AI Agent và yêu cầu:
 > *"Tôi muốn dựng một chatbot dùng mô hình Qwen 7B trên máy tính này để thử nghiệm. Bạn kiểm tra xem cấu hình máy tôi có gánh nổi không và tối ưu tốc độ giúp tôi nhé."*
 
 #### Bước 1.2: Tác tử kích hoạt kỹ năng và quét phần cứng ngầm
-Tác tử nhận diện ý định triển khai LLM và kích hoạt kỹ năng `flexsds-serving`. Tác tử thực thi lệnh kiểm tra:
+Tác tử nhận diện ý định triển khai LLM và kích hoạt kỹ năng `flexsds-assistant`. Tác tử thực thi lệnh kiểm tra:
 ```bash
 flexsds detect --json
 ```
@@ -208,40 +208,18 @@ flexsds stop
 
 ---
 
-## 4. Đặc tả cấu trúc gói Agent Skill phát hành lên GitHub & `skills.sh`
+## 4. Cài FlexSDS Assistant
 
-Gói kỹ năng sẽ được cấu trúc chuẩn hóa như sau:
+Bundle gốc nằm tại `.agents/skills/flexsds-assistant/` trong repo FlexSDS. Có thể chia sẻ thư mục này qua GitHub hoặc phát hành ZIP chứa toàn bộ thư mục.
 
-```text
-flexsds-agent-skill/
-├── SKILL.md                          # Tệp đặc tả kỹ năng chuẩn (Prompt instruction, trigger rules, actions)
-├── package.json                      # Metadata xuất bản trên skills.sh / npm
-├── README.md                         # Hướng dẫn cài đặt cho Claude Code, Antigravity, Cursor
-├── scripts/
-│   ├── detect_hardware_json.py       # Wrapper xuất JSON phần cứng
-│   ├── calculate_speedup.py          # Tính toán giải tích lý thuyết tốc độ tăng tốc
-│   └── pre_check_hf_model.py         # Kiểm tra an toàn trước khi tải weights
-└── references/
-    ├── modal_byoc_setup.md           # Hướng dẫn chi tiết thiết lập Modal
-    ├── colab_tunnel_guide.md         # Hướng dẫn thiết lập Colab Cloudflare tunnel
-    └── eagle_speculator_matrix.md    # Bảng ánh xạ mô hình đích và đầu nháp EAGLE tương thích
-```
+| Nền tảng | Cách cài |
+|---|---|
+| Codex | Mở repo có bundle trong `.agents/skills/`. Để dùng chung trên máy, sao chép bundle vào `~/.agents/skills/`. |
+| Antigravity App, IDE và CLI | Mở workspace chứa repo có bundle trong `.agents/skills/`. Để dùng chung trên máy, sao chép bundle vào `~/.gemini/config/skills/`. |
+| Claude Code | Sao chép bundle vào `.claude/skills/` của project hoặc `~/.claude/skills/` của người dùng. |
+| Claude web hoặc Desktop | Nén thư mục `flexsds-assistant/` thành ZIP. Vào **Customize → Skills → + → Create skill → Upload a skill**. |
 
-### Nội dung mẫu tệp `SKILL.md` (Định dạng Open Agent Skill)
-
-```yaml
----
-name: flexsds-serving
-description: "Hardware-aware LLM serving skill powered by FlexSDS adaptive speculative decoding. Automatically inspects local or remote GPU hardware, prevents OOM via pre-download metadata checks, estimates inference speedup over vanilla vLLM, and launches optimized serving endpoints on Local GPU, Modal Cloud, or Google Colab."
-tools:
-  - run_command
-  - read_file
-metadata:
-  version: "0.2.0"
-  author: "Can Duc Khoi & Bui Duc Dai (PTIT)"
-  repository: "https://github.com/theflyingkhui04/do-an-ptit-d22"
----
-```
+Khi người dùng muốn thực thi lệnh, môi trường của agent cần có FlexSDS CLI. Cài skill cung cấp workflow cho agent. Việc triển khai GPU hoặc endpoint serving được thực hiện riêng qua CLI.
 
 ---
 

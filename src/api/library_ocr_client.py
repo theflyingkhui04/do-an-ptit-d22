@@ -39,6 +39,16 @@ class LibraryOcrClient:
         self.poll_s = poll_s
         self._clock = clock
         self._sleep = sleep
+        # Optional hook of the Node 1 job log (design D13): one ``waiting`` dict before each retry.
+        self.progress: Callable[[dict[str, Any]], None] | None = None
+
+    def _report(self, **fields: Any) -> None:
+        if self.progress is None:
+            return
+        try:
+            self.progress({"kind": "waiting", **fields})
+        except Exception:  # the console is only an observer
+            pass
 
     def _error(self, message: str) -> LLMError:
         return LLMError(f"ocr: {message}".replace(self._token, "***"))
@@ -47,17 +57,23 @@ class LibraryOcrClient:
         url = f"{self.base_url}{path}"
         headers = {"Authorization": f"Bearer {self._token}"}
         start = self._clock()
+        tries = 0
         while True:
             try:
                 response = self._client.request(method, url, headers=headers, **kwargs)
             except httpx.HTTPError as exc:  # cold start: refused or reset before any response
                 if self._clock() - start >= self.ready_timeout_s:
                     raise self._error(f"cannot reach {url}: {type(exc).__name__}") from exc
+                reason = type(exc).__name__
             else:
                 if response.status_code != 503:
                     return response
                 if self._clock() - start >= self.ready_timeout_s:
                     raise self._error(f"not ready after {self.ready_timeout_s:.0f} s (HTTP 503)")
+                reason = "HTTP 503"
+            tries += 1
+            self._report(tries=tries, waited_s=self._clock() - start, reason=reason, retry_in_s=self.poll_s,
+                         ready_timeout_s=self.ready_timeout_s)
             self._sleep(self.poll_s)
 
     def health(self) -> bool:

@@ -1,3 +1,0 @@
-interface:
-  display_name: "FlexSDS Advisor"
-  short_description: "Inspect FlexSDS setup and serving CLI failures"

@@ -21,7 +21,7 @@ def test_status_needs_no_key_but_everything_else_does():
             assert getattr(client, method)(path).status_code == 401
             assert getattr(client, method)(path, headers={"X-Demo-Key": "wrong-key-000"}).status_code == 401
         assert client.post("/api/questions", json={"question": "x"}).status_code == 401
-        assert client.post("/api/endpoints", json={"urls": ["https://x.modal.run/v1"]}).status_code == 401
+        assert client.post("/api/endpoints", json={"endpoints": [{"url": "https://x.modal.run/v1"}]}).status_code == 401
         assert client.post("/api/reports", json={"endpoint_id": "ep_0000000a"}).status_code == 401
         assert client.get("/api/invoices", headers=HEADERS).status_code == 200
 

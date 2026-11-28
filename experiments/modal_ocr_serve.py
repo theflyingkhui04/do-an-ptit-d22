@@ -12,7 +12,7 @@ Deploy from the repository root with the conda env ``doan-d22``:
 
 Endpoint: ``ocr.ocr_endpoint_url(os.environ)``
 (``https://<workspace>--ptit-ocr-serve-ocr.us-east.modal.direct/v1``).
-Switches: PTIT_OCR_GPU (default A10G), PTIT_SCALEDOWN_SECONDS (default 300),
+Switches: PTIT_OCR_GPU (default A10), PTIT_SCALEDOWN_SECONDS (default 300),
 PTIT_KEEP_WARM=1 keeps one container up (costs credit).
 """
 
@@ -30,7 +30,7 @@ REMOTE_PROJECT_ROOT = "/root/project"
 HF_HOME = "/root/.cache/huggingface"
 VLLM_VERSION = "0.30.0"
 APP_NAME = "ptit-ocr-serve"
-GPU = os.environ.get("PTIT_OCR_GPU", "A10G")
+GPU = os.environ.get("PTIT_OCR_GPU", "A10")
 PORT = 8000
 SCALEDOWN_SECONDS = int(os.environ.get("PTIT_SCALEDOWN_SECONDS", "300"))
 KEEP_WARM = os.environ.get("PTIT_KEEP_WARM") == "1"
