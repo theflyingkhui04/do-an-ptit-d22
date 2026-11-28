@@ -1,0 +1,172 @@
+
+===== WORKLOAD INPUT =====
+mode                 : canonical-jsonl
+workload             : W2
+workload_file        : experiments/configs/w2_v2/chat_requests.jsonl
+sample_count         : 12
+sample_policy        : cycle-rotate
+package_workload_id  : w2_text_to_sql
+dataset_version      : w2.m1_03.v2
+prompt_version       : w2_text_to_sql.v2
+manifest_path        : /root/project/experiments/configs/w2_v2/package_manifest.json
+artifact_key         : chat_requests_jsonl
+workload_file_sha256 : bc26be01a4f5a813a4f6e843e2533e2f56d2e663918be2bd0e7b231e6385685c
+manifest_package_sha256: 529f159c6837a9e2e326f70e0420eb80a1d0788f58d42a74734efee675fe7d9f
+==========================
+
+===== PM-APPROVED SAMPLE REUSE =====
+policy               : deterministic-cycle-rotate
+repeat_offset        : ((repeat_index - 1) * (num_requests % sample_count)) % sample_count
+mapping              : sample_index = (request_index + repeat_offset) % sample_count
+lane_pairing         : exact same mapping for Vanilla and Static
+warmup_offset        : 0
+====================================
+
+===== ENVIRONMENT CONTRACT PASS =====
+profile              : modal-t4-v1
+environment_source   : server
+gpu                  : Tesla T4
+vllm_version         : 0.30.0
+torch_version        : 2.13.0+cu130
+torch_cuda_version   : 13.0
+=====================================
+
+===== NON-CANONICAL CONCURRENCY SET =====
+selected             : [8]
+canonical            : [1, 2, 4, 8, 16, 32]
+Do not use this run as complete M1 sweep evidence.
+=========================================
+
+===== M1-02 CONCURRENCY SWEEP =====
+experiment_id        : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+lane                 : adaptive
+workload             : W2
+canonical_samples    : 12
+sample_policy        : cycle-rotate
+concurrencies        : [8]
+repeats_per_cell     : 5
+requests_per_repeat  : 32
+===================================
+
+========================================
+START CELL
+experiment_id : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+cell_id       : adaptive__W2__c8
+concurrency   : 8
+repeats       : 5
+========================================
+
+===== M1-02 CELL WARM-UP =====
+policy               : m3-fixed3
+experiment_id        : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+cell_id              : adaptive__W2__c8
+requested_minimum    : 3
+warmup_requests      : 3
+warmup_concurrency   : 8
+measured_concurrency : 8
+sample_policy        : cycle-rotate
+==============================
+
+===== WARM-UP PASS =====
+cell_id              : adaptive__W2__c8
+requests             : 3
+successes            : 3
+concurrency_limit    : 8
+========================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+cell_id             : adaptive__W2__c8
+repeat_id           : r001
+sample_offset       : 0
+run_id              : run-bcb53350-3344-4c06-96a7-d4fa61baa6c5
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 18.921
+request_throughput  : 1.691 req/s
+output_throughput   : 137.255 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-t4-2711c/T4/T4__adaptive__W2__c8/a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+cell_id             : adaptive__W2__c8
+repeat_id           : r002
+sample_offset       : 8
+run_id              : run-0581f1f3-5cc1-4d2f-9893-69828818797b
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 19.154
+request_throughput  : 1.671 req/s
+output_throughput   : 137.206 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-t4-2711c/T4/T4__adaptive__W2__c8/a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+cell_id             : adaptive__W2__c8
+repeat_id           : r003
+sample_offset       : 4
+run_id              : run-7350a69a-614b-404b-aeac-9c0ba404acf4
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 19.672
+request_throughput  : 1.627 req/s
+output_throughput   : 137.610 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-t4-2711c/T4/T4__adaptive__W2__c8/a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+cell_id             : adaptive__W2__c8
+repeat_id           : r004
+sample_offset       : 0
+run_id              : run-0f7ab9d9-bfe9-4e79-ba77-a6bfdf9c1767
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 18.897
+request_throughput  : 1.693 req/s
+output_throughput   : 137.430 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-t4-2711c/T4/T4__adaptive__W2__c8/a001/raw.jsonl
+=================================
+
+===== M1-02 REPEAT RESULT =====
+experiment_id       : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+cell_id             : adaptive__W2__c8
+repeat_id           : r005
+sample_offset       : 8
+run_id              : run-2738137e-8dc7-417d-96b6-aaa0752a8b76
+requests            : 32
+successes           : 32
+metrics_complete    : 32
+concurrency         : 8
+duration_s          : 19.454
+request_throughput  : 1.645 req/s
+output_throughput   : 135.911 tok/s
+run_vram_peak_mb    : None
+raw_jsonl           : /artifacts/flexsds_bench/flexsds-fast-t4-2711c/T4/T4__adaptive__W2__c8/a001/raw.jsonl
+=================================
+
+===== CELL PASS =====
+cell_id              : adaptive__W2__c8
+measured_repeats     : 5
+=====================
+
+===== SWEEP PASS =====
+experiment_id        : flexsds-fast-t4-2711c-T4-adaptive-W2-c8-a001
+cells_completed      : 1
+concurrencies        : [8]
+repeats_per_cell     : 5
+======================
